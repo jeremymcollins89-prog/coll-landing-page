@@ -107,6 +107,28 @@
     margin: 0 0 24px;
   }
 
+  section.employee-qr {
+    text-align: center;
+    margin-top: 56px;
+    padding-top: 40px;
+    border-top: 1.5px solid var(--line);
+  }
+  section.employee-qr h2 {
+    font-size: 19px;
+    margin: 0 0 8px;
+  }
+  section.employee-qr p {
+    color: #6b6759;
+    font-size: 14px;
+    margin: 0 0 20px;
+  }
+  section.employee-qr img {
+    border: 1.5px solid var(--line);
+    border-radius: 8px;
+    padding: 8px;
+    background: #fff;
+  }
+
   footer {
     text-align: center;
     padding: 28px 24px 40px;
@@ -167,6 +189,17 @@
     <a class="cta-btn" href="https://site-clock-frontend-production.up.railway.app/signup.html">
       Sign up your business
     </a>
+  </section>
+
+  <section class="employee-qr">
+    <h2>Already signed up?</h2>
+    <p>Have your employees scan this to open the clock-in app — handy to print and post at the shop.</p>
+    <img
+      src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=https%3A%2F%2Fsite-clock-frontend-production.up.railway.app%2F"
+      alt="QR code to open the employee clock-in app"
+      width="180"
+      height="180"
+    />
   </section>
 </main>
 
