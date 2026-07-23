@@ -128,6 +128,27 @@
     padding: 8px;
     background: #fff;
   }
+  .already-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 40px;
+    margin-top: 24px;
+  }
+  .already-grid h3 {
+    font-size: 15.5px;
+    margin: 0 0 8px;
+    color: var(--teal);
+  }
+  .already-grid .btn-link {
+    display: inline-block;
+    background: var(--charcoal);
+    color: var(--paper);
+    padding: 12px 24px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+  }
 
   footer {
     text-align: center;
@@ -206,13 +227,25 @@
 
   <section class="employee-qr">
     <h2>Already signed up?</h2>
-    <p>Have your employees scan this to open the clock-in app — handy to print and post at the shop.</p>
-    <img
-      src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=https%3A%2F%2Fsite-clock-frontend-production.up.railway.app%2F"
-      alt="QR code to open the employee clock-in app"
-      width="180"
-      height="180"
-    />
+    <div class="already-grid">
+      <div>
+        <h3>For your team</h3>
+        <p>Have your employees scan this to open the clock-in app — handy to print and post at the shop.</p>
+        <img
+          src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=https%3A%2F%2Fsite-clock-frontend-production.up.railway.app%2F"
+          alt="QR code to open the employee clock-in app"
+          width="180"
+          height="180"
+        />
+      </div>
+      <div>
+        <h3>For the business owner</h3>
+        <p>Download the admin app to manage employees, schedules, customers, and payroll from your desktop.</p>
+        <a class="btn-link" href="https://github.com/jeremymcollins89-prog/site-clock-admin/releases/latest/download/Coll-Timeclock-Admin-Setup.exe">
+          Download admin app (Windows)
+        </a>
+      </div>
+    </div>
   </section>
 </main>
 
