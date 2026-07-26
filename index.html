@@ -199,6 +199,25 @@
     transition: transform .15s ease;
   }
   .btn-link:hover { transform: translateY(-2px); }
+  .btn-link-secondary {
+    display: inline-block;
+    background: transparent;
+    color: var(--charcoal);
+    padding: 13px 26px;
+    border: 1.5px solid var(--charcoal);
+    border-radius: 10px;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 700;
+    transition: transform .15s ease;
+  }
+  .btn-link-secondary:hover { transform: translateY(-2px); }
+  .download-btn-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
 
   footer {
     text-align: center;
@@ -331,10 +350,18 @@
       <div class="already-card">
         <h3>For the business owner</h3>
         <p>Download the admin app to manage employees, schedules, customers, invoices, and reports from your desktop.</p>
-        <a class="btn-link" href="https://github.com/jeremymcollins89-prog/site-clock-admin/releases/latest/download/Coll-Timeclock-Admin-Setup.exe">
-          Download admin app (Windows)
-        </a>
+        <div class="download-btn-row">
+          <a class="btn-link" href="https://github.com/jeremymcollins89-prog/site-clock-admin/releases/latest/download/Coll-Timeclock-Admin-Setup.exe">
+            Download for Windows
+          </a>
+          <a class="btn-link-secondary" href="https://github.com/jeremymcollins89-prog/site-clock-admin/releases/latest/download/Coll-Timeclock-Admin-Setup.dmg">
+            Download for Mac
+          </a>
+        </div>
         <p style="font-size:13px; margin-top:16px; margin-bottom:0;">
+          First time opening on Mac? Right-click the app and choose <strong>Open</strong> — macOS will warn about an unidentified developer the first time only.
+        </p>
+        <p style="font-size:13px; margin-top:8px; margin-bottom:0;">
           Prefer your phone? <a href="https://site-clock-frontend-production.up.railway.app/admin.html" style="text-decoration:underline;">Open the admin app</a> in your mobile browser and add it to your home screen.
         </p>
       </div>
