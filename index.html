@@ -201,14 +201,16 @@
   .btn-link:hover { transform: translateY(-2px); }
   .btn-link-secondary {
     display: inline-block;
-    background: transparent;
+    background: var(--paper);
     color: var(--charcoal);
     padding: 13px 26px;
-    border: 1.5px solid var(--charcoal);
     border-radius: 10px;
     text-decoration: none;
     font-size: 14px;
     font-weight: 700;
+    /* inset "border" instead of a real border so the button's box size
+       matches .btn-link exactly (a real border would add extra px) */
+    box-shadow: 0 8px 18px rgba(31,36,33,0.25), inset 0 0 0 1.5px var(--charcoal);
     transition: transform .15s ease;
   }
   .btn-link-secondary:hover { transform: translateY(-2px); }
