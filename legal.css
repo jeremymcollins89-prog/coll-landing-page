@@ -1,0 +1,27 @@
+/* Cleanroom Control privacy policy and terms pages */
+:root{--steel:#D5DADE;--steel-2:#C4CACF;--white:#FFFFFF;--graphite:#22272B;--body:#3A434A;--green:#23935A}
+*{box-sizing:border-box}
+body{margin:0;background:var(--white);color:var(--graphite);font-family:"Saira",system-ui,sans-serif;font-size:17px;line-height:1.65;-webkit-font-smoothing:antialiased}
+a{color:var(--green)}
+:focus-visible{outline:3px solid var(--green);outline-offset:3px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 40px}
+nav{background:var(--graphite);color:#E8ECEF}
+nav .wrap{display:flex;justify-content:space-between;align-items:center;height:68px}
+.brand{font-weight:700;font-size:20px;font-stretch:85%;text-decoration:none;color:#fff}
+.back{color:#B9C1C7;font-size:15px;text-decoration:none}
+.back:hover{color:#fff}
+.doc{max-width:760px;padding-top:64px;padding-bottom:96px}
+.doc h1{font-size:clamp(44px,6vw,72px);font-weight:800;font-stretch:78%;line-height:.95;margin:0 0 14px}
+.doc .meta{color:var(--body);font-size:15px;margin:0 0 36px;padding-bottom:22px;border-bottom:3px solid var(--graphite)}
+.doc h2{font-size:30px;font-weight:800;font-stretch:80%;line-height:1.05;margin:44px 0 12px}
+.doc h3{font-size:19px;font-weight:700;font-stretch:92%;margin:24px 0 6px}
+.doc p,.doc li{color:var(--body)}
+.doc p{margin:0 0 14px}
+.doc ul{margin:0 0 14px;padding-left:22px}
+.doc li{margin-bottom:8px}
+.doc li::marker{color:var(--green)}
+.doc strong{color:var(--graphite)}
+footer{background:var(--graphite);color:#9AA4AB;font-size:14.5px}
+footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-top:30px;padding-bottom:34px}
+footer a{color:#D5DADE}
+@media (max-width:700px){.wrap{padding:0 20px}.doc{padding-top:40px}.back{display:none}}
