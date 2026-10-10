@@ -79,15 +79,51 @@ nav .wrap{display:flex;justify-content:space-between;align-items:center;height:6
 .stop h3{margin-bottom:10px}
 .stop p{color:var(--body);font-size:16px}
 
-/* features: ruled rows on white */
+/* features: each group beside a picture of that part of the app */
 .features{background:var(--white);padding:96px 0}
-.features h2{margin-bottom:56px;max-width:820px}
-.group{display:grid;grid-template-columns:260px 1fr;gap:40px;border-top:3px solid var(--graphite);padding:28px 0 44px}
-.group h3{font-size:30px}
-.group .sub{color:var(--body);font-size:15.5px;margin-top:10px}
-.items{display:grid;grid-template-columns:repeat(2,1fr);gap:26px 40px}
-.items h4{font-size:18px;font-weight:700;font-stretch:92%;margin:0 0 4px}
-.items p{color:var(--body);font-size:15.5px}
+.features h2{margin-bottom:64px;max-width:820px}
+.feat{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;padding:0 0 88px}
+.feat:last-child{padding-bottom:0}
+.feat.flip .feat-copy{order:2}
+.feat-copy h3{font-size:clamp(32px,3.4vw,44px);font-weight:800}
+.feat-copy .sub{color:var(--body);font-size:17px;margin:10px 0 26px}
+.points{list-style:none;margin:0;padding:0}
+.points li{position:relative;padding:0 0 18px 30px;color:var(--body);font-size:16px;line-height:1.55}
+.points li::before{content:"";position:absolute;left:0;top:5px;width:14px;height:14px;border-radius:4px;background:var(--green);box-shadow:inset 0 0 0 4px #DDF1E6}
+.points b{display:block;color:var(--graphite);font-size:18px;font-stretch:92%;margin-bottom:2px}
+
+.shot{background:var(--graphite);color:#E7ECE9;border-radius:22px;padding:22px;box-shadow:0 30px 60px rgba(34,39,43,.22)}
+.shot-bar{display:flex;justify-content:space-between;align-items:center;font-size:14px;color:#9AA7A1;margin-bottom:16px}
+.shot-bar span:first-child{font-weight:700;font-size:18px;font-stretch:88%;color:#fff}
+.shot-bar .on{color:#8FE0BD;font-weight:600}
+.shot-bar .on::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:#8FE0BD;margin-right:7px;vertical-align:1px}
+.trend{width:100%;height:170px;display:block;background:#182024;border-radius:12px}
+.trend-wrap{position:relative;margin-bottom:16px}
+.lim{position:absolute;right:10px;font-size:12px;color:#9AA7A1}
+.alert{background:#3A1F22;border-left:4px solid #E5484D;border-radius:10px;padding:12px 14px;font-size:14px}
+.alert b{display:block;color:#FFB4B6;font-size:15px}
+.alert span{color:#E0C9CA}
+.area{font-size:12.5px;color:#9AA7A1;margin:10px 0 4px}
+.fan{display:grid;grid-template-columns:56px 1fr 44px;gap:12px;align-items:center;padding:9px 0;border-top:1px solid #2E3539;font-size:14.5px;font-weight:600}
+.fan i{display:block;height:8px;border-radius:5px;background:#2E3539;overflow:hidden}
+.fan em{display:block;height:100%;background:linear-gradient(90deg,#23935A,#8FE0BD)}
+.fan span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.sched{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.sched span{background:#182024;border-radius:10px;padding:10px 12px;font-size:13px;color:#B9C1C7}
+.sched b{display:block;color:#fff;font-size:14.5px}
+.log{display:grid;grid-template-columns:74px 1fr;gap:12px;padding:12px 0;border-top:1px solid #2E3539;font-size:14.5px}
+.log time{color:#9AA7A1;font-variant-numeric:tabular-nums}
+.log b{color:#fff}
+.log small{display:block;color:#8FE0BD;font-size:13px;margin-top:2px}
+.help{background:#182024;border-radius:14px;padding:16px;font-size:14.5px}
+.help b{display:block;color:#fff;font-size:17px;font-stretch:90%}
+.help span{color:#B9C1C7}
+.help-note{margin:12px 0;padding:10px 12px;border-radius:10px;background:#22292D;color:#D5DADE;font-style:italic}
+.help-btns{display:flex;gap:10px;justify-content:flex-end}
+.help-btns i{font-style:normal;font-weight:600;font-size:13.5px;padding:7px 14px;border-radius:999px;box-shadow:inset 0 0 0 1.5px #E5484D;color:#FFB4B6}
+.help-btns i.ok{background:#23935A;color:#fff;box-shadow:none}
+.update{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:12px 14px;border-radius:12px;background:#182024;font-size:14px;color:#B9C1C7}
+.update b{color:#8FE0BD}
 
 /* where you use it */
 .places{background:var(--graphite);color:#E8ECEF;padding:96px 0}
@@ -99,10 +135,13 @@ nav .wrap{display:flex;justify-content:space-between;align-items:center;height:6
 
 /* works with */
 .works{padding:96px 0}
-.works .wrap{display:grid;grid-template-columns:1fr 1.3fr;gap:60px;align-items:start}
-.works p.intro{color:var(--body);margin-top:18px;max-width:420px}
-.works ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,1fr);gap:0 40px}
-.works li{padding:14px 0;border-bottom:1px solid var(--steel-2);font-weight:600;font-size:17px}
+.works-head{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:end;margin-bottom:48px}
+.works p.intro{color:var(--body);max-width:480px}
+.kit{display:grid;grid-template-columns:repeat(3,1fr);gap:0 40px}
+.kind{border-top:3px solid var(--graphite);padding:22px 0 40px}
+.kind h3{margin-bottom:12px}
+.kind ul{list-style:none;margin:0;padding:0}
+.kind li{padding:9px 0;border-bottom:1px solid var(--steel-2);font-size:15.5px;line-height:1.45;color:var(--body)}
 
 /* call to action */
 .cta{background:var(--green);color:#fff;padding:84px 0}
@@ -132,10 +171,12 @@ footer a{color:#D5DADE}
   .hero .wrap{padding-top:56px;padding-bottom:40px;min-height:0}
   .readings{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:40px}
   .reading{position:static;min-width:0}
-  .track,.place-row,.ways,.items,.works ul{grid-template-columns:1fr}
+  .track,.place-row,.ways,.items,.kit,.works-head{grid-template-columns:1fr}
   .track::before{display:none}
-  .group{grid-template-columns:1fr;gap:18px}
-  .works .wrap{grid-template-columns:1fr;gap:30px}
+  .feat{grid-template-columns:1fr;gap:32px;padding-bottom:64px}
+  .feat.flip .feat-copy{order:0}
+  .sched{grid-template-columns:1fr}
+  .works-head{gap:16px}
   .how,.features,.places,.works{padding:64px 0}
 }
 </style>
@@ -148,6 +189,7 @@ footer a{color:#D5DADE}
     <div class="links">
       <a href="#how">How it works</a>
       <a href="#features">Features</a>
+      <a href="#equipment">Equipment</a>
       <a href="/timeclock.html">Coll Timeclock</a>
       <a class="btn go" href="https://cleanroom-cloud-production.up.railway.app">Sign in</a>
     </div>
@@ -186,9 +228,9 @@ footer a{color:#D5DADE}
   <div class="wrap">
     <h2>One controller per room. Everything else happens in the app.</h2>
     <div class="track">
-      <div class="stop"><div class="n">1</div><h3>Install the controller</h3><p>Mount the touchscreen and connect your fan filter units and sensors. Each one is found and named on its own — FFU-1, FFU-2, TH-1 — with no programming.</p></div>
-      <div class="stop"><div class="n">2</div><h3>Pair it to your account</h3><p>Connect it to your network and the screen shows a pairing code. Enter the code in the app and the room appears on your account.</p></div>
-      <div class="stop"><div class="n">3</div><h3>Run it from anywhere</h3><p>Watch every reading, change fan speeds and limits, and get alarm emails — from the wall, your desk or your phone.</p></div>
+      <div class="stop"><div class="n">1</div><h3>Install the controller</h3><p>Mount the touchscreen in the room and give it power and a network connection: Ethernet, with Wi-Fi as a backup.</p></div>
+      <div class="stop"><div class="n">2</div><h3>Pair it to your account</h3><p>The screen shows a pairing code. Enter the code in the app and the room appears on your account.</p></div>
+      <div class="stop"><div class="n">3</div><h3>Find your equipment</h3><p>Connect your fan filter units and sensors. The controller finds each one and names it — <span style="white-space:nowrap">FFU-1</span>, <span style="white-space:nowrap">FFU-2</span>, <span style="white-space:nowrap">TH-1</span> — with no programming, and they appear on the screen and in the app.</p></div>
     </div>
   </div>
 </section>
@@ -197,40 +239,90 @@ footer a{color:#D5DADE}
   <div class="wrap">
     <h2>Everything your cleanroom needs, in one system.</h2>
 
-    <div class="group">
-      <div><h3>Monitoring and alarms</h3><p class="sub">Know the moment something changes.</p></div>
-      <div class="items">
-        <div><h4>Live readings</h4><p>Pressure, temperature, humidity and particle counts, updated live on the wall screen and in the app.</p></div>
-        <div><h4>Alarm emails</h4><p>Set limits for each reading. Cross one and the right people get an email, and a horn or strobe can sound in the room.</p></div>
-        <div><h4>History and trends</h4><p>Every reading is recorded, even through an internet outage, with trend charts and a weekly summary email.</p></div>
+    <div class="feat">
+      <div class="feat-copy">
+        <h3>Monitoring and alarms</h3>
+        <p class="sub">Know the moment something changes.</p>
+        <ul class="points">
+          <li><b>Live readings</b> Pressure, temperature, humidity and particle counts, live on the wall screen and in the app.</li>
+          <li><b>Alarm emails</b> Set limits for each reading. Cross one and the right people get an email, and a horn or strobe can sound in the room.</li>
+          <li><b>History and trends</b> Every reading is recorded, even through an internet outage, with trend charts and a weekly summary email.</li>
+        </ul>
+      </div>
+      <div class="shot" aria-hidden="true">
+        <div class="shot-bar"><span>Fill Room</span><span>Room pressure, last 24 hours</span></div>
+        <div class="trend-wrap"><svg class="trend" viewBox="0 0 400 150" preserveAspectRatio="none">
+          <rect x="0" y="34" width="400" height="62" fill="rgba(35,147,90,.16)"/>
+          <line x1="0" y1="34" x2="400" y2="34" stroke="rgba(143,224,189,.5)" stroke-dasharray="4 4"/>
+          <line x1="0" y1="96" x2="400" y2="96" stroke="rgba(143,224,189,.5)" stroke-dasharray="4 4"/>
+          <polyline fill="none" stroke="#8FE0BD" stroke-width="2.5" points="0,62 25,60 50,64 75,58 100,61 125,63 150,59 175,62 200,60 225,66 250,82 262,108 272,112 284,90 300,66 325,61 350,63 375,60 400,62"/>
+          <circle cx="268" cy="111" r="5" fill="#E5484D"/>
+        </svg><span class="lim" style="top:calc(22.7% - 20px)">High limit 20 Pa</span><span class="lim" style="top:calc(64% + 4px)">Low limit 8 Pa</span></div>
+        <div class="alert"><b>Alarm: Fill Room pressure low</b><span>5.6 Pa, below the 8 Pa limit. Emailed to 3 people at 2:14 PM.</span></div>
       </div>
     </div>
 
-    <div class="group">
-      <div><h3>Control</h3><p class="sub">Run the room from one place.</p></div>
-      <div class="items">
-        <div><h4>Fan filter units</h4><p>Set each fan's speed or all of them at once. Fans keep their speed even if the controller restarts.</p></div>
-        <div><h4>Automatic pressure</h4><p>Set a pressure target and the controller adjusts the fans to hold it, through doors opening and filters loading.</p></div>
-        <div><h4>Schedules</h4><p>Run full speed during production and a lower setback speed nights and weekends, automatically.</p></div>
-        <div><h4>Areas within a room</h4><p>Name the spaces one controller runs — gowning, airlock, fill room — and alarms say exactly where.</p></div>
+    <div class="feat flip">
+      <div class="feat-copy">
+        <h3>Control</h3>
+        <p class="sub">Run the room from one place.</p>
+        <ul class="points">
+          <li><b>Fan filter units</b> Set each fan's speed or all of them at once. Fans keep their speed even if the controller restarts.</li>
+          <li><b>Automatic pressure</b> Set a pressure target and the controller adjusts the fans to hold it, through doors opening and filters loading.</li>
+          <li><b>Schedules</b> Full speed during production, a lower setback speed nights and weekends.</li>
+          <li><b>Areas within a room</b> Name the spaces one controller runs, and alarms say exactly where.</li>
+        </ul>
+      </div>
+      <div class="shot" aria-hidden="true">
+        <div class="shot-bar"><span>Fill Room</span><span class="on">Holding +12 Pa</span></div>
+        <div class="area">Fill room</div>
+        <div class="fan"><span>FFU-1</span><i><em style="width:72%"></em></i><span>72%</span></div>
+        <div class="fan"><span>FFU-2</span><i><em style="width:72%"></em></i><span>72%</span></div>
+        <div class="fan"><span>FFU-3</span><i><em style="width:68%"></em></i><span>68%</span></div>
+        <div class="area">Gowning</div>
+        <div class="fan"><span>FFU-4</span><i><em style="width:55%"></em></i><span>55%</span></div>
+        <div class="sched"><span><b>Production</b> Mon–Fri, 6 AM–6 PM, 70%</span><span><b>Setback</b> Nights and weekends, 40%</span></div>
       </div>
     </div>
 
-    <div class="group">
-      <div><h3>Access and records</h3><p class="sub">Who changed what, and when.</p></div>
-      <div class="items">
-        <div><h4>Roles for your team</h4><p>Owners, admins, operators and viewers each see and change only what they should. The wall screen can be locked with a PIN.</p></div>
-        <div><h4>Activity log and signed changes</h4><p>Every change is logged with who made it. Turn on signed changes to require a password and a reason for each one.</p></div>
-        <div><h4>Reports</h4><p>Readings, alarms and changes for any date range, ready for audits and certification.</p></div>
+    <div class="feat">
+      <div class="feat-copy">
+        <h3>Access and records</h3>
+        <p class="sub">Who changed what, and when.</p>
+        <ul class="points">
+          <li><b>Roles for your team</b> Owners, admins, operators and viewers each see and change only what they should. The wall screen can be locked with a PIN.</li>
+          <li><b>Activity log and signed changes</b> Every change is logged with who made it. Turn on signed changes to require a password and a reason for each one.</li>
+          <li><b>Reports</b> Readings, alarms and changes for any date range, ready for audits and certification.</li>
+        </ul>
+      </div>
+      <div class="shot" aria-hidden="true">
+        <div class="shot-bar"><span>Activity</span><span>Today</span></div>
+        <div class="log"><time>2:31 PM</time><div><b>Dana R.</b> acknowledged the low pressure alarm<small>Reason: door propped open during delivery</small></div></div>
+        <div class="log"><time>11:05 AM</time><div><b>Marcus T.</b> set FFU-3 to 68%<small>Reason: filter change, signed</small></div></div>
+        <div class="log"><time>9:40 AM</time><div><b>Dana R.</b> changed the high humidity limit to 50%</div></div>
+        <div class="log"><time>6:00 AM</time><div><b>Schedule</b> switched the room to Production</div></div>
       </div>
     </div>
 
-    <div class="group">
-      <div><h3>Help when you need it</h3><p class="sub">Your installer is one button away.</p></div>
-      <div class="items">
-        <div><h4>Request help</h4><p>Your installer sees whether your rooms are running. Click Request help and they can look in and fix things for 24 hours, then access closes on its own.</p></div>
-        <div><h4>Updates over the internet</h4><p>New controller software installs from the app in about a minute. If anything goes wrong, the controller goes back to its previous version by itself.</p></div>
-        <div><h4>Private by design</h4><p>Each company's rooms, readings and records are kept separate from every other company on Cleanroom Control.</p></div>
+    <div class="feat flip">
+      <div class="feat-copy">
+        <h3>Help when you need it</h3>
+        <p class="sub">Your installer is one button away.</p>
+        <ul class="points">
+          <li><b>Request help</b> Your installer sees whether your rooms are running. Click Request help and they can look in and fix things for 24 hours, then access closes on its own.</li>
+          <li><b>Updates over the internet</b> New controller software installs from the app in about a minute. If anything goes wrong, the controller goes back to its previous version by itself.</li>
+          <li><b>Private by design</b> Each company's rooms, readings and records are kept separate from every other company.</li>
+        </ul>
+      </div>
+      <div class="shot" aria-hidden="true">
+        <div class="shot-bar"><span>Support</span><span class="on">Access open</span></div>
+        <div class="help">
+          <b>Your installer can open your rooms</b>
+          <span>23 h 12 min left. Everything they change is in the activity log.</span>
+          <div class="help-note">"Fill room pressure keeps dropping since this morning."</div>
+          <div class="help-btns"><i>End access now</i><i class="ok">OK</i></div>
+        </div>
+        <div class="update"><span>Controller software</span><b>0.9.4 installed</b></div>
       </div>
     </div>
   </div>
@@ -247,22 +339,62 @@ footer a{color:#D5DADE}
   </div>
 </section>
 
-<section class="works">
+<section class="works" id="equipment">
   <div class="wrap">
-    <div>
+    <div class="works-head">
       <h2>Works with your equipment.</h2>
-      <p class="intro">Connects to the fan filter units and sensors cleanrooms already use, and to your building system.</p>
+      <p class="intro">Connects to the fan filter units and sensors cleanrooms already use. Not sure about yours? Send us the model and we'll tell you.</p>
     </div>
-    <ul>
-      <li>Envirco fan filter units</li>
-      <li>0–10 V fans</li>
-      <li>Pressure sensors</li>
-      <li>Temperature and humidity sensors</li>
-      <li>Particle counters</li>
-      <li>Lights and doors</li>
-      <li>Building systems over Modbus TCP</li>
-      <li>Ethernet, with Wi-Fi backup</li>
-    </ul>
+    <div class="kit">
+      <div class="kind">
+        <h3>Fan filter units</h3>
+        <ul>
+          <li>Envirco, through its Universal Control Card</li>
+          <li>Terra Universal ECM</li>
+          <li>AJ Manufacturing Unit Manager</li>
+          <li>ebm-papst EC motors</li>
+          <li>Other brands with a Modbus port, such as CRI, Price and Nortek, added from the maker's register list</li>
+          <li>Any fan with a 0–10 V speed input, through a Cleanroom Control fan module</li>
+        </ul>
+      </div>
+      <div class="kind">
+        <h3>Room pressure</h3>
+        <ul>
+          <li>Sensirion SDP810 differential pressure sensors, for room-to-room readings</li>
+          <li>Any room pressure transmitter with a Modbus RS-485 output</li>
+        </ul>
+      </div>
+      <div class="kind">
+        <h3>Temperature and humidity</h3>
+        <ul>
+          <li>Sensirion SHT40, SHT41 and SHT45 sensors</li>
+          <li>XY-MD02 / SHT20 and RS-WS Modbus transmitters</li>
+          <li>Other Modbus transmitters, added from the maker's register list</li>
+        </ul>
+      </div>
+      <div class="kind">
+        <h3>Particle counters</h3>
+        <ul>
+          <li>Plantower PMS5003 sensors, for particle trends and alarms</li>
+          <li>Modbus particle counters such as Lighthouse and Met One, for certification-grade monitoring</li>
+        </ul>
+      </div>
+      <div class="kind">
+        <h3>Lights, doors and alarms</h3>
+        <ul>
+          <li>Room lights, switched through a relay module</li>
+          <li>Door switches, to show when a door is open</li>
+          <li>A horn or strobe light that sounds during an alarm</li>
+        </ul>
+      </div>
+      <div class="kind">
+        <h3>Building systems and network</h3>
+        <ul>
+          <li>Building management systems, over Modbus TCP</li>
+          <li>Ethernet, with 2.4 GHz Wi-Fi as a backup</li>
+        </ul>
+      </div>
+    </div>
   </div>
 </section>
 
