@@ -110,6 +110,16 @@ nav .wrap{display:flex;justify-content:space-between;align-items:center;height:6
 .place h3{margin-bottom:10px}
 .place p{color:#B9C1C7;font-size:16px}
 
+.lede-dark{color:#B9C1C7;font-size:19px;max-width:640px;margin:-28px 0 48px}
+.views{display:grid;grid-template-columns:2.1fr .62fr .62fr;gap:24px;align-items:end;margin-bottom:64px}
+.views figure{margin:0}
+.views figcaption{font-size:14px;color:#B9C1C7;margin-top:10px}
+.boasts{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:26px 32px}
+.boasts li{border-top:2px solid rgba(255,255,255,.22);padding-top:14px;color:#B9C1C7;font-size:15.5px;line-height:1.55}
+.boasts b{display:block;color:#fff;font-size:20px;font-stretch:88%;margin-bottom:4px}
+.phone{background:#0B0D0E;border-radius:30px;padding:9px;box-shadow:0 24px 50px rgba(0,0,0,.35)}
+.phone img{display:block;width:100%;height:auto;border-radius:22px}
+
 /* works with */
 .works{padding:96px 0}
 .works-head{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:end;margin-bottom:48px}
@@ -152,7 +162,10 @@ footer a{color:#D5DADE}
   .track::before{display:none}
   .feat{grid-template-columns:1fr;gap:32px;padding-bottom:64px}
   .feat.flip .feat-copy{order:0}
-  .wall{grid-template-columns:1fr}
+  .boasts{grid-template-columns:1fr}
+  .views{grid-template-columns:1fr 1fr}
+  .views figure:first-child{grid-column:1/-1}
+  .lede-dark{margin-top:-16px}
   .sched{grid-template-columns:1fr}
   .works-head{gap:16px}
   .how,.features,.places,.works{padding:64px 0}
@@ -239,6 +252,7 @@ footer a{color:#D5DADE}
           <li><b>Automatic pressure</b> Set a pressure target and the controller adjusts the fans to hold it, through doors opening and filters loading.</li>
           <li><b>Schedules</b> Full speed during production, a lower setback speed nights and weekends.</li>
           <li><b>Areas within a room</b> Name the spaces one controller runs, and alarms say exactly where.</li>
+          <li><b>Day and night looks</b> The wall screen can use a light look, a dark look, or Day/night, which switches by itself: light during working hours and dark at night. Change it on the screen or from the app.</li>
         </ul>
       </div>
       <figure class="shot"><a href="/img/app-control.webp" target="_blank" rel="noopener" title="Open full size"><img src="/img/app-control.webp" width="1200" height="932" loading="lazy" alt="The app’s Live tab: automatic pressure control holding its target, the fan mode from the schedule, and live readings and fan speeds for one area."></a><figcaption>The app, Live tab</figcaption></figure>
@@ -272,20 +286,26 @@ footer a{color:#D5DADE}
   </div>
 </section>
 
-<section class="places">
+<section class="places" id="anywhere">
   <div class="wrap">
-    <h2>On the wall, at your desk, in your pocket.</h2>
-    <div class="wall">
-      <figure><div class="bezel"><img src="/img/screen-room.webp" width="1024" height="600" loading="lazy" alt="The controller's touchscreen Room page: room pressure holding its target, fan mode, controls for every fan, and the readings for one area."></div><figcaption>The controller's touchscreen, Room page</figcaption></figure>
-      <figure><div class="bezel"><img src="/img/screen-trend.webp" width="1024" height="600" loading="lazy" alt="The controller's touchscreen trend chart: 24 hours of room pressure with the lowest, highest and average values."></div><figcaption>The touchscreen's 24-hour trend for room pressure</figcaption></figure>
+    <h2>Your room, from anywhere.</h2>
+    <p class="lede-dark">Check on your cleanroom and change it from any computer or phone, wherever you are: the office, home, or another site across the country. Sign in from a web browser and you see the same live room the wall screen shows.</p>
+    <div class="views">
+      <figure><div class="bezel"><img src="/img/screen-room.webp" width="1024" height="600" loading="lazy" alt="The controller's touchscreen Room page: room pressure holding its target, fan mode, controls for every fan, and readings for one area."></div><figcaption>On the wall: the controller's touchscreen</figcaption></figure>
+      <figure><div class="phone"><img src="/img/phone-rooms.webp" width="520" height="1125" loading="lazy" alt="The Cleanroom Control app on a phone: the Rooms page with live temperature, humidity, pressure and fans running."></div><figcaption>Your rooms</figcaption></figure>
+      <figure><div class="phone"><img src="/img/phone-live.webp" width="520" height="1125" loading="lazy" alt="The Cleanroom Control app on a phone: a room's Live tab with automatic pressure control holding its target."></div><figcaption>One room, live</figcaption></figure>
     </div>
-    <div class="place-row">
-      <div class="place"><h3>The wall screen</h3><p>A 7-inch touchscreen in the room shows every reading and fan, and works even when the internet is down.</p></div>
-      <div class="place"><h3>Your desk</h3><p>Every room you manage in one view, from any browser.</p></div>
-      <div class="place"><h3>Your phone</h3><p>Check on your rooms and handle alarms from anywhere.</p></div>
-    </div>
+    <ul class="boasts">
+        <li><b>Any computer or phone</b>Windows, Mac, iPhone or Android. If it has a web browser, it can run your room.</li>
+        <li><b>Every room on one screen</b>All your rooms and sites side by side, with live readings and whether each one is running normally.</li>
+        <li><b>Change it, not just watch it</b>Fan speeds, the pressure target, schedules and alarm limits can all be changed from wherever you are.</li>
+        <li><b>Alarms that find you</b>An email the moment a reading leaves its range, so you know before anyone calls.</li>
+        <li><b>No VPN or network setup</b>Plug the controller into the internet and it connects on its own. Nothing to open on your firewall.</li>
+        <li><b>Keeps working offline</b>If the internet drops, the wall screen keeps running the room and checking limits, and readings are kept until it's back.</li>
+      </ul>
   </div>
 </section>
+
 
 <section class="works" id="equipment">
   <div class="wrap">
