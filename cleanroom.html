@@ -92,38 +92,15 @@ nav .wrap{display:flex;justify-content:space-between;align-items:center;height:6
 .points li::before{content:"";position:absolute;left:0;top:5px;width:14px;height:14px;border-radius:4px;background:var(--green);box-shadow:inset 0 0 0 4px #DDF1E6}
 .points b{display:block;color:var(--graphite);font-size:18px;font-stretch:92%;margin-bottom:2px}
 
-.shot{background:var(--graphite);color:#E7ECE9;border-radius:22px;padding:22px;box-shadow:0 30px 60px rgba(34,39,43,.22)}
-.shot-bar{display:flex;justify-content:space-between;align-items:center;font-size:14px;color:#9AA7A1;margin-bottom:16px}
-.shot-bar span:first-child{font-weight:700;font-size:18px;font-stretch:88%;color:#fff}
-.shot-bar .on{color:#8FE0BD;font-weight:600}
-.shot-bar .on::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:#8FE0BD;margin-right:7px;vertical-align:1px}
-.trend{width:100%;height:170px;display:block;background:#182024;border-radius:12px}
-.trend-wrap{position:relative;margin-bottom:16px}
-.lim{position:absolute;right:10px;font-size:12px;color:#9AA7A1}
-.alert{background:#3A1F22;border-left:4px solid #E5484D;border-radius:10px;padding:12px 14px;font-size:14px}
-.alert b{display:block;color:#FFB4B6;font-size:15px}
-.alert span{color:#E0C9CA}
-.area{font-size:12.5px;color:#9AA7A1;margin:10px 0 4px}
-.fan{display:grid;grid-template-columns:56px 1fr 44px;gap:12px;align-items:center;padding:9px 0;border-top:1px solid #2E3539;font-size:14.5px;font-weight:600}
-.fan i{display:block;height:8px;border-radius:5px;background:#2E3539;overflow:hidden}
-.fan em{display:block;height:100%;background:linear-gradient(90deg,#23935A,#8FE0BD)}
-.fan span:last-child{text-align:right;font-variant-numeric:tabular-nums}
-.sched{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
-.sched span{background:#182024;border-radius:10px;padding:10px 12px;font-size:13px;color:#B9C1C7}
-.sched b{display:block;color:#fff;font-size:14.5px}
-.log{display:grid;grid-template-columns:74px 1fr;gap:12px;padding:12px 0;border-top:1px solid #2E3539;font-size:14.5px}
-.log time{color:#9AA7A1;font-variant-numeric:tabular-nums}
-.log b{color:#fff}
-.log small{display:block;color:#8FE0BD;font-size:13px;margin-top:2px}
-.help{background:#182024;border-radius:14px;padding:16px;font-size:14.5px}
-.help b{display:block;color:#fff;font-size:17px;font-stretch:90%}
-.help span{color:#B9C1C7}
-.help-note{margin:12px 0;padding:10px 12px;border-radius:10px;background:#22292D;color:#D5DADE;font-style:italic}
-.help-btns{display:flex;gap:10px;justify-content:flex-end}
-.help-btns i{font-style:normal;font-weight:600;font-size:13.5px;padding:7px 14px;border-radius:999px;box-shadow:inset 0 0 0 1.5px #E5484D;color:#FFB4B6}
-.help-btns i.ok{background:#23935A;color:#fff;box-shadow:none}
-.update{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:12px 14px;border-radius:12px;background:#182024;font-size:14px;color:#B9C1C7}
-.update b{color:#8FE0BD}
+.shot{margin:0}
+.shot a{display:block;cursor:zoom-in}
+.shot img{display:block;width:100%;height:auto;border-radius:16px;border:1px solid var(--steel-2);box-shadow:0 24px 50px rgba(34,39,43,.16)}
+.shot figcaption{font-size:14px;color:var(--body);margin-top:12px}
+.wall{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-bottom:56px}
+.wall figure{margin:0}
+.bezel{background:#0B0D0E;border-radius:18px;padding:14px;box-shadow:0 24px 50px rgba(0,0,0,.35)}
+.bezel img{display:block;width:100%;height:auto;border-radius:6px}
+.wall figcaption{font-size:14px;color:#B9C1C7;margin-top:12px}
 
 /* where you use it */
 .places{background:var(--graphite);color:#E8ECEF;padding:96px 0}
@@ -175,6 +152,7 @@ footer a{color:#D5DADE}
   .track::before{display:none}
   .feat{grid-template-columns:1fr;gap:32px;padding-bottom:64px}
   .feat.flip .feat-copy{order:0}
+  .wall{grid-template-columns:1fr}
   .sched{grid-template-columns:1fr}
   .works-head{gap:16px}
   .how,.features,.places,.works{padding:64px 0}
@@ -249,17 +227,7 @@ footer a{color:#D5DADE}
           <li><b>History and trends</b> Every reading is recorded, even through an internet outage, with trend charts and a weekly summary email.</li>
         </ul>
       </div>
-      <div class="shot" aria-hidden="true">
-        <div class="shot-bar"><span>Fill Room</span><span>Room pressure, last 24 hours</span></div>
-        <div class="trend-wrap"><svg class="trend" viewBox="0 0 400 150" preserveAspectRatio="none">
-          <rect x="0" y="34" width="400" height="62" fill="rgba(35,147,90,.16)"/>
-          <line x1="0" y1="34" x2="400" y2="34" stroke="rgba(143,224,189,.5)" stroke-dasharray="4 4"/>
-          <line x1="0" y1="96" x2="400" y2="96" stroke="rgba(143,224,189,.5)" stroke-dasharray="4 4"/>
-          <polyline fill="none" stroke="#8FE0BD" stroke-width="2.5" points="0,62 25,60 50,64 75,58 100,61 125,63 150,59 175,62 200,60 225,66 250,82 262,108 272,112 284,90 300,66 325,61 350,63 375,60 400,62"/>
-          <circle cx="268" cy="111" r="5" fill="#E5484D"/>
-        </svg><span class="lim" style="top:calc(22.7% - 20px)">High limit 20 Pa</span><span class="lim" style="top:calc(64% + 4px)">Low limit 8 Pa</span></div>
-        <div class="alert"><b>Alarm: Fill Room pressure low</b><span>5.6 Pa, below the 8 Pa limit. Emailed to 3 people at 2:14 PM.</span></div>
-      </div>
+      <figure class="shot"><a href="/img/app-trends.webp" target="_blank" rel="noopener" title="Open full size"><img src="/img/app-trends.webp" width="1200" height="677" loading="lazy" alt="The app’s Trends tab: 24 hours of room pressure and temperature, with the alarm limits as dashed lines and a dip below the low limit."></a><figcaption>The app, Trends tab</figcaption></figure>
     </div>
 
     <div class="feat flip">
@@ -273,16 +241,7 @@ footer a{color:#D5DADE}
           <li><b>Areas within a room</b> Name the spaces one controller runs, and alarms say exactly where.</li>
         </ul>
       </div>
-      <div class="shot" aria-hidden="true">
-        <div class="shot-bar"><span>Fill Room</span><span class="on">Holding +12 Pa</span></div>
-        <div class="area">Fill room</div>
-        <div class="fan"><span>FFU-1</span><i><em style="width:72%"></em></i><span>72%</span></div>
-        <div class="fan"><span>FFU-2</span><i><em style="width:72%"></em></i><span>72%</span></div>
-        <div class="fan"><span>FFU-3</span><i><em style="width:68%"></em></i><span>68%</span></div>
-        <div class="area">Gowning</div>
-        <div class="fan"><span>FFU-4</span><i><em style="width:55%"></em></i><span>55%</span></div>
-        <div class="sched"><span><b>Production</b> Mon–Fri, 6 AM–6 PM, 70%</span><span><b>Setback</b> Nights and weekends, 40%</span></div>
-      </div>
+      <figure class="shot"><a href="/img/app-control.webp" target="_blank" rel="noopener" title="Open full size"><img src="/img/app-control.webp" width="1200" height="932" loading="lazy" alt="The app’s Live tab: automatic pressure control holding its target, the fan mode from the schedule, and live readings and fan speeds for one area."></a><figcaption>The app, Live tab</figcaption></figure>
     </div>
 
     <div class="feat">
@@ -295,13 +254,7 @@ footer a{color:#D5DADE}
           <li><b>Reports</b> Readings, alarms and changes for any date range, ready for audits and certification.</li>
         </ul>
       </div>
-      <div class="shot" aria-hidden="true">
-        <div class="shot-bar"><span>Activity</span><span>Today</span></div>
-        <div class="log"><time>2:31 PM</time><div><b>Dana R.</b> acknowledged the low pressure alarm<small>Reason: door propped open during delivery</small></div></div>
-        <div class="log"><time>11:05 AM</time><div><b>Marcus T.</b> set FFU-3 to 68%<small>Reason: filter change, signed</small></div></div>
-        <div class="log"><time>9:40 AM</time><div><b>Dana R.</b> changed the high humidity limit to 50%</div></div>
-        <div class="log"><time>6:00 AM</time><div><b>Schedule</b> switched the room to Production</div></div>
-      </div>
+      <figure class="shot"><a href="/img/app-activity.webp" target="_blank" rel="noopener" title="Open full size"><img src="/img/app-activity.webp" width="1200" height="839" loading="lazy" alt="The app’s Activity page: who changed what and when, including a signed change with its reason."></a><figcaption>The app, Activity page</figcaption></figure>
     </div>
 
     <div class="feat flip">
@@ -314,16 +267,7 @@ footer a{color:#D5DADE}
           <li><b>Private by design</b> Each company's rooms, readings and records are kept separate from every other company.</li>
         </ul>
       </div>
-      <div class="shot" aria-hidden="true">
-        <div class="shot-bar"><span>Support</span><span class="on">Access open</span></div>
-        <div class="help">
-          <b>Your installer can open your rooms</b>
-          <span>23 h 12 min left. Everything they change is in the activity log.</span>
-          <div class="help-note">"Fill room pressure keeps dropping since this morning."</div>
-          <div class="help-btns"><i>End access now</i><i class="ok">OK</i></div>
-        </div>
-        <div class="update"><span>Controller software</span><b>0.9.4 installed</b></div>
-      </div>
+      <figure class="shot"><a href="/img/app-help.webp" target="_blank" rel="noopener" title="Open full size"><img src="/img/app-help.webp" width="900" height="855" loading="lazy" alt="The app’s help request: the installer can see and change the rooms for 24 hours, with the request note."></a><figcaption>The app, Request help</figcaption></figure>
     </div>
   </div>
 </section>
@@ -331,6 +275,10 @@ footer a{color:#D5DADE}
 <section class="places">
   <div class="wrap">
     <h2>On the wall, at your desk, in your pocket.</h2>
+    <div class="wall">
+      <figure><div class="bezel"><img src="/img/screen-room.webp" width="1024" height="600" loading="lazy" alt="The controller's touchscreen Room page: room pressure holding its target, fan mode, controls for every fan, and the readings for one area."></div><figcaption>The controller's touchscreen, Room page</figcaption></figure>
+      <figure><div class="bezel"><img src="/img/screen-trend.webp" width="1024" height="600" loading="lazy" alt="The controller's touchscreen trend chart: 24 hours of room pressure with the lowest, highest and average values."></div><figcaption>The touchscreen's 24-hour trend for room pressure</figcaption></figure>
+    </div>
     <div class="place-row">
       <div class="place"><h3>The wall screen</h3><p>A 7-inch touchscreen in the room shows every reading and fan, and works even when the internet is down.</p></div>
       <div class="place"><h3>Your desk</h3><p>Every room you manage in one view, from any browser.</p></div>
