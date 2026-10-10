@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Coll Timeclock — Time tracking, scheduling, and billing for hourly teams</title>
+<meta name="description" content="Coll Timeclock: time tracking, break and long-shift alerts, job scheduling with optimized routes, time off requests, customer management, quotes and invoicing, file attachments, online payment collection, inventory and barcode tracking, and real profit reporting for small businesses with hourly teams." />
+<link rel="icon" href="/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --charcoal: #1F2421;
+    --paper: #F4F2ED;
+    --amber: #F4B04C;
+    --amber-deep: #DB8A16;
+    --teal: #46705F;
+    --teal-deep: #2B453C;
+    --rust: #D35A34;
+    --rust-deep: #A63D20;
+    --line: #D8D3C4;
+    --muted: #6b6759;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: "Inter", "Segoe UI", -apple-system, sans-serif;
+    background: var(--paper);
+    color: var(--charcoal);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  h1, h2, h3, .display {
+    font-family: "Oswald", sans-serif;
+    letter-spacing: -0.01em;
+  }
+  .mono { font-family: "IBM Plex Mono", monospace; }
+
+  /* ---------- Nav ---------- */
+  nav.topnav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 28px;
+    background: rgba(244,242,237,0.86);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(31,36,33,0.08);
+  }
+  .nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: "Oswald", sans-serif;
+    font-weight: 700;
+    font-size: 17px;
+  }
+  .nav-brand img { width: 30px; height: 30px; border-radius: 8px; box-shadow: 0 4px 10px rgba(31,36,33,0.2); }
+  .nav-links { display: flex; align-items: center; gap: 28px; font-size: 14px; font-weight: 500; }
+  .nav-links a.plain { color: var(--muted); text-decoration: none; }
+  .nav-links a.plain:hover { color: var(--charcoal); }
+  @media (max-width: 720px) {
+    .nav-links a.plain { display: none; }
+  }
+
+  .cta-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: linear-gradient(180deg, #F9C978 0%, var(--amber) 55%, var(--amber-deep) 100%);
+    color: var(--charcoal);
+    font-weight: 700;
+    font-size: 15px;
+    padding: 12px 24px;
+    border-radius: 11px;
+    text-decoration: none;
+    box-shadow: 0 10px 24px rgba(219,138,22,0.35), inset 0 1px 0 rgba(255,255,255,0.5);
+    transition: transform .15s ease, box-shadow .15s ease;
+    white-space: nowrap;
+  }
+  .cta-btn:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(219,138,22,0.45), inset 0 1px 0 rgba(255,255,255,0.5); }
+  .cta-btn.lg { font-size: 16.5px; padding: 16px 32px; border-radius: 13px; }
+  .cta-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--charcoal);
+    font-weight: 700;
+    font-size: 15px;
+    padding: 12px 20px;
+    border-radius: 11px;
+    text-decoration: none;
+    box-shadow: inset 0 0 0 1.5px rgba(31,36,33,0.18);
+    transition: background .15s ease;
+  }
+  .cta-ghost:hover { background: rgba(31,36,33,0.05); }
+
+  /* ---------- Hero ---------- */
+  header.hero {
+    padding: 76px 28px 60px;
+    background:
+      radial-gradient(900px 420px at 85% -10%, rgba(70,112,95,0.18), transparent 60%),
+      radial-gradient(700px 380px at -5% 10%, rgba(244,176,76,0.16), transparent 55%);
+  }
+  .hero-inner {
+    max-width: 1120px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 56px;
+    align-items: center;
+  }
+  @media (max-width: 900px) {
+    .hero-inner { grid-template-columns: 1fr; text-align: center; }
+    .hero-copy .badge-row, .hero-copy .btn-row { justify-content: center; }
+  }
+  .badge-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+  .eyebrow-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #fff;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 999px;
+  }
+  .hero-copy h1 {
+    font-size: clamp(32px, 4.4vw, 50px);
+    font-weight: 800;
+    margin: 0 0 18px;
+    line-height: 1.08;
+  }
+  .hero-copy h1 .accent { color: var(--teal-deep); }
+  .hero-copy p.tagline {
+    font-size: 17px;
+    color: var(--muted);
+    max-width: 520px;
+    margin: 0 0 30px;
+    line-height: 1.65;
+  }
+  @media (max-width: 900px) { .hero-copy p.tagline { margin-left: auto; margin-right: auto; } }
+  .btn-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+  .hero-fineprint { font-size: 13px; color: var(--muted); }
+
+  /* ---------- Hero mockup card ---------- */
+  .mock-wrap { display: flex; justify-content: center; }
+  .mock-card {
+    width: 100%;
+    max-width: 400px;
+    background: #fff;
+    border-radius: 22px;
+    border: 1px solid rgba(31,36,33,0.06);
+    box-shadow: 0 30px 60px rgba(31,36,33,0.18), 0 6px 18px rgba(31,36,33,0.08);
+    overflow: hidden;
+    transform: rotate(1.2deg);
+  }
+  .mock-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: linear-gradient(165deg, #2b322e 0%, var(--charcoal) 65%);
+    color: var(--paper);
+  }
+  .mock-titlebar .name { font-family: "Oswald", sans-serif; font-weight: 700; font-size: 14px; }
+  .mock-titlebar .range { font-size: 11px; background: rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 999px; }
+  .mock-body { padding: 18px; }
+  .mock-stat-row { display: flex; gap: 10px; margin-bottom: 14px; }
+  .mock-stat {
+    flex: 1;
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    padding: 12px 13px;
+  }
+  .mock-stat .lbl { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .mock-stat .val { font-family: "IBM Plex Mono", monospace; font-weight: 600; font-size: 18px; }
+  .mock-pill { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-top: 6px; }
+  .mock-pill.up { background: #DDEFE6; color: var(--teal-deep); }
+  .mock-divider { border-top: 1px solid var(--line); margin: 4px 0 12px; }
+  .mock-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid rgba(31,36,33,0.05); }
+  .mock-row:last-child { border-bottom: none; }
+  .mock-emp { display: flex; align-items: center; gap: 9px; font-size: 13.5px; font-weight: 600; }
+  .mock-avatar { width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg,#5C9481,var(--teal-deep)); }
+  .mock-status { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; color: #fff; }
+  .mock-status.in { background: linear-gradient(135deg, #5C9481, var(--teal-deep)); }
+  .mock-status.break { background: linear-gradient(135deg, #E4794F, var(--rust-deep)); }
+  .mock-status.off { background: #EDEAE1; color: #6b6759; }
+
+  /* ---------- Sections ---------- */
+  main { max-width: 1120px; margin: 0 auto; padding: 10px 28px 0; }
+  section { padding: 64px 0; }
+  .section-head { text-align: center; max-width: 620px; margin: 0 auto 44px; }
+  .section-head h2 { font-size: clamp(24px, 3vw, 32px); font-weight: 800; margin: 0 0 10px; }
+  .section-head p { color: var(--muted); font-size: 15.5px; margin: 0; line-height: 1.6; }
+
+  /* how it works */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
+  .step-card { background: #fff; border: 1px solid rgba(31,36,33,0.05); border-radius: 18px; padding: 26px 24px; box-shadow: 0 10px 24px rgba(31,36,33,0.06); }
+  .step-num {
+    width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    font-family: "Oswald", sans-serif; font-weight: 700; font-size: 15px; color: #fff;
+    background: linear-gradient(180deg, #F9C978 0%, var(--amber) 55%, var(--amber-deep) 100%);
+    color: var(--charcoal);
+    margin-bottom: 14px;
+  }
+  .step-card h3 { font-size: 16.5px; margin: 0 0 8px; font-weight: 700; }
+  .step-card p { font-size: 14px; color: var(--muted); line-height: 1.6; margin: 0; }
+
+  /* feature groups */
+  .group-block { margin-bottom: 54px; }
+  .group-block:last-child { margin-bottom: 0; }
+  .group-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px; }
+  .group-head h3 { font-size: 20px; margin: 0; font-weight: 700; }
+  .group-head .group-sub { font-size: 13.5px; color: var(--muted); }
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 18px; }
+  .feature {
+    background: #fff;
+    border: 1px solid rgba(31,36,33,0.05);
+    border-radius: 16px;
+    padding: 22px 20px;
+    box-shadow: 0 10px 24px rgba(31,36,33,0.06), 0 2px 6px rgba(31,36,33,0.04);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .feature:hover { transform: translateY(-3px); box-shadow: 0 16px 32px rgba(31,36,33,0.11), 0 4px 10px rgba(31,36,33,0.06); }
+  .feature-icon {
+    width: 38px; height: 38px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 14px;
+  }
+  .feature-icon.teal { background: linear-gradient(135deg, #5C9481, var(--teal-deep)); box-shadow: 0 4px 10px rgba(43,69,60,0.3); }
+  .feature-icon.amber { background: linear-gradient(180deg, #F9C978 0%, var(--amber) 55%, var(--amber-deep) 100%); box-shadow: 0 4px 10px rgba(219,138,22,0.3); }
+  .feature-icon.rust { background: linear-gradient(135deg, #E4794F, var(--rust-deep)); box-shadow: 0 4px 10px rgba(166,61,32,0.3); }
+  .feature-icon svg { width: 19px; height: 19px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .feature h4 { font-size: 15.5px; margin: 0 0 7px; font-weight: 700; }
+  .feature p { font-size: 13.5px; line-height: 1.55; margin: 0; color: #55524a; }
+
+  /* bottom cta */
+  section.bottom-cta {
+    text-align: center;
+    margin: 20px 0 64px;
+    padding: 52px 32px;
+    border-radius: 22px;
+    background: linear-gradient(165deg, #2b322e 0%, var(--charcoal) 65%);
+    color: var(--paper);
+  }
+  section.bottom-cta h2 { font-size: 26px; margin: 0 0 10px; font-weight: 800; }
+  section.bottom-cta p { color: #C9C5B8; font-size: 14.5px; margin: 0 0 26px; }
+
+  /* already signed up */
+  section.employee-qr { padding-top: 8px; border-top: 1.5px solid var(--line); }
+  .already-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
+  .already-card {
+    background: #fff;
+    border: 1px solid rgba(31,36,33,0.05);
+    border-radius: 16px;
+    padding: 26px 24px;
+    box-shadow: 0 10px 24px rgba(31,36,33,0.07), 0 2px 6px rgba(31,36,33,0.05);
+    text-align: center;
+  }
+  .already-card h3 { font-size: 16px; margin: 0 0 8px; font-weight: 700; }
+  .already-card p { color: #6b6759; font-size: 13.5px; margin: 0 0 18px; line-height: 1.5; }
+  .already-card img { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: #fff; }
+  .btn-link {
+    display: inline-block; background: var(--charcoal); color: var(--paper);
+    padding: 13px 26px; border-radius: 10px; text-decoration: none; font-size: 14px; font-weight: 700;
+    box-shadow: 0 8px 18px rgba(31,36,33,0.25); transition: transform .15s ease;
+  }
+  .btn-link:hover { transform: translateY(-2px); }
+  .btn-link-secondary {
+    display: inline-block; background: var(--paper); color: var(--charcoal);
+    padding: 13px 26px; border-radius: 10px; text-decoration: none; font-size: 14px; font-weight: 700;
+    box-shadow: 0 8px 18px rgba(31,36,33,0.25), inset 0 0 0 1.5px var(--charcoal);
+    transition: transform .15s ease;
+  }
+  .btn-link-secondary:hover { transform: translateY(-2px); }
+  .download-btn-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+  footer { text-align: center; padding: 36px 24px 46px; font-size: 13px; color: #8A8578; }
+  footer a { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="nav-brand">
+    <img src="/logo.png" alt="Coll Timeclock logo" />
+    Coll Timeclock
+  </div>
+  <div class="nav-links">
+    <a class="plain" href="#features">Features</a>
+    <a class="plain" href="#how-it-works">How it works</a>
+    <a class="plain" href="https://admin.collbusinesssolutions.com/admin.html">Admin login</a>
+    <a class="cta-btn" href="https://site-clock-frontend-production.up.railway.app/signup.html">Sign up</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div class="hero-copy">
+      <div class="badge-row">
+        <span class="eyebrow-pill">⏱ Built for hourly teams</span>
+        <span class="eyebrow-pill">🖥 Windows &amp; Mac</span>
+      </div>
+      <h1>Run your whole <span class="accent">hourly business</span> from one app.</h1>
+      <p class="tagline">
+        Time tracking, scheduling, customer &amp; billing management, online payments, inventory
+        tracking, and real profit reporting — everything a small business with an hourly team
+        needs to run its day, by Coll Business Solutions LLC.
+      </p>
+      <div class="btn-row">
+        <a class="cta-btn lg" href="https://site-clock-frontend-production.up.railway.app/signup.html">Sign up your business</a>
+        <a class="cta-ghost" href="#features">See what's included</a>
+      </div>
+      <p class="hero-fineprint">14-day free trial, then $9.99/month. Cancel anytime.</p>
+    </div>
+    <div class="mock-wrap">
+      <div class="mock-card">
+        <div class="mock-titlebar">
+          <span class="name">Overview</span>
+          <span class="range">This Month</span>
+        </div>
+        <div class="mock-body">
+          <div class="mock-stat-row">
+            <div class="mock-stat">
+              <div class="lbl">Gross Profit</div>
+              <div class="val">$41,617.87</div>
+              <span class="mock-pill up">+18.4%</span>
+            </div>
+            <div class="mock-stat">
+              <div class="lbl">Paid</div>
+              <div class="val">$46,616.25</div>
+              <span class="mock-pill up">+9.2%</span>
+            </div>
+          </div>
+          <div class="mock-divider"></div>
+          <div class="mock-row">
+            <span class="mock-emp"><span class="mock-avatar"></span>Brian</span>
+            <span class="mock-status in">Clocked In</span>
+          </div>
+          <div class="mock-row">
+            <span class="mock-emp"><span class="mock-avatar" style="background:linear-gradient(135deg,#E4794F,var(--rust-deep));"></span>Jeremy</span>
+            <span class="mock-status break">On Break</span>
+          </div>
+          <div class="mock-row">
+            <span class="mock-emp"><span class="mock-avatar" style="background:#D8D3C4;"></span>Matt</span>
+            <span class="mock-status off">Off the Clock</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <section id="how-it-works">
+    <div class="section-head">
+      <h2>Up and running in minutes</h2>
+      <p>No hardware, no IT setup — just sign up and start clocking in.</p>
+    </div>
+    <div class="steps">
+      <div class="step-card">
+        <div class="step-num">1</div>
+        <h3>Sign up your business</h3>
+        <p>Create your company account and set your shop location, pay schedule, and payroll email — takes about two minutes.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">2</div>
+        <h3>Add your team</h3>
+        <p>Give each employee a 4-digit PIN. No passwords, no separate accounts to manage — they just open the app and clock in.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">3</div>
+        <h3>Run your day</h3>
+        <p>Schedule jobs, send quotes and invoices, get paid online, and watch real profit numbers update as the work gets done.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="section-head">
+      <h2>Everything your business needs, in one place</h2>
+      <p>One system for your team, your schedule, your customers, and your bottom line.</p>
+    </div>
+
+    <div class="group-block">
+      <div class="group-head">
+        <h3>Time &amp; attendance</h3>
+        <span class="group-sub">Know who's working, without having to ask.</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature">
+          <span class="feature-icon teal"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></span>
+          <h4>Real-time overview</h4>
+          <p>See who's clocked in, on break, or off the clock, all in one dashboard.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon amber"><svg viewBox="0 0 24 24"><rect x="4" y="9" width="16" height="11" rx="2"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/></svg></span>
+          <h4>PIN-based employee login</h4>
+          <p>No passwords or extra accounts for your team to manage — just a simple 4-digit PIN.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon rust"><svg viewBox="0 0 24 24"><path d="M12 2 3 7l9 5 9-5-9-5Z"/><path d="M3 12l9 5 9-5"/></svg></span>
+          <h4>Automatic clock-in/out</h4>
+          <p>Employees are clocked in automatically when they arrive at the shop, with manual punches always taking priority.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon amber"><svg viewBox="0 0 24 24"><path d="M12 22c5-4 8-7.4 8-12A8 8 0 0 0 4 10c0 4.6 3 8 8 12Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+          <h4>Break &amp; long-shift alerts</h4>
+          <p>Set each employee's break length and get a "5 minutes left" nudge before it ends. Set a long-shift threshold (1–24 hours) and get a push notification if someone's still clocked in past it.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon teal"><svg viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M4 19V9l4-3 4 3 4-3 4 3v10"/></svg></span>
+          <h4>One-tap payroll</h4>
+          <p>Employees submit their hours, and a formatted timesheet is emailed straight to your payroll inbox.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon rust"><svg viewBox="0 0 24 24"><path d="M12 2v4"/><path d="m4.9 4.9 2.8 2.8"/><path d="M2 12h4"/><path d="m4.9 19.1 2.8-2.8"/><path d="M12 18v4"/><path d="m16.3 16.3 2.8 2.8"/><path d="M18 12h4"/><path d="m16.3 7.7 2.8-2.8"/></svg></span>
+          <h4>A little fun at clock-in</h4>
+          <p>Employees can pick their own clock-in celebration — fireworks, a birthday shoutout, or a full rocket launch countdown.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="group-block">
+      <div class="group-head">
+        <h3>Scheduling &amp; team</h3>
+        <span class="group-sub">Get the right people to the right job.</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature">
+          <span class="feature-icon amber"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg></span>
+          <h4>Job &amp; team scheduling</h4>
+          <p>Build out a shared calendar of jobs, assign a team or individual employees, and everyone gets a push notification and sees it on their phone automatically.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon teal"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><circle cx="8" cy="15" r="1.5"/><path d="M12.5 15h5"/></svg></span>
+          <h4>Employees see their schedule</h4>
+          <p>Each employee gets their own calendar showing upcoming jobs, the customer to expect, and directions to the site.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon rust"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-8.9 8.4 8.5 8.5 0 0 1-3.8-.9L3 20l1.3-3.9a8.5 8.5 0 0 1-1-4.1A8.4 8.4 0 0 1 11.8 3a8.4 8.4 0 0 1 9.2 8.5Z"/></svg></span>
+          <h4>Team chat</h4>
+          <p>Message any employee directly from the admin app, and employees can message each other or start a group thread too — no phone numbers to swap.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon teal"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M9 6h6a3 3 0 0 1 3 3v3"/><path d="m15 15-3 3 3 3"/></svg></span>
+          <h4>Optimized multi-stop routes</h4>
+          <p>Build a route across several customer addresses and it's automatically ordered for the shortest drive — assigned employees get turn-by-turn directions and a live map right in their schedule.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon amber"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M3 10h18"/><path d="M9 15h1"/><path d="M14 15h1"/></svg></span>
+          <h4>Time off requests</h4>
+          <p>Employees request time off right from their app, you approve or deny it, and approved time appears on the shared schedule automatically.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="group-block">
+      <div class="group-head">
+        <h3>Customers &amp; billing</h3>
+        <span class="group-sub">From first quote to paid invoice.</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature">
+          <span class="feature-icon teal"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+          <h4>Customer directory &amp; history</h4>
+          <p>Keep every customer's contact info in one place, with one-tap calling and directions, plus a full history of their appointments, quotes, and invoices.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon amber"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h4"/></svg></span>
+          <h4>Quotes &amp; invoicing</h4>
+          <p>Send a customer a branded quote PDF, then convert it straight into a scheduled job and an invoice once they say yes — with automatic reminders if it goes unpaid.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon rust"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg></span>
+          <h4>Get paid online, straight to your bank</h4>
+          <p>Every invoice includes a secure Pay now link for card or bank transfer (ACH). Payments go directly into your own connected Stripe account — not ours — are marked paid automatically, and your customer gets an emailed receipt the moment it goes through.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon teal"><svg viewBox="0 0 24 24"><path d="M21.4 11.4 12.6 20a2 2 0 0 1-2.8 0l-6.2-6.2a2 2 0 0 1 0-2.8L12.4 2.2 21.4 11.4Z"/><path d="M7 7h.01"/></svg></span>
+          <h4>Attach files to jobs &amp; invoices</h4>
+          <p>Keep photos, PDFs, and documents right where the work is — attach them to a scheduled job or an invoice, and assigned employees can view what's attached to their own jobs.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="group-block">
+      <div class="group-head">
+        <h3>Inventory &amp; materials</h3>
+        <span class="group-sub">Know what's in stock and what's already spoken for.</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature">
+          <span class="feature-icon rust"><svg viewBox="0 0 24 24"><path d="M21 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2"/><path d="M3 8h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8Z"/><path d="M9 12h6"/></svg></span>
+          <h4>A catalog of what you stock</h4>
+          <p>Keep a running catalog of parts and materials, with quantity on hand and quantity on hold tracked automatically as quotes and jobs use them.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon amber"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="2" height="12"/><rect x="7" y="6" width="1" height="12"/><rect x="10" y="6" width="3" height="12"/><rect x="15" y="6" width="1" height="12"/><rect x="18" y="6" width="2" height="12"/></svg></span>
+          <h4>Scan a barcode, find the item</h4>
+          <p>Use your phone camera or the desktop app to scan a barcode and instantly pull up the matching catalog item — no typing item names or hunting through a list.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon teal"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h4"/></svg></span>
+          <h4>Pull sheets for every job</h4>
+          <p>Build a pull sheet listing exactly what a job needs, hold that inventory automatically until it's fulfilled, and report back what was actually pulled.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon rust"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+          <h4>Give the right employees access</h4>
+          <p>Grant trusted employees permission to manage inventory and fulfill pull sheets from their own app, without giving them full admin access.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="group-block">
+      <div class="group-head">
+        <h3>Money &amp; reports</h3>
+        <span class="group-sub">Know what you actually made.</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature">
+          <span class="feature-icon amber"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg></span>
+          <h4>Expense &amp; profit tracking</h4>
+          <p>Log business expenses, set each employee's hourly pay rate, and see real Gross and Net Profit for any stretch of time — with a full breakdown behind every number.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon teal"><svg viewBox="0 0 24 24"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+          <h4>Profit that accounts for fees</h4>
+          <p>Gross and Net Profit reports factor in real card-processing costs on every online payment, so the number you see is what you actually kept — not just revenue minus labor.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon rust"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg></span>
+          <h4>Business reports</h4>
+          <p>See labor hours, invoiced totals, and paid totals for any date range, including how this year stacks up against last year. A dedicated Transactions view breaks every sale down by day, week, month, or year — with payment method and receipt for each one.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="group-block">
+      <div class="group-head">
+        <h3>Run it your way</h3>
+        <span class="group-sub">Set up once, matches how your business actually runs.</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature">
+          <span class="feature-icon teal"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1Z"/></svg></span>
+          <h4>Built for your business</h4>
+          <p>Set your shop location, auto clock-out time, break lengths, long-shift alert, payroll email, pay schedule, and timezone to match how your business actually runs.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon amber"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg></span>
+          <h4>Manage from anywhere</h4>
+          <p>Run the business from the desktop admin app (Windows or Mac), or open the same admin tools from any phone's browser.</p>
+        </div>
+        <div class="feature">
+          <span class="feature-icon rust"><svg viewBox="0 0 24 24"><path d="M12 22s8-4.5 8-11V5l-8-3-8 3v6c0 6.5 8 11 8 11Z"/></svg></span>
+          <h4>Private by design</h4>
+          <p>Every business's employees, time records, customers, quotes, invoices, and financials are kept separate from every other business using Coll Timeclock.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="bottom-cta">
+    <h2>Ready to get started?</h2>
+    <p>Set up your business in a couple of minutes. 14-day free trial, then $9.99/month.</p>
+    <a class="cta-btn lg" href="https://site-clock-frontend-production.up.railway.app/signup.html">
+      Sign up your business
+    </a>
+  </section>
+
+  <section class="employee-qr">
+    <div class="section-head">
+      <h2>Already signed up?</h2>
+    </div>
+    <div class="already-grid">
+      <div class="already-card">
+        <h3>For your team</h3>
+        <p>Have your employees scan this to open the clock-in app — handy to print and post at the shop.</p>
+        <img
+          src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=https%3A%2F%2Fsite-clock-frontend-production.up.railway.app%2F"
+          alt="QR code to open the employee clock-in app"
+          width="180"
+          height="180"
+        />
+      </div>
+      <div class="already-card">
+        <h3>For the business owner</h3>
+        <p>Download the admin app to manage employees, schedules, customers, invoices, and reports from your desktop.</p>
+        <div class="download-btn-row">
+          <a class="btn-link" href="https://github.com/jeremymcollins89-prog/site-clock-admin/releases/latest/download/Coll-Timeclock-Admin-Setup.exe">
+            Download for Windows
+          </a>
+          <a class="btn-link-secondary" href="https://github.com/jeremymcollins89-prog/site-clock-admin/releases/latest/download/Coll-Timeclock-Admin-Setup.dmg">
+            Download for Mac
+          </a>
+        </div>
+        <p style="font-size:13px; margin-top:16px; margin-bottom:0;">
+          First time opening on Mac? Right-click the app and choose <strong>Open</strong> — macOS will warn about an unidentified developer the first time only.
+        </p>
+        <p style="font-size:13px; margin-top:8px; margin-bottom:0;">
+          Prefer your phone? <a href="https://admin.collbusinesssolutions.com/admin.html" style="text-decoration:underline;">Open the admin app</a> in your mobile browser and add it to your home screen.
+        </p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>
+    <a href="/">Coll Business Solutions LLC</a> &middot;
+    <a href="https://site-clock-frontend-production.up.railway.app/privacy.html">Privacy Policy</a>
+    &middot;
+    <a href="https://site-clock-frontend-production.up.railway.app/terms.html">Terms of Service</a>
+    &middot;
+    <a href="/cleanroom.html">Cleanroom Control</a>
+    &middot;
+    <a href="mailto:jeremymcollins89@gmail.com">Contact</a>
+  </p>
+</footer>
+
+</body>
+</html>
