@@ -24,4 +24,5 @@ nav .wrap{display:flex;justify-content:space-between;align-items:center;height:6
 footer{background:var(--graphite);color:#9AA4AB;font-size:14.5px}
 footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-top:30px;padding-bottom:34px}
 footer a{color:#D5DADE}
+.byco a{display:inline-flex;align-items:center;gap:8px;vertical-align:middle}.byco img{display:block;border-radius:5px}
 @media (max-width:700px){.wrap{padding:0 20px}.doc{padding-top:40px}.back{display:none}}

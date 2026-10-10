@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Coll Business Solutions LLC</title>
 <meta name="description" content="Coll Business Solutions LLC builds software for working businesses: Coll Timeclock for hourly teams, and Cleanroom Control for cleanrooms.">
-<link rel="icon" href="/logo.png">
+<link rel="icon" href="/brand/coll-icon.svg" type="image/svg+xml">
+<link rel="icon" href="/brand/coll-favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/brand/coll-apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Oswald:wght@600;700&family=Saira:wdth,wght@75..125,400..800&display=swap" rel="stylesheet">
@@ -19,7 +21,9 @@ a{color:inherit}
 :focus-visible{outline:3px solid #2B6CB0;outline-offset:3px}
 .wrap{max-width:1180px;margin:0 auto;padding:0 40px}
 header .wrap{display:flex;justify-content:space-between;align-items:center;height:76px}
-.name{font-weight:800;font-size:18px;letter-spacing:-.01em;text-decoration:none}
+.name{display:inline-flex;align-items:center;gap:12px;font-weight:800;font-size:18px;letter-spacing:-.01em;text-decoration:none}
+.name img{display:block;border-radius:9px}
+.name span{margin-left:-6px}
 .name span{font-weight:500;color:var(--body)}
 header nav{display:flex;gap:28px;font-size:15px;color:var(--body)}
 header nav a{text-decoration:none}header nav a:hover{color:var(--ink)}
@@ -61,6 +65,7 @@ header nav a{text-decoration:none}header nav a:hover{color:var(--ink)}
 .product:hover .go{filter:brightness(.95)}
 
 footer{border-top:1px solid var(--line)}
+.foot-brand{display:inline-flex;align-items:center;gap:10px}.foot-brand img{display:block;border-radius:5px}
 footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;padding-top:28px;padding-bottom:36px;font-size:14.5px;color:var(--body)}
 
 @media(max-width:860px){
@@ -76,7 +81,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
 <body>
 <header>
   <div class="wrap">
-    <a class="name" href="/">Coll Business Solutions <span>LLC</span></a>
+    <a class="name" href="/"><img src="/brand/coll-icon.svg" alt="" width="36" height="36">Coll Business Solutions <span>LLC</span></a>
     <nav><a href="/timeclock.html">Coll Timeclock</a><a href="/cleanroom.html">Cleanroom Control</a><a href="mailto:collbusinesssolutions@gmail.com">Contact</a></nav>
   </div>
 </header>
@@ -123,7 +128,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
 
 <footer>
   <div class="wrap">
-    <span>© Coll Business Solutions LLC</span>
+    <span class="foot-brand"><img src="/brand/coll-icon.svg" alt="" width="22" height="22">© Coll Business Solutions LLC</span>
     <a href="mailto:collbusinesssolutions@gmail.com">collbusinesssolutions@gmail.com</a>
   </div>
 </footer>
