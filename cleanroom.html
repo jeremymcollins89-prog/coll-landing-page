@@ -79,6 +79,12 @@ nav .wrap{display:flex;justify-content:space-between;align-items:center;height:6
 .stop .n{position:relative;width:46px;height:46px;border-radius:50%;background:var(--graphite);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:19px;margin-bottom:20px}
 .stop h3{margin-bottom:10px}
 .stop p{color:var(--body);font-size:16px}
+.guide{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-top:56px;padding:26px 30px;border-radius:18px;background:#fff;border:1px solid var(--steel)}
+.guide b{display:block;font-size:19px;margin-bottom:4px}
+.guide span{color:var(--body);font-size:16px}
+.guide>div{flex:1 1 420px}
+.guide .btn{white-space:nowrap}
+.signin .acts{display:flex;gap:14px;flex-wrap:wrap}
 
 /* features: each group beside a picture of that part of the app */
 .features{background:var(--white);padding:96px 0}
@@ -183,6 +189,7 @@ footer a{color:#D5DADE}
       <a href="#how">How it works</a>
       <a href="#features">Features</a>
       <a href="#equipment">Equipment</a>
+      <a href="/cleanroom-setup.pdf">Setup guide</a>
       <a href="/timeclock.html">Coll Timeclock</a>
       <a class="btn go" href="https://cleanroom-cloud-production.up.railway.app">Sign in</a>
     </div>
@@ -224,6 +231,10 @@ footer a{color:#D5DADE}
       <div class="stop"><div class="n">1</div><h3>Install the controller</h3><p>Mount the touchscreen in the room and give it power and a network connection: Ethernet, with Wi-Fi as a backup.</p></div>
       <div class="stop"><div class="n">2</div><h3>Pair it to your account</h3><p>The screen shows a pairing code. Enter the code in the app and the room appears on your account.</p></div>
       <div class="stop"><div class="n">3</div><h3>Find your equipment</h3><p>Connect your fan filter units and sensors. The controller finds each one and names it — <span style="white-space:nowrap">FFU-1</span>, <span style="white-space:nowrap">FFU-2</span>, <span style="white-space:nowrap">TH-1</span> — with no programming, and they appear on the screen and in the app.</p></div>
+    </div>
+    <div class="guide">
+      <div><b>Setting one up?</b><span>The Quick Start guide walks through every step with real screens: install, get online, pair and set up the room.</span></div>
+      <a class="btn line" href="/cleanroom-setup.pdf">Quick Start guide (PDF)</a>
     </div>
   </div>
 </section>
@@ -382,14 +393,17 @@ footer a{color:#D5DADE}
       <h2>Already using Cleanroom Control?</h2>
       <p>Your rooms, alarms and reports from any browser.</p>
     </div>
-    <a class="btn go" href="https://cleanroom-cloud-production.up.railway.app">Sign in</a>
+    <div class="acts">
+      <a class="btn line" href="/cleanroom-setup.pdf">Setup guide</a>
+      <a class="btn go" href="https://cleanroom-cloud-production.up.railway.app">Sign in</a>
+    </div>
   </div>
 </section>
 
 <footer>
   <div class="wrap">
     <span class="byco">Cleanroom Control by <a href="/"><img src="/brand/coll-icon.svg" alt="" width="20" height="20">Coll Business Solutions LLC</a></span>
-    <span><a href="/timeclock.html">Coll Timeclock</a> &nbsp; <a href="/cleanroom-privacy.html">Privacy</a> &nbsp; <a href="/cleanroom-terms.html">Terms</a> &nbsp; <a href="mailto:collbusinesssolutions@gmail.com">Contact</a></span>
+    <span><a href="/cleanroom-setup.pdf">Setup guide</a> &nbsp; <a href="/timeclock.html">Coll Timeclock</a> &nbsp; <a href="/cleanroom-privacy.html">Privacy</a> &nbsp; <a href="/cleanroom-terms.html">Terms</a> &nbsp; <a href="mailto:collbusinesssolutions@gmail.com">Contact</a></span>
   </div>
 </footer>
 
