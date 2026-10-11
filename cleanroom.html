@@ -84,6 +84,11 @@ nav .wrap{display:flex;justify-content:space-between;align-items:center;height:6
 .guide span{color:var(--body);font-size:16px}
 .guide>div{flex:1 1 420px}
 .guide .btn{white-space:nowrap}
+.guide .acts{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.guide .qr{display:flex;align-items:center;gap:12px;color:var(--body);font-size:14px;line-height:1.35;text-decoration:none}
+.guide .qr img{width:112px;height:112px;display:block;border:1px solid var(--steel-2);border-radius:10px;background:#fff;padding:4px}
+.guide .qr small{max-width:110px}
+@media (max-width:640px){.guide .qr{display:none}}
 .signin .acts{display:flex;gap:14px;flex-wrap:wrap}
 
 /* features: each group beside a picture of that part of the app */
@@ -234,7 +239,13 @@ footer a{color:#D5DADE}
     </div>
     <div class="guide">
       <div><b>Setting one up?</b><span>The Quick Start guide walks through every step with real screens: install, get online, pair and set up the room.</span></div>
-      <a class="btn line" href="/cleanroom-setup.pdf">Quick Start guide (PDF)</a>
+      <div class="acts">
+        <a class="qr" href="/cleanroom-setup.pdf" aria-label="QR code for the Quick Start guide">
+          <img src="/cleanroom-setup-qr.svg" width="112" height="112" alt="QR code: scan to open the Quick Start guide on your phone">
+          <small>Scan to open the guide on your phone at the controller</small>
+        </a>
+        <a class="btn line" href="/cleanroom-setup.pdf">Quick Start guide (PDF)</a>
+      </div>
     </div>
   </div>
 </section>
