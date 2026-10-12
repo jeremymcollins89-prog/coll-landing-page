@@ -157,6 +157,12 @@ nav .wrap{display:flex;justify-content:space-between;align-items:center;height:6
 .way{background:var(--white);border-radius:18px;padding:28px}
 .way h3{margin-bottom:8px}
 .way p{color:var(--body);font-size:15.5px;margin-bottom:22px}
+.downloads{margin-top:56px}
+.downloads h3.dl-title{font-size:22px;margin-bottom:6px}
+.downloads > p{color:var(--body);margin-bottom:22px}
+.ways.two{grid-template-columns:repeat(2,1fr)}
+.way .meta{font-size:13.5px;color:var(--body);margin:-12px 0 18px}
+.dl-note{font-size:14px;color:var(--body);margin-top:18px}
 
 footer{background:var(--graphite);color:#9AA4AB;font-size:14.5px}
 footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-top:30px;padding-bottom:34px}
@@ -171,7 +177,7 @@ footer a{color:#D5DADE}
   .hero .wrap{padding-top:56px;padding-bottom:40px;min-height:0}
   .readings{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:40px}
   .reading{position:static;min-width:0}
-  .track,.place-row,.ways,.items,.kit,.works-head{grid-template-columns:1fr}
+  .track,.place-row,.ways,.ways.two,.items,.kit,.works-head{grid-template-columns:1fr}
   .track::before{display:none}
   .feat{grid-template-columns:1fr;gap:32px;padding-bottom:64px}
   .feat.flip .feat-copy{order:0}
@@ -415,12 +421,31 @@ footer a{color:#D5DADE}
       <a class="btn go" href="https://cleanroom-cloud-production.up.railway.app">Sign in</a>
     </div>
   </div>
+  <div class="wrap downloads" id="download">
+    <h3 class="dl-title">Desktop apps for Windows</h3>
+    <p>The same app as the website, in its own window with a desktop shortcut. It updates itself with the website.</p>
+    <div class="ways two">
+      <div class="way">
+        <h3>Cleanroom Control</h3>
+        <p>For your team: your rooms, alarms, trends and reports.</p>
+        <div class="meta">Windows 10 and 11 · about 110 MB</div>
+        <a class="btn go" href="https://github.com/jeremymcollins89-prog/coll-landing-page/releases/latest/download/Cleanroom-Control-Setup.exe">Download for Windows</a>
+      </div>
+      <div class="way">
+        <h3>Cleanroom Control Support</h3>
+        <p>For Service Providers and installers: every customer you look after, and their help requests.</p>
+        <div class="meta">Windows 10 and 11 · about 110 MB</div>
+        <a class="btn line" href="https://github.com/jeremymcollins89-prog/coll-landing-page/releases/latest/download/Cleanroom-Control-Support-Setup.exe">Download for Windows</a>
+      </div>
+    </div>
+    <p class="dl-note">If Windows says it protected your PC, click <strong>More info</strong>, then <strong>Run anyway</strong>. The installer comes from Coll Business Solutions LLC.</p>
+  </div>
 </section>
 
 <footer>
   <div class="wrap">
     <span class="byco">Cleanroom Control by <a href="/"><img src="/brand/coll-icon.svg" alt="" width="20" height="20">Coll Business Solutions LLC</a></span>
-    <span><a href="/cleanroom-setup.pdf">Setup guide</a> &nbsp; <a href="/timeclock.html">Coll Timeclock</a> &nbsp; <a href="/cleanroom-privacy.html">Privacy</a> &nbsp; <a href="/cleanroom-terms.html">Terms</a> &nbsp; <a href="mailto:collbusinesssolutions@gmail.com">Contact</a></span>
+    <span><a href="/cleanroom-setup.pdf">Setup guide</a> &nbsp; <a href="#download">Windows apps</a> &nbsp; <a href="/timeclock.html">Coll Timeclock</a> &nbsp; <a href="/cleanroom-privacy.html">Privacy</a> &nbsp; <a href="/cleanroom-terms.html">Terms</a> &nbsp; <a href="mailto:collbusinesssolutions@gmail.com">Contact</a></span>
   </div>
 </footer>
 
