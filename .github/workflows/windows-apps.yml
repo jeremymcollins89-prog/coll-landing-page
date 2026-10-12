@@ -1,0 +1,68 @@
+# Builds the two Windows installers (Cleanroom Control and Cleanroom Control
+# Support) on GitHub's Windows computers and puts them on the release the
+# website's "Download for Windows" buttons point at:
+#   https://github.com/<owner>/coll-landing-page/releases/latest/download/Cleanroom-Control-Setup.exe
+#   https://github.com/<owner>/coll-landing-page/releases/latest/download/Cleanroom-Control-Support-Setup.exe
+# Runs by itself whenever desktop-app/ changes and is pushed (about 5 minutes),
+# or by hand: GitHub -> Actions -> Windows apps -> Run workflow.
+name: Windows apps
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop-app/**'
+      - '.github/workflows/windows-apps.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop-app/package-lock.json
+
+      - run: npm ci
+
+      - name: Build Cleanroom Control
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Build Cleanroom Control Support
+        run: npm run dist:support
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Give the installers the names the website links to
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          Copy-Item "dist/Cleanroom-Control-Setup-$v.exe" "dist/Cleanroom-Control-Setup.exe"
+          Copy-Item "dist/Cleanroom-Control-Support-Setup-$v.exe" "dist/Cleanroom-Control-Support-Setup.exe"
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-apps-${{ steps.ver.outputs.version }}
+          name: Cleanroom Control Windows apps ${{ steps.ver.outputs.version }}
+          body: |
+            Windows installers for Cleanroom Control (customers) and Cleanroom Control Support (Service Providers), by Coll Business Solutions LLC.
+            Download them from https://collbusinesssolutions.com/cleanroom.html#download
+          make_latest: true
+          files: |
+            desktop-app/dist/Cleanroom-Control-Setup.exe
+            desktop-app/dist/Cleanroom-Control-Support-Setup.exe

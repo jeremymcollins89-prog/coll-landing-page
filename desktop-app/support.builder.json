@@ -1,0 +1,36 @@
+{
+  "appId": "com.modularcleanrooms.cleanroomcontrol.support",
+  "productName": "Cleanroom Control Support",
+  "copyright": "Coll Business Solutions LLC",
+  "files": [
+    "main.js",
+    "offline.html",
+    "config.json",
+    "icon-support.png"
+  ],
+  "directories": {
+    "buildResources": "build",
+    "output": "dist"
+  },
+  "win": {
+    "target": "nsis",
+    "icon": "build/icon-support.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Cleanroom Control Support",
+    "artifactName": "Cleanroom-Control-Support-Setup-${version}.${ext}",
+    "installerIcon": "build/icon-support.ico",
+    "uninstallerIcon": "build/icon-support.ico"
+  },
+  "publish": null,
+  "extraMetadata": {
+    "name": "cleanroom-control-support",
+    "productName": "Cleanroom Control Support",
+    "cleanroomApp": "support"
+  }
+}

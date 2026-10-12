@@ -1,0 +1,49 @@
+{
+  "name": "cleanroom-control-desktop",
+  "productName": "Cleanroom Control",
+  "version": "1.0.0",
+  "description": "Cleanroom Control for Windows",
+  "author": "Coll Business Solutions LLC",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis",
+    "start:support": "electron . --support",
+    "dist:support": "electron-builder --win nsis --config support.builder.json"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.modularcleanrooms.cleanroomcontrol",
+    "productName": "Cleanroom Control",
+    "copyright": "Coll Business Solutions LLC",
+    "files": [
+      "main.js",
+      "offline.html",
+      "config.json",
+      "icon.png"
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Cleanroom Control",
+      "artifactName": "Cleanroom-Control-Setup-${version}.${ext}"
+    },
+    "publish": null
+  },
+  "cleanroomApp": "customer"
+}
