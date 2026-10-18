@@ -75,6 +75,9 @@ nav .wrap{display:flex;justify-content:space-between;align-items:center;height:6
 .how h2{margin-bottom:48px;max-width:760px}
 .track{display:grid;grid-template-columns:repeat(3,1fr);gap:36px;position:relative}
 .track::before{content:"";position:absolute;left:22px;right:22px;top:22px;height:2px;background:var(--graphite)}
+.pyr-head{display:flex;align-items:center;gap:28px;margin-bottom:48px}
+.pyr-head img{width:120px;height:120px;flex:none}
+.how .pyr-head h2{margin:0}
 .stop{position:relative}
 .stop .n{position:relative;width:46px;height:46px;border-radius:50%;background:var(--graphite);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:19px;margin-bottom:20px}
 .stop h3{margin-bottom:10px}
@@ -179,6 +182,7 @@ footer a{color:#D5DADE}
   .reading{position:static;min-width:0}
   .track,.place-row,.ways,.ways.two,.items,.kit,.works-head{grid-template-columns:1fr}
   .track::before{display:none}
+  .pyr-head{gap:18px}.pyr-head img{width:84px;height:84px}
   .feat{grid-template-columns:1fr;gap:32px;padding-bottom:64px}
   .feat.flip .feat-copy{order:0}
   .boasts{grid-template-columns:1fr}
@@ -237,7 +241,7 @@ footer a{color:#D5DADE}
 
 <section class="how" id="how">
   <div class="wrap">
-    <h2>One Pyr controller per room. Everything else happens in the app.</h2>
+    <div class="pyr-head"><img src="/img/pyr-logo.webp" width="120" height="120" alt="The Pyr controller logo: a white Great Pyrenees on a blue shield"><h2>One Pyr controller per room. Everything else happens in the app.</h2></div>
     <div class="track">
       <div class="stop"><div class="n">1</div><h3>Install the Pyr controller</h3><p>Mount the touchscreen in the room and give it power and a network connection: Ethernet, with Wi-Fi as a backup. It's named after the Great Pyrenees, the dog that guards its flock day and night.</p></div>
       <div class="stop"><div class="n">2</div><h3>Pair it to your account</h3><p>The screen shows a pairing code. Enter the code in the app and the room appears on your account.</p></div>
