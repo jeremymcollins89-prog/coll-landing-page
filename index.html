@@ -23,8 +23,8 @@ a{color:inherit}
 header .wrap{display:flex;justify-content:space-between;align-items:center;height:76px}
 .name{display:inline-flex;align-items:center;gap:12px;font-weight:800;font-size:18px;letter-spacing:-.01em;text-decoration:none}
 .name img{display:block;border-radius:9px}
-.name span{margin-left:-6px}
-.name span{font-weight:500;color:var(--body)}
+.name .nm{line-height:1.2}
+.name .llc{font-weight:500;color:var(--body);white-space:nowrap}
 header nav{display:flex;gap:28px;font-size:15px;color:var(--body)}
 header nav a{text-decoration:none}header nav a:hover{color:var(--ink)}
 .intro{padding:72px 0 56px}
@@ -72,6 +72,8 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
 @media(max-width:860px){
   .wrap{padding:0 20px}
   header nav a:not(:last-child){display:none}
+  header .wrap{gap:16px}
+  .name{font-size:16px;gap:10px}
   .intro{padding:44px 0 36px}
   .products{grid-template-columns:1fr}
   .product{min-height:0}
@@ -82,7 +84,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
 <body>
 <header>
   <div class="wrap">
-    <a class="name" href="/"><img src="/brand/coll-icon.svg" alt="" width="36" height="36">Coll Business Solutions <span>LLC</span></a>
+    <a class="name" href="/"><img src="/brand/coll-icon.svg" alt="" width="36" height="36"><span class="nm">Coll Business Solutions <span class="llc">LLC</span></span></a>
     <nav><a href="/timeclock.html">Coll Timeclock</a><a href="/cleanroom.html">Cleanroom Control</a><a href="mailto:collbusinesssolutions@gmail.com">Contact</a></nav>
   </div>
 </header>
