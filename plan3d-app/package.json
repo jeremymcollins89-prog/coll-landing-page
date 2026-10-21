@@ -1,0 +1,60 @@
+{
+  "name": "coll-plan3d",
+  "productName": "Coll Plan3D",
+  "version": "1.0.0",
+  "description": "Turn AutoCAD (DXF/DWG) floor plans or plan photos into 3D walkthroughs. Coll Business Solutions LLC.",
+  "author": "Coll Business Solutions LLC",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "dependencies": {
+    "dxf-parser": "1.1.2",
+    "three": "0.128.0"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.collbusinesssolutions.plan3d",
+    "productName": "Coll Plan3D",
+    "copyright": "Coll Business Solutions LLC",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "samples/**",
+      "README.txt"
+    ],
+    "asar": false,
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Coll Plan3D",
+      "artifactName": "Coll-Plan3D-Setup-${version}.${ext}"
+    },
+    "fileAssociations": [
+      {
+        "ext": "plan3d",
+        "name": "Coll Plan3D project",
+        "description": "Coll Plan3D project",
+        "icon": "build/icon.ico"
+      }
+    ],
+    "publish": null
+  }
+}

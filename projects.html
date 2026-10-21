@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Other projects · Coll Business Solutions LLC</title>
+<meta name="description" content="Smaller tools from Coll Business Solutions LLC, including Coll Plan3D for turning floor plans into 3D walkthroughs.">
+<link rel="icon" href="/brand/coll-icon.svg" type="image/svg+xml">
+<link rel="icon" href="/brand/coll-favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/brand/coll-apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1C1F1E;--body:#4B5250;--line:#E2E4E1;--bg:#FFFFFF;--soft:#F5F6F4;--amber:#F2C84B;--amber-deep:#D9A928;--char:#22272B}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:3px solid #2B6CB0;outline-offset:3px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 40px}
+header .wrap{display:flex;justify-content:space-between;align-items:center;height:76px}
+.name{display:inline-flex;align-items:center;gap:12px;font-weight:800;font-size:18px;letter-spacing:-.01em;text-decoration:none}
+.name img{display:block;border-radius:9px}
+.name span{margin-left:-6px;font-weight:500;color:var(--body)}
+header nav{display:flex;gap:28px;font-size:15px;color:var(--body)}
+header nav a{text-decoration:none}header nav a:hover{color:var(--ink)}
+.intro{padding:56px 0 32px}
+.intro h1{font-size:clamp(32px,4.2vw,48px);line-height:1.05;letter-spacing:-.03em;font-weight:800;margin:0 0 14px}
+.intro p{font-size:18px;line-height:1.6;color:var(--body);max-width:620px;margin:0}
+.list{padding-bottom:88px;display:grid;gap:20px}
+.proj{display:grid;grid-template-columns:auto 1fr auto;gap:24px;align-items:center;background:var(--soft);border:1px solid var(--line);border-radius:20px;padding:28px 30px}
+.proj .ic{width:64px;height:64px;border-radius:14px;background:var(--char);display:grid;place-items:center}
+.proj .ic svg{width:40px;height:40px}
+.proj h2{margin:0 0 6px;font-size:24px;letter-spacing:-.02em}
+.proj p{margin:0 0 10px;font-size:16px;line-height:1.55;color:var(--body);max-width:640px}
+.proj .meta{font-size:13.5px;color:var(--body)}
+.dl{display:inline-block;text-decoration:none;font-weight:700;font-size:15.5px;padding:13px 22px;border-radius:12px;background:linear-gradient(180deg,#F8D978 0%,var(--amber) 55%,var(--amber-deep) 100%);color:var(--char);white-space:nowrap}
+.dl:hover{filter:brightness(.96)}
+.note{font-size:13.5px;color:var(--body);margin:14px 0 0}
+footer{border-top:1px solid var(--line)}
+.foot-brand{display:inline-flex;align-items:center;gap:10px}.foot-brand img{display:block;border-radius:5px}
+footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;padding-top:28px;padding-bottom:36px;font-size:14.5px;color:var(--body)}
+@media(max-width:860px){
+  .wrap{padding:0 20px}
+  header nav a:not(:last-child){display:none}
+  .intro{padding:40px 0 24px}
+  .proj{grid-template-columns:1fr;padding:24px 22px}
+  .dl{justify-self:start}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="name" href="/"><img src="/brand/coll-icon.svg" alt="" width="36" height="36">Coll Business Solutions <span>LLC</span></a>
+    <nav><a href="/timeclock.html">Coll Timeclock</a><a href="/cleanroom.html">Cleanroom Control</a><a href="mailto:collbusinesssolutions@gmail.com">Contact</a></nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="intro">
+    <h1>Other projects</h1>
+    <p>Smaller tools we built for our own work and are sharing as they are.</p>
+  </section>
+
+  <section class="list" aria-label="Projects">
+    <article class="proj" id="plan3d">
+      <div class="ic" aria-hidden="true">
+        <svg viewBox="0 0 40 40"><rect x="7" y="7" width="26" height="4.5" fill="#F2C84B"/><rect x="7" y="7" width="4.5" height="26" fill="#F2C84B"/><rect x="7" y="28.5" width="26" height="4.5" fill="#E8EDEF"/><rect x="28.5" y="7" width="4.5" height="26" fill="#E8EDEF"/><rect x="17.5" y="11.5" width="3.5" height="11" fill="#E8EDEF"/></svg>
+      </div>
+      <div>
+        <h2>Coll Plan3D</h2>
+        <p>Turns AutoCAD drawings (DXF or DWG) or a photo of a plan sheet into a 3D walkthrough of a modular cleanroom. Build rooms from snap-together panels, doors, glass, pass-thrus and air chases, print a dimensioned plan sheet, and export a parts list or a walkthrough anyone can open in a browser.</p>
+        <div class="meta">Windows 10 and 11 · about 90 MB</div>
+      </div>
+      <a class="dl" href="https://github.com/jeremymcollins89-prog/coll-landing-page/releases/download/plan3d/Coll-Plan3D-Setup.exe">Download for Windows</a>
+    </article>
+    <p class="note">If Windows says it protected your PC, click <strong>More info</strong>, then <strong>Run anyway</strong>. The installer comes from Coll Business Solutions LLC.</p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span class="foot-brand"><img src="/brand/coll-icon.svg" alt="" width="22" height="22">© Coll Business Solutions LLC</span>
+    <a href="mailto:collbusinesssolutions@gmail.com">collbusinesssolutions@gmail.com</a>
+  </div>
+</footer>
+</body>
+</html>

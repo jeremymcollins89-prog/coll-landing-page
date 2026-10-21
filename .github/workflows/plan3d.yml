@@ -1,0 +1,61 @@
+# Builds the Coll Plan3D Windows installer on GitHub's Windows computers and puts it on its own release,
+# which the "Other projects" page links to:
+#   https://github.com/<owner>/coll-landing-page/releases/download/plan3d/Coll-Plan3D-Setup.exe
+# The release always uses the tag "plan3d" so that link never changes, and it is never marked
+# "latest", so the Cleanroom Control buttons (which use releases/latest) keep pointing at their release.
+# Runs by itself whenever plan3d-app/ changes and is pushed (about 5 minutes),
+# or by hand: GitHub -> Actions -> Coll Plan3D -> Run workflow.
+name: Coll Plan3D
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'plan3d-app/**'
+      - '.github/workflows/plan3d.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: plan3d-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: plan3d-app/package-lock.json
+
+      - run: npm ci
+
+      - name: Build the installer
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Give the installer the name the website links to
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          Copy-Item "dist/Coll-Plan3D-Setup-$v.exe" "dist/Coll-Plan3D-Setup.exe"
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: plan3d
+          name: Coll Plan3D ${{ steps.ver.outputs.version }}
+          body: |
+            Windows installer for Coll Plan3D ${{ steps.ver.outputs.version }}, by Coll Business Solutions LLC.
+            Download it from https://collbusinesssolutions.com/projects.html
+          make_latest: false
+          overwrite_files: true
+          files: plan3d-app/dist/Coll-Plan3D-Setup.exe

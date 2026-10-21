@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Coll Plan3D</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><span class="mark" aria-hidden="true"></span><div><b>Coll Plan3D</b><small id="docName">Untitled plan</small></div></div>
+  <div class="actions">
+    <button id="bImport" class="btn primary" title="Import a DXF, DWG or plan image (Ctrl+I)">Import plan…</button>
+    <button id="bOpen" class="btn" title="Open a saved project (Ctrl+O)">Open</button>
+    <button id="bSave" class="btn" title="Save project (Ctrl+S)">Save</button>
+    <div class="sep"></div>
+    <button id="bExportHtml" class="btn" title="Save a walkthrough page anyone can open in a browser (Ctrl+E)">Export walkthrough</button>
+    <button id="bSheet" class="btn" title="Printable floor plan with dimensions and title block (Ctrl+P)">Plan sheet</button>
+    <button id="bExportGlb" class="btn" title="Save a .glb 3D model for SketchUp, Blender, Windows 3D Viewer">Export .glb</button>
+  </div>
+  <div class="views" role="group" aria-label="View">
+    <button data-view="2d" aria-pressed="true">Plan</button>
+    <button data-view="build" aria-pressed="false" title="Build in 3D with snap-together pieces (F4)">Build</button>
+    <button data-view="split" aria-pressed="false">Split</button>
+    <button data-view="3d" aria-pressed="false">3D</button>
+  </div>
+</header>
+
+<main id="main" data-view="2d">
+  <nav class="tools" aria-label="Tools">
+    <button data-tool="select" class="on" title="Select and move (V)"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.6L10 19z"/></svg><span>Select</span><kbd>V</kbd></button>
+    <button data-tool="piece" title="Snap-together pieces: panels, doors, glass, pass-thrus, chases, ceiling (N, or 1–9)"><svg viewBox="0 0 24 24"><rect x="3" y="9" width="8" height="6" fill="none"/><rect x="13" y="9" width="8" height="6" fill="none"/><path d="M11 12h2" fill="none"/></svg><span>Pieces</span><kbd>N</kbd></button>
+    <button data-tool="wall" title="Draw walls (W)"><svg viewBox="0 0 24 24"><path d="M4 20V5h16v4H8v11z"/></svg><span>Wall</span><kbd>W</kbd></button>
+    <button data-tool="door" title="Single door 3070 (D)"><svg viewBox="0 0 24 24"><path d="M4 20h16M6 20V6M6 6a14 14 0 0 1 14 14" fill="none"/></svg><span>Door</span><kbd>D</kbd></button>
+    <button data-tool="door2" title="Double door 6070 (F)"><svg viewBox="0 0 24 24"><path d="M2 20h20M4 20V10M4 10a10 10 0 0 1 8 10M20 20V10M20 10a10 10 0 0 0-8 10" fill="none"/></svg><span>Pair</span><kbd>F</kbd></button>
+    <button data-tool="glass" title="Glass panel / window (G)"><svg viewBox="0 0 24 24"><path d="M3 9h18M3 15h18M3 9v6M21 9v6" fill="none"/></svg><span>Glass</span><kbd>G</kbd></button>
+    <button data-tool="open" title="Cased opening (O)"><svg viewBox="0 0 24 24"><path d="M3 12h4M17 12h4M7 8v8M17 8v8" fill="none"/><path d="M9 12h6" fill="none" stroke-dasharray="2 2"/></svg><span>Opening</span><kbd>O</kbd></button>
+    <button data-tool="pass" title="Pass-thru, stainless (P)"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" fill="none"/><path d="M2 12h3M19 12h3M5 5l14 14M19 5L5 19" fill="none"/></svg><span>Pass-thru</span><kbd>P</kbd></button>
+    <button data-tool="chase" title="Air chase, full height (C)"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" fill="none"/><path d="M5 10l6-6M5 16l12-12M9 20l10-10M15 20l4-4" fill="none"/></svg><span>Chase</span><kbd>C</kbd></button>
+    <button data-tool="room" title="Room label (R)"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13" fill="none"/></svg><span>Room</span><kbd>R</kbd></button>
+    <div class="tsep"></div>
+    <button data-tool="calibrate" title="Set scale from a known dimension (K)"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2" fill="none"/></svg><span>Scale</span><kbd>K</kbd></button>
+  </nav>
+
+  <section class="stage">
+    <div class="pane pane2d"><canvas id="plan" tabindex="0"></canvas>
+      <div class="welcome" id="welcome">
+        <h1>Turn a floor plan into a 3D walkthrough</h1>
+        <p>Bring in an AutoCAD drawing or a photo of the plan sheet, check the walls, add doors, glass and air chases, then walk through it.</p>
+        <div class="wgrid">
+          <button class="wcard" id="wImport"><b>Import a plan</b><span>DXF or DWG from AutoCAD, or a PNG/JPG photo or scan</span></button>
+          <button class="wcard" id="wDraw"><b>Draw from scratch</b><span>Click corners to lay out walls. Type lengths like 23'8-3/4</span></button>
+          <button class="wcard" id="wSample"><b>Open the sample</b><span>The 40′ × 64′ modular cleanroom</span></button>
+        </div>
+        <p class="drop">Or drop a file anywhere in this window.</p>
+      </div>
+      <div id="pal2d" hidden></div>
+      <div class="banner" id="banner" hidden><span id="bannerText"></span><div class="bannerBtns" id="bannerBtns"></div></div>
+    </div>
+    <div class="pane pane3d" id="view3d"></div>
+    <div class="pane panebuild" id="viewBuild"></div>
+  </section>
+
+  <aside class="props" id="props" aria-label="Properties"></aside>
+</main>
+
+<footer class="status">
+  <span id="sMsg">Ready</span>
+  <span class="grow"></span>
+  <label class="chk"><input type="checkbox" id="optOrtho" checked> Ortho</label>
+  <label class="chk"><input type="checkbox" id="optDims" checked> Dimensions</label>
+  <span id="sXY" class="mono">—</span>
+  <span id="sZoom" class="mono"></span>
+</footer>
+
+<dialog id="dlg"><form method="dialog" id="dlgForm"><h2 id="dlgTitle"></h2><div id="dlgBody"></div><menu id="dlgBtns"></menu></form></dialog>
+<div class="toast" id="toast" hidden></div>
+<div class="dropzone" id="dropzone" hidden><div>Drop to import</div></div>
+
+<script src="../node_modules/three/build/three.min.js"></script>
+<script src="../node_modules/three/examples/js/controls/OrbitControls.js"></script>
+<script src="../node_modules/three/examples/js/exporters/GLTFExporter.js"></script>
+<script src="viewer.js"></script>
+<script src="importers.js"></script>
+<script src="editor.js"></script>
+<script src="parts.js"></script>
+<script src="builder.js"></script>
+<script src="sheet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
