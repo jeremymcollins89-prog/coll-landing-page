@@ -671,10 +671,12 @@ function detectDialog() {
 /* ---------- DXF import ---------- */
 function dxfDialog(data, preset) {
   preset = preset || {};
+  const opTypes = {};
   const names = Object.keys(data.layers).sort((a, b) => data.layers[b] - data.layers[a]);
   if (!names.length) { dialogOpen({ title: 'Nothing to import', body: '<p>This drawing has no lines or polylines Coll Plan3D can read. If the walls are inside blocks or xrefs, explode or bind them in AutoCAD and save as DXF again.</p>', buttons: [{ label: 'OK', primary: true, ret: null }] }); return; }
   const wallish = names.filter(n => /wall|partition|panel|a-wall|^wa/i.test(n));
-  const pre = new Set(preset.layers ? names.filter(n => preset.layers.includes(n)) : wallish.length ? wallish : names);
+  const notWall = /title|dim|text|anno|defpoints|border|logo|watermark|hatch|furn|grid|tag|note|symbol|xref|viewport|^0$/i;
+  const pre = new Set(preset.layers ? names.filter(n => preset.layers.includes(n)) : wallish.length ? wallish : names.filter(n => !notWall.test(n)).length ? names.filter(n => !notWall.test(n)) : names);
   const iu = data.insunits;
   const unitOpts = [[1, 'Inches'], [2, 'Feet'], [4, 'Millimeters'], [5, 'Centimeters'], [6, 'Meters']];
   const defUnit = preset.unit || (IMP.UNIT_FT[iu] && iu ? iu : 1);
@@ -687,10 +689,18 @@ function dxfDialog(data, preset) {
       ${fld('Drawing units', `<select id="dxU">${unitOpts.map(([v, l]) => `<option value="${v}" ${v === defUnit ? 'selected' : ''}>${l}${v === iu ? ' (from file)' : ''}</option>`).join('')}</select>`)}
       ${fld('Walls drawn as', `<select id="dxM"><option value="double">Two parallel lines</option><option value="single">Single centerline</option></select>`)}
       ${fld('Wall thickness', '<input type="text" id="dxT" value="2&quot; to 8&quot;">')}
-      <p class="sizeline" id="dxSize"></p>`,
+      <p class="sizeline" id="dxSize"></p>
+      <div id="dxOpsWrap"><h4 style="margin:12px 0 6px">Doors and windows in the drawing</h4><div class="layers" id="dxOps" style="max-height:150px"></div></div>`,
     buttons: [{ label: 'Cancel', ret: null }, { label: 'Import walls', primary: true, value: () => readDx() }],
     onOpen: () => {
-      const upd = () => { const o = readDx(); const sz = IMP.dxfSize(data, o.layers, o.unitFt); $('#dxSize').textContent = sz ? `Size with these units: ${fmt(sz.w)} × ${fmt(sz.h)} · ${sz.n} lines` : 'No layers selected.'; };
+      const KINDS = [['door', 'Door'], ['door2', 'Pair of doors'], ['glass', 'Vision glass'], ['pass', 'Pass-thru'], ['none', 'Ignore']];
+      const drawOps = () => {
+        const list = IMP.dxfOpeningBlocks(data, readDx().unitFt);
+        $('#dxOpsWrap').hidden = !list.length;
+        $('#dxOps').innerHTML = list.map(b => { const cur = opTypes[b.name] || (b.kind === 'door' && b.w > 4.6 ? 'door2' : b.kind); return `<label style="grid-template-columns:1fr auto auto"><span>${esc(b.name)} <small>${esc(b.layer)} · ${fmt(b.w)}</small></span><small>${b.n}</small><select data-b="${esc(b.name)}">${KINDS.map(([v, l]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`; }).join('');
+        $$('#dxOps select').forEach(sel => sel.onchange = () => { opTypes[sel.dataset.b] = sel.value; });
+      };
+      const upd = () => { const o = readDx(); const sz = IMP.dxfSize(data, o.layers, o.unitFt); $('#dxSize').textContent = sz ? `Size with these units: ${fmt(sz.w)} × ${fmt(sz.h)} · ${sz.n} lines` : 'No layers selected.'; drawOps(); };
       $('#dxLayers').addEventListener('change', upd); $('#dxU').addEventListener('change', upd);
       $('#dxAll').onclick = () => { $$('#dxLayers input').forEach(i => i.checked = true); upd(); };
       $('#dxNone').onclick = () => { $$('#dxLayers input').forEach(i => i.checked = false); upd(); };
@@ -700,10 +710,15 @@ function dxfDialog(data, preset) {
   }).then(o => {
     if (!o) return;
     const walls = IMP.wallsFromDxf(data, o);
-    const p = Editor.blank(); p.name = data.name; p.walls = walls; p.wallT = o.mode === 'single' ? o.tFt : 0.25;
+    const ops = walls.length ? IMP.openingsFromDxf(data, walls, o, opTypes) : { openings: [], found: {} };
+    const p = Editor.blank(); p.name = data.name; p.walls = walls; p.openings = ops.openings; p.wallT = o.mode === 'single' ? o.tFt : 0.25;
     if (walls.length) { const t = walls.map(w => w.t).sort((a, b) => a - b); p.wallT = t[t.length >> 1]; }
     projectPath = null; ed.setPlan(p); ed.dirty = true; updateChrome();
-    if (walls.length) showBanner(`Imported ${walls.length} walls. Doors and glass don't come across from CAD yet. Add them with the Door, Pair and Glass tools.`, [{ label: 'View in 3D', primary: true, fn: () => { hideBanner(); setView('split'); } }]);
+    const f = ops.found, parts = [];
+    if (f.door) parts.push(f.door + ' door' + (f.door > 1 ? 's' : '')); if (f.door2) parts.push(f.door2 + ' pair' + (f.door2 > 1 ? 's' : '') + ' of doors');
+    if (f.glass) parts.push(f.glass + ' window' + (f.glass > 1 ? 's' : '')); if (f.pass) parts.push(f.pass + ' pass-thru' + (f.pass > 1 ? 's' : ''));
+    const opsText = parts.length ? ' and ' + parts.join(', ') : '. No door or window symbols were found; add them with the Door, Pair and Glass tools';
+    if (walls.length) showBanner(`Imported ${walls.length} walls${opsText}. Check them, then add chases and rooms.`, [{ label: 'View in 3D', primary: true, fn: () => { hideBanner(); setView('split'); } }]);
     else showBanner('No walls were found with these settings. Try "Single centerline", a wider thickness range, or other layers.', [{ label: 'Try again', primary: true, fn: () => dxfDialog(data, preset) }]);
   });
   function readDx() {

@@ -107,15 +107,21 @@ function finish(walls, minLen) {
     .filter(w => Math.hypot(w.x2 - w.x1, w.y2 - w.y1) >= minLen * 0.75);
 }
 
+/* Where the drawing's corner lands on the plan: DXF y is up, plan y is down; origin at the top-left of the selection. */
+function dxfFrame(data, o) {
+  let minX = 1e18, maxY = -1e18;
+  for (const s of data.segs) if (o.layers.has(s[4])) { minX = Math.min(minX, s[0], s[2]); maxY = Math.max(maxY, s[1], s[3]); }
+  if (o.keepOrigin || !(minX < 1e17)) { minX = 0; maxY = 0; } // drawings saved by Coll Plan3D: keep the project's own coordinates
+  const k = o.unitFt;
+  return { k, minX, maxY, P: (x, y) => [(x - minX) * k, (maxY - y) * k] };
+}
+
 /* DXF: segs [[x1,y1,x2,y2,layer]] in drawing units */
 function wallsFromDxf(data, o) {
   const k = o.unitFt;
   const segs = data.segs.filter(s => o.layers.has(s[4]));
   if (!segs.length) return [];
-  let minX = 1e18, maxY = -1e18;
-  segs.forEach(s => { minX = Math.min(minX, s[0], s[2]); maxY = Math.max(maxY, s[1], s[3]); });
-  if (o.keepOrigin) { minX = 0; maxY = 0; } // drawings saved by Coll Plan3D: keep the project's own coordinates
-  // DXF y is up; plan y is down. Origin at top-left of the selection.
+  const { minX, maxY } = dxfFrame(data, o);
   const S = segs.map(s => ({ x1: (s[0] - minX) * k, y1: (maxY - s[1]) * k, x2: (s[2] - minX) * k, y2: (maxY - s[3]) * k }));
   let walls;
   if (o.mode === 'single') walls = S.map(s => ({ ...s, t: o.tFt }));
@@ -123,6 +129,85 @@ function wallsFromDxf(data, o) {
   snapJunctions(walls, Math.max(0.6, o.maxT * 2.5));
   return finish(walls, o.minLen);
 }
+/* Doors, windows and pass-thrus drawn as blocks (symbols) → openings on the walls they sit in.
+   A block counts when its name or layer says so (DOOR, DR, DLG330, DDG360, WINDOW, GLAZ, PASS …) or when it
+   holds a door-sized swing arc. Its length along the wall is the opening; the side it sticks out is the swing;
+   the arc's centre is the hinge. Returns { openings, found: {door, door2, glass, pass}, names: {block: type} } */
+const RX_DOOR = /door|\bdr\b|^dr[-_ ]?\d|^d[a-z]{0,3}\d{2,4}$|^(dlg|ddg|dsg|dss|dds|dl|dd|sd|dbl)[-_]?\d/i;
+const RX_GLASS = /window|glaz|glass|^wi?n?[-_]?\d|vision|^vg[-_]?\d|lite\b/i;
+const RX_PASS = /pass[-_ ]?thr|passthr|^pt[-_]?\d|^ptb/i;
+const RX_NOT = /stud|post|col(umn)?\b|chase|ffu|light|grid|title|north|dim|tag|anno|furn|equip|bench|text|logo|border/i;
+function blockKind(b, k) {
+  const nm = b.name || '', lay = b.layer || '', both = nm + ' ' + lay + ' ' + (b.text || '');
+  if (RX_NOT.test(nm)) return null;
+  const w = (b.box.x1 - b.box.x0) * k, h = (b.box.y1 - b.box.y0) * k, big = Math.max(w, h);
+  if (big < 1.4 || big > 14) return null;
+  if (RX_PASS.test(both)) return 'pass';
+  if (RX_DOOR.test(nm) || /door/i.test(lay)) return 'door';
+  if (RX_GLASS.test(nm) || /glaz|window|glass/i.test(lay)) return 'glass';
+  // no name to go on: a swing arc 1.5′–5′ across makes it a door
+  if ((b.arcs || []).some(a => a.r * k >= 1.4 && a.r * k <= 5)) return 'door';
+  return null;
+}
+function openingsFromDxf(data, walls, o, types) {
+  types = types || {};
+  const F = dxfFrame(data, o), k = F.k, out = [], found = { door: 0, door2: 0, glass: 0, pass: 0 }, names = {};
+  for (const b of data.blocks || []) {
+    if (!b.box) continue;
+    let kind = types[b.name] != null ? types[b.name] : blockKind(b, k);
+    if (!kind || kind === 'none') continue;
+    // block point (lx, ly) → plan feet
+    const W = (lx, ly) => F.P(b.o[0] + b.u[0] * lx + b.v[0] * ly, b.o[1] + b.u[1] * lx + b.v[1] * ly);
+    // which local axis runs along a wall: try x, then y
+    let best = null;
+    for (const axis of ['x', 'y']) {
+      const A = axis === 'x' ? W(b.box.x0, 0) : W(0, b.box.y0), B = axis === 'x' ? W(b.box.x1, 0) : W(0, b.box.y1);
+      const len = Math.hypot(B[0] - A[0], B[1] - A[1]); if (len < 1.2) continue;
+      const ax = (B[0] - A[0]) / len, ay = (B[1] - A[1]) / len, mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
+      for (const w of walls) {
+        const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 0.3) continue;
+        const ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L;
+        if (Math.abs(ax * uy - ay * ux) > 0.08) continue; // not parallel
+        const d = Math.abs(-(mx - w.x1) * uy + (my - w.y1) * ux); if (d > Math.max(w.t, 0.25) / 2 + 0.6) continue;
+        const sm = (mx - w.x1) * ux + (my - w.y1) * uy; if (sm < -len / 2 - 0.5 || sm > L + len / 2 + 0.5) continue;
+        if (!best || d < best.d) best = { d, w, ux, uy, A, B, len, axis };
+      }
+    }
+    if (!best) continue;
+    const { w, ux, uy } = best;
+    // project the ends onto the wall's centreline
+    const pr = (p) => { const s0 = (p[0] - w.x1) * ux + (p[1] - w.y1) * uy; return [w.x1 + ux * s0, w.y1 + uy * s0]; };
+    let p1 = pr(best.A), p2 = pr(best.B);
+    if (kind === 'door' && best.len > 4.6) kind = 'door2';
+    // hinge: the arc centre nearest an end goes first (single doors hinge at the opening's first end)
+    if (kind === 'door' && b.arcs && b.arcs.length) {
+      const a = b.arcs.slice().sort((x, y) => y.r - x.r)[0], H = W(a.x, a.y);
+      if (Math.hypot(H[0] - p2[0], H[1] - p2[1]) < Math.hypot(H[0] - p1[0], H[1] - p1[1])) { const t = p1; p1 = p2; p2 = t; }
+    }
+    // swing: the side the block sticks out of the wall
+    const L = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) || 1, nx = -(p2[1] - p1[1]) / L, ny = (p2[0] - p1[0]) / L;
+    const far = best.axis === 'x' ? (Math.abs(b.box.y1) >= Math.abs(b.box.y0) ? b.box.y1 : b.box.y0) : (Math.abs(b.box.x1) >= Math.abs(b.box.x0) ? b.box.x1 : b.box.x0);
+    const O = W(0, 0), S2 = best.axis === 'x' ? W(0, far) : W(far, 0);
+    const swing = ((S2[0] - O[0]) * nx + (S2[1] - O[1]) * ny) >= 0 ? 1 : -1;
+    if (out.some(q => Math.hypot((q.x1 + q.x2) / 2 - (p1[0] + p2[0]) / 2, (q.y1 + q.y2) / 2 - (p1[1] + p2[1]) / 2) < 0.5)) continue;
+    const op = { id: uid(), type: kind, x1: q(p1[0]), y1: q(p1[1]), x2: q(p2[0]), y2: q(p2[1]), t: w.t, swing, from: b.name };
+    if (kind === 'glass') { op.sill = 3; op.head = 7; } else if (kind === 'pass') { op.sill = 3; op.head = 5; op.depth = 2; } else op.head = 7;
+    out.push(op); found[kind]++; names[b.name] = kind;
+  }
+  return { openings: out, found, names };
+}
+/* The block names in a drawing that look like doors / windows / pass-thrus, with counts, for the import dialog. */
+function dxfOpeningBlocks(data, unitFt) {
+  const m = new Map();
+  for (const b of data.blocks || []) {
+    if (!b.box) continue;
+    const kind = blockKind(b, unitFt); if (!kind) continue;
+    const e = m.get(b.name) || { name: b.name, layer: b.layer, kind, n: 0, w: (b.box.x1 - b.box.x0) * unitFt };
+    e.n++; m.set(b.name, e);
+  }
+  return [...m.values()].sort((a, b) => b.n - a.n);
+}
+
 function dxfSize(data, layers, unitFt) {
   let minX = 1e18, minY = 1e18, maxX = -1e18, maxY = -1e18, n = 0;
   for (const s of data.segs) if (layers.has(s[4])) { n++; minX = Math.min(minX, s[0], s[2]); maxX = Math.max(maxX, s[0], s[2]); minY = Math.min(minY, s[1], s[3]); maxY = Math.max(maxY, s[1], s[3]); }
@@ -210,5 +295,5 @@ function wallsFromImage(img, bg, o) {
   return finish(walls, o.minLen);
 }
 
-global.Plan3DImport = { pairLines, snapJunctions, wallsFromDxf, dxfSize, wallsFromImage, UNIT_FT, UNIT_NAMES };
+global.Plan3DImport = { pairLines, snapJunctions, wallsFromDxf, openingsFromDxf, dxfOpeningBlocks, dxfFrame, dxfSize, wallsFromImage, UNIT_FT, UNIT_NAMES };
 })(window);
