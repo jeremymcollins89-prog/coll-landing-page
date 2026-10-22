@@ -28,7 +28,8 @@ function buildMenu() {
         { label: 'Export Parts List (.csv)…', click: () => send('export-parts') },
         { label: 'Plan Sheet (PDF)…', accelerator: 'CmdOrCtrl+P', click: () => send('sheet') },
         { label: 'Add Ceiling Drawing…', click: () => send('ceiling') },
-        { label: 'Save as AutoCAD (DWG / DXF)…', accelerator: 'CmdOrCtrl+D', click: () => send('export-cad') },
+        { label: 'Save 3D Model for Revit (IFC)…', click: () => send('export-ifc') },
+        { label: 'Save for AutoCAD (DWG / DXF)…', accelerator: 'CmdOrCtrl+D', click: () => send('export-cad') },
         { type: 'separator' },
         { label: 'New Blank Plan', accelerator: 'CmdOrCtrl+N', click: () => send('new') },
         { type: 'separator' },
@@ -237,6 +238,160 @@ async function convertDwg(file) {
   return r.error ? r : { dxfPath: r.path };
 }
 
+// ---------- IFC (from Revit, ArchiCAD and other BIM programs) ----------
+// Reads walls, doors, windows, rooms, ceilings and columns with web-ifc. Each element comes back as its
+// footprint (convex hull, plan feet: x east, y south) with its bottom and top heights, grouped by level.
+let ifcApi = null;
+/* web-ifc gives geometry in the file's own length unit (mm, feet, inches …): feet per unit, from IfcUnitAssignment. */
+const SI_PREFIX = { EXA: 1e18, PETA: 1e15, TERA: 1e12, GIGA: 1e9, MEGA: 1e6, KILO: 1e3, HECTO: 1e2, DECA: 10, DECI: 0.1, CENTI: 0.01, MILLI: 0.001, MICRO: 1e-6, NANO: 1e-9 };
+const enumVal = (v) => (v && (v.value != null ? v.value : v)) || '';
+
+/* Feet per model length unit, from the file's IfcUnitAssignment (web-ifc returns geometry in model units). */
+function lengthToFt(api, model) {
+  const toMetres = (id, depth) => {
+    if (id == null || depth > 4) return null;
+    const u = api.GetLine(model, id);
+    if (!u) return null;
+    if (String(enumVal(u.UnitType)).toUpperCase() !== 'LENGTHUNIT') return null;
+    if (u.Name && String(enumVal(u.Name)).toUpperCase() === 'METRE' && u.ConversionFactor == null) {
+      return SI_PREFIX[String(enumVal(u.Prefix)).toUpperCase()] || 1;
+    }
+    if (u.ConversionFactor) { // e.g. foot = 0.3048 × metre
+      const mw = api.GetLine(model, u.ConversionFactor.value);
+      const val = mw && mw.ValueComponent && +enumVal(mw.ValueComponent);
+      const base = mw && mw.UnitComponent ? toMetres(mw.UnitComponent.value, depth + 1) : 1;
+      if (val > 0 && base > 0) return val * base;
+    }
+    const nm = String(enumVal(u.Name)).toLowerCase();
+    if (/foot|feet/.test(nm)) return 0.3048;
+    if (/inch/.test(nm)) return 0.0254;
+    return null;
+  };
+  try {
+    const ids = api.GetLineIDsWithType(model, require('web-ifc').IFCUNITASSIGNMENT);
+    for (let i = 0; i < ids.size(); i++) {
+      const ua = api.GetLine(model, ids.get(i));
+      for (const u of ua.Units || []) { const m = toMetres(u.value, 0); if (m) return m * 3.280839895; }
+    }
+  } catch (e) { /* fall through */ }
+  return 3.280839895; // IFC's default unit is the metre
+}
+
+function hull2(pts) {
+  pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [], up = [];
+  for (const p of pts) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 1e-12) lo.pop(); lo.push(p); }
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], p) <= 1e-12) up.pop(); up.push(p); }
+  up.pop(); lo.pop(); return lo.concat(up);
+}
+async function loadIfc(file) {
+  const W = require('web-ifc');
+  if (!ifcApi) { ifcApi = new W.IfcAPI(); ifcApi.SetWasmPath(path.dirname(require.resolve('web-ifc')) + path.sep, true); await ifcApi.Init(); }
+  const api = ifcApi;
+  const m = api.OpenModel(new Uint8Array(fs.readFileSync(file)), { COORDINATE_TO_ORIGIN: false });
+  try {
+    const FT = lengthToFt(api, m);
+    const str = (v) => (v && v.value != null ? String(v.value) : '');
+    const kinds = {};
+    const add = (code, k) => { if (code != null) kinds[code] = k; };
+    add(W.IFCWALL, 'wall'); add(W.IFCWALLSTANDARDCASE, 'wall'); add(W.IFCWALLELEMENTEDCASE, 'wall'); add(W.IFCCURTAINWALL, 'wall');
+    add(W.IFCDOOR, 'door'); add(W.IFCDOORSTANDARDCASE, 'door'); add(W.IFCWINDOW, 'window'); add(W.IFCWINDOWSTANDARDCASE, 'window');
+    add(W.IFCSPACE, 'space'); add(W.IFCCOVERING, 'covering'); add(W.IFCCOLUMN, 'column'); add(W.IFCCOLUMNSTANDARDCASE, 'column');
+    add(W.IFCBUILDINGELEMENTPROXY, 'proxy'); add(W.IFCFLOWTERMINAL, 'terminal'); add(W.IFCLIGHTFIXTURE, 'light'); add(W.IFCAIRTERMINAL, 'terminal');
+    // levels, and which level each element sits on
+    const storeys = [], where = {};
+    const sIds = api.GetLineIDsWithType(m, W.IFCBUILDINGSTOREY);
+    for (let i = 0; i < sIds.size(); i++) { const L = api.GetLine(m, sIds.get(i)); storeys.push({ id: sIds.get(i), name: str(L.LongName) || str(L.Name) || ('Level ' + (i + 1)) }); }
+    const rel = (type, from, to) => { const ids = api.GetLineIDsWithType(m, type); for (let i = 0; i < ids.size(); i++) { const L = api.GetLine(m, ids.get(i)); const s = L[from] && L[from].value; for (const e of (L[to] || [])) if (e && e.value != null && s != null) where[e.value] = s; } };
+    rel(W.IFCRELCONTAINEDINSPATIALSTRUCTURE, 'RelatingStructure', 'RelatedElements');
+    rel(W.IFCRELAGGREGATES, 'RelatingObject', 'RelatedObjects');
+    // walk up to a level (an element may be in a space, or part of an assembly)
+    const sSet = new Set(storeys.map(s => s.id));
+    const levelOf = (id) => { let k = id; for (let n = 0; n < 8 && k != null; n++) { if (sSet.has(k)) return k; k = where[k]; } return null; };
+    // Coll Plan3D's own project, if this file was saved by Coll Plan3D
+    let embedded = '';
+    try {
+      const ps = api.GetLineIDsWithType(m, W.IFCPROPERTYSET);
+      for (let i = 0; i < ps.size(); i++) {
+        const L = api.GetLine(m, ps.get(i));
+        if (str(L.Name) !== 'CollPlan3D_Project') continue;
+        const parts = (L.HasProperties || []).map(h => api.GetLine(m, h.value)).filter(p => /^Data\d+$/.test(str(p.Name))).sort((a, b) => +str(a.Name).slice(4) - +str(b.Name).slice(4));
+        embedded = parts.map(p => str(p.NominalValue)).join('');
+      }
+    } catch (e) { embedded = ''; }
+    const els = [];
+    const streamed = new Set();
+    const take = (mesh) => {
+      const id = mesh.expressID; if (streamed.has(id)) return; streamed.add(id);
+      const code = api.GetLineType(m, id), kind = kinds[code]; if (!kind) return;
+      const pts = []; let y0 = 1e18, y1 = -1e18;
+      for (let i = 0; i < mesh.geometries.size(); i++) {
+        const pg = mesh.geometries.get(i), g = api.GetGeometry(m, pg.geometryExpressID);
+        const v = api.GetVertexArray(g.GetVertexData(), g.GetVertexDataSize()), T = pg.flatTransformation;
+        for (let k = 0; k < v.length; k += 6) {
+          const x = v[k], y = v[k + 1], z = v[k + 2];
+          const X = T[0] * x + T[4] * y + T[8] * z + T[12], Y = T[1] * x + T[5] * y + T[9] * z + T[13], Z = T[2] * x + T[6] * y + T[10] * z + T[14];
+          pts.push([X, Z]); y0 = Math.min(y0, Y); y1 = Math.max(y1, Y); // raw; scaled to feet below
+        }
+        if (g.delete) g.delete();
+      }
+      if (!pts.length) return;
+      const L = api.GetLine(m, id);
+      const pdt = kind === 'covering' ? str(L.PredefinedType) : '';
+      if (kind === 'covering' && pdt && !/CEILING/i.test(pdt)) return;
+      els.push({ id, kind, level: levelOf(id), hull: hull2(pts), y0, y1, name: str(L.LongName) || str(L.Name), num: kind === 'space' ? str(L.Name) : '', type: str(L.ObjectType) });
+    };
+    api.StreamAllMeshes(m, take);
+    const extra = [W.IFCSPACE, W.IFCCOVERING].filter(c => c != null);
+    try { api.StreamAllMeshesWithTypes(m, extra, take); } catch (e) { /* older files: no spaces */ }
+    // web-ifc sometimes returns the file's own units and sometimes metres. Measure it: a wall's extrusion
+    // depth (or a door's / window's stated height) in file units against the height of its 3D shape.
+    const ratios = [];
+    const extrusionDepth = (L) => {
+      try {
+        const shp = L.Representation && api.GetLine(m, L.Representation.value);
+        for (const r of (shp && shp.Representations) || []) {
+          const rep = api.GetLine(m, r.value);
+          for (const it of rep.Items || []) {
+            const item = api.GetLine(m, it.value);
+            if (item && item.Depth != null && item.ExtrudedDirection) {
+              const dir = api.GetLine(m, item.ExtrudedDirection.value), d = dir && dir.DirectionRatios && dir.DirectionRatios.map(v => +(v.value != null ? v.value : v));
+              if (d && Math.abs(d[2]) > 0.999) return +(item.Depth.value != null ? item.Depth.value : item.Depth);
+            }
+          }
+        }
+      } catch (e) { /* not an extrusion */ }
+      return 0;
+    };
+    for (const e of els) {
+      if (ratios.length >= 25) break;
+      const span = e.y1 - e.y0; if (!(span > 0)) continue;
+      const L = api.GetLine(m, e.id);
+      let D = 0;
+      if (e.kind === 'wall') D = extrusionDepth(L);
+      else if ((e.kind === 'door' || e.kind === 'window') && L.OverallHeight) D = +(L.OverallHeight.value != null ? L.OverallHeight.value : L.OverallHeight);
+      if (D > 0) ratios.push(span / D);
+    }
+    let K = 3.280839895; // feet per unit of what web-ifc returned: metres for well-formed files
+    if (ratios.length) {
+      ratios.sort((a, b) => a - b);
+      const r = ratios[ratios.length >> 1];
+      K = FT / r; // r = returned units per file unit
+    }
+    const q = (v) => Math.round(v * K * 384) / 384;
+    for (const e of els) { e.hull = e.hull.map(p => [q(p[0]), q(p[1])]); e.y0 *= K; e.y1 *= K; }
+    // level heights from the floor of the walls on each level
+    for (const s of storeys) {
+      const ws = els.filter(e => e.level === s.id && e.kind === 'wall');
+      s.walls = ws.length; s.doors = els.filter(e => e.level === s.id && e.kind === 'door').length;
+      s.floor = ws.length ? Math.min(...ws.map(e => e.y0)) : 0;
+    }
+    storeys.sort((a, b) => a.floor - b.floor);
+    return { kind: 'ifc', name: path.basename(file, path.extname(file)), path: file, storeys, els, embedded, schema: api.GetModelSchema ? api.GetModelSchema(m) : '' };
+  } finally { api.CloseModel(m); }
+}
+
 async function loadAny(file) {
   const ext = path.extname(file).toLowerCase();
   const name = path.basename(file, ext);
@@ -246,6 +401,8 @@ async function loadAny(file) {
       const mime = ext === '.jpg' ? 'image/jpeg' : 'image/' + ext.slice(1);
       return { kind: 'image', name, path: file, dataUrl: 'data:' + mime + ';base64,' + buf.toString('base64') };
     }
+    if (ext === '.ifc') return await loadIfc(file);
+    if (ext === '.rvt' || ext === '.rfa' || ext === '.rte') return { kind: 'error', code: 'revit', name, ext };
     if (ext === '.plan3d' || ext === '.json') {
       return { kind: 'project', name, path: file, json: fs.readFileSync(file, 'utf8') };
     }
@@ -273,8 +430,9 @@ ipcMain.handle('open-file', async (e, which) => {
     : which === 'ceiling'
     ? [{ name: 'Ceiling drawings', extensions: ['dxf', 'dwg', 'png', 'jpg', 'jpeg', 'bmp', 'webp'] }, { name: 'All files', extensions: ['*'] }]
     : [
-        { name: 'Floor plans', extensions: ['dxf', 'dwg', 'png', 'jpg', 'jpeg', 'bmp', 'webp', 'plan3d'] },
+        { name: 'Floor plans', extensions: ['dxf', 'dwg', 'ifc', 'rvt', 'png', 'jpg', 'jpeg', 'bmp', 'webp', 'plan3d'] },
         { name: 'AutoCAD', extensions: ['dxf', 'dwg'] },
+        { name: 'Revit / BIM (IFC)', extensions: ['ifc', 'rvt'] },
         { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'bmp', 'webp'] },
         { name: 'All files', extensions: ['*'] }
       ];
@@ -307,7 +465,7 @@ ipcMain.handle('save-project', async (e, json, current, suggested) => {
 ipcMain.handle('export-file', async (e, { data, name, ext }) => {
   const r = await dialog.showSaveDialog(win, {
     defaultPath: path.join(app.getPath('documents'), (name || 'Walkthrough') + '.' + ext),
-    filters: [{ name: ext === 'html' ? 'Web page' : ext === 'csv' ? 'Spreadsheet (CSV)' : '3D model (glTF binary)', extensions: [ext] }]
+    filters: [{ name: ext === 'html' ? 'Web page' : ext === 'csv' ? 'Spreadsheet (CSV)' : ext === 'ifc' ? 'IFC for Revit / BIM' : '3D model (glTF binary)', extensions: [ext] }]
   });
   if (r.canceled || !r.filePath) return null;
   if (typeof data === 'string') fs.writeFileSync(r.filePath, data, 'utf8');
@@ -385,7 +543,7 @@ if (!app.requestSingleInstanceLock()) {
     if (!win) return;
     if (win.isMinimized()) win.restore();
     win.focus();
-    const f = argv.slice(1).find(a => /\.(dxf|dwg|png|jpe?g|bmp|webp|plan3d)$/i.test(a));
+    const f = argv.slice(1).find(a => /\.(dxf|dwg|ifc|rvt|png|jpe?g|bmp|webp|plan3d)$/i.test(a));
     if (f) win.webContents.send('open-path', f);
   });
 }
@@ -395,7 +553,7 @@ app.whenReady().then(() => {
   buildMenu();
   createWindow();
   // File passed on the command line / "Open with"
-  const arg = process.argv.slice(1).find(a => /\.(dxf|dwg|png|jpe?g|bmp|webp|plan3d)$/i.test(a));
+  const arg = process.argv.slice(1).find(a => /\.(dxf|dwg|ifc|rvt|png|jpe?g|bmp|webp|plan3d)$/i.test(a));
   if (arg) win.webContents.once('did-finish-load', () => win.webContents.send('open-path', arg));
 });
 app.on('window-all-closed', () => app.quit());
