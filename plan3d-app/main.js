@@ -138,6 +138,29 @@ function flattenDxf(dxf) {
   const texts = [];
   // For ceiling drawings: closed rectangles and block outlines (light fixtures, FFUs) and short labels
   const rects = [], labels = [];
+  // Every block placed in the drawing (doors, windows, pass-thrus …): where it is, which way it faces,
+  // and its own outline and arcs in block units, so the importer can recognise doors and their swing.
+  const blocksPlaced = [], localCache = {};
+  function blockLocal(bl) {
+    if (localCache[bl.name]) return localCache[bl.name];
+    const bx = (bl.position && bl.position.x) || 0, by = (bl.position && bl.position.y) || 0;
+    let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18; const arcs = [];
+    const ext = (x, y) => { if (!isFinite(x) || !isFinite(y)) return; x -= bx; y -= by; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
+    for (const e of bl.entities || []) {
+      try {
+        if (e.vertices) for (const v of e.vertices) ext(v.x || 0, v.y || 0);
+        if (e.type === 'ARC' || e.type === 'CIRCLE') {
+          const c = e.center || {}, r = e.radius || 0;
+          if (e.type === 'ARC') {
+            const a0 = e.startAngle || 0, a1 = e.endAngle != null ? e.endAngle : Math.PI * 2;
+            ext(c.x + r * Math.cos(a0), c.y + r * Math.sin(a0)); ext(c.x + r * Math.cos(a1), c.y + r * Math.sin(a1));
+            arcs.push({ x: (c.x || 0) - bx, y: (c.y || 0) - by, r });
+          }
+        }
+      } catch (err) { /* skip */ }
+    }
+    return (localCache[bl.name] = { box: x0 <= x1 ? { x0, y0, x1, y1 } : null, arcs, text: (bl.entities || []).filter(e => (e.type === 'TEXT' || e.type === 'MTEXT') && e.text).map(e => String(e.text)).join(' ').slice(0, 80) });
+  }
   function rectFrom(i0, layer, name, kind) {
     const n = segs.length - i0; if (n < 3) return;
     let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18;
@@ -190,6 +213,13 @@ function flattenDxf(dxf) {
             const i0 = segs.length;
             walk(bl.entities, inner, depth + 1, layer);
             rectFrom(i0, layer, e.name, 'block');
+            if (depth <= 1 && blocksPlaced.length < 20000) {
+              const L = blockLocal(bl);
+              if (L.box) {
+                const o = inner(bx, by), ax = inner(bx + 1, by), ay = inner(bx, by + 1);
+                blocksPlaced.push({ name: e.name, layer, o, u: [ax[0] - o[0], ax[1] - o[1]], v: [ay[0] - o[0], ay[1] - o[1]], box: L.box, arcs: L.arcs, text: L.text, si: i0, sn: segs.length - i0 });
+              }
+            }
           }
         }
       } catch (err) { /* skip bad entity */ }
@@ -197,7 +227,7 @@ function flattenDxf(dxf) {
   }
   walk(dxf.entities, (x, y) => [x, y], 0, null);
   const insunits = (dxf.header && dxf.header.$INSUNITS) || 0;
-  return { segs, layers, insunits, texts, rects, labels };
+  return { segs, layers, insunits, texts, rects, labels, blocks: blocksPlaced };
 }
 
 function findOdaConverter() {
