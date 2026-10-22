@@ -1,7 +1,7 @@
 {
   "name": "coll-plan3d",
   "productName": "Coll Plan3D",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Turn AutoCAD (DXF/DWG) floor plans or plan photos into 3D walkthroughs. Coll Business Solutions LLC.",
   "author": "Coll Business Solutions LLC",
   "private": true,
@@ -28,7 +28,8 @@
       "preload.js",
       "renderer/**",
       "samples/**",
-      "README.txt"
+      "README.txt",
+      "dxf2000.js"
     ],
     "asar": false,
     "directories": {
@@ -56,6 +57,18 @@
         "icon": "build/icon.ico"
       }
     ],
-    "publish": null
+    "publish": null,
+    "extraResources": [
+      {
+        "from": "libredwg",
+        "to": "libredwg",
+        "filter": [
+          "*.exe",
+          "*.dll",
+          "*.txt",
+          "*.dxf"
+        ]
+      }
+    ]
   }
 }

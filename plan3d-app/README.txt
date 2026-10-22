@@ -11,8 +11,9 @@ START THE APP
 
 WHAT IT READS
   .dxf        AutoCAD drawing exchange file (best results)
-  .dwg        AutoCAD drawing. Needs the free ODA File Converter installed,
-              or in AutoCAD use Save As > AutoCAD DXF and import the DXF.
+  .dwg        AutoCAD drawing, any version from R14 to 2026. Built in. If the free
+              ODA File Converter is installed, Coll Plan3D uses it for the best results.
+  .ifc        Revit / BIM model (Revit: File > Export > IFC)
   .png .jpg   Photo or scan of a plan sheet. Shoot it flat and straight-on.
   .plan3d     A saved Coll Plan3D project
 
@@ -61,3 +62,8 @@ REBUILDING FROM SOURCE (optional)
     npm install
     npm start                 run it
     npm run package-win       rebuild the Windows app into source\dist
+
+DWG SUPPORT
+  DWG files are read and saved with GNU LibreDWG (GPLv3), included as separate
+  programs in the resources\libredwg folder of the install. License and source:
+  see resources\libredwg\README.txt, or https://www.gnu.org/software/libredwg/
