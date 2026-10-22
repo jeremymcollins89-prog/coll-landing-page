@@ -606,7 +606,8 @@ class Editor {
       g.save(); g.setLineDash([4, 3]); g.lineWidth = 1;
       for (const f of global.Plan3DViewer.ceilingFixtures(P)) {
         g.strokeStyle = f.type === 'ffu' ? COL.glass : COL.room; g.fillStyle = f.type === 'ffu' ? 'rgba(127,211,227,.08)' : 'rgba(255,255,255,.08)';
-        g.fillRect(this.sx(f.x - 0.95), this.sy(f.y - 1.95), 1.9 * s, 3.9 * s); g.strokeRect(this.sx(f.x - 0.95), this.sy(f.y - 1.95), 1.9 * s, 3.9 * s);
+        const fw = f.w || 1.9, fh = f.h || 3.9;
+        g.fillRect(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2), fw * s, fh * s); g.strokeRect(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2), fw * s, fh * s);
         if (s > 9) { g.fillStyle = g.strokeStyle; g.font = '10px Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(f.type === 'ffu' ? 'FFU' : 'LED', this.sx(f.x), this.sy(f.y)); }
       }
       g.restore();

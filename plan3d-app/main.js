@@ -27,6 +27,8 @@ function buildMenu() {
         { label: 'Export 3D Model (.glb)…', click: () => send('export-glb') },
         { label: 'Export Parts List (.csv)…', click: () => send('export-parts') },
         { label: 'Plan Sheet (PDF)…', accelerator: 'CmdOrCtrl+P', click: () => send('sheet') },
+        { label: 'Add Ceiling Drawing…', click: () => send('ceiling') },
+        { label: 'Save as AutoCAD (DWG / DXF)…', accelerator: 'CmdOrCtrl+D', click: () => send('export-cad') },
         { type: 'separator' },
         { label: 'New Blank Plan', accelerator: 'CmdOrCtrl+N', click: () => send('new') },
         { type: 'separator' },
@@ -132,6 +134,15 @@ function flattenDxf(dxf) {
     segs.push([x1, y1, x2, y2, layer]);
     layers[layer] = (layers[layer] || 0) + 1;
   }
+  const texts = [];
+  // For ceiling drawings: closed rectangles and block outlines (light fixtures, FFUs) and short labels
+  const rects = [], labels = [];
+  function rectFrom(i0, layer, name, kind) {
+    const n = segs.length - i0; if (n < 3) return;
+    let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18;
+    for (let i = i0; i < segs.length; i++) { const q = segs[i]; x0 = Math.min(x0, q[0], q[2]); x1 = Math.max(x1, q[0], q[2]); y0 = Math.min(y0, q[1], q[3]); y1 = Math.max(y1, q[1], q[3]); }
+    if (rects.length < 20000) rects.push({ cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0, layer, name: name || '', kind, si: i0, sn: n });
+  }
   function walk(entities, xf, depth, parentLayer) {
     if (!entities || depth > 6) return;
     for (const e of entities) {
@@ -139,11 +150,19 @@ function flattenDxf(dxf) {
       if (layer === '0' && parentLayer) layer = parentLayer;
       const T = (p) => xf(p.x || 0, p.y || 0);
       try {
-        if (e.type === 'LINE' && e.vertices && e.vertices.length >= 2) {
+        if ((e.type === 'TEXT' || e.type === 'MTEXT') && typeof e.text === 'string' && e.text.startsWith('COLLPLAN3D')) {
+          // project data saved by Coll Plan3D's DWG / DXF export
+          texts.push({ layer, text: e.text.trim() });
+        } else if ((e.type === 'TEXT' || e.type === 'MTEXT') && typeof e.text === 'string') {
+          const t = e.text.replace(/\\[A-Za-z][^;]*;/g, '').replace(/[{}]/g, '').trim();
+          const p = e.startPoint || e.position;
+          if (t && t.length <= 16 && p && labels.length < 20000) { const q = T(p); labels.push({ x: q[0], y: q[1], text: t, layer }); }
+        } else if (e.type === 'LINE' && e.vertices && e.vertices.length >= 2) {
           const a = T(e.vertices[0]), b = T(e.vertices[1]);
           add(a[0], a[1], b[0], b[1], layer);
         } else if ((e.type === 'LWPOLYLINE' || e.type === 'POLYLINE') && e.vertices) {
           const v = e.vertices.filter(p => p && isFinite(p.x));
+          const i0 = segs.length;
           for (let i = 0; i + 1 < v.length; i++) {
             const a = T(v[i]), b = T(v[i + 1]);
             add(a[0], a[1], b[0], b[1], layer);
@@ -152,6 +171,8 @@ function flattenDxf(dxf) {
             const a = T(v[v.length - 1]), b = T(v[0]);
             add(a[0], a[1], b[0], b[1], layer);
           }
+          const closed = (e.shape || e.closed) || (v.length > 3 && Math.hypot(v[0].x - v[v.length - 1].x, v[0].y - v[v.length - 1].y) < 1e-6);
+          if (closed && (segs.length - i0 === 4)) rectFrom(i0, layer, '', 'pline');
         } else if (e.type === 'INSERT' && blocks[e.name]) {
           const bl = blocks[e.name];
           const bx = (bl.position && bl.position.x) || 0, by = (bl.position && bl.position.y) || 0;
@@ -165,7 +186,9 @@ function flattenDxf(dxf) {
               const lx = (x - bx) * sx + ox, ly = (y - by) * sy + oy;
               return xf(px + lx * c - ly * s, py + lx * s + ly * c);
             };
+            const i0 = segs.length;
             walk(bl.entities, inner, depth + 1, layer);
+            rectFrom(i0, layer, e.name, 'block');
           }
         }
       } catch (err) { /* skip bad entity */ }
@@ -173,7 +196,7 @@ function flattenDxf(dxf) {
   }
   walk(dxf.entities, (x, y) => [x, y], 0, null);
   const insunits = (dxf.header && dxf.header.$INSUNITS) || 0;
-  return { segs, layers, insunits };
+  return { segs, layers, insunits, texts, rects, labels };
 }
 
 function findOdaConverter() {
@@ -192,7 +215,8 @@ function findOdaConverter() {
   return null;
 }
 
-function convertDwg(file) {
+// Run the free ODA File Converter on one file. type: 'DXF' or 'DWG'; version like 'ACAD2018'.
+function odaConvert(file, type, version) {
   return new Promise((resolve) => {
     const exe = findOdaConverter();
     if (!exe) return resolve({ error: 'nodwg' });
@@ -201,12 +225,16 @@ function convertDwg(file) {
     fs.mkdirSync(inDir); fs.mkdirSync(outDir);
     const base = path.basename(file);
     fs.copyFileSync(file, path.join(inDir, base));
-    execFile(exe, [inDir, outDir, 'ACAD2018', 'DXF', '0', '1', base], { timeout: 120000 }, () => {
-      const out = path.join(outDir, base.replace(/\.dwg$/i, '.dxf'));
-      if (fs.existsSync(out)) resolve({ dxfPath: out });
-      else resolve({ error: 'dwgfail' });
+    execFile(exe, [inDir, outDir, version || 'ACAD2018', type, '0', '1', base], { timeout: 120000, windowsHide: true }, () => {
+      const out = path.join(outDir, base.replace(/\.[^.]+$/, '.' + type.toLowerCase()));
+      if (fs.existsSync(out)) resolve({ path: out, tmp });
+      else resolve({ error: type === 'DWG' ? 'dwgsavefail' : 'dwgfail' });
     });
   });
+}
+async function convertDwg(file) {
+  const r = await odaConvert(file, 'DXF', 'ACAD2018');
+  return r.error ? r : { dxfPath: r.path };
 }
 
 async function loadAny(file) {
@@ -242,6 +270,8 @@ async function loadAny(file) {
 ipcMain.handle('open-file', async (e, which) => {
   const filters = which === 'project'
     ? [{ name: 'Plan3D Project', extensions: ['plan3d', 'json'] }]
+    : which === 'ceiling'
+    ? [{ name: 'Ceiling drawings', extensions: ['dxf', 'dwg', 'png', 'jpg', 'jpeg', 'bmp', 'webp'] }, { name: 'All files', extensions: ['*'] }]
     : [
         { name: 'Floor plans', extensions: ['dxf', 'dwg', 'png', 'jpg', 'jpeg', 'bmp', 'webp', 'plan3d'] },
         { name: 'AutoCAD', extensions: ['dxf', 'dwg'] },
@@ -283,6 +313,31 @@ ipcMain.handle('export-file', async (e, { data, name, ext }) => {
   if (typeof data === 'string') fs.writeFileSync(r.filePath, data, 'utf8');
   else fs.writeFileSync(r.filePath, Buffer.from(data));
   return r.filePath;
+});
+
+// Floor plan → AutoCAD drawing. The renderer makes the DXF; a DWG is made from it with ODA File Converter.
+const DWG_VERSIONS = ['ACAD2018', 'ACAD2013', 'ACAD2010', 'ACAD2007', 'ACAD2004', 'ACAD2000'];
+ipcMain.handle('has-dwg-converter', () => !!findOdaConverter());
+ipcMain.handle('export-cad', async (e, { dxf, name, format, version }) => {
+  const dwg = format === 'dwg';
+  if (dwg && !findOdaConverter()) return { error: 'nodwg' };
+  const filters = dwg ? [{ name: 'AutoCAD Drawing (DWG)', extensions: ['dwg'] }] : [{ name: 'AutoCAD DXF', extensions: ['dxf'] }];
+  const r = await dialog.showSaveDialog(win, { defaultPath: path.join(app.getPath('documents'), (name || 'Floor plan') + (dwg ? '.dwg' : '.dxf')), filters });
+  if (r.canceled || !r.filePath) return null;
+  let out = r.filePath;
+  try {
+    if (!dwg) { fs.writeFileSync(out, dxf, 'latin1'); return { path: out }; }
+    if (!/\.dwg$/i.test(out)) out += '.dwg';
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plan3d-'));
+    const src = path.join(tmp, path.basename(out).replace(/\.dwg$/i, '.dxf'));
+    fs.writeFileSync(src, dxf, 'latin1');
+    const c = await odaConvert(src, 'DWG', DWG_VERSIONS.includes(version) ? version : 'ACAD2018');
+    if (c.error) return { error: c.error };
+    fs.copyFileSync(c.path, out);
+    return { path: out };
+  } catch (err) {
+    return { error: 'write', message: String(err && err.message || err) };
+  }
 });
 
 // Plan sheet → PDF: render the sheet HTML in a hidden window and print it at the sheet's paper size
