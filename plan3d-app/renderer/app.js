@@ -315,9 +315,9 @@ async function cadDialog() {
   if (!ed.plan.walls.length) { toast('Add some walls first.'); return; }
   const hasOda = api.hasDwgConverter ? await api.hasDwgConverter() : false;
   const o = await dialogOpen({
-    title: 'Save as AutoCAD drawing',
-    body: `<p>Saves the floor plan 1:1 in inches on standard layers (A-WALL, A-DOOR, A-GLAZ, A-CHASE, A-DIMS …), ready to edit, plot or insert into other drawings.</p>
-      ${fld('File type', `<select id="cadFmt"><option value="dwg" ${cadFmt === 'dwg' ? 'selected' : ''}>DWG – AutoCAD drawing</option><option value="dxf" ${cadFmt === 'dxf' ? 'selected' : ''}>DXF – works in any CAD program</option></select>`)}
+    title: 'Save for AutoCAD or Revit',
+    body: `<p>DWG and DXF save the floor plan 1:1 in inches on standard layers (A-WALL, A-DOOR, A-GLAZ, A-CHASE, A-DIMS …). IFC saves the whole room as a 3D model for Revit.</p>
+      ${fld('File type', `<select id="cadFmt"><option value="dwg" ${cadFmt === 'dwg' ? 'selected' : ''}>DWG – AutoCAD drawing</option><option value="dxf" ${cadFmt === 'dxf' ? 'selected' : ''}>DXF – works in any CAD program</option><option value="ifc" ${cadFmt === 'ifc' ? 'selected' : ''}>Revit 3D model (IFC) – opens in Revit, save it there as .rvt</option></select>`)}
       <div id="cadVerRow">${fld('Version', `<select id="cadVer">${DWG_VERS.map(([v, l]) => `<option value="${v}" ${v === cadVer ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}</div>
       <label class="chk"><input type="checkbox" id="cadDims" ${cadDims ? 'checked' : ''}> Dimension strings</label>
       <label class="chk"><input type="checkbox" id="cadFix" ${cadFix ? 'checked' : ''}> Ceiling lights and fan filter units</label>
@@ -328,6 +328,7 @@ async function cadDialog() {
       const upd = () => {
         const dwg = $('#cadFmt').value === 'dwg';
         $('#cadVerRow').hidden = !dwg;
+        if ($('#cadFmt').value === 'ifc') { $('#cadNote').textContent = 'A full 3D model: walls, posts, doors, glass, pass-thrus, chases, ceiling, lights and FFUs. In Revit: File → Open → IFC, then File → Save As → Project to keep it as an .rvt. Or Insert → Link IFC to drop it into a building model.'; return; }
         $('#cadNote').textContent = dwg ? (hasOda ? 'DWG files are made with ODA File Converter, found on this computer.' : 'DWG needs the free ODA File Converter, which isn’t installed yet. You can save a DXF now; AutoCAD opens DXF files too.') : 'DXF opens in AutoCAD, DraftSight, LibreCAD, SketchUp and most CAD programs.';
       };
       $('#cadFmt').onchange = upd; upd();
@@ -335,6 +336,7 @@ async function cadDialog() {
   });
   if (!o) return;
   cadFmt = o.format; cadVer = o.version; cadDims = o.dims; cadFix = o.fixtures;
+  if (o.format === 'ifc') { exportIfc(o.fixtures); return; }
   let fmtNow = o.format;
   if (fmtNow === 'dwg' && !hasOda) {
     const a = await dialogOpen({
@@ -513,6 +515,78 @@ function moveCeilingDialog() {
   });
 }
 
+/* ---------- Revit / IFC ---------- */
+async function exportIfc(withCeiling) {
+  if (!ed.plan.walls.length) { toast('Add some walls first.'); return; }
+  let ifc;
+  try { ifc = Plan3DIfc.toIfc(clonePlan(), { ceiling: withCeiling !== false }); }
+  catch (e) { toast('Couldn’t make the IFC: ' + e.message); return; }
+  const p = await api.exportFile(ifc, ed.plan.name, 'ifc');
+  if (p) {
+    dialogOpen({
+      title: 'Revit 3D model saved',
+      body: `<p>To make it a Revit .rvt file:</p><ol class="help"><li>In Revit: <b>File → Open → IFC</b> and pick this file.</li><li><b>File → Save As → Project</b>. That's your .rvt.</li></ol><p>To add the cleanroom to an existing building model instead, use <b>Insert → Link IFC</b>.</p>`,
+      buttons: [{ label: 'Show in folder', ret: 'show' }, { label: 'OK', primary: true, ret: null }]
+    }).then(a => { if (a === 'show') api.showInFolder(p); });
+  }
+}
+
+function revitHelp(name) {
+  dialogOpen({
+    wide: true, title: 'Revit files need one export step',
+    body: `<p>${esc(name ? name + ' is a Revit file. ' : '')}Revit's own .rvt format can only be opened by Autodesk software, so Coll Plan3D reads the open <b>IFC</b> format Revit exports.</p>
+      <ol class="help"><li>Open the model in Revit.</li><li><b>File → Export → IFC</b>. The standard settings are fine (IFC4 or IFC 2x3).</li><li>Import the .ifc here. Walls, doors, windows, rooms, ceiling height, lights and FFUs come across and can be edited.</li></ol>
+      <p>For a single floor plan you can also use <b>File → Export → CAD Formats → DWG</b> on a plan view and import the DWG.</p>
+      <p>Going back to Revit: <b>Save DWG / IFC</b> → Revit 3D model, then in Revit <b>File → Open → IFC</b> and <b>Save As → Project</b> for an .rvt.</p>`,
+    buttons: [{ label: 'OK', primary: true, ret: null }]
+  });
+}
+
+function ifcDialog(data) {
+  const X = Plan3DIfc;
+  const saved = X.embeddedPlan(data);
+  const levels = (data.storeys || []).filter(s => s.walls > 0);
+  if (!levels.length && !saved) {
+    dialogOpen({ title: 'No walls found', body: `<p>${esc(data.name)} has no walls Coll Plan3D can read. Check that the IFC export included walls, doors and windows (Revit: File → Export → IFC, default settings).</p>`, buttons: [{ label: 'OK', primary: true, ret: null }] });
+    return;
+  }
+  const best = levels.slice().sort((a, b) => b.walls - a.walls)[0];
+  let res = null;
+  dialogOpen({
+    wide: true, title: 'Import ' + data.name,
+    body: `${saved ? '<p><b>This file was saved by Coll Plan3D.</b> Open the saved project to get everything back exactly, or import it like any Revit model.</p>' : '<p>Pick the level with the cleanroom. Walls, doors, windows and rooms become an editable plan.</p>'}
+      <canvas id="ifPrev" width="620" height="300" style="width:100%;border-radius:8px;display:block"></canvas>
+      <p class="sizeline" id="ifSum"></p>
+      ${levels.length ? fld('Level', `<select id="ifLv">${levels.map(l => `<option value="${l.id}" ${l === best ? 'selected' : ''}>${esc(l.name)} · ${l.walls} walls, ${l.doors} doors</option>`).join('')}</select>`) : ''}
+      <label class="chk"><input type="checkbox" id="ifDoors" checked> Doors</label>
+      <label class="chk"><input type="checkbox" id="ifGlass" checked> Windows as vision glass</label>
+      <label class="chk"><input type="checkbox" id="ifRooms" checked> Room names</label>`,
+    buttons: saved
+      ? [{ label: 'Cancel', ret: null }, { label: 'Import as a model', ret: 'model' }, { label: 'Open the saved project', primary: true, ret: 'saved' }]
+      : [{ label: 'Cancel', ret: null }, { label: 'Import', primary: true, ret: 'model' }],
+    onOpen: () => {
+      const upd = () => {
+        if (!levels.length) { $('#ifSum').textContent = ''; return; }
+        res = X.planFromIfc(data, { level: +$('#ifLv').value, doors: $('#ifDoors').checked, glass: $('#ifGlass').checked, rooms: $('#ifRooms').checked });
+        const c = res.counts, B = Plan3DViewer.analyze(res.plan).bounds;
+        Plan3DCeiling.drawPreview($('#ifPrev'), res.plan, { grid: [], fixtures: (res.plan.fixtures || []).map(f => ({ w: 1.9, h: 3.9, ...f })) });
+        $('#ifSum').textContent = `${c.walls} walls · ${c.doors} doors · ${c.glass} windows · ${c.rooms} rooms` + (c.fixtures ? ` · ${c.fixtures} lights / FFUs` : '') + ` · ${fmt(B.w)} × ${fmt(B.d)} · ${fmt(res.plan.ceiling)} ceiling`;
+      };
+      if (levels.length) { $('#ifLv').onchange = upd; ['#ifDoors', '#ifGlass', '#ifRooms'].forEach(k => $(k).onchange = upd); }
+      upd();
+    }
+  }).then(a => {
+    if (!a) return;
+    let p;
+    if (a === 'saved') p = saved;
+    else { if (!res) return; p = res.plan; }
+    if (!p.name) p.name = data.name;
+    projectPath = null; ed.setPlan(p); ed.dirty = true; hideBanner(); updateChrome();
+    if (view === '2d') setView('split'); else if (viewer) viewer.loadPlan(clonePlan());
+    toast(a === 'saved' ? 'Opened ' + p.name + ' from the IFC.' : `Imported ${p.walls.length} walls and ${p.openings.length} doors and windows from ${data.name}. Edit anything, then Save.`);
+  });
+}
+
 /* ---------- Dialog helper ---------- */
 function dialogOpen({ title, body, buttons, onOpen, wide }) {
   return new Promise(resolve => {
@@ -647,6 +721,7 @@ async function guardUnsaved() {
 }
 async function handleLoaded(r) {
   if (!r) return;
+  if (r.kind === 'error' && r.code === 'revit') { revitHelp(r.name + r.ext); return; }
   if (r.kind === 'error') {
     const text = r.code === 'nodwg'
       ? `<p>DWG files need a free converter. Either:</p><ol class="help"><li>In AutoCAD, use <b>Save As → AutoCAD DXF (*.dxf)</b> and import the DXF, or</li><li>Install the free <b>ODA File Converter</b>, then import the DWG again. Coll Plan3D finds it automatically.</li></ol>`
@@ -664,6 +739,7 @@ async function handleLoaded(r) {
     toast('Opened ' + (p.name || r.name)); return;
   }
   if (r.kind === 'dxf') { if (await openCadProject(r)) return; dxfDialog(r); return; }
+  if (r.kind === 'ifc') { ifcDialog(r); return; }
   if (r.kind === 'image') {
     const im = new Image();
     im.onload = () => {
@@ -734,7 +810,8 @@ function helpDialog() {
       <h4>From AutoCAD</h4><ol><li>Import plan → pick your .dxf (or .dwg with ODA File Converter installed).</li><li>Tick the wall layers, check the size line reads right, and import.</li><li>Add doors, glass and air chases, label rooms, then switch to 3D.</li></ol>
       <h4>From a photo or scan</h4><ol><li>Shoot the sheet flat and straight-on. Import the image.</li><li>Rotate it upright in the right panel, then use Scale: click both ends of a known dimension and type it.</li><li>Detect walls, or trace them with the Wall tool. Typing a length while drawing places the wall exactly.</li></ol>
       <h4>Ceiling</h4><ul><li>Add ceiling picks a ceiling drawing (DWG, DXF) or a picture of one. Lights, fan filter units and the T-grid are placed over your room and show in 3D.</li><li>Click Add ceiling again to move, turn, replace or remove it.</li></ul>
-      <h4>Back to AutoCAD</h4><ul><li>Save DWG / DXF (Ctrl+D) saves the plan 1:1 in inches on standard layers, with dimensions. DWG uses the free ODA File Converter.</li><li>Open that file in Coll Plan3D again and the doors, glass, chases and rooms come back exactly.</li></ul>
+      <h4>Revit</h4><ul><li>In Revit: File → Export → IFC, then Import plan here and pick the .ifc. Walls, doors, windows, rooms, lights and FFUs become an editable plan.</li><li>Save DWG / IFC → Revit 3D model saves the whole room in 3D. In Revit: File → Open → IFC, then Save As → Project for an .rvt.</li></ul>
+      <h4>Back to AutoCAD</h4><ul><li>Save DWG / IFC (Ctrl+D) saves the plan 1:1 in inches on standard layers, with dimensions. DWG uses the free ODA File Converter.</li><li>Open that file in Coll Plan3D again and the doors, glass, chases and rooms come back exactly.</li></ul>
       <h4>Sharing</h4><ul><li>Export walkthrough saves one .html file. Anyone can open it in a browser, on a phone too.</li><li>Export .glb opens in Windows 3D Viewer, SketchUp, Blender and most 3D tools.</li></ul></div>`,
     buttons: [{ label: 'Close', primary: true, ret: null }]
   });
@@ -747,7 +824,7 @@ $('#wDraw').onclick = () => { $('#welcome').hidden = true; ed.setTool('wall'); $
 
 if (api.onMenu) api.onMenu(async (a) => {
   ({ import: importPlan, open: openProject, sample: openSample, save: () => save(false), saveas: () => save(true), 'export-html': exportHtml, 'export-glb': exportGlb,
-     new: newPlan, undo: () => ed.undo(), redo: () => ed.redo(), 'view-2d': () => setView('2d'), 'view-split': () => setView('split'), 'view-3d': () => setView('3d'), 'view-build': () => setView('build'), 'export-parts': exportParts, sheet: sheetDialog, 'export-cad': cadDialog, ceiling: ceilingMenu,
+     new: newPlan, undo: () => ed.undo(), redo: () => ed.redo(), 'view-2d': () => setView('2d'), 'view-split': () => setView('split'), 'view-3d': () => setView('3d'), 'view-build': () => setView('build'), 'export-parts': exportParts, sheet: sheetDialog, 'export-cad': cadDialog, 'export-ifc': () => exportIfc(true), ceiling: ceilingMenu,
      fit: () => ed.fit(), help: helpDialog,
      'request-close': async () => {
        if (!ed.dirty) return api.confirmClose();
@@ -771,5 +848,5 @@ window.addEventListener('drop', async e => {
 
 renderProps(); updateChrome(); toolHint('select');
 if (api.rendererReady) api.rendererReady();
-window.__app = { ed, setView, handleLoaded, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, get viewer() { return viewer; }, get builder() { return builder; } };
+window.__app = { ed, setView, handleLoaded, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
 })();

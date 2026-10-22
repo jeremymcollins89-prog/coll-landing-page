@@ -10,14 +10,14 @@
 <header class="bar">
   <div class="brand"><span class="mark" aria-hidden="true"></span><div><b>Coll Plan3D</b><small id="docName">Untitled plan</small></div></div>
   <div class="actions">
-    <button id="bImport" class="btn primary" title="Import a DXF, DWG or plan image (Ctrl+I)">Import plan…</button>
+    <button id="bImport" class="btn primary" title="Import a DWG, DXF, Revit IFC or plan image (Ctrl+I)">Import plan…</button>
     <button id="bCeiling" class="btn" title="Add a ceiling drawing (DWG, DXF or picture) on top of the room">Add ceiling</button>
     <button id="bOpen" class="btn" title="Open a saved project (Ctrl+O)">Open</button>
     <button id="bSave" class="btn" title="Save project (Ctrl+S)">Save</button>
     <div class="sep"></div>
     <button id="bExportHtml" class="btn" title="Save a walkthrough page anyone can open in a browser (Ctrl+E)">Export walkthrough</button>
     <button id="bSheet" class="btn" title="Printable floor plan with dimensions and title block (Ctrl+P)">Plan sheet</button>
-    <button id="bExportCad" class="btn" title="Save the floor plan as an AutoCAD drawing, DWG or DXF (Ctrl+D)">Save DWG / DXF</button>
+    <button id="bExportCad" class="btn" title="Save the plan for AutoCAD (DWG, DXF) or Revit (IFC) (Ctrl+D)">Save DWG / IFC</button>
     <button id="bExportGlb" class="btn" title="Save a .glb 3D model for SketchUp, Blender, Windows 3D Viewer">Export .glb</button>
   </div>
   <div class="views" role="group" aria-label="View">
@@ -91,6 +91,7 @@
 <script src="sheet.js"></script>
 <script src="cad.js"></script>
 <script src="ceiling.js"></script>
+<script src="ifc.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
