@@ -16,7 +16,7 @@ const LAYERS = [
   ['A-WALL', 7, 'CONTINUOUS'], ['A-WALL-SP', 2, 'CONTINUOUS'], ['A-WALL-JOINT', 8, 'CONTINUOUS'], ['A-WALL-POST', 7, 'CONTINUOUS'],
   ['A-DOOR', 4, 'CONTINUOUS'], ['A-DOOR-SWING', 4, 'DASHED'], ['A-GLAZ', 5, 'CONTINUOUS'], ['A-PASS', 6, 'CONTINUOUS'],
   ['A-OPEN', 4, 'DASHED'], ['A-CHASE', 8, 'CONTINUOUS'], ['A-CHASE-HATCH', 9, 'CONTINUOUS'], ['A-GRILLE', 7, 'CONTINUOUS'],
-  ['A-CLNG-FIXT', 8, 'DASHED'], ['A-DIMS', 3, 'CONTINUOUS'], ['A-ANNO-ROOM', 7, 'CONTINUOUS'], ['A-ANNO-TAG', 2, 'CONTINUOUS'],
+  ['A-CLNG-FIXT', 8, 'DASHED'], ['A-CLNG-GRID', 9, 'CONTINUOUS'], ['A-DIMS', 3, 'CONTINUOUS'], ['A-ANNO-ROOM', 7, 'CONTINUOUS'], ['A-ANNO-TAG', 2, 'CONTINUOUS'],
   [DATA_LAYER, 8, 'CONTINUOUS', true]
 ];
 // Layers whose lines make up the walls (used to tell whether the drawing was changed in AutoCAD)
@@ -156,9 +156,11 @@ function toDxf(plan, opts) {
   // ---- ceiling fixtures (LED lights / fan filter units), 2×4
   if (opts.fixtures !== false) {
     for (const f of V.ceilingFixtures(plan, A)) {
-      pline('A-CLNG-FIXT', [[f.x - 0.95, f.y - 1.95], [f.x + 0.95, f.y - 1.95], [f.x + 0.95, f.y + 1.95], [f.x - 0.95, f.y + 1.95]], true);
-      text('A-CLNG-FIXT', f.x, f.y, f.type === 'ffu' ? 'FFU' : 'LED', 0.3, 90);
+      const hw = (f.w || 1.9) / 2, hh = (f.h || 3.9) / 2;
+      pline('A-CLNG-FIXT', [[f.x - hw, f.y - hh], [f.x + hw, f.y - hh], [f.x + hw, f.y + hh], [f.x - hw, f.y + hh]], true);
+      text('A-CLNG-FIXT', f.x, f.y, f.type === 'ffu' ? 'FFU' : 'LED', 0.3, hh >= hw ? 90 : 0);
     }
+    for (const q of plan.ceilingGrid || []) line('A-CLNG-GRID', q[0], q[1], q[2], q[3]);
   }
 
   // ---- dimension strings (same layout as the plan sheet)

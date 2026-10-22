@@ -390,6 +390,129 @@ async function openCadProject(r) {
   return true;
 }
 
+/* ---------- Ceiling drawing ---------- */
+async function ceilingMenu() {
+  if (!ed.plan.walls.length) { toast('Add or import the floor plan first, then add the ceiling on top of it.'); return; }
+  const P = ed.plan;
+  if (P.ceilingSource) {
+    const a = await dialogOpen({
+      title: 'Ceiling', body: `<p>The ceiling on this plan came from <b>${esc(P.ceilingSource)}</b>.</p>`,
+      buttons: [{ label: 'Remove it', danger: true, ret: 'remove' }, { label: 'Move or turn', ret: 'move' }, { label: 'Use another drawing', primary: true, ret: 'new' }]
+    });
+    if (a === 'remove') { ed.edit(Q => Plan3DCeiling.removeCeiling(Q)); toast('Ceiling removed. The automatic light layout is back.'); return; }
+    if (a === 'move') { moveCeilingDialog(); return; }
+    if (a !== 'new') return;
+  }
+  const r = await api.openFile('ceiling');
+  if (!r) return;
+  if (r.kind === 'error') { handleLoaded(r); return; }
+  if (r.kind === 'image') { imageCeilingDialog(r); return; }
+  if (r.kind === 'dxf') { cadCeilingDialog(r); return; }
+  toast('Pick a DWG, DXF or picture of the ceiling.');
+}
+
+function ceilingApplied(what) {
+  if (view === '2d') setView('3d');
+  toast(what + ' Walk view shows it overhead; Dollhouse hides the ceiling.');
+}
+
+function nudgeFields() {
+  return `<div class="row" style="gap:12px;align-items:center">${fld('Turn', `<select id="ceRot"><option value="0">As drawn</option><option value="90">90° right</option><option value="180">180°</option><option value="270">90° left</option></select>`)}
+    ${fld('Move right', '<input type="text" id="ceDx" value="0" style="width:90px">')}${fld('Move down', '<input type="text" id="ceDy" value="0" style="width:90px">')}</div>`;
+}
+const readNudge = () => ({ rot: +$('#ceRot').value, dx: parseLen($('#ceDx').value || '0', 'ft') || 0, dy: parseLen($('#ceDy').value || '0', 'ft') || 0 });
+
+function cadCeilingDialog(data) {
+  const C = Plan3DCeiling, iu = data.insunits;
+  const unitOpts = [[1, 'Inches'], [2, 'Feet'], [4, 'Millimeters'], [5, 'Centimeters'], [6, 'Meters']];
+  const defUnit = IMP.UNIT_FT[iu] && iu ? iu : 1;
+  const layers = C.gridLayerList(data);
+  const refDefault = (layers.find(l => l.wall) || {}).name || '';
+  const types = {};
+  let groups = [], placed = null;
+  dialogOpen({
+    wide: true, title: 'Add ceiling: ' + data.name,
+    body: `<p>Lights and fan filter units are read from the fixture outlines; the T-grid from the layers you tick. It's centred on your room. Check the preview, then add it.</p>
+      <canvas id="cePrev" width="620" height="330" style="width:100%;border-radius:8px;display:block"></canvas>
+      <p class="sizeline" id="ceSum"></p>
+      ${fld('Drawing units', `<select id="ceU">${unitOpts.map(([v, l]) => `<option value="${v}" ${v === defUnit ? 'selected' : ''}>${l}${v === iu ? ' (from file)' : ''}</option>`).join('')}</select>`)}
+      <h4 style="margin:12px 0 6px">Fixtures found</h4><div class="layers" id="ceGroups" style="max-height:170px"></div>
+      <h4 style="margin:12px 0 6px">Grid layers</h4><div class="layers" id="ceGrid" style="max-height:130px">${layers.map(l => `<label><input type="checkbox" value="${esc(l.name)}" ${l.grid ? 'checked' : ''}><span>${esc(l.name)}</span><small>${l.count} lines</small></label>`).join('')}</div>
+      ${fld('Line up using', `<select id="ceRef"><option value="">The grid and fixtures</option>${layers.map(l => `<option value="${esc(l.name)}" ${l.name === refDefault ? 'selected' : ''}>Layer ${esc(l.name)}${l.wall ? ' (walls)' : ''}</option>`).join('')}</select>`)}
+      ${nudgeFields()}`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Add to the 3D model', primary: true, value: () => (placed && (placed.grid.length || placed.fixtures.length)) ? 'ok' : (toast('Nothing to add yet. Tick the grid layers or set fixtures to LED / FFU.'), false) }],
+    onOpen: (d) => {
+      d.classList.add('wide-xl');
+      const unitFt = () => IMP.UNIT_FT[+$('#ceU').value] || 1 / 12;
+      const drawGroups = () => {
+        groups = C.fixtureGroups(data, unitFt());
+        $('#ceGroups').innerHTML = groups.length ? groups.slice(0, 40).map((g, i) => `<label style="grid-template-columns:1fr auto auto"><span>${esc(g.name ? g.name + ' · ' : '')}${esc(g.layer)} <small>${g.w}′ × ${g.h}′${g.tag ? ' · “' + esc(g.tag) + '”' : ''}</small></span><small>${g.count}</small>
+          <select data-k="${i}"><option value="led" ${(types[g.key] || g.type) === 'led' ? 'selected' : ''}>LED light</option><option value="ffu" ${(types[g.key] || g.type) === 'ffu' ? 'selected' : ''}>Fan filter unit</option><option value="ignore" ${(types[g.key] || g.type) === 'ignore' ? 'selected' : ''}>Not a fixture</option></select></label>`).join('')
+          : '<p style="margin:6px">No fixture-sized rectangles or blocks. Check the drawing units.</p>';
+        $$('#ceGroups select').forEach(sel => sel.onchange = () => { types[groups[+sel.dataset.k].key] = sel.value; upd(); });
+      };
+      const upd = () => {
+        const n = readNudge();
+        placed = C.placeCad(data, ed.plan, { unitFt: unitFt(), gridLayers: new Set($$('#ceGrid input').filter(i => i.checked).map(i => i.value)), types, groups, refLayer: $('#ceRef').value, rot: n.rot, dx: n.dx, dy: n.dy });
+        C.drawPreview($('#cePrev'), ed.plan, placed);
+        const B = Plan3DViewer.analyze(ed.plan).bounds;
+        const nL = placed.fixtures.filter(f => f.type === 'led').length, nF = placed.fixtures.filter(f => f.type === 'ffu').length;
+        $('#ceSum').textContent = `${placed.grid.length} grid lines · ${nL} lights · ${nF} FFUs` + (placed.ref ? ` · lined-up outline ${fmt(placed.ref.w)} × ${fmt(placed.ref.h)}, room ${fmt(B.w)} × ${fmt(B.d)}` : '') + (placed.outside ? ` · ${placed.outside} outside the room left off` : '');
+      };
+      $('#ceU').onchange = () => { drawGroups(); upd(); };
+      $('#ceGrid').addEventListener('change', upd); $('#ceRef').onchange = upd; $('#ceRot').onchange = upd;
+      $('#ceDx').oninput = upd; $('#ceDy').oninput = upd;
+      drawGroups(); upd();
+    }
+  }).then(ok => {
+    $('#dlg').classList.remove('wide-xl');
+    if (ok !== 'ok' || !placed) return;
+    ed.edit(P => { P.ceilingGrid = placed.grid; P.fixtures = placed.fixtures; P.ceilingMode = 'manual'; P.ceilingSource = data.name; delete P.ceilingImage; });
+    ceilingApplied(`Ceiling added: ${placed.fixtures.length} fixtures and ${placed.grid.length} grid lines.`);
+  });
+}
+
+function imageCeilingDialog(r) {
+  const C = Plan3DCeiling, img = new Image();
+  let placed = null;
+  const upd = () => { const n = readNudge(); placed = { image: C.placeImage(ed.plan, r.dataUrl, n) }; C.drawPreview($('#cePrev'), ed.plan, placed, img); };
+  img.onload = () => { if ($('#cePrev')) upd(); };
+  img.src = r.dataUrl;
+  dialogOpen({
+    wide: true, title: 'Add ceiling picture: ' + r.name,
+    body: `<p>The picture is stretched over the room's outline. For a good fit, crop it to the room's outside walls first.</p>
+      <canvas id="cePrev" width="620" height="330" style="width:100%;border-radius:8px;display:block"></canvas>
+      ${nudgeFields()}
+      <label class="chk"><input type="checkbox" id="ceHide" checked> Hide the automatic lights and FFUs (the picture shows them)</label>`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Add to the 3D model', primary: true, value: () => ({ hide: $('#ceHide').checked }) }],
+    onOpen: () => { $('#ceRot').onchange = upd; $('#ceDx').oninput = upd; $('#ceDy').oninput = upd; if (img.complete) upd(); }
+  }).then(o => {
+    if (!o || !placed) return;
+    ed.edit(P => { P.ceilingImage = placed.image; P.ceilingSource = r.name; delete P.ceilingGrid; if (o.hide) { P.ceilingMode = 'manual'; P.fixtures = []; } });
+    ceilingApplied('Ceiling picture added.');
+  });
+}
+
+function moveCeilingDialog() {
+  const C = Plan3DCeiling;
+  let img = null;
+  const draw = () => {
+    const n = readNudge(), Q = clonePlan(); C.shiftCeiling(Q, n.dx, n.dy, n.rot);
+    C.drawPreview($('#cePrev'), Q, { grid: Q.ceilingGrid || [], fixtures: (Q.fixtures || []).map(f => ({ w: 1.9, h: 3.9, ...f })), image: Q.ceilingImage }, img);
+  };
+  if (ed.plan.ceilingImage) { img = new Image(); img.onload = () => { if ($('#cePrev')) draw(); }; img.src = ed.plan.ceilingImage.dataUrl; }
+  dialogOpen({
+    wide: true, title: 'Move or turn the ceiling',
+    body: `<canvas id="cePrev" width="620" height="330" style="width:100%;border-radius:8px;display:block"></canvas>${nudgeFields()}`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Apply', primary: true, value: () => readNudge() }],
+    onOpen: () => { $('#ceRot').onchange = draw; $('#ceDx').oninput = draw; $('#ceDy').oninput = draw; draw(); }
+  }).then(n => {
+    if (!n || (!n.dx && !n.dy && !n.rot)) return;
+    ed.edit(P => C.shiftCeiling(P, n.dx, n.dy, n.rot));
+    toast('Ceiling moved.');
+  });
+}
+
 /* ---------- Dialog helper ---------- */
 function dialogOpen({ title, body, buttons, onOpen, wide }) {
   return new Promise(resolve => {
@@ -610,6 +733,7 @@ function helpDialog() {
     body: `<div class="help">
       <h4>From AutoCAD</h4><ol><li>Import plan → pick your .dxf (or .dwg with ODA File Converter installed).</li><li>Tick the wall layers, check the size line reads right, and import.</li><li>Add doors, glass and air chases, label rooms, then switch to 3D.</li></ol>
       <h4>From a photo or scan</h4><ol><li>Shoot the sheet flat and straight-on. Import the image.</li><li>Rotate it upright in the right panel, then use Scale: click both ends of a known dimension and type it.</li><li>Detect walls, or trace them with the Wall tool. Typing a length while drawing places the wall exactly.</li></ol>
+      <h4>Ceiling</h4><ul><li>Add ceiling picks a ceiling drawing (DWG, DXF) or a picture of one. Lights, fan filter units and the T-grid are placed over your room and show in 3D.</li><li>Click Add ceiling again to move, turn, replace or remove it.</li></ul>
       <h4>Back to AutoCAD</h4><ul><li>Save DWG / DXF (Ctrl+D) saves the plan 1:1 in inches on standard layers, with dimensions. DWG uses the free ODA File Converter.</li><li>Open that file in Coll Plan3D again and the doors, glass, chases and rooms come back exactly.</li></ul>
       <h4>Sharing</h4><ul><li>Export walkthrough saves one .html file. Anyone can open it in a browser, on a phone too.</li><li>Export .glb opens in Windows 3D Viewer, SketchUp, Blender and most 3D tools.</li></ul></div>`,
     buttons: [{ label: 'Close', primary: true, ret: null }]
@@ -618,12 +742,12 @@ function helpDialog() {
 
 $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave').onclick = () => save(false);
 $('#bExportHtml').onclick = exportHtml; $('#bSheet').onclick = sheetDialog; $('#bExportCad').onclick = cadDialog; $('#bExportGlb').onclick = exportGlb;
-$('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
+$('#bCeiling').onclick = ceilingMenu; $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
 $('#wDraw').onclick = () => { $('#welcome').hidden = true; ed.setTool('wall'); $('#plan').focus(); };
 
 if (api.onMenu) api.onMenu(async (a) => {
   ({ import: importPlan, open: openProject, sample: openSample, save: () => save(false), saveas: () => save(true), 'export-html': exportHtml, 'export-glb': exportGlb,
-     new: newPlan, undo: () => ed.undo(), redo: () => ed.redo(), 'view-2d': () => setView('2d'), 'view-split': () => setView('split'), 'view-3d': () => setView('3d'), 'view-build': () => setView('build'), 'export-parts': exportParts, sheet: sheetDialog, 'export-cad': cadDialog,
+     new: newPlan, undo: () => ed.undo(), redo: () => ed.redo(), 'view-2d': () => setView('2d'), 'view-split': () => setView('split'), 'view-3d': () => setView('3d'), 'view-build': () => setView('build'), 'export-parts': exportParts, sheet: sheetDialog, 'export-cad': cadDialog, ceiling: ceilingMenu,
      fit: () => ed.fit(), help: helpDialog,
      'request-close': async () => {
        if (!ed.dirty) return api.confirmClose();
@@ -647,5 +771,5 @@ window.addEventListener('drop', async e => {
 
 renderProps(); updateChrome(); toolHint('select');
 if (api.rendererReady) api.rendererReady();
-window.__app = { ed, setView, handleLoaded, get viewer() { return viewer; }, get builder() { return builder; } };
+window.__app = { ed, setView, handleLoaded, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, get viewer() { return viewer; }, get builder() { return builder; } };
 })();

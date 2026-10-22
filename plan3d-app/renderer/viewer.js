@@ -177,6 +177,7 @@ function ceilingFixtures(plan, A) {
 /* ---------- three.js scene ---------- */
 // Textures are drawn once and reused, so rebuilding the model after each edit stays fast
 const CANVAS_CACHE = {};
+const IMG_TEX = {}; // ceiling pictures, loaded once
 function cachedCanvas(key, make) { return CANVAS_CACHE[key] || (CANVAS_CACHE[key] = make()); }
 let ANISO = 4;
 function buildScene(THREE, plan, A) {
@@ -409,13 +410,43 @@ function buildScene(THREE, plan, A) {
   // Ceiling: 2×4 grid, alternating LED troffers and fan filter units, kept clear of walls
   const ceiling = new THREE.Group(); root.add(ceiling);
   const cTex = new THREE.CanvasTexture(ceilCanvas); cTex.wrapS = cTex.wrapT = THREE.RepeatWrapping; cTex.repeat.set(B.w / 2, B.d / 4); cTex.anisotropy = ANISO;
-  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.d), new THREE.MeshLambertMaterial({ map: cTex, color: 0xbfc2c2, emissive: 0x9a9c9c, emissiveMap: cTex }));
+  // An imported ceiling drawing brings its own grid lines: then the tiles are plain and the T-grid is drawn from the drawing
+  const ownGrid = Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length > 0;
+  let cMap = cTex;
+  if (ownGrid) {
+    const plain = cachedCanvas('ceilPlain', () => makeCanvas(128, 128, (g, w, h) => { g.fillStyle = '#f1f2f1'; g.fillRect(0, 0, w, h); for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(120,124,126,${Math.random() * .22})`; g.fillRect(Math.random() * w, Math.random() * h, 1, 1); } }));
+    cMap = new THREE.CanvasTexture(plain); cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.repeat.set(B.w / 2, B.d / 2); cMap.anisotropy = ANISO;
+  }
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.d), new THREE.MeshLambertMaterial({ map: cMap, color: 0xbfc2c2, emissive: 0x9a9c9c, emissiveMap: cMap }));
   ceil.rotation.x = Math.PI / 2; ceil.position.set(B.cx, H, B.cz); ceiling.add(ceil);
+  if (ownGrid) {
+    // 15/16″ white T-bar, all lines in one mesh
+    const tw = 0.078 / 2, pos = [];
+    for (const q of plan.ceilingGrid) {
+      const L = Math.hypot(q[2] - q[0], q[3] - q[1]); if (!(L > 0.01)) continue;
+      const nx = -(q[3] - q[1]) / L * tw, nz = (q[2] - q[0]) / L * tw, y = H - 0.012;
+      const a = [q[0] + nx, y, q[1] + nz], b = [q[2] + nx, y, q[3] + nz], c = [q[2] - nx, y, q[3] - nz], d = [q[0] - nx, y, q[1] - nz];
+      pos.push(...a, ...c, ...b, ...a, ...d, ...c);
+    }
+    const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    ceiling.add(new THREE.Mesh(gg, new THREE.MeshBasicMaterial({ color: 0xd0d6d9, side: THREE.DoubleSide })));
+  }
+  // A picture of the ceiling laid over it
+  if (plan.ceilingImage && plan.ceilingImage.dataUrl) {
+    const I = plan.ceilingImage, q = (I.rot || 0) % 180 ? [I.h, I.w] : [I.w, I.h];
+    const tex = IMG_TEX[I.dataUrl] || (IMG_TEX[I.dataUrl] = new THREE.TextureLoader().load(I.dataUrl));
+    tex.anisotropy = ANISO;
+    const im = new THREE.Mesh(new THREE.PlaneGeometry(q[0], q[1]), new THREE.MeshBasicMaterial({ map: tex, color: 0xe6e8e8, side: THREE.DoubleSide }));
+    im.rotation.order = 'YXZ'; im.rotation.x = -Math.PI / 2; /* picture's top toward the plan's top */ im.rotation.y = -(I.rot || 0) * Math.PI / 180;
+    im.position.set(I.x, H - 0.006, I.y); ceiling.add(im);
+  }
   const led = new THREE.MeshBasicMaterial({ color: 0xffffff }), ffu = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(ffuCanvas) });
-  const fg = new THREE.BoxGeometry(1.9, 0.08, 3.9);
+  const fg = new THREE.BoxGeometry(1.9, 0.08, 3.9), fgs = {};
   const fixtures = new THREE.Group(); root.add(fixtures);
   for (const f of ceilingFixtures(plan, A)) {
-    const m = new THREE.Mesh(fg, f.type === 'ffu' ? ffu : led); m.position.set(f.x, H - 0.04, f.y);
+    let geo = fg;
+    if (f.w > 0 && f.h > 0 && !(Math.abs(f.w - 2) < 0.06 && Math.abs(f.h - 4) < 0.06)) { const key = f.w.toFixed(2) + 'x' + f.h.toFixed(2); geo = fgs[key] || (fgs[key] = new THREE.BoxGeometry(Math.max(0.3, f.w - 0.1), 0.08, Math.max(0.3, f.h - 0.1))); }
+    const m = new THREE.Mesh(geo, f.type === 'ffu' ? ffu : led); m.position.set(f.x, H - 0.04, f.y);
     if (f.id) m.userData.ref = { kind: 'fixture', id: f.id };
     fixtures.add(m);
   }
