@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('api', {
   showInFolder: (p) => ipcRenderer.invoke('show-in-folder', p),
   openUrl: (u) => ipcRenderer.invoke('open-url', u),
   confirmClose: () => ipcRenderer.invoke('confirm-close'),
+  closeDialog: (open) => ipcRenderer.send('close-dialog', open),
+  closeCancelled: () => ipcRenderer.send('close-cancelled'),
+  rendererReady: () => ipcRenderer.send('renderer-ready'),
   onMenu: (cb) => ipcRenderer.on('menu', (e, a) => cb(a)),
   onOpenPath: (cb) => ipcRenderer.on('open-path', (e, p) => cb(p))
 });

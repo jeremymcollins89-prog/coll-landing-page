@@ -541,7 +541,11 @@ if (api.onMenu) api.onMenu(async (a) => {
   ({ import: importPlan, open: openProject, sample: openSample, save: () => save(false), saveas: () => save(true), 'export-html': exportHtml, 'export-glb': exportGlb,
      new: newPlan, undo: () => ed.undo(), redo: () => ed.redo(), 'view-2d': () => setView('2d'), 'view-split': () => setView('split'), 'view-3d': () => setView('3d'), 'view-build': () => setView('build'), 'export-parts': exportParts, sheet: sheetDialog,
      fit: () => ed.fit(), help: helpDialog,
-     'request-close': async () => { if (await guardUnsaved()) api.confirmClose(); } }[a] || (() => {}))();
+     'request-close': async () => {
+       if (!ed.dirty) return api.confirmClose();
+       if (api.closeDialog) api.closeDialog(true);
+       if (await guardUnsaved()) api.confirmClose(); else if (api.closeCancelled) api.closeCancelled();
+     } }[a] || (() => {}))();
 });
 if (api.onOpenPath) api.onOpenPath(async p => handleLoaded(await api.loadPath(p)));
 
@@ -558,5 +562,6 @@ window.addEventListener('drop', async e => {
 });
 
 renderProps(); updateChrome(); toolHint('select');
+if (api.rendererReady) api.rendererReady();
 window.__app = { ed, setView, handleLoaded, get viewer() { return viewer; }, get builder() { return builder; } };
 })();

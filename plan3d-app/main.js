@@ -85,14 +85,39 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.on('close', (e) => {
-    // Ask renderer whether there are unsaved changes
+    // Ask the window whether there are unsaved changes. If it doesn't answer quickly
+    // (page broken, crashed or still loading), close anyway so the app never hangs or lingers.
     if (win.__allowClose) return;
     e.preventDefault();
-    win.webContents.send('menu', 'request-close');
+    if (win.__closeAsked) return;
+    win.__closeAsked = true;
+    const wc = win.webContents;
+    if (wc.isCrashed() || wc.isLoading() || !win.__rendererReady) return forceClose();
+    win.__closeTimer = setTimeout(() => { if (!win.__dialogOpen) forceClose(); }, 2500);
+    wc.send('menu', 'request-close');
   });
+  win.on('closed', () => { win = null; });
+  win.webContents.on('render-process-gone', () => { if (win) win.__rendererReady = false; });
 }
 
-ipcMain.handle('confirm-close', () => { win.__allowClose = true; win.close(); });
+function forceClose() {
+  if (!win) return;
+  clearTimeout(win.__closeTimer);
+  win.__allowClose = true;
+  win.close();
+}
+
+// Renderer says it is up and running (3D libraries loaded)
+ipcMain.on('renderer-ready', () => { if (win) win.__rendererReady = true; });
+// Renderer is showing the "unsaved changes" question: wait for the person's answer
+ipcMain.on('close-dialog', (e, open) => {
+  if (!win) return;
+  win.__dialogOpen = !!open;
+  if (open) clearTimeout(win.__closeTimer);
+});
+// Renderer answered "don't close" (Cancel)
+ipcMain.on('close-cancelled', () => { if (win) { clearTimeout(win.__closeTimer); win.__closeAsked = false; win.__dialogOpen = false; } });
+ipcMain.handle('confirm-close', () => forceClose());
 
 // ---------- File loading ----------
 const IMAGE_EXT = ['.png', '.jpg', '.jpeg', '.bmp', '.webp', '.gif'];
@@ -283,10 +308,11 @@ ipcMain.handle('export-pdf', async (e, { html, name, w, h }) => {
 });
 
 ipcMain.handle('get-assets', () => {
-  const rd = (p) => fs.readFileSync(require.resolve(p), 'utf8');
+  // three.js ships inside the app (renderer/vendor) so the installed app never depends on node_modules for 3D
+  const rd = (f) => fs.readFileSync(path.join(__dirname, 'renderer', 'vendor', f), 'utf8');
   return {
-    three: rd('three/build/three.min.js'),
-    orbit: rd('three/examples/js/controls/OrbitControls.js'),
+    three: rd('three.min.js'),
+    orbit: rd('OrbitControls.js'),
     viewer: fs.readFileSync(path.join(__dirname, 'renderer', 'viewer.js'), 'utf8')
   };
 });
@@ -295,7 +321,22 @@ ipcMain.handle('open-path', (e, p) => shell.openPath(p));
 ipcMain.handle('show-in-folder', (e, p) => shell.showItemInFolder(p));
 ipcMain.handle('open-url', (e, u) => { if (/^https:\/\//.test(u)) shell.openExternal(u); });
 
+// Only one copy of the app at a time: opening it again (or double-clicking a .plan3d file)
+// brings the existing window forward instead of starting a second copy.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', (e, argv) => {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+    const f = argv.slice(1).find(a => /\.(dxf|dwg|png|jpe?g|bmp|webp|plan3d)$/i.test(a));
+    if (f) win.webContents.send('open-path', f);
+  });
+}
+
 app.whenReady().then(() => {
+  if (!app.hasSingleInstanceLock()) return;
   buildMenu();
   createWindow();
   // File passed on the command line / "Open with"
