@@ -114,6 +114,7 @@ function wallsFromDxf(data, o) {
   if (!segs.length) return [];
   let minX = 1e18, maxY = -1e18;
   segs.forEach(s => { minX = Math.min(minX, s[0], s[2]); maxY = Math.max(maxY, s[1], s[3]); });
+  if (o.keepOrigin) { minX = 0; maxY = 0; } // drawings saved by Coll Plan3D: keep the project's own coordinates
   // DXF y is up; plan y is down. Origin at top-left of the selection.
   const S = segs.map(s => ({ x1: (s[0] - minX) * k, y1: (maxY - s[1]) * k, x2: (s[2] - minX) * k, y2: (maxY - s[3]) * k }));
   let walls;

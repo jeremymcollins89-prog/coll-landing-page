@@ -308,6 +308,88 @@ function sheetDialog() {
   });
 }
 
+/* ---------- AutoCAD drawing (DWG / DXF) ---------- */
+const DWG_VERS = [['ACAD2018', 'AutoCAD 2018 – 2026'], ['ACAD2013', 'AutoCAD 2013 – 2017'], ['ACAD2010', 'AutoCAD 2010 – 2012'], ['ACAD2007', 'AutoCAD 2007 – 2009'], ['ACAD2004', 'AutoCAD 2004 – 2006'], ['ACAD2000', 'AutoCAD 2000 – 2002']];
+let cadFmt = 'dwg', cadVer = 'ACAD2018', cadDims = true, cadFix = true;
+async function cadDialog() {
+  if (!ed.plan.walls.length) { toast('Add some walls first.'); return; }
+  const hasOda = api.hasDwgConverter ? await api.hasDwgConverter() : false;
+  const o = await dialogOpen({
+    title: 'Save as AutoCAD drawing',
+    body: `<p>Saves the floor plan 1:1 in inches on standard layers (A-WALL, A-DOOR, A-GLAZ, A-CHASE, A-DIMS …), ready to edit, plot or insert into other drawings.</p>
+      ${fld('File type', `<select id="cadFmt"><option value="dwg" ${cadFmt === 'dwg' ? 'selected' : ''}>DWG – AutoCAD drawing</option><option value="dxf" ${cadFmt === 'dxf' ? 'selected' : ''}>DXF – works in any CAD program</option></select>`)}
+      <div id="cadVerRow">${fld('Version', `<select id="cadVer">${DWG_VERS.map(([v, l]) => `<option value="${v}" ${v === cadVer ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}</div>
+      <label class="chk"><input type="checkbox" id="cadDims" ${cadDims ? 'checked' : ''}> Dimension strings</label>
+      <label class="chk"><input type="checkbox" id="cadFix" ${cadFix ? 'checked' : ''}> Ceiling lights and fan filter units</label>
+      <p class="sizeline" id="cadNote"></p>
+      <p>Opening the file in Coll Plan3D again brings back the doors, glass, chases and rooms exactly.</p>`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Save', primary: true, value: () => ({ format: $('#cadFmt').value, version: $('#cadVer').value, dims: $('#cadDims').checked, fixtures: $('#cadFix').checked }) }],
+    onOpen: () => {
+      const upd = () => {
+        const dwg = $('#cadFmt').value === 'dwg';
+        $('#cadVerRow').hidden = !dwg;
+        $('#cadNote').textContent = dwg ? (hasOda ? 'DWG files are made with ODA File Converter, found on this computer.' : 'DWG needs the free ODA File Converter, which isn’t installed yet. You can save a DXF now; AutoCAD opens DXF files too.') : 'DXF opens in AutoCAD, DraftSight, LibreCAD, SketchUp and most CAD programs.';
+      };
+      $('#cadFmt').onchange = upd; upd();
+    }
+  });
+  if (!o) return;
+  cadFmt = o.format; cadVer = o.version; cadDims = o.dims; cadFix = o.fixtures;
+  let fmtNow = o.format;
+  if (fmtNow === 'dwg' && !hasOda) {
+    const a = await dialogOpen({
+      title: 'DWG needs one free program',
+      body: `<p>Coll Plan3D makes DWG files with the free <b>ODA File Converter</b>. Install it once and DWG saving and opening both work from then on.</p>
+        <ol class="help"><li>Click <b>Get ODA File Converter</b> and download the Windows version.</li><li>Run the installer with the normal settings.</li><li>Come back and save as DWG again.</li></ol>`,
+      buttons: [{ label: 'Cancel', ret: null }, { label: 'Save DXF instead', ret: 'dxf' }, { label: 'Get ODA File Converter', primary: true, ret: 'oda' }]
+    });
+    if (a === 'oda' && api.openUrl) api.openUrl('https://www.opendesign.com/guestfiles/oda_file_converter');
+    if (a !== 'dxf') return;
+    fmtNow = 'dxf';
+  }
+  let dxf;
+  try { dxf = Plan3DCad.toDxf(clonePlan(), { dims: o.dims, fixtures: o.fixtures }); }
+  catch (e) { toast('Couldn’t make the drawing: ' + e.message); return; }
+  msg(fmtNow === 'dwg' ? 'Making the DWG…' : 'Saving the DXF…');
+  const r = await api.exportCad({ dxf, name: ed.plan.name, format: fmtNow, version: o.version });
+  msg('');
+  if (!r) return;
+  if (r.error) {
+    const text = r.error === 'nodwg' ? 'ODA File Converter wasn’t found. Save as DXF, or install it and try again.'
+      : r.error === 'dwgsavefail' ? 'ODA File Converter couldn’t make the DWG. Try an older DWG version, or save as DXF.'
+      : 'Couldn’t save the file. ' + (r.message || '');
+    dialogOpen({ title: 'Not saved', body: `<p>${esc(text)}</p>`, buttons: [{ label: 'OK', primary: true, ret: null }] });
+    return;
+  }
+  toast((fmtNow === 'dwg' ? 'DWG' : 'DXF') + ' saved.', { label: 'Show in folder', fn: () => api.showInFolder(r.path) });
+}
+
+/* A drawing Coll Plan3D saved: bring the project back. Returns true if handled. */
+async function openCadProject(r) {
+  if (!r.texts || !r.texts.length || !window.Plan3DCad) return false;
+  const C = Plan3DCad;
+  const wallSegs = r.segs.filter(s => C.WALL_LAYERS.includes(s[4])).map(s => s.slice(0, 4));
+  const got = C.readEmbedded(r.texts, wallSegs);
+  if (!got || !got.plan || !Array.isArray(got.plan.walls)) return false;
+  let use = 'project';
+  if (got.edited) {
+    use = await dialogOpen({
+      title: 'This drawing was changed in CAD',
+      body: `<p>${esc(r.name)} was saved by Coll Plan3D, and its walls have been edited since.</p>
+        <p><b>Use the CAD walls</b> imports the walls as they are now in the drawing; doors, glass and chases are added again by hand.<br><b>Open the saved project</b> restores everything as it was when it was saved from Coll Plan3D, without the CAD edits.</p>`,
+      buttons: [{ label: 'Cancel', ret: null }, { label: 'Open the saved project', ret: 'project' }, { label: 'Use the CAD walls', primary: true, ret: 'walls' }]
+    });
+    if (!use) return true;
+    if (use === 'walls') { dxfDialog(r, { layers: C.WALL_LAYERS, unit: 1, keepOrigin: true }); return true; }
+  }
+  const p = got.plan;
+  if (!p.name) p.name = r.name;
+  projectPath = null; ed.setPlan(p); ed.dirty = true; hideBanner(); updateChrome();
+  if (view !== '2d' && viewer) viewer.loadPlan(clonePlan());
+  toast('Opened ' + (p.name || r.name) + ' from the ' + (/\.dwg$/i.test(r.path || '') ? 'DWG' : 'DXF') + '. Save it as a project to keep working.');
+  return true;
+}
+
 /* ---------- Dialog helper ---------- */
 function dialogOpen({ title, body, buttons, onOpen, wide }) {
   return new Promise(resolve => {
@@ -387,14 +469,15 @@ function detectDialog() {
 }
 
 /* ---------- DXF import ---------- */
-function dxfDialog(data) {
+function dxfDialog(data, preset) {
+  preset = preset || {};
   const names = Object.keys(data.layers).sort((a, b) => data.layers[b] - data.layers[a]);
   if (!names.length) { dialogOpen({ title: 'Nothing to import', body: '<p>This drawing has no lines or polylines Coll Plan3D can read. If the walls are inside blocks or xrefs, explode or bind them in AutoCAD and save as DXF again.</p>', buttons: [{ label: 'OK', primary: true, ret: null }] }); return; }
   const wallish = names.filter(n => /wall|partition|panel|a-wall|^wa/i.test(n));
-  const pre = new Set(wallish.length ? wallish : names);
+  const pre = new Set(preset.layers ? names.filter(n => preset.layers.includes(n)) : wallish.length ? wallish : names);
   const iu = data.insunits;
   const unitOpts = [[1, 'Inches'], [2, 'Feet'], [4, 'Millimeters'], [5, 'Centimeters'], [6, 'Meters']];
-  const defUnit = IMP.UNIT_FT[iu] && iu ? iu : 1;
+  const defUnit = preset.unit || (IMP.UNIT_FT[iu] && iu ? iu : 1);
   dialogOpen({
     wide: true,
     title: 'Import ' + data.name,
@@ -421,14 +504,14 @@ function dxfDialog(data) {
     if (walls.length) { const t = walls.map(w => w.t).sort((a, b) => a - b); p.wallT = t[t.length >> 1]; }
     projectPath = null; ed.setPlan(p); ed.dirty = true; updateChrome();
     if (walls.length) showBanner(`Imported ${walls.length} walls. Doors and glass don't come across from CAD yet. Add them with the Door, Pair and Glass tools.`, [{ label: 'View in 3D', primary: true, fn: () => { hideBanner(); setView('split'); } }]);
-    else showBanner('No walls were found with these settings. Try "Single centerline", a wider thickness range, or other layers.', [{ label: 'Try again', primary: true, fn: () => dxfDialog(data) }]);
+    else showBanner('No walls were found with these settings. Try "Single centerline", a wider thickness range, or other layers.', [{ label: 'Try again', primary: true, fn: () => dxfDialog(data, preset) }]);
   });
   function readDx() {
     const layers = new Set($$('#dxLayers input').filter(i => i.checked).map(i => i.value));
     const unitFt = IMP.UNIT_FT[+$('#dxU').value] || 1 / 12, mode = $('#dxM').value;
     const tv = $('#dxT').value.split(/to|-|–/i).map(s => parseLen(s.trim(), 'in')).filter(v => v > 0);
     const minT = tv.length > 1 ? Math.min(...tv) : (tv[0] || 0.25) * 0.6, maxT = tv.length > 1 ? Math.max(...tv) : (tv[0] || 0.25) * 1.5;
-    return { layers, unitFt, mode, minT, maxT, tFt: tv[0] || 0.25, minLen: 0.75 };
+    return { layers, unitFt, mode, minT, maxT, tFt: tv[0] || 0.25, minLen: 0.75, keepOrigin: !!preset.keepOrigin };
   }
 }
 
@@ -457,7 +540,7 @@ async function handleLoaded(r) {
     projectPath = r.path; ed.setPlan(p); hideBanner(); updateChrome(); if (view !== '2d' && viewer) viewer.loadPlan(clonePlan());
     toast('Opened ' + (p.name || r.name)); return;
   }
-  if (r.kind === 'dxf') { dxfDialog(r); return; }
+  if (r.kind === 'dxf') { if (await openCadProject(r)) return; dxfDialog(r); return; }
   if (r.kind === 'image') {
     const im = new Image();
     im.onload = () => {
@@ -527,19 +610,20 @@ function helpDialog() {
     body: `<div class="help">
       <h4>From AutoCAD</h4><ol><li>Import plan → pick your .dxf (or .dwg with ODA File Converter installed).</li><li>Tick the wall layers, check the size line reads right, and import.</li><li>Add doors, glass and air chases, label rooms, then switch to 3D.</li></ol>
       <h4>From a photo or scan</h4><ol><li>Shoot the sheet flat and straight-on. Import the image.</li><li>Rotate it upright in the right panel, then use Scale: click both ends of a known dimension and type it.</li><li>Detect walls, or trace them with the Wall tool. Typing a length while drawing places the wall exactly.</li></ol>
+      <h4>Back to AutoCAD</h4><ul><li>Save DWG / DXF (Ctrl+D) saves the plan 1:1 in inches on standard layers, with dimensions. DWG uses the free ODA File Converter.</li><li>Open that file in Coll Plan3D again and the doors, glass, chases and rooms come back exactly.</li></ul>
       <h4>Sharing</h4><ul><li>Export walkthrough saves one .html file. Anyone can open it in a browser, on a phone too.</li><li>Export .glb opens in Windows 3D Viewer, SketchUp, Blender and most 3D tools.</li></ul></div>`,
     buttons: [{ label: 'Close', primary: true, ret: null }]
   });
 }
 
 $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave').onclick = () => save(false);
-$('#bExportHtml').onclick = exportHtml; $('#bSheet').onclick = sheetDialog; $('#bExportGlb').onclick = exportGlb;
+$('#bExportHtml').onclick = exportHtml; $('#bSheet').onclick = sheetDialog; $('#bExportCad').onclick = cadDialog; $('#bExportGlb').onclick = exportGlb;
 $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
 $('#wDraw').onclick = () => { $('#welcome').hidden = true; ed.setTool('wall'); $('#plan').focus(); };
 
 if (api.onMenu) api.onMenu(async (a) => {
   ({ import: importPlan, open: openProject, sample: openSample, save: () => save(false), saveas: () => save(true), 'export-html': exportHtml, 'export-glb': exportGlb,
-     new: newPlan, undo: () => ed.undo(), redo: () => ed.redo(), 'view-2d': () => setView('2d'), 'view-split': () => setView('split'), 'view-3d': () => setView('3d'), 'view-build': () => setView('build'), 'export-parts': exportParts, sheet: sheetDialog,
+     new: newPlan, undo: () => ed.undo(), redo: () => ed.redo(), 'view-2d': () => setView('2d'), 'view-split': () => setView('split'), 'view-3d': () => setView('3d'), 'view-build': () => setView('build'), 'export-parts': exportParts, sheet: sheetDialog, 'export-cad': cadDialog,
      fit: () => ed.fit(), help: helpDialog,
      'request-close': async () => {
        if (!ed.dirty) return api.confirmClose();

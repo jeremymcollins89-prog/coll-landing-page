@@ -27,6 +27,7 @@ function buildMenu() {
         { label: 'Export 3D Model (.glb)…', click: () => send('export-glb') },
         { label: 'Export Parts List (.csv)…', click: () => send('export-parts') },
         { label: 'Plan Sheet (PDF)…', accelerator: 'CmdOrCtrl+P', click: () => send('sheet') },
+        { label: 'Save as AutoCAD (DWG / DXF)…', accelerator: 'CmdOrCtrl+D', click: () => send('export-cad') },
         { type: 'separator' },
         { label: 'New Blank Plan', accelerator: 'CmdOrCtrl+N', click: () => send('new') },
         { type: 'separator' },
@@ -132,6 +133,7 @@ function flattenDxf(dxf) {
     segs.push([x1, y1, x2, y2, layer]);
     layers[layer] = (layers[layer] || 0) + 1;
   }
+  const texts = [];
   function walk(entities, xf, depth, parentLayer) {
     if (!entities || depth > 6) return;
     for (const e of entities) {
@@ -139,7 +141,10 @@ function flattenDxf(dxf) {
       if (layer === '0' && parentLayer) layer = parentLayer;
       const T = (p) => xf(p.x || 0, p.y || 0);
       try {
-        if (e.type === 'LINE' && e.vertices && e.vertices.length >= 2) {
+        if ((e.type === 'TEXT' || e.type === 'MTEXT') && typeof e.text === 'string' && e.text.startsWith('COLLPLAN3D')) {
+          // project data saved by Coll Plan3D's DWG / DXF export
+          texts.push({ layer, text: e.text.trim() });
+        } else if (e.type === 'LINE' && e.vertices && e.vertices.length >= 2) {
           const a = T(e.vertices[0]), b = T(e.vertices[1]);
           add(a[0], a[1], b[0], b[1], layer);
         } else if ((e.type === 'LWPOLYLINE' || e.type === 'POLYLINE') && e.vertices) {
@@ -173,7 +178,7 @@ function flattenDxf(dxf) {
   }
   walk(dxf.entities, (x, y) => [x, y], 0, null);
   const insunits = (dxf.header && dxf.header.$INSUNITS) || 0;
-  return { segs, layers, insunits };
+  return { segs, layers, insunits, texts };
 }
 
 function findOdaConverter() {
@@ -192,7 +197,8 @@ function findOdaConverter() {
   return null;
 }
 
-function convertDwg(file) {
+// Run the free ODA File Converter on one file. type: 'DXF' or 'DWG'; version like 'ACAD2018'.
+function odaConvert(file, type, version) {
   return new Promise((resolve) => {
     const exe = findOdaConverter();
     if (!exe) return resolve({ error: 'nodwg' });
@@ -201,12 +207,16 @@ function convertDwg(file) {
     fs.mkdirSync(inDir); fs.mkdirSync(outDir);
     const base = path.basename(file);
     fs.copyFileSync(file, path.join(inDir, base));
-    execFile(exe, [inDir, outDir, 'ACAD2018', 'DXF', '0', '1', base], { timeout: 120000 }, () => {
-      const out = path.join(outDir, base.replace(/\.dwg$/i, '.dxf'));
-      if (fs.existsSync(out)) resolve({ dxfPath: out });
-      else resolve({ error: 'dwgfail' });
+    execFile(exe, [inDir, outDir, version || 'ACAD2018', type, '0', '1', base], { timeout: 120000, windowsHide: true }, () => {
+      const out = path.join(outDir, base.replace(/\.[^.]+$/, '.' + type.toLowerCase()));
+      if (fs.existsSync(out)) resolve({ path: out, tmp });
+      else resolve({ error: type === 'DWG' ? 'dwgsavefail' : 'dwgfail' });
     });
   });
+}
+async function convertDwg(file) {
+  const r = await odaConvert(file, 'DXF', 'ACAD2018');
+  return r.error ? r : { dxfPath: r.path };
 }
 
 async function loadAny(file) {
@@ -283,6 +293,31 @@ ipcMain.handle('export-file', async (e, { data, name, ext }) => {
   if (typeof data === 'string') fs.writeFileSync(r.filePath, data, 'utf8');
   else fs.writeFileSync(r.filePath, Buffer.from(data));
   return r.filePath;
+});
+
+// Floor plan → AutoCAD drawing. The renderer makes the DXF; a DWG is made from it with ODA File Converter.
+const DWG_VERSIONS = ['ACAD2018', 'ACAD2013', 'ACAD2010', 'ACAD2007', 'ACAD2004', 'ACAD2000'];
+ipcMain.handle('has-dwg-converter', () => !!findOdaConverter());
+ipcMain.handle('export-cad', async (e, { dxf, name, format, version }) => {
+  const dwg = format === 'dwg';
+  if (dwg && !findOdaConverter()) return { error: 'nodwg' };
+  const filters = dwg ? [{ name: 'AutoCAD Drawing (DWG)', extensions: ['dwg'] }] : [{ name: 'AutoCAD DXF', extensions: ['dxf'] }];
+  const r = await dialog.showSaveDialog(win, { defaultPath: path.join(app.getPath('documents'), (name || 'Floor plan') + (dwg ? '.dwg' : '.dxf')), filters });
+  if (r.canceled || !r.filePath) return null;
+  let out = r.filePath;
+  try {
+    if (!dwg) { fs.writeFileSync(out, dxf, 'latin1'); return { path: out }; }
+    if (!/\.dwg$/i.test(out)) out += '.dwg';
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plan3d-'));
+    const src = path.join(tmp, path.basename(out).replace(/\.dwg$/i, '.dxf'));
+    fs.writeFileSync(src, dxf, 'latin1');
+    const c = await odaConvert(src, 'DWG', DWG_VERSIONS.includes(version) ? version : 'ACAD2018');
+    if (c.error) return { error: c.error };
+    fs.copyFileSync(c.path, out);
+    return { path: out };
+  } catch (err) {
+    return { error: 'write', message: String(err && err.message || err) };
+  }
 });
 
 // Plan sheet → PDF: render the sheet HTML in a hidden window and print it at the sheet's paper size

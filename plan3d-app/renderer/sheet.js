@@ -41,6 +41,101 @@ function rotatePlan(plan) {
   (p.fixtures || []).forEach(f => { [f.x, f.y] = R(f.x, f.y); });
   return p;
 }
+/* Dimension strings for a plan (feet, plan coordinates): panel chains along every wall line, air chase
+   width / depth located to the nearest walls, and overall dimensions. Shared by the plan sheet and CAD export. */
+function dimChains(plan, A) {
+  const B = A.bounds;
+  const dims = [];
+  {
+    const lines = [];
+    for (const w of A.walls) {
+      const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 0.05) continue;
+      let ang = Math.atan2(w.y2 - w.y1, w.x2 - w.x1); if (ang < 0) ang += Math.PI; if (ang >= Math.PI - 1e-6) ang -= Math.PI;
+      const ux = Math.cos(ang), uy = Math.sin(ang), nx = -uy, ny = ux;
+      const c = w.x1 * nx + w.y1 * ny, a1 = w.x1 * ux + w.y1 * uy, a2 = w.x2 * ux + w.y2 * uy;
+      let g = lines.find(l => Math.abs(l.ang - ang) < 0.01 && Math.abs(l.c - c) < 0.03);
+      if (!g) { g = { ang, ux, uy, nx, ny, c, segs: [] }; lines.push(g); }
+      const joints = [a1, a2];
+      if (!w.piece) {
+        const dir = Math.sign(a2 - a1) || 1;
+        for (let s = 4; s < L - 0.05; s += 4) joints.push(a1 + dir * s);
+        for (const i of A.opInfo) {
+          if (V.segDist((i.o.x1 + i.o.x2) / 2, (i.o.y1 + i.o.y2) / 2, w.x1, w.y1, w.x2, w.y2) > (w.t || 0.25)) continue;
+          joints.push(i.o.x1 * ux + i.o.y1 * uy, i.o.x2 * ux + i.o.y2 * uy);
+        }
+      }
+      g.segs.push({ a: Math.min(a1, a2), b: Math.max(a1, a2), joints, t: w.t || 0.25 });
+    }
+    for (const g of lines) {
+      g.segs.sort((p, q) => p.a - q.a);
+      const chains = [];
+      for (const s of g.segs) { const last = chains[chains.length - 1]; if (last && s.a <= last.b + 0.06) { last.b = Math.max(last.b, s.b); last.j.push(...s.joints); last.t = Math.max(last.t, s.t); } else chains.push({ a: s.a, b: s.b, j: [...s.joints], t: s.t }); }
+      for (const ch of chains) {
+        if (ch.b - ch.a < 1) continue;
+        const js = [...new Set(ch.j.filter(v => v >= ch.a - 0.01 && v <= ch.b + 0.01).map(v => Math.round(v * 96) / 96))].sort((p, q) => p - q);
+        // which side is outside? exterior if the line sits on the bounding box edge
+        const axisX = Math.abs(g.uy) < 1e-3, axisY = Math.abs(g.ux) < 1e-3;
+        let side = 0, ext = false;
+        if (axisX) { const y = g.c * g.ny; if (Math.abs(y - B.minZ) < 0.6) { side = -Math.sign(g.ny); ext = true; } else if (Math.abs(y - B.maxZ) < 0.6) { side = Math.sign(g.ny); ext = true; } }
+        if (axisY) { const x = g.c * g.nx; if (Math.abs(x - B.minX) < 0.6) { side = -Math.sign(g.nx); ext = true; } else if (Math.abs(x - B.maxX) < 0.6) { side = Math.sign(g.nx); ext = true; } }
+        if (!side) { const mid = (ch.a + ch.b) / 2, mx = g.ux * mid + g.nx * g.c, my = g.uy * mid + g.ny * g.c; side = ((B.cx - mx) * g.nx + (B.cz - my) * g.ny) > 0 ? 1 : -1; }
+        dims.push({ g, js, side, off: ext ? 2.2 : ch.t / 2 + 1.0, ext, faceOff: ch.t / 2, big: false });
+      }
+    }
+  }
+  // air chase dimensions: width string along the open face, located to the nearest walls on each side,
+  // plus the depth along the chase's end
+  for (const b of A.boxes) {
+    const w = b.x1 - b.x0, d = b.z1 - b.z0; if (w < 0.1 || d < 0.1) continue;
+    let open = b.grille;
+    if (!open) { // face with the most room in front of it
+      const probe = { N: [(b.x0 + b.x1) / 2, b.z0 - 1], S: [(b.x0 + b.x1) / 2, b.z1 + 1], W: [b.x0 - 1, (b.z0 + b.z1) / 2], E: [b.x1 + 1, (b.z0 + b.z1) / 2] };
+      let best = -1; for (const [f, [px, pz]] of Object.entries(probe)) { let m = 1e9; for (const p of A.pieces) m = Math.min(m, V.segDist(px, pz, p.x1, p.z1, p.x2, p.z2)); if (m > best) { best = m; open = f; } }
+    }
+    const horizFace = open === 'N' || open === 'S';
+    // locate along the face line: nearest perpendicular wall faces either side within 16′
+    const faceC = horizFace ? (open === 'N' ? b.z0 : b.z1) : (open === 'W' ? b.x0 : b.x1);
+    const lo = horizFace ? b.x0 : b.z0, hi = horizFace ? b.x1 : b.z1;
+    let left = null, right = null;
+    for (const p of A.pieces) {
+      const vert = Math.abs(p.x2 - p.x1) < 1e-3, hor = Math.abs(p.z2 - p.z1) < 1e-3;
+      if (horizFace && vert) {
+        const z0 = Math.min(p.z1, p.z2), z1 = Math.max(p.z1, p.z2); if (faceC < z0 - 0.05 || faceC > z1 + 0.05) continue;
+        const fL = p.x1 + p.t / 2, fR = p.x1 - p.t / 2;
+        if (fL <= lo + 0.01 && lo - fL < 16 && (left == null || fL > left)) left = fL;
+        if (fR >= hi - 0.01 && fR - hi < 16 && (right == null || fR < right)) right = fR;
+      }
+      if (!horizFace && hor) {
+        const x0 = Math.min(p.x1, p.x2), x1 = Math.max(p.x1, p.x2); if (faceC < x0 - 0.05 || faceC > x1 + 0.05) continue;
+        const fL = p.z1 + p.t / 2, fR = p.z1 - p.t / 2;
+        if (fL <= lo + 0.01 && lo - fL < 16 && (left == null || fL > left)) left = fL;
+        if (fR >= hi - 0.01 && fR - hi < 16 && (right == null || fR < right)) right = fR;
+      }
+    }
+    const js = [lo, hi]; if (left != null && lo - left > 1 / 48) js.unshift(left); if (right != null && right - hi > 1 / 48) js.push(right);
+    const sideSign = (open === 'S' || open === 'E') ? 1 : -1;
+    const gFace = horizFace ? { ux: 1, uy: 0, nx: 0, ny: 1, c: faceC } : { ux: 0, uy: 1, nx: 1, ny: 0, c: faceC };
+    dims.push({ g: gFace, js, side: sideSign, off: 0.95, faceOff: 0.05, big: false });
+    // depth, on the chase end with more room
+    const depthLo = horizFace ? Math.min(b.z0, b.z1) : Math.min(b.x0, b.x1), depthHi = horizFace ? Math.max(b.z0, b.z1) : Math.max(b.x0, b.x1);
+    const endA = horizFace ? b.x0 : b.z0, endB = horizFace ? b.x1 : b.z1;
+    const useB = right == null || (left != null && right - hi > lo - left);
+    const gEnd = horizFace ? { ux: 0, uy: 1, nx: 1, ny: 0, c: useB ? endB : endA } : { ux: 1, uy: 0, nx: 0, ny: 1, c: useB ? endB : endA };
+    dims.push({ g: gEnd, js: [depthLo, depthHi], side: useB ? 1 : -1, off: 0.7, faceOff: 0.05, big: false });
+  }
+  // overall dimensions on the four sides
+  if (!A.empty) {
+    const over = (horiz, sideSign) => {
+      const g = horiz ? { ux: 1, uy: 0, nx: 0, ny: 1, c: sideSign < 0 ? B.minZ : B.maxZ } : { ux: 0, uy: 1, nx: 1, ny: 0, c: sideSign < 0 ? B.minX : B.maxX };
+      const js = horiz ? [B.minX, B.maxX] : [B.minZ, B.maxZ];
+      dims.push({ g, js, side: sideSign, off: 4.0, faceOff: 0.2, big: true });
+    };
+    over(true, -1); over(false, -1); over(false, 1); over(true, 1);
+  }
+
+  return dims;
+}
+
 function makeSheet(plan, opts) {
   opts = opts || {};
   if (opts.rotate === 'auto' || opts.rotate == null) {
@@ -157,44 +252,6 @@ function makeSheet(plan, opts) {
   }
 
   // ---- dimension chains
-  const dims = [];
-  {
-    const lines = [];
-    for (const w of A.walls) {
-      const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 0.05) continue;
-      let ang = Math.atan2(w.y2 - w.y1, w.x2 - w.x1); if (ang < 0) ang += Math.PI; if (ang >= Math.PI - 1e-6) ang -= Math.PI;
-      const ux = Math.cos(ang), uy = Math.sin(ang), nx = -uy, ny = ux;
-      const c = w.x1 * nx + w.y1 * ny, a1 = w.x1 * ux + w.y1 * uy, a2 = w.x2 * ux + w.y2 * uy;
-      let g = lines.find(l => Math.abs(l.ang - ang) < 0.01 && Math.abs(l.c - c) < 0.03);
-      if (!g) { g = { ang, ux, uy, nx, ny, c, segs: [] }; lines.push(g); }
-      const joints = [a1, a2];
-      if (!w.piece) {
-        const dir = Math.sign(a2 - a1) || 1;
-        for (let s = 4; s < L - 0.05; s += 4) joints.push(a1 + dir * s);
-        for (const i of A.opInfo) {
-          if (V.segDist((i.o.x1 + i.o.x2) / 2, (i.o.y1 + i.o.y2) / 2, w.x1, w.y1, w.x2, w.y2) > (w.t || 0.25)) continue;
-          joints.push(i.o.x1 * ux + i.o.y1 * uy, i.o.x2 * ux + i.o.y2 * uy);
-        }
-      }
-      g.segs.push({ a: Math.min(a1, a2), b: Math.max(a1, a2), joints, t: w.t || 0.25 });
-    }
-    for (const g of lines) {
-      g.segs.sort((p, q) => p.a - q.a);
-      const chains = [];
-      for (const s of g.segs) { const last = chains[chains.length - 1]; if (last && s.a <= last.b + 0.06) { last.b = Math.max(last.b, s.b); last.j.push(...s.joints); last.t = Math.max(last.t, s.t); } else chains.push({ a: s.a, b: s.b, j: [...s.joints], t: s.t }); }
-      for (const ch of chains) {
-        if (ch.b - ch.a < 1) continue;
-        const js = [...new Set(ch.j.filter(v => v >= ch.a - 0.01 && v <= ch.b + 0.01).map(v => Math.round(v * 96) / 96))].sort((p, q) => p - q);
-        // which side is outside? exterior if the line sits on the bounding box edge
-        const axisX = Math.abs(g.uy) < 1e-3, axisY = Math.abs(g.ux) < 1e-3;
-        let side = 0, ext = false;
-        if (axisX) { const y = g.c * g.ny; if (Math.abs(y - B.minZ) < 0.6) { side = -Math.sign(g.ny); ext = true; } else if (Math.abs(y - B.maxZ) < 0.6) { side = Math.sign(g.ny); ext = true; } }
-        if (axisY) { const x = g.c * g.nx; if (Math.abs(x - B.minX) < 0.6) { side = -Math.sign(g.nx); ext = true; } else if (Math.abs(x - B.maxX) < 0.6) { side = Math.sign(g.nx); ext = true; } }
-        if (!side) { const mid = (ch.a + ch.b) / 2, mx = g.ux * mid + g.nx * g.c, my = g.uy * mid + g.ny * g.c; side = ((B.cx - mx) * g.nx + (B.cz - my) * g.ny) > 0 ? 1 : -1; }
-        dims.push({ g, js, side, off: ext ? 2.2 : ch.t / 2 + 1.0, ext, faceOff: ch.t / 2 });
-      }
-    }
-  }
   const drawChain = (g, js, side, off, faceOff, big) => {
     const P = (a, o) => [g.ux * a + g.nx * (g.c + side * o), g.uy * a + g.ny * (g.c + side * o)];
     const [s1x, s1y] = P(js[0], off), [s2x, s2y] = P(js[js.length - 1], off);
@@ -218,56 +275,7 @@ function makeSheet(plan, opts) {
       text(qx, qy, str, size, 'text-anchor="middle" dominant-baseline="middle" fill="#111"', rot);
     }
   };
-  for (const d of dims) drawChain(d.g, d.js, d.side, d.off, d.faceOff, false);
-  // air chase dimensions: width string along the open face, located to the nearest walls on each side,
-  // plus the depth along the chase's end
-  for (const b of A.boxes) {
-    const w = b.x1 - b.x0, d = b.z1 - b.z0; if (w < 0.1 || d < 0.1) continue;
-    let open = b.grille;
-    if (!open) { // face with the most room in front of it
-      const probe = { N: [(b.x0 + b.x1) / 2, b.z0 - 1], S: [(b.x0 + b.x1) / 2, b.z1 + 1], W: [b.x0 - 1, (b.z0 + b.z1) / 2], E: [b.x1 + 1, (b.z0 + b.z1) / 2] };
-      let best = -1; for (const [f, [px, pz]] of Object.entries(probe)) { let m = 1e9; for (const p of A.pieces) m = Math.min(m, V.segDist(px, pz, p.x1, p.z1, p.x2, p.z2)); if (m > best) { best = m; open = f; } }
-    }
-    const horizFace = open === 'N' || open === 'S';
-    // locate along the face line: nearest perpendicular wall faces either side within 16′
-    const faceC = horizFace ? (open === 'N' ? b.z0 : b.z1) : (open === 'W' ? b.x0 : b.x1);
-    const lo = horizFace ? b.x0 : b.z0, hi = horizFace ? b.x1 : b.z1;
-    let left = null, right = null;
-    for (const p of A.pieces) {
-      const vert = Math.abs(p.x2 - p.x1) < 1e-3, hor = Math.abs(p.z2 - p.z1) < 1e-3;
-      if (horizFace && vert) {
-        const z0 = Math.min(p.z1, p.z2), z1 = Math.max(p.z1, p.z2); if (faceC < z0 - 0.05 || faceC > z1 + 0.05) continue;
-        const fL = p.x1 + p.t / 2, fR = p.x1 - p.t / 2;
-        if (fL <= lo + 0.01 && lo - fL < 16 && (left == null || fL > left)) left = fL;
-        if (fR >= hi - 0.01 && fR - hi < 16 && (right == null || fR < right)) right = fR;
-      }
-      if (!horizFace && hor) {
-        const x0 = Math.min(p.x1, p.x2), x1 = Math.max(p.x1, p.x2); if (faceC < x0 - 0.05 || faceC > x1 + 0.05) continue;
-        const fL = p.z1 + p.t / 2, fR = p.z1 - p.t / 2;
-        if (fL <= lo + 0.01 && lo - fL < 16 && (left == null || fL > left)) left = fL;
-        if (fR >= hi - 0.01 && fR - hi < 16 && (right == null || fR < right)) right = fR;
-      }
-    }
-    const js = [lo, hi]; if (left != null && lo - left > 1 / 48) js.unshift(left); if (right != null && right - hi > 1 / 48) js.push(right);
-    const sideSign = (open === 'S' || open === 'E') ? 1 : -1;
-    const gFace = horizFace ? { ux: 1, uy: 0, nx: 0, ny: 1, c: faceC } : { ux: 0, uy: 1, nx: 1, ny: 0, c: faceC };
-    drawChain(gFace, js, sideSign, 0.95, 0.05, false);
-    // depth, on the chase end with more room
-    const depthLo = horizFace ? Math.min(b.z0, b.z1) : Math.min(b.x0, b.x1), depthHi = horizFace ? Math.max(b.z0, b.z1) : Math.max(b.x0, b.x1);
-    const endA = horizFace ? b.x0 : b.z0, endB = horizFace ? b.x1 : b.z1;
-    const useB = right == null || (left != null && right - hi > lo - left);
-    const gEnd = horizFace ? { ux: 0, uy: 1, nx: 1, ny: 0, c: useB ? endB : endA } : { ux: 1, uy: 0, nx: 0, ny: 1, c: useB ? endB : endA };
-    drawChain(gEnd, [depthLo, depthHi], useB ? 1 : -1, 0.7, 0.05, false);
-  }
-  // overall dimensions on the four sides
-  if (!A.empty) {
-    const over = (horiz, sideSign) => {
-      const g = horiz ? { ux: 1, uy: 0, nx: 0, ny: 1, c: sideSign < 0 ? B.minZ : B.maxZ } : { ux: 0, uy: 1, nx: 1, ny: 0, c: sideSign < 0 ? B.minX : B.maxX };
-      const js = horiz ? [B.minX, B.maxX] : [B.minZ, B.maxZ];
-      drawChain(g, js, sideSign, 4.0, 0.2, true);
-    };
-    over(true, -1); over(false, -1); over(false, 1); over(true, 1);
-  }
+  for (const d of dimChains(plan, A)) drawChain(d.g, d.js, d.side, d.off, d.faceOff, d.big);
 
   // ---- tags + rooms
   for (const tg of tags) {
@@ -317,5 +325,5 @@ function sheetHTML(sheet, title) {
 <style>@page{size:${sheet.page.w}in ${sheet.page.h}in;margin:0}html,body{margin:0;padding:0;background:#fff}svg{display:block}</style></head><body>${sheet.svg}</body></html>`;
 }
 
-global.Plan3DSheet = { makeSheet, sheetHTML, PAGES, dimText };
+global.Plan3DSheet = { makeSheet, sheetHTML, PAGES, dimText, ftIn, dimChains };
 })(window);
