@@ -1,2 +1,5 @@
 node_modules/
 dist/
+# LibreDWG programs are downloaded and checked by the build (see .github/workflows/plan3d.yml)
+libredwg/*.exe
+libredwg/*.dll

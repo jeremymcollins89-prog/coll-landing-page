@@ -35,6 +35,26 @@ jobs:
 
       - run: npm ci
 
+      # Built-in DWG support: GNU LibreDWG (GPLv3) dwg2dxf / dxf2dwg, shipped as separate programs.
+      # The download is checked against its known SHA-256 so nothing unexpected goes into the installer.
+      - name: Get LibreDWG (built-in DWG reading and saving)
+        shell: pwsh
+        run: |
+          $ver = '0.14.8597'
+          $sha = '7fee5c67c4f451f0542c0d6a3b12e91e99b15faf363fbf8b98ad84bac17ddfa2'
+          $zip = Join-Path $env:RUNNER_TEMP 'libredwg.zip'
+          Invoke-WebRequest "https://github.com/LibreDWG/libredwg/releases/download/$ver/libredwg-$ver-win64.zip" -OutFile $zip
+          $got = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $sha) { throw "LibreDWG download doesn't match (got $got)" }
+          $x = Join-Path $env:RUNNER_TEMP 'libredwg'
+          Expand-Archive $zip -DestinationPath $x -Force
+          foreach ($f in 'dwg2dxf.exe', 'dxf2dwg.exe', 'libredwg-0.dll', 'libiconv-2.dll') { Copy-Item (Join-Path $x $f) libredwg/ }
+          $v = & ./libredwg/dwg2dxf.exe --version 2>&1 | Out-String
+          Write-Host $v
+          if ($v -notmatch 'dwg2dxf') { throw 'dwg2dxf.exe did not run' }
+          $global:LASTEXITCODE = 0
+          Get-ChildItem libredwg
+
       - name: Build the installer
         run: npm run dist
         env:

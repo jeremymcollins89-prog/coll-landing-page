@@ -65,7 +65,7 @@ function buildMenu() {
         { label: 'About Coll Plan3D', click: () => dialog.showMessageBox(win, {
           type: 'info', title: 'About Coll Plan3D',
           message: 'Coll Plan3D ' + app.getVersion(),
-          detail: 'Floor plan to 3D walkthrough.\nColl Business Solutions LLC\ncollbusinesssolutions@gmail.com'
+          detail: 'Floor plan to 3D walkthrough.\nColl Business Solutions LLC\ncollbusinesssolutions@gmail.com\n\nDWG files are read and saved with GNU LibreDWG (GPLv3), included as separate programs. License and source: resources\\libredwg\\README.txt in the install folder, or https://www.gnu.org/software/libredwg/'
         }) }
       ]
     }
@@ -233,8 +233,63 @@ function odaConvert(file, type, version) {
     });
   });
 }
+/* ---------- Built-in DWG support: LibreDWG (GPLv3, https://www.gnu.org/software/libredwg/) ----------
+   dwg2dxf / dxf2dwg ship with the app as separate programs in resources/libredwg (see LICENSE.txt there).
+   Used when ODA File Converter isn't installed; ODA, when present, is preferred for the newest DWG versions. */
+function findLibreDwg() {
+  const exe = process.platform === 'win32' ? '.exe' : '';
+  // installed: resources/libredwg next to resources/app; developing: plan3d-app/libredwg
+  const dirs = [process.env.PLAN3D_LIBREDWG, process.resourcesPath && path.join(process.resourcesPath, 'libredwg'), path.join(__dirname, '..', 'libredwg'), path.join(__dirname, 'libredwg')].filter(Boolean);
+  for (const d of dirs) {
+    const r = path.join(d, 'dwg2dxf' + exe), w = path.join(d, 'dxf2dwg' + exe);
+    if (fs.existsSync(r) && fs.existsSync(w)) return { dir: d, dwg2dxf: r, dxf2dwg: w };
+  }
+  return null;
+}
+function runTool(exe, args) {
+  return new Promise((resolve) => {
+    execFile(exe, args, { timeout: 180000, windowsHide: true, cwd: path.dirname(exe), maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => resolve({ err, stdout: String(stdout || ''), stderr: String(stderr || '') }));
+  });
+}
+// DWG → DXF with LibreDWG
+async function libreRead(file) {
+  const L = findLibreDwg(); if (!L) return { error: 'nodwg' };
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plan3d-'));
+  const out = path.join(tmp, 'drawing.dxf');
+  await runTool(L.dwg2dxf, ['-y', '-o', out, file]);
+  return fs.existsSync(out) && fs.statSync(out).size > 200 ? { path: out, tmp } : { error: 'dwgfail' };
+}
+// DXF → DWG (AutoCAD 2000 format, which every AutoCAD version opens) with LibreDWG, then read it back to make sure it's good
+async function libreWrite(dxfFile, outDwg) {
+  const L = findLibreDwg(); if (!L) return { error: 'nodwg' };
+  try { fs.unlinkSync(outDwg); } catch (e) { /* not there */ }
+  // LibreDWG wants an AutoCAD 2000 DXF laid out like its own drawings: rebuild ours on its empty template
+  let src = dxfFile;
+  try {
+    const tpl = [path.join(L.dir, 'template-r2000.dxf'), path.join(__dirname, 'libredwg', 'template-r2000.dxf')].find(p => fs.existsSync(p));
+    if (tpl) {
+      const { toR2000 } = require('./dxf2000.js');
+      src = dxfFile.replace(/\.dxf$/i, '') + '-r2000.dxf';
+      fs.writeFileSync(src, toR2000(fs.readFileSync(dxfFile, 'latin1'), fs.readFileSync(tpl, 'latin1')), 'latin1');
+    }
+  } catch (e) { src = dxfFile; }
+  await runTool(L.dxf2dwg, ['-y', '--as', 'r2000', '-o', outDwg, src]);
+  if (!fs.existsSync(outDwg) || fs.statSync(outDwg).size < 1000) return { error: 'dwgsavefail' };
+  const back = await libreRead(outDwg);
+  if (back.error) return { error: 'dwgsavefail' };
+  try {
+    const d = new DxfParser().parseSync(fs.readFileSync(back.path, 'utf8'));
+    if (!d || !d.entities || !d.entities.length) return { error: 'dwgsavefail' };
+  } catch (e) { return { error: 'dwgsavefail' }; }
+  return { path: outDwg };
+}
+
 async function convertDwg(file) {
-  const r = await odaConvert(file, 'DXF', 'ACAD2018');
+  if (findOdaConverter()) {
+    const r = await odaConvert(file, 'DXF', 'ACAD2018');
+    if (!r.error) return { dxfPath: r.path };
+  }
+  const r = await libreRead(file);
   return r.error ? r : { dxfPath: r.path };
 }
 
@@ -473,12 +528,13 @@ ipcMain.handle('export-file', async (e, { data, name, ext }) => {
   return r.filePath;
 });
 
-// Floor plan → AutoCAD drawing. The renderer makes the DXF; a DWG is made from it with ODA File Converter.
+// Floor plan → AutoCAD drawing. The renderer makes the DXF; the DWG is made from it with ODA File Converter if it's
+// installed (any DWG version), otherwise with the built-in LibreDWG (AutoCAD 2000 format).
 const DWG_VERSIONS = ['ACAD2018', 'ACAD2013', 'ACAD2010', 'ACAD2007', 'ACAD2004', 'ACAD2000'];
-ipcMain.handle('has-dwg-converter', () => !!findOdaConverter());
+ipcMain.handle('has-dwg-converter', () => ({ oda: !!findOdaConverter(), builtin: !!findLibreDwg() }));
 ipcMain.handle('export-cad', async (e, { dxf, name, format, version }) => {
   const dwg = format === 'dwg';
-  if (dwg && !findOdaConverter()) return { error: 'nodwg' };
+  if (dwg && !findOdaConverter() && !findLibreDwg()) return { error: 'nodwg' };
   const filters = dwg ? [{ name: 'AutoCAD Drawing (DWG)', extensions: ['dwg'] }] : [{ name: 'AutoCAD DXF', extensions: ['dxf'] }];
   const r = await dialog.showSaveDialog(win, { defaultPath: path.join(app.getPath('documents'), (name || 'Floor plan') + (dwg ? '.dwg' : '.dxf')), filters });
   if (r.canceled || !r.filePath) return null;
@@ -489,10 +545,13 @@ ipcMain.handle('export-cad', async (e, { dxf, name, format, version }) => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plan3d-'));
     const src = path.join(tmp, path.basename(out).replace(/\.dwg$/i, '.dxf'));
     fs.writeFileSync(src, dxf, 'latin1');
-    const c = await odaConvert(src, 'DWG', DWG_VERSIONS.includes(version) ? version : 'ACAD2018');
-    if (c.error) return { error: c.error };
-    fs.copyFileSync(c.path, out);
-    return { path: out };
+    if (findOdaConverter()) {
+      const c = await odaConvert(src, 'DWG', DWG_VERSIONS.includes(version) ? version : 'ACAD2018');
+      if (!c.error) { fs.copyFileSync(c.path, out); return { path: out, by: 'oda' }; }
+    }
+    const w = await libreWrite(src, out);
+    if (w.error) return { error: w.error };
+    return { path: out, by: 'builtin' };
   } catch (err) {
     return { error: 'write', message: String(err && err.message || err) };
   }

@@ -313,12 +313,15 @@ const DWG_VERS = [['ACAD2018', 'AutoCAD 2018 – 2026'], ['ACAD2013', 'AutoCAD 2
 let cadFmt = 'dwg', cadVer = 'ACAD2018', cadDims = true, cadFix = true;
 async function cadDialog() {
   if (!ed.plan.walls.length) { toast('Add some walls first.'); return; }
-  const hasOda = api.hasDwgConverter ? await api.hasDwgConverter() : false;
+  const conv = api.hasDwgConverter ? await api.hasDwgConverter() : {};
+  const hasOda = !!(conv && conv.oda), hasDwg = hasOda || !!(conv && conv.builtin);
+  // without ODA File Converter, the built-in converter saves the AutoCAD 2000 DWG format (every AutoCAD version opens it)
+  const vers = hasOda ? DWG_VERS : [['ACAD2000', 'AutoCAD 2000 format (opens in every AutoCAD version)']];
   const o = await dialogOpen({
     title: 'Save for AutoCAD or Revit',
     body: `<p>DWG and DXF save the floor plan 1:1 in inches on standard layers (A-WALL, A-DOOR, A-GLAZ, A-CHASE, A-DIMS …). IFC saves the whole room as a 3D model for Revit.</p>
       ${fld('File type', `<select id="cadFmt"><option value="dwg" ${cadFmt === 'dwg' ? 'selected' : ''}>DWG – AutoCAD drawing</option><option value="dxf" ${cadFmt === 'dxf' ? 'selected' : ''}>DXF – works in any CAD program</option><option value="ifc" ${cadFmt === 'ifc' ? 'selected' : ''}>Revit 3D model (IFC) – opens in Revit, save it there as .rvt</option></select>`)}
-      <div id="cadVerRow">${fld('Version', `<select id="cadVer">${DWG_VERS.map(([v, l]) => `<option value="${v}" ${v === cadVer ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}</div>
+      <div id="cadVerRow">${fld('Version', `<select id="cadVer">${vers.map(([v, l]) => `<option value="${v}" ${v === cadVer ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}</div>
       <label class="chk"><input type="checkbox" id="cadDims" ${cadDims ? 'checked' : ''}> Dimension strings</label>
       <label class="chk"><input type="checkbox" id="cadFix" ${cadFix ? 'checked' : ''}> Ceiling lights and fan filter units</label>
       <p class="sizeline" id="cadNote"></p>
@@ -329,7 +332,7 @@ async function cadDialog() {
         const dwg = $('#cadFmt').value === 'dwg';
         $('#cadVerRow').hidden = !dwg;
         if ($('#cadFmt').value === 'ifc') { $('#cadNote').textContent = 'A full 3D model: walls, posts, doors, glass, pass-thrus, chases, ceiling, lights and FFUs. In Revit: File → Open → IFC, then File → Save As → Project to keep it as an .rvt. Or Insert → Link IFC to drop it into a building model.'; return; }
-        $('#cadNote').textContent = dwg ? (hasOda ? 'DWG files are made with ODA File Converter, found on this computer.' : 'DWG needs the free ODA File Converter, which isn’t installed yet. You can save a DXF now; AutoCAD opens DXF files too.') : 'DXF opens in AutoCAD, DraftSight, LibreCAD, SketchUp and most CAD programs.';
+        $('#cadNote').textContent = dwg ? (hasOda ? 'DWG files are made with ODA File Converter, found on this computer.' : hasDwg ? 'Saved with the built-in DWG converter. Newer AutoCAD versions open it and can save it in their own format.' : 'DWG isn’t available on this computer. Save a DXF; AutoCAD opens DXF files too.') : 'DXF opens in AutoCAD, DraftSight, LibreCAD, SketchUp and most CAD programs.';
       };
       $('#cadFmt').onchange = upd; upd();
     }
@@ -338,7 +341,7 @@ async function cadDialog() {
   cadFmt = o.format; cadVer = o.version; cadDims = o.dims; cadFix = o.fixtures;
   if (o.format === 'ifc') { exportIfc(o.fixtures); return; }
   let fmtNow = o.format;
-  if (fmtNow === 'dwg' && !hasOda) {
+  if (fmtNow === 'dwg' && !hasDwg) {
     const a = await dialogOpen({
       title: 'DWG needs one free program',
       body: `<p>Coll Plan3D makes DWG files with the free <b>ODA File Converter</b>. Install it once and DWG saving and opening both work from then on.</p>
@@ -357,8 +360,8 @@ async function cadDialog() {
   msg('');
   if (!r) return;
   if (r.error) {
-    const text = r.error === 'nodwg' ? 'ODA File Converter wasn’t found. Save as DXF, or install it and try again.'
-      : r.error === 'dwgsavefail' ? 'ODA File Converter couldn’t make the DWG. Try an older DWG version, or save as DXF.'
+    const text = r.error === 'nodwg' ? 'No DWG converter was found. Save as DXF; AutoCAD opens DXF files too.'
+      : r.error === 'dwgsavefail' ? 'The DWG couldn’t be made from this plan. Save as DXF instead; AutoCAD opens DXF files too.'
       : 'Couldn’t save the file. ' + (r.message || '');
     dialogOpen({ title: 'Not saved', body: `<p>${esc(text)}</p>`, buttons: [{ label: 'OK', primary: true, ret: null }] });
     return;
@@ -725,10 +728,11 @@ async function handleLoaded(r) {
   if (r.kind === 'error') {
     const text = r.code === 'nodwg'
       ? `<p>DWG files need a free converter. Either:</p><ol class="help"><li>In AutoCAD, use <b>Save As → AutoCAD DXF (*.dxf)</b> and import the DXF, or</li><li>Install the free <b>ODA File Converter</b>, then import the DWG again. Coll Plan3D finds it automatically.</li></ol>`
+      : r.code === 'dwgfail' ? `<p>The built-in DWG reader couldn't open ${esc(r.name)}. Either:</p><ol class="help"><li>In AutoCAD, use <b>Save As → AutoCAD DXF (*.dxf)</b> and import the DXF, or</li><li>Install the free <b>ODA File Converter</b>. Coll Plan3D uses it automatically for DWGs it can't read on its own.</li></ol>`
       : r.code === 'unsupported' ? `<p>Coll Plan3D can't read ${esc(r.ext)} files. Use DXF, DWG, PNG, JPG or a saved .plan3d project. For a PDF plan, export the page as PNG first.</p>`
       : `<p>Couldn't read ${esc(r.name)}. ${esc(r.message || '')}</p>`;
     const btns = [{ label: 'OK', primary: true, ret: null }];
-    if (r.code === 'nodwg') btns.unshift({ label: 'Get ODA File Converter', ret: 'oda' });
+    if (r.code === 'nodwg' || r.code === 'dwgfail') btns.unshift({ label: 'Get ODA File Converter', ret: 'oda' });
     const a = await dialogOpen({ title: r.code === 'nodwg' ? 'DWG needs one extra step' : "Can't open that file", body: text, buttons: btns });
     if (a === 'oda' && api.openUrl) api.openUrl('https://www.opendesign.com/guestfiles/oda_file_converter');
     return;
@@ -807,11 +811,11 @@ function helpDialog() {
   dialogOpen({
     wide: true, title: 'Quick guide',
     body: `<div class="help">
-      <h4>From AutoCAD</h4><ol><li>Import plan → pick your .dxf (or .dwg with ODA File Converter installed).</li><li>Tick the wall layers, check the size line reads right, and import.</li><li>Add doors, glass and air chases, label rooms, then switch to 3D.</li></ol>
+      <h4>From AutoCAD</h4><ol><li>Import plan → pick your .dwg or .dxf. DWG works right away; nothing else to install.</li><li>Tick the wall layers, check the size line reads right, and import.</li><li>Add doors, glass and air chases, label rooms, then switch to 3D.</li></ol>
       <h4>From a photo or scan</h4><ol><li>Shoot the sheet flat and straight-on. Import the image.</li><li>Rotate it upright in the right panel, then use Scale: click both ends of a known dimension and type it.</li><li>Detect walls, or trace them with the Wall tool. Typing a length while drawing places the wall exactly.</li></ol>
       <h4>Ceiling</h4><ul><li>Add ceiling picks a ceiling drawing (DWG, DXF) or a picture of one. Lights, fan filter units and the T-grid are placed over your room and show in 3D.</li><li>Click Add ceiling again to move, turn, replace or remove it.</li></ul>
       <h4>Revit</h4><ul><li>In Revit: File → Export → IFC, then Import plan here and pick the .ifc. Walls, doors, windows, rooms, lights and FFUs become an editable plan.</li><li>Save DWG / IFC → Revit 3D model saves the whole room in 3D. In Revit: File → Open → IFC, then Save As → Project for an .rvt.</li></ul>
-      <h4>Back to AutoCAD</h4><ul><li>Save DWG / IFC (Ctrl+D) saves the plan 1:1 in inches on standard layers, with dimensions. DWG uses the free ODA File Converter.</li><li>Open that file in Coll Plan3D again and the doors, glass, chases and rooms come back exactly.</li></ul>
+      <h4>Back to AutoCAD</h4><ul><li>Save DWG / IFC (Ctrl+D) saves the plan 1:1 in inches on standard layers, with dimensions. DWG is built in (AutoCAD 2000 format, which every AutoCAD opens); with the free ODA File Converter installed you can also pick newer DWG versions.</li><li>Open that file in Coll Plan3D again and the doors, glass, chases and rooms come back exactly.</li></ul>
       <h4>Sharing</h4><ul><li>Export walkthrough saves one .html file. Anyone can open it in a browser, on a phone too.</li><li>Export .glb opens in Windows 3D Viewer, SketchUp, Blender and most 3D tools.</li></ul></div>`,
     buttons: [{ label: 'Close', primary: true, ret: null }]
   });
