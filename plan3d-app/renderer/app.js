@@ -837,7 +837,22 @@ function helpDialog() {
 }
 
 $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave').onclick = () => save(false);
-$('#bExportHtml').onclick = exportHtml; $('#bSheet').onclick = sheetDialog; $('#bExportCad').onclick = cadDialog; $('#bExportGlb').onclick = exportGlb;
+// Export dropdown
+{
+  const btn = $('#bExport'), menu = $('#exportMenu');
+  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+  btn.onclick = (e) => { e.stopPropagation(); const open = menu.hidden; menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); if (open) menu.querySelector('button').focus(); };
+  document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); btn.focus(); } });
+  menu.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault(); const items = [...menu.querySelectorAll('button')], i = items.indexOf(document.activeElement);
+    items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+  });
+  const item = (id, fn) => { $(id).onclick = () => { close(); fn(); }; };
+  item('#bExportHtml', exportHtml); item('#bSheet', sheetDialog); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
+  item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportParts', exportParts);
+}
 $('#bCeiling').onclick = ceilingMenu; $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
 $('#wDraw').onclick = () => { $('#welcome').hidden = true; ed.setTool('wall'); $('#plan').focus(); };
 
