@@ -183,7 +183,7 @@ function renderProps(opt) {
       ${fld('Return grille', `<div class="seg" id="pGr">${['', 'N', 'E', 'S', 'W'].map(f => `<button type="button" data-f="${f}" class="${(o.grille || '') === f ? 'on' : ''}">${f || 'None'}</button>`).join('')}</div>`)}
       ${o.grille ? (() => {
         const face = (o.grille === 'N' || o.grille === 'S') ? w : d, G = Plan3DViewer.grilleSize(o, face, P.ceiling);
-        const sizes = [[24, 12], [24, 18], [24, 24], [36, 12], [36, 18], [48, 12], [48, 18], [12, 12], [18, 12]];
+        const sizes = [[12, 12], [18, 12], [20, 20], [24, 12], [24, 18], [24, 24], [36, 12], [36, 18], [48, 12], [48, 18]];
         const cur = Math.round(G.w * 12) + 'x' + Math.round(G.h * 12);
         return `${fld('Grille size', `<select id="pGrSz"><option value="">Custom</option>${sizes.filter(([a]) => a / 12 <= face - 0.1 + 1e-6).map(([a, b]) => `<option value="${a}x${b}" ${cur === a + 'x' + b ? 'selected' : ''}>${a}″ × ${b}″</option>`).join('')}</select>`)}
           ${fld('Grille width', txt('pGrW', fmtIn(G.w)))}
