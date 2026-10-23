@@ -19,6 +19,14 @@ const CSS = `
 .p3v-here b{font-size:15px;font-weight:600}
 .p3v-here span{font:11.5px Consolas,"Cascadia Mono",ui-monospace,monospace;color:#f2c84b}
 .p3v-modes{display:flex;border-radius:999px;padding:3px;gap:2px}
+.p3v-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.p3v-look{font-family:inherit;font-size:12.5px;font-weight:600;color:#cfd8dc;border-radius:999px;padding:6px 12px;cursor:pointer}
+.p3v-look kbd{font:11px Consolas,ui-monospace,monospace;color:#9aa7ad;margin-left:4px;border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:0 4px}
+.p3v-look[aria-pressed=true]{background:#f2c84b;color:#121719;border-color:#f2c84b}
+.p3v-look[aria-pressed=true] kbd{color:#121719;border-color:rgba(0,0,0,.3)}
+.p3v-aim{position:absolute;left:50%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:#f2c84b;box-shadow:0 0 0 2px rgba(0,0,0,.35);pointer-events:none;z-index:6;display:none}
+.p3v-looking .p3v-aim{display:block}
+.p3v-looking .p3v-c{cursor:none}
 .p3v-modes button{font-family:inherit;font-size:13px;font-weight:600;letter-spacing:.03em;color:#9aa7ad;background:transparent;border:0;border-radius:999px;padding:7px 14px;cursor:pointer}
 .p3v-modes button[aria-pressed=true]{background:#eef2f3;color:#121719}
 .p3v-bottom{position:absolute;bottom:12px;left:12px;right:12px;display:flex;flex-direction:column;align-items:flex-end;gap:8px;pointer-events:none;z-index:5}
@@ -589,8 +597,10 @@ function mount(container, plan, opts) {
     <div class="p3v-labels" hidden></div>
     <div class="p3v-top">
       <div class="p3v-panel p3v-card"><div class="p3v-title"></div><div class="p3v-meta"></div><div class="p3v-here"><b></b><span></span></div></div>
-      <div class="p3v-panel p3v-modes" role="group" aria-label="View"><button data-m="walk">Walk</button><button data-m="doll">Dollhouse</button><button data-m="plan">Plan</button></div>
+      <div class="p3v-right"><div class="p3v-panel p3v-modes" role="group" aria-label="View"><button data-m="walk">Walk</button><button data-m="doll">Dollhouse</button><button data-m="plan">Plan</button></div>
+      <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button></div>
     </div>
+    <div class="p3v-aim" aria-hidden="true"></div>
     <div class="p3v-bottom"><canvas class="p3v-mini p3v-panel" aria-label="Mini map. Click to jump there."></canvas><div class="p3v-chips"></div></div>
     <div class="p3v-hint"></div>
     <div class="p3v-empty" hidden>Draw or import walls to see them in 3D.</div>`;
@@ -598,6 +608,7 @@ function mount(container, plan, opts) {
   const canvas = $('.p3v-c'), labelsEl = $('.p3v-labels'), chipsEl = $('.p3v-chips'), mini = $('.p3v-mini'), hint = $('.p3v-hint');
   const titleEl = $('.p3v-title'), metaEl = $('.p3v-meta'), hereName = $('.p3v-here b'), hereDims = $('.p3v-here span'), emptyEl = $('.p3v-empty');
   const modeBtns = [...container.querySelectorAll('.p3v-modes button')];
+  const lookBtn = container.querySelector('.p3v-look');
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: !!opts.preserve });
   renderer.setPixelRatio(Math.min(2, global.devicePixelRatio || 1));
@@ -740,11 +751,13 @@ function mount(container, plan, opts) {
   const pts = new Map(); let down = null, pinch = null;
   let hintGone = false; function dismissHint() { if (hintGone) return; hintGone = true; hint.classList.add('gone'); }
   const coarse = global.matchMedia && global.matchMedia('(pointer: coarse)').matches;
-  hint.textContent = coarse ? 'Drag to look · Tap the floor to walk' : 'Drag to look · Click doors to open · Click floor to walk · WASD to move';
+  if (coarse && lookBtn) lookBtn.hidden = true;
+  hint.textContent = coarse ? 'Drag to look · Tap the floor to walk · Tap doors to open' : 'Drag to look · L for mouse look · WASD to move, Shift to run · Q/E or ←/→ to turn · Click doors to open';
   setTimeout(dismissHint, 7000);
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('pointerdown', e => {
     dismissHint(); canvas.focus();
+    if (isLocked()) { down = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0, multi: false }; return; }
     down = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0, multi: pts.size > 0 };
     if (mode !== 'walk' || tween) return;
     canvas.setPointerCapture(e.pointerId);
@@ -752,11 +765,29 @@ function mount(container, plan, opts) {
     if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), fov }; down.multi = true; }
     canvas.classList.add('drag');
   });
+  // Mouse look (L key or the Look button): the mouse turns the view without holding a button, like a game.
+  // Esc or L again lets go of the mouse.
+  const lockable = !!canvas.requestPointerLock;
+  const isLocked = () => document.pointerLockElement === canvas;
+  function toggleLook() {
+    if (!lockable) return;
+    if (isLocked()) { document.exitPointerLock(); return; }
+    if (mode !== 'walk') goWalk(st.x, st.z, st.yaw, 500);
+    try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (err) { /* not allowed here */ }
+  }
+  if (lookBtn) { if (!lockable) lookBtn.hidden = true; lookBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleLook(); }); }
+  document.addEventListener('pointerlockchange', () => { container.classList.toggle('p3v-looking', isLocked()); keys.clear(); if (lookBtn) lookBtn.setAttribute('aria-pressed', String(isLocked())); });
+  canvas.addEventListener('mousemove', e => {
+    if (!isLocked() || mode !== 'walk' || tween) return;
+    const k = 0.0024 * (fov / 70);
+    st.yaw -= e.movementX * k; st.pitch = Math.max(-1.25, Math.min(1.25, st.pitch - e.movementY * k));
+  });
   canvas.addEventListener('pointermove', e => {
+    if (isLocked()) return;
     if (down) down.moved = Math.max(down.moved, Math.hypot(e.clientX - down.x, e.clientY - down.y));
     if (mode === 'walk' && !tween && pts.has(e.pointerId)) {
       const p = pts.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
-      if (pts.size === 1) { const k = (e.pointerType === 'touch' ? 0.0062 : 0.0042) * (fov / 70); st.yaw += dx * k; st.pitch = Math.max(-1.25, Math.min(1.25, st.pitch + dy * k)); }
+      if (pts.size === 1) { const k = (e.pointerType === 'touch' ? 0.0068 : 0.0058) * (fov / 70); st.yaw += dx * k; st.pitch = Math.max(-1.25, Math.min(1.25, st.pitch + dy * k)); }
       else if (pts.size === 2 && pinch) { const [a, b] = [...pts.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); fov = Math.max(35, Math.min(85, pinch.fov * pinch.d / d)); camera.fov = fov; camera.updateProjectionMatrix(); }
       ring.visible = false; return;
     }
@@ -771,6 +802,7 @@ function mount(container, plan, opts) {
     const click = down.moved < 7 && !down.multi && performance.now() - down.t < 600 && e.type === 'pointerup' && e.button === 0;
     if (pts.size === 0) down = null;
     if (!click || tween || !A) return;
+    if (isLocked()) { const r = canvas.getBoundingClientRect(); e = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; }
 
     if (checkDoorClick(e.clientX, e.clientY)) return;
 
@@ -783,9 +815,29 @@ function mount(container, plan, opts) {
   canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') ring.visible = false; });
   canvas.addEventListener('wheel', e => { if (mode !== 'walk') return; e.preventDefault(); fov = Math.max(35, Math.min(85, fov + e.deltaY * 0.03)); camera.fov = fov; camera.updateProjectionMatrix(); }, { passive: false });
   const keys = new Set();
-  canvas.addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'q', 'e'].includes(k)) { keys.add(k); dismissHint(); e.preventDefault(); } });
-  canvas.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
-  canvas.addEventListener('blur', () => keys.clear());
+  const MOVE_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'q', 'e', 'shift'];
+  const typing = (t) => t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName || ''));
+  // Keys reach the walkthrough whenever it's on screen and you're not typing in a box,
+  // so you don't have to click the 3D view first.
+  const viewOnScreen = () => !!container.offsetParent && container.clientWidth > 0;
+  const onKeyDown = (e) => {
+    if (!alive || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || !viewOnScreen()) return;
+    if (document.querySelector('dialog[open]')) return;
+    const k = e.key.toLowerCase();
+    if (k === 'l' && !e.repeat) { toggleLook(); e.preventDefault(); return; }
+    // Only take keys that are meant for the walkthrough: when you're in it, or when it fills the window.
+    // Side by side with the 2D plan, keys typed in the plan stay with the plan (W = wall tool, and so on).
+    const inView = container.contains(e.target), big = container.clientWidth > global.innerWidth * 0.6;
+    if (!inView && !big) return;
+    if (mode !== 'walk' && !inView) return;
+    running = e.shiftKey;
+    if (MOVE_KEYS.includes(k)) { keys.add(k); dismissHint(); if (k !== 'shift') e.preventDefault(); }
+  };
+  const onKeyUp = (e) => { keys.delete(e.key.toLowerCase()); running = e.shiftKey; };
+  let running = false;
+  global.addEventListener('keydown', onKeyDown);
+  global.addEventListener('keyup', onKeyUp);
+  global.addEventListener('blur', () => keys.clear());
 
   const mg = mini.getContext('2d'); let mm = { s: 1, ox: 0, oy: 0, w: 1, h: 1 };
   function sizeMini() {
@@ -890,10 +942,11 @@ function mount(container, plan, opts) {
   }
   const ro = new ResizeObserver(resize); ro.observe(container);
 
-  const tmp = new THREE.Vector3(); let last = performance.now(), raf = 0, alive = true;
+  const tmp = new THREE.Vector3(); let last = performance.now(), raf = 0, alive = true, turnHeld = 0;
   function loop(now) {
     if (!alive) return;
-    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    // up to 1/8 s per frame, so turning and walking keep their speed even when the 3D draws slowly
+    const dt = Math.min(0.125, (now - last) / 1000); last = now;
     if (A) {
       if (tween) runTween(now);
       else if (mode === 'walk') {
@@ -901,9 +954,10 @@ function mount(container, plan, opts) {
         if (keys.has('w') || keys.has('arrowup')) f += 1; if (keys.has('s') || keys.has('arrowdown')) f -= 1;
         if (keys.has('d')) s += 1; if (keys.has('a')) s -= 1;
         if (keys.has('arrowleft') || keys.has('q')) turn += 1; if (keys.has('arrowright') || keys.has('e')) turn -= 1;
-        st.yaw += turn * 1.8 * dt;
+        // turning starts gentle for small corrections and speeds up while held
+        if (turn) { turnHeld = Math.min(1, turnHeld + dt * 2.5); st.yaw += turn * (1.6 + 1.6 * turnHeld) * dt; } else turnHeld = 0;
         if (f || s) {
-          target = null; const sp = 7 * dt, fx = -Math.sin(st.yaw), fz = -Math.cos(st.yaw), rx = Math.cos(st.yaw), rz = -Math.sin(st.yaw);
+          target = null; const sp = (running || keys.has('shift') ? 13 : 7) * dt, fx = -Math.sin(st.yaw), fz = -Math.cos(st.yaw), rx = Math.cos(st.yaw), rz = -Math.sin(st.yaw);
           const vx = fx * f + rx * s, vz = fz * f + rz * s, n = Math.hypot(vx, vz); step(vx / n * sp, vz / n * sp);
         }
         if (target) {
@@ -947,13 +1001,14 @@ function mount(container, plan, opts) {
     loadPlan: (p) => setPlan(p, false),
     setMode: (m) => { if (m === 'walk') goWalk(st.x, st.z, st.yaw); else goOrbit(m); },
     resize,
+    get state() { return { x: st.x, z: st.z, yaw: st.yaw, pitch: st.pitch, mode }; },
     exportGLB: () => new Promise((resolve, reject) => {
       if (!THREE.GLTFExporter) return reject(new Error('GLTF exporter missing'));
       const fresh = buildScene(THREE, plan, analyze(plan));
       fresh.root.traverse(o => { if (o.isLineSegments) o.visible = false; });
       new THREE.GLTFExporter().parse(fresh.root, (res) => resolve(res), { binary: true, onlyVisible: true });
     }),
-    dispose: () => { alive = false; cancelAnimationFrame(raf); ro.disconnect(); renderer.dispose(); container.innerHTML = ''; }
+    dispose: () => { alive = false; global.removeEventListener('keydown', onKeyDown); global.removeEventListener('keyup', onKeyUp); if (isLocked()) document.exitPointerLock(); cancelAnimationFrame(raf); ro.disconnect(); renderer.dispose(); container.innerHTML = ''; }
   };
 }
 
