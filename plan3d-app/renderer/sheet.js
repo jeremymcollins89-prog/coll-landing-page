@@ -174,7 +174,7 @@ function makeSheet(plan, opts) {
     let hatch = ''; for (let d = -h; d < w; d += step) hatch += `M${n3(X(b.x0) + d)},${n3(Y(b.z1))}l${n3(h)},${n3(-h)}`;
     out.push(`<path d="${hatch}" stroke="#777" stroke-width="${lw.hair}" clip-path="url(#${id})"/>`);
     if (b.grille) {
-      const g = b.grille, inset = 0.25;
+      const g = b.grille, fl = (g === 'N' || g === 'S') ? b.x1 - b.x0 : b.z1 - b.z0, inset = (fl - V.grilleSize(b.c, fl, A.H).w) / 2;
       if (g === 'N') line(b.x0 + inset, b.z0, b.x1 - inset, b.z0, `stroke="#111" stroke-width="${lw.wall * 2.2}"`);
       if (g === 'S') line(b.x0 + inset, b.z1, b.x1 - inset, b.z1, `stroke="#111" stroke-width="${lw.wall * 2.2}"`);
       if (g === 'W') line(b.x0, b.z0 + inset, b.x0, b.z1 - inset, `stroke="#111" stroke-width="${lw.wall * 2.2}"`);

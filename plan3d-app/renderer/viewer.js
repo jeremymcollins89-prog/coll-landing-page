@@ -170,6 +170,17 @@ function analyze(plan) {
   return { H, walls, pieces, ends, corners, opInfo, boxes, obs, empty, bounds: { minX, minZ, maxX, maxZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, w: maxX - minX, d: maxZ - minZ } };
 }
 
+/* Return grille on an air chase: c.grW / c.grH (feet) and c.grSill (feet, floor to bottom of the grille),
+   c.damper (opposed-blade damper behind it). Unset sizes keep the old look: the face less 3″ each side,
+   18″ tall, 6″ off the floor. faceLen: length of the chase face the grille is on. */
+function grilleSize(c, faceLen, H) {
+  c = c || {}; H = H || 8;
+  const w = Math.max(0.25, Math.min(Math.max(0.25, faceLen - 0.1), c.grW > 0 ? c.grW : faceLen - 0.5));
+  const sill = Math.max(0, Math.min(H - 0.5, c.grSill != null ? c.grSill : 0.5));
+  const h = Math.max(0.25, Math.min(H - 0.25 - sill, c.grH > 0 ? c.grH : 1.5));
+  return { w, h, sill, damper: !!c.damper };
+}
+
 function footprint(A) {
   if (A.__fp !== undefined) return A.__fp;
   A.__fp = null;
@@ -516,8 +527,8 @@ function buildScene(THREE, plan, A) {
     shadow(m.position.x, m.position.z, w, d, 0, 1.0);
     const f = b.grille;
     if (f) {
-      const gh = 1.5, gy = 0.5 + gh / 2, gt = 0.04;
-      const glen = (f === 'N' || f === 'S') ? Math.max(0.5, w - 0.5) : Math.max(0.5, d - 0.5);
+      const G = grilleSize(b.c, (f === 'N' || f === 'S') ? w : d, H);
+      const gh = G.h, gy = G.sill + gh / 2, gt = 0.04, glen = G.w;
       let gm;
       if (f === 'W' || f === 'E') { gm = new THREE.Mesh(new THREE.BoxGeometry(gt, gh, glen), M.grille); gm.position.set(f === 'W' ? b.x0 - gt / 2 : b.x1 + gt / 2, gy, m.position.z); }
       else { gm = new THREE.Mesh(new THREE.BoxGeometry(glen, gh, gt), M.grille); gm.position.set(m.position.x, gy, f === 'N' ? b.z0 - gt / 2 : b.z1 + gt / 2); }
@@ -1012,5 +1023,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { mount, analyze, footprint, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { mount, analyze, footprint, grilleSize, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);

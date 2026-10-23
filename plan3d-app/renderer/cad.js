@@ -85,7 +85,7 @@ function toDxf(plan, opts) {
       const s0 = Math.max(0, -d), s1 = Math.min(h, w - d);
       if (s1 - s0 > 1e-3) line('A-CHASE-HATCH', b.x0 + d + s0, b.z1 - s0, b.x0 + d + s1, b.z1 - s1);
     }
-    const g = b.grille, inset = 0.25;
+    const g = b.grille, fl = (g === 'N' || g === 'S') ? w : h, inset = g ? (fl - V.grilleSize(b.c, fl, A.H).w) / 2 : 0;
     if (g === 'N') line('A-GRILLE', b.x0 + inset, b.z0, b.x1 - inset, b.z0);
     if (g === 'S') line('A-GRILLE', b.x0 + inset, b.z1, b.x1 - inset, b.z1);
     if (g === 'W') line('A-GRILLE', b.x0, b.z0 + inset, b.x0, b.z1 - inset);
