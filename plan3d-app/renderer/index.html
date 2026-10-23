@@ -15,10 +15,19 @@
     <button id="bOpen" class="btn" title="Open a saved project (Ctrl+O)">Open</button>
     <button id="bSave" class="btn" title="Save project (Ctrl+S)">Save</button>
     <div class="sep"></div>
-    <button id="bExportHtml" class="btn" title="Save a walkthrough page anyone can open in a browser (Ctrl+E)">Export walkthrough</button>
-    <button id="bSheet" class="btn" title="Printable floor plan with dimensions and title block (Ctrl+P)">Plan sheet</button>
-    <button id="bExportCad" class="btn" title="Save the plan for AutoCAD (DWG, DXF) or Revit (IFC) (Ctrl+D)">Save DWG / IFC</button>
-    <button id="bExportGlb" class="btn" title="Save a .glb 3D model for SketchUp, Blender, Windows 3D Viewer">Export .glb</button>
+    <div class="dd">
+      <button id="bExport" class="btn" aria-haspopup="menu" aria-expanded="false" title="Walkthrough, plan sheet, AutoCAD, Revit, 3D model, parts list">Export <span class="caret" aria-hidden="true">▾</span></button>
+      <div class="menu" id="exportMenu" role="menu" hidden>
+        <button role="menuitem" id="bExportHtml"><span>Walkthrough page <small>.html, opens in any browser</small></span><kbd>Ctrl+E</kbd></button>
+        <button role="menuitem" id="bSheet"><span>Plan sheet <small>PDF with dimensions</small></span><kbd>Ctrl+P</kbd></button>
+        <div class="msep"></div>
+        <button role="menuitem" id="bExportCad"><span>AutoCAD drawing <small>DWG or DXF</small></span><kbd>Ctrl+D</kbd></button>
+        <button role="menuitem" id="bExportIfc"><span>Revit 3D model <small>IFC, save as .rvt in Revit</small></span><kbd></kbd></button>
+        <button role="menuitem" id="bExportGlb"><span>3D model <small>.glb for SketchUp, Blender</small></span><kbd></kbd></button>
+        <div class="msep"></div>
+        <button role="menuitem" id="bExportParts"><span>Parts list <small>.csv for Excel</small></span><kbd></kbd></button>
+      </div>
+    </div>
   </div>
   <div class="views" role="group" aria-label="View">
     <button data-view="2d" aria-pressed="true">Plan</button>
