@@ -156,6 +156,114 @@ function analyze(plan) {
   return { H, walls, pieces, ends, corners, opInfo, boxes, obs, empty, bounds: { minX, minZ, maxX, maxZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, w: maxX - minX, d: maxZ - minZ } };
 }
 
+/* The rooms' footprint: everything enclosed by the walls, so the floor and ceiling stop at the outside
+   walls instead of filling the whole bounding rectangle. Open ends (a corridor with no door drawn) up to
+   ~16′ wide are closed off at the line between the wall ends. Result (cached on A):
+   { cell, x0, z0, nx, nz, inside: Uint8Array, rects: [[x0, z0, x1, z1] …] (feet), area (sq ft), has(x, z) } */
+function footprint(A) {
+  if (A.__fp !== undefined) return A.__fp;
+  A.__fp = null;
+  if (A.empty) return null;
+  const B = A.bounds, R = 0.75; // seals small joints between walls; open ends are closed by straight lines below
+  let cell = 0.25;
+  const span = (B.w + 2 * R + 4) * (B.d + 2 * R + 4);
+  while (span / (cell * cell) > 400000) cell *= 1.5;
+  const x0 = B.minX - R - 2, z0 = B.minZ - R - 2, nx = Math.ceil((B.w + 2 * R + 4) / cell), nz = Math.ceil((B.d + 2 * R + 4) / cell), N = nx * nz;
+  const wall = new Uint8Array(N);
+  const stamp = (x1, z1, x2, z2, t) => {
+    const r = Math.max(t / 2, cell * 0.75), L = Math.hypot(x2 - x1, z2 - z1);
+    const i0 = Math.max(0, Math.floor((Math.min(x1, x2) - r - x0) / cell)), i1 = Math.min(nx - 1, Math.ceil((Math.max(x1, x2) + r - x0) / cell));
+    const j0 = Math.max(0, Math.floor((Math.min(z1, z2) - r - z0) / cell)), j1 = Math.min(nz - 1, Math.ceil((Math.max(z1, z2) + r - z0) / cell));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const px = x0 + (i + 0.5) * cell, pz = z0 + (j + 0.5) * cell;
+      let d;
+      if (L < 1e-6) d = Math.hypot(px - x1, pz - z1);
+      else { const u = Math.max(0, Math.min(1, ((px - x1) * (x2 - x1) + (pz - z1) * (z2 - z1)) / (L * L))); d = Math.hypot(px - x1 - u * (x2 - x1), pz - z1 - u * (z2 - z1)); }
+      if (d <= r) wall[j * nx + i] = 1;
+    }
+  };
+  for (const p of A.pieces) stamp(p.x1, p.z1, p.x2, p.z2, p.t);
+  for (const i of A.opInfo) stamp(i.o.x1, i.o.y1, i.o.x2, i.o.y2, i.t); // doors, glass, pass-thrus close their wall
+  for (const b of A.boxes) { stamp(b.x0, b.z0, b.x1, b.z0, 0.1); stamp(b.x1, b.z0, b.x1, b.z1, 0.1); stamp(b.x1, b.z1, b.x0, b.z1, 0.1); stamp(b.x0, b.z1, b.x0, b.z0, 0.1); }
+  // Open ends (a corridor with no door drawn): join each free wall end to the nearest free end within 16′
+  // with a straight line, so the floor and ceiling stop flush across the opening.
+  const segD = (px, pz, w) => { const dx = w.x2 - w.x1, dz = w.y2 - w.y1, L2 = dx * dx + dz * dz || 1e-9, u = Math.max(0, Math.min(1, ((px - w.x1) * dx + (pz - w.y1) * dz) / L2)); return Math.hypot(px - w.x1 - u * dx, pz - w.y1 - u * dz); };
+  const free = [];
+  for (const w of A.walls) for (const [x, z] of [[w.x1, w.y1], [w.x2, w.y2]]) {
+    const t = w.t || 0.25;
+    if (A.walls.some(o => o !== w && segD(x, z, o) < Math.max(t, o.t || 0.25) * 0.8)) continue; // joins another wall
+    if (A.opInfo.some(i => Math.min(Math.hypot(i.o.x1 - x, i.o.y1 - z), Math.hypot(i.o.x2 - x, i.o.y2 - z)) < 0.3)) continue; // door / glass end
+    free.push({ x, z, w });
+  }
+  const crosses = (a, b) => A.walls.some(w => {
+    if (w === a.w || w === b.w) return false;
+    const d1x = b.x - a.x, d1z = b.z - a.z, d2x = w.x2 - w.x1, d2z = w.y2 - w.y1, den = d1x * d2z - d1z * d2x;
+    if (Math.abs(den) < 1e-9) return false;
+    const s1 = ((w.x1 - a.x) * d2z - (w.y1 - a.z) * d2x) / den, s2 = ((w.x1 - a.x) * d1z - (w.y1 - a.z) * d1x) / den;
+    return s1 > 0.02 && s1 < 0.98 && s2 > 0 && s2 < 1;
+  });
+  const joined = new Set();
+  free.forEach((a, ia) => {
+    let best = -1, bd = 16;
+    free.forEach((b, ib) => { if (ib === ia || b.w === a.w) return; const d = Math.hypot(b.x - a.x, b.z - a.z); if (d > 0.3 && d < bd && !crosses(a, b)) { bd = d; best = ib; } });
+    if (best < 0) return;
+    const key = Math.min(ia, best) + '-' + Math.max(ia, best); if (joined.has(key)) return; joined.add(key);
+    stamp(a.x, a.z, free[best].x, free[best].z, 0.05);
+  });
+  // distance (in cells, 3-4 chamfer) from a set of cells
+  const dist = (seed) => {
+    const D = new Float32Array(N); for (let k = 0; k < N; k++) D[k] = seed[k] ? 0 : 1e9;
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { const k = j * nx + i; let d = D[k];
+      if (i > 0) d = Math.min(d, D[k - 1] + 1); if (j > 0) { d = Math.min(d, D[k - nx] + 1); if (i > 0) d = Math.min(d, D[k - nx - 1] + 1.4142); if (i < nx - 1) d = Math.min(d, D[k - nx + 1] + 1.4142); } D[k] = d; }
+    for (let j = nz - 1; j >= 0; j--) for (let i = nx - 1; i >= 0; i--) { const k = j * nx + i; let d = D[k];
+      if (i < nx - 1) d = Math.min(d, D[k + 1] + 1); if (j < nz - 1) { d = Math.min(d, D[k + nx] + 1); if (i < nx - 1) d = Math.min(d, D[k + nx + 1] + 1.4142); if (i > 0) d = Math.min(d, D[k + nx - 1] + 1.4142); } D[k] = d; }
+    return D;
+  };
+  const rc = R / cell;
+  const Dw = dist(wall);
+  // flood the outside, with the walls swollen by R so open ends are bridged
+  const out = new Uint8Array(N), stack = [];
+  const push = (k) => { if (!out[k] && Dw[k] > rc) { out[k] = 1; stack.push(k); } };
+  for (let i = 0; i < nx; i++) { push(i); push((nz - 1) * nx + i); }
+  for (let j = 0; j < nz; j++) { push(j * nx); push(j * nx + nx - 1); }
+  while (stack.length) { const k = stack.pop(), i = k % nx, j = (k - i) / nx; if (i > 0) push(k - 1); if (i < nx - 1) push(k + 1); if (j > 0) push(k - nx); if (j < nz - 1) push(k + nx); }
+  // shrink the swollen walls back: within R of that flood is outside too (but never a wall cell)
+  const Do = dist(out), inside = new Uint8Array(N);
+  let n = 0;
+  for (let k = 0; k < N; k++) if (wall[k] || Do[k] > rc + 0.5) { inside[k] = 1; n++; }
+  if (n < 4) return null;
+  // merge into rectangles: runs along each row, then stack equal runs
+  const rects = [], open = new Map();
+  for (let j = 0; j <= nz; j++) {
+    const runs = [];
+    if (j < nz) { let i = 0; while (i < nx) { if (!inside[j * nx + i]) { i++; continue; } const a = i; while (i < nx && inside[j * nx + i]) i++; runs.push(a + ',' + i); } }
+    const now = new Set(runs);
+    for (const [key, r] of open) if (!now.has(key)) { rects.push(r); open.delete(key); }
+    for (const key of runs) {
+      if (open.has(key)) open.get(key)[3] = z0 + (j + 1) * cell;
+      else { const [a, b] = key.split(',').map(Number); open.set(key, [x0 + a * cell, z0 + j * cell, x0 + b * cell, z0 + (j + 1) * cell]); }
+    }
+  }
+  const fp = { cell, x0, z0, nx, nz, inside, rects, area: n * cell * cell,
+    has(x, z) { const i = Math.floor((x - x0) / cell), j = Math.floor((z - z0) / cell); return i >= 0 && j >= 0 && i < nx && j < nz && !!inside[j * nx + i]; } };
+  A.__fp = fp;
+  return fp;
+}
+// Flat rectangles at height y as one mesh; UVs in feet (u = x / su, v = z / sv) so textures tile in place
+function rectsGeometry(THREE, rects, y, down, su, sv, ox, oz) {
+  const pos = [], uv = [];
+  for (const [ax, az, bx, bz] of rects) {
+    const P = [[ax, az], [bx, az], [bx, bz], [ax, bz]];
+    const tri = down ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
+    for (const t of tri) { pos.push(P[t][0], y, P[t][1]); uv.push((P[t][0] - ox) / su, (P[t][1] - oz) / sv); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
+  return g;
+}
+
 /* Ceiling fixtures: the plan's own list when placed by hand (Build mode), otherwise an automatic
    layout on the 2×4 grid that starts at the plan's corner, kept clear of walls and chases. */
 function ceilingFixtures(plan, A) {
@@ -168,6 +276,7 @@ function ceilingFixtures(plan, A) {
       let clear = true;
       for (const p of A.pieces) { if (segDist(cx, cz, p.x1, p.z1, p.x2, p.z2) < 2.3) { clear = false; break; } }
       if (clear) for (const b of A.boxes) if (cx > b.x0 - 1.2 && cx < b.x1 + 1.2 && cz > b.z0 - 2.2 && cz < b.z1 + 2.2) { clear = false; break; }
+      if (clear) { const fp = footprint(A); if (fp && !(fp.has(cx - 0.9, cz - 1.9) && fp.has(cx + 0.9, cz - 1.9) && fp.has(cx - 0.9, cz + 1.9) && fp.has(cx + 0.9, cz + 1.9))) clear = false; }
       if (clear) out.push({ type: (k++ % 2) ? 'ffu' : 'led', x: cx, y: cz });
     }
   }
@@ -401,9 +510,13 @@ function buildScene(THREE, plan, A) {
   }
 
   // Floor, ground
-  const fTex = new THREE.CanvasTexture(floorCanvas); fTex.wrapS = fTex.wrapT = THREE.RepeatWrapping; fTex.repeat.set(B.w / 12, B.d / 12); fTex.anisotropy = ANISO;
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.d), new THREE.MeshPhongMaterial({ map: fTex, color: 0x9ea2a3, specular: 0x101010, shininess: 22 }));
-  floor.rotation.x = -Math.PI / 2; floor.position.set(B.cx, 0.01, B.cz); root.add(floor);
+  const FP = footprint(A); // floor and ceiling follow the rooms, not the bounding rectangle
+  const fTex = new THREE.CanvasTexture(floorCanvas); fTex.wrapS = fTex.wrapT = THREE.RepeatWrapping; fTex.anisotropy = ANISO;
+  const fMat = new THREE.MeshPhongMaterial({ map: fTex, color: 0x9ea2a3, specular: 0x101010, shininess: 22 });
+  let floor;
+  if (FP) floor = new THREE.Mesh(rectsGeometry(THREE, FP.rects, 0.01, false, 12, 12, 0, 0), fMat);
+  else { fTex.repeat.set(B.w / 12, B.d / 12); floor = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.d), fMat); floor.rotation.x = -Math.PI / 2; floor.position.set(B.cx, 0.01, B.cz); }
+  root.add(floor);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(B.w + 140, B.d + 140), new THREE.MeshLambertMaterial({ color: 0xc4c8c2 }));
   ground.rotation.x = -Math.PI / 2; ground.position.set(B.cx, 0, B.cz); root.add(ground);
 
@@ -417,8 +530,14 @@ function buildScene(THREE, plan, A) {
     const plain = cachedCanvas('ceilPlain', () => makeCanvas(128, 128, (g, w, h) => { g.fillStyle = '#f1f2f1'; g.fillRect(0, 0, w, h); for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(120,124,126,${Math.random() * .22})`; g.fillRect(Math.random() * w, Math.random() * h, 1, 1); } }));
     cMap = new THREE.CanvasTexture(plain); cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.repeat.set(B.w / 2, B.d / 2); cMap.anisotropy = ANISO;
   }
-  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.d), new THREE.MeshLambertMaterial({ map: cMap, color: 0xbfc2c2, emissive: 0x9a9c9c, emissiveMap: cMap }));
-  ceil.rotation.x = Math.PI / 2; ceil.position.set(B.cx, H, B.cz); ceiling.add(ceil);
+  const cMat = new THREE.MeshLambertMaterial({ map: cMap, color: 0xbfc2c2, emissive: 0x9a9c9c, emissiveMap: cMap });
+  let ceil;
+  if (FP) {
+    // tile pattern starts at the plan's corner, same as before: 2′ across, 4′ (or 2′ plain) along
+    cMap.repeat.set(1, 1);
+    ceil = new THREE.Mesh(rectsGeometry(THREE, FP.rects, H, true, 2, ownGrid ? 2 : 4, B.minX, B.minZ), cMat);
+  } else { ceil = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.d), cMat); ceil.rotation.x = Math.PI / 2; ceil.position.set(B.cx, H, B.cz); }
+  ceiling.add(ceil);
   if (ownGrid) {
     // 15/16″ white T-bar, all lines in one mesh
     const tw = 0.078 / 2, pos = [];
@@ -800,5 +919,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { mount, analyze, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { mount, analyze, footprint, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);
