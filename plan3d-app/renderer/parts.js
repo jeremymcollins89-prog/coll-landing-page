@@ -92,7 +92,12 @@ function partsList(plan) {
   // --- Air chases
   for (const b of A.boxes) {
     const w = b.x1 - b.x0, d = b.z1 - b.z0;
-    add('Air chases', 'Air chase' + (b.grille ? ', with return grille' : ''), inch(Math.max(w, d)) + ' × ' + inch(Math.min(w, d)) + ' × ' + ftin(H), 1, 'ea', 40);
+    add('Air chases', 'Air chase', inch(Math.max(w, d)) + ' × ' + inch(Math.min(w, d)) + ' × ' + ftin(H), 1, 'ea', 40);
+    if (b.grille) {
+      const G = V.grilleSize(b.c, (b.grille === 'N' || b.grille === 'S') ? w : d, H), sz = inch(G.w) + ' × ' + inch(G.h);
+      add('Air chases', 'Return grille', sz, 1, 'ea', 41);
+      if (G.damper) add('Air chases', 'Damper, opposed blade', sz, 1, 'ea', 42);
+    }
   }
 
   // --- Trim (linear feet; base and ceiling track on both faces)

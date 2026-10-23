@@ -494,11 +494,13 @@ class Editor {
         g.restore();
       }
       if (k.grille) {
+        const horiz = k.grille === 'N' || k.grille === 'S', face = horiz ? W : H;
+        const gw = global.Plan3DViewer ? Math.min(face - 2, global.Plan3DViewer.grilleSize(k, face / s, P.ceiling).w * s) : face - 6, o = (face - gw) / 2;
         g.strokeStyle = COL.grille; g.lineWidth = 3; g.beginPath();
-        if (k.grille === 'N') { g.moveTo(X + 3, Y + 1.5); g.lineTo(X + W - 3, Y + 1.5); }
-        if (k.grille === 'S') { g.moveTo(X + 3, Y + H - 1.5); g.lineTo(X + W - 3, Y + H - 1.5); }
-        if (k.grille === 'W') { g.moveTo(X + 1.5, Y + 3); g.lineTo(X + 1.5, Y + H - 3); }
-        if (k.grille === 'E') { g.moveTo(X + W - 1.5, Y + 3); g.lineTo(X + W - 1.5, Y + H - 3); }
+        if (k.grille === 'N') { g.moveTo(X + o, Y + 1.5); g.lineTo(X + o + gw, Y + 1.5); }
+        if (k.grille === 'S') { g.moveTo(X + o, Y + H - 1.5); g.lineTo(X + o + gw, Y + H - 1.5); }
+        if (k.grille === 'W') { g.moveTo(X + 1.5, Y + o); g.lineTo(X + 1.5, Y + o + gw); }
+        if (k.grille === 'E') { g.moveTo(X + W - 1.5, Y + o); g.lineTo(X + W - 1.5, Y + o + gw); }
         g.stroke();
       }
     }

@@ -181,11 +181,35 @@ function renderProps(opt) {
       ${fld('Width (E–W)', txt('pCW', fmtIn(w)))}
       ${fld('Depth (N–S)', txt('pCD', fmtIn(d)))}
       ${fld('Return grille', `<div class="seg" id="pGr">${['', 'N', 'E', 'S', 'W'].map(f => `<button type="button" data-f="${f}" class="${(o.grille || '') === f ? 'on' : ''}">${f || 'None'}</button>`).join('')}</div>`)}
-      <p class="note">Runs full height, floor to ceiling. The grille shows on the face you pick.</p>`;
+      ${o.grille ? (() => {
+        const face = (o.grille === 'N' || o.grille === 'S') ? w : d, G = Plan3DViewer.grilleSize(o, face, P.ceiling);
+        const sizes = [[24, 12], [24, 18], [24, 24], [36, 12], [36, 18], [48, 12], [48, 18], [12, 12], [18, 12]];
+        const cur = Math.round(G.w * 12) + 'x' + Math.round(G.h * 12);
+        return `${fld('Grille size', `<select id="pGrSz"><option value="">Custom</option>${sizes.filter(([a]) => a / 12 <= face - 0.1 + 1e-6).map(([a, b]) => `<option value="${a}x${b}" ${cur === a + 'x' + b ? 'selected' : ''}>${a}″ × ${b}″</option>`).join('')}</select>`)}
+          ${fld('Grille width', txt('pGrW', fmtIn(G.w)))}
+          ${fld('Grille height', txt('pGrH', fmtIn(G.h)))}
+          ${fld('Bottom above floor', txt('pGrS', fmtIn(G.sill)))}
+          ${fld('Damper', `<label class="chk"><input type="checkbox" id="pDmp" ${G.damper ? 'checked' : ''}> Opposed-blade damper behind the grille</label>`)}
+          <div class="row"><button class="btn small" id="pGrAll">Use this grille on every chase</button></div>`;
+      })() : ''}
+      <p class="note">Runs full height, floor to ceiling. The grille is centred on the face you pick; its size and damper go on the parts list.</p>`;
     box.innerHTML = h;
     bindLen('pCW', 'in', v => ed.edit(() => { const x = Math.min(o.x0, o.x1); o.x0 = x; o.x1 = x + Math.max(0.1, v); }));
     bindLen('pCD', 'in', v => ed.edit(() => { const y = Math.min(o.y0, o.y1); o.y0 = y; o.y1 = y + Math.max(0.1, v); }));
     $$('#pGr button').forEach(b => b.onclick = () => ed.edit(() => { o.grille = b.dataset.f; }));
+    if (o.grille) {
+      bindLen('pGrW', 'in', v => ed.edit(() => { o.grW = Math.max(0.25, v); }));
+      bindLen('pGrH', 'in', v => ed.edit(() => { o.grH = Math.max(0.25, v); }));
+      bindLen('pGrS', 'in', v => ed.edit(() => { o.grSill = Math.max(0, v); }));
+      $('#pGrSz').onchange = (e) => { if (!e.target.value) return; const [a, b] = e.target.value.split('x').map(Number); ed.edit(() => { o.grW = a / 12; o.grH = b / 12; }); };
+      $('#pDmp').onchange = (e) => ed.edit(() => { o.damper = e.target.checked; });
+      $('#pGrAll').onclick = () => {
+        const face = (o.grille === 'N' || o.grille === 'S') ? w : d, G = Plan3DViewer.grilleSize(o, face, P.ceiling);
+        let n = 0;
+        ed.edit(Q => { for (const c of Q.chases || []) { if (!c.grille) continue; c.grW = G.w; c.grH = G.h; c.grSill = G.sill; c.damper = G.damper; n++; } });
+        toast(`Grille ${fmtIn(G.w)} × ${fmtIn(G.h)}${G.damper ? ' with damper' : ''} set on ${n} chase${n === 1 ? '' : 's'}. Grilles wider than a chase face are trimmed to fit.`);
+      };
+    }
     $('#pDel').onclick = () => ed.deleteSel();
     return;
   }
