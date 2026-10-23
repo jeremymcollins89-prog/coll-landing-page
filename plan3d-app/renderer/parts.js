@@ -95,16 +95,20 @@ function partsList(plan) {
     add('Air chases', 'Air chase' + (b.grille ? ', with return grille' : ''), inch(Math.max(w, d)) + ' × ' + inch(Math.min(w, d)) + ' × ' + ftin(H), 1, 'ea', 40);
   }
 
-  // --- Trim (linear feet, both faces)
-  let baseFt = 0, trackFt = 0;
-  for (const p of A.pieces) { baseFt += p.len * 2; trackFt += p.len * 2; }
+  // --- Trim (linear feet; base and ceiling track on both faces)
+  // Floor track: one run under every wall panel, inside walls and outside walls, including the panels
+  // under glass and pass-thrus; it stops at doors and open doorways (no panel there). Air chase walls sit
+  // in floor track too.
+  let baseFt = 0, trackFt = 0, floorFt = 0;
+  for (const p of A.pieces) { baseFt += p.len * 2; trackFt += p.len * 2; floorFt += p.len; }
   for (const i of A.opInfo) {
-    if (i.o.type === 'glass' || i.o.type === 'pass') baseFt += i.len * 2;
+    if (i.o.type === 'glass' || i.o.type === 'pass') { baseFt += i.len * 2; floorFt += i.len; }
     trackFt += i.len * 2;
   }
-  for (const b of A.boxes) { const per = 2 * ((b.x1 - b.x0) + (b.z1 - b.z0)); baseFt += per; trackFt += per; }
-  if (baseFt) add('Trim', 'Black rubber base, 4″', '', Math.ceil(baseFt), 'lin ft', 50);
-  if (trackFt) add('Trim', 'Ceiling track', '', Math.ceil(trackFt), 'lin ft', 51);
+  for (const b of A.boxes) { const per = 2 * ((b.x1 - b.x0) + (b.z1 - b.z0)); baseFt += per; trackFt += per; floorFt += per; }
+  if (floorFt) add('Trim', 'Floor track', '', Math.ceil(floorFt), 'lin ft', 50);
+  if (baseFt) add('Trim', 'Black rubber base, 4″', '', Math.ceil(baseFt), 'lin ft', 51);
+  if (trackFt) add('Trim', 'Ceiling track', '', Math.ceil(trackFt), 'lin ft', 52);
 
   // --- Ceiling
   const fx = V.ceilingFixtures(plan, A);
