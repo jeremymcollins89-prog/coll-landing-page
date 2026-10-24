@@ -96,7 +96,7 @@ function toDxf(plan, opts) {
   for (const p of A.pieces) pline(p.sp ? 'A-WALL-SP' : 'A-WALL', quad(p.x1, p.z1, p.x2, p.z2, p.t), true);
   const seen = [];
   for (const e of A.ends) {
-    if (e.cut || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue; seen.push(e);
+    if (e.cut || e.joined || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue; seen.push(e);
     const h = e.t / 2; pline('A-WALL-POST', [[e.x - h, e.z - h], [e.x + h, e.z - h], [e.x + h, e.z + h], [e.x - h, e.z + h]], true);
   }
   for (const c of A.corners) {

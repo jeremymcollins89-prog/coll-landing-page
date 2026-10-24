@@ -188,7 +188,7 @@ function makeSheet(plan, opts) {
   for (const p of A.pieces) poly(quad(p.x1, p.z1, p.x2, p.z2, p.t), `fill="${p.sp ? '#f6e27a' : '#fff'}" stroke="#111" stroke-width="${lw.wall}" stroke-linejoin="miter"`);
   const seen = [];
   for (const e of A.ends) {
-    if (e.cut || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue; seen.push(e);
+    if (e.cut || e.joined || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue; seen.push(e);
     const h = e.t / 2; out.push(`<rect x="${X(e.x - h)}" y="${Y(e.z - h)}" width="${n3(e.t * k)}" height="${n3(e.t * k)}" fill="#fff" stroke="#111" stroke-width="${lw.thin}"/>`);
   }
   // 4″ × 4″ corner posts
