@@ -248,7 +248,8 @@ function renderProps(opt) {
       <span>Walls</span><span>${P.walls.length}</span>
       <span>Doors &amp; glass</span><span>${P.openings.length}</span>
       <span>Air chases</span><span>${P.chases.length}</span>
-      <span>Rooms</span><span>${P.rooms.length}</span></div>
+      <span>Rooms</span><span>${P.rooms.length}</span>
+      ${hasGeo ? (() => { const ft = Plan3DParts.floorTrackFt(P); return `<span>Floor track</span><span>${Math.ceil(ft)} lin ft <small>(${Plan3DParts.ftin(ft)})</small></span>`; })() : ''}</div>
       ${hasGeo ? '<div class="row"><button class="btn small" id="pClearAuto">Clear all walls</button></div>' : ''}
     </div>
     ${ffuPanelHtml(P)}`;

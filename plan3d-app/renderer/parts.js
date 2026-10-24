@@ -10,6 +10,18 @@ const near = (a, b, tol) => Math.abs(a - b) <= (tol || 1 / 48);
 
 const PIECE_NAMES = { panel: 'Wall panel', sp: 'S.P. panel', glass: 'Glass panel', door: 'Door panel, 3070', door2: 'Door panel, pair 6070', pass: 'Pass-thru panel' };
 
+/* Hardwall floor track, in feet: one run under every wall panel, inside walls and outside walls, including
+   the panels under glass and pass-thrus; it stops at doors and open doorways (no panel there). Air chase
+   walls sit in floor track too. Hidden in 3D (it's under the panels), but it's on the parts list. */
+function floorTrackFt(plan, A) {
+  A = A || global.Plan3DViewer.analyze(plan);
+  let ft = 0;
+  for (const p of A.pieces) ft += p.len;
+  for (const i of A.opInfo) if (i.o.type === 'glass' || i.o.type === 'pass') ft += i.len;
+  for (const b of A.boxes) ft += 2 * ((b.x1 - b.x0) + (b.z1 - b.z0));
+  return ft;
+}
+
 function partsList(plan) {
   const V = global.Plan3DViewer, A = V.analyze(plan), H = A.H;
   const rows = new Map();
@@ -100,18 +112,16 @@ function partsList(plan) {
     }
   }
 
-  // --- Trim (linear feet; base and ceiling track on both faces)
-  // Floor track: one run under every wall panel, inside walls and outside walls, including the panels
-  // under glass and pass-thrus; it stops at doors and open doorways (no panel there). Air chase walls sit
-  // in floor track too.
-  let baseFt = 0, trackFt = 0, floorFt = 0;
-  for (const p of A.pieces) { baseFt += p.len * 2; trackFt += p.len * 2; floorFt += p.len; }
+  // --- Hardwall floor track and trim (linear feet; base and ceiling track on both faces)
+  const floorFt = floorTrackFt(plan, A);
+  if (floorFt) add('Wall panels', 'Floor track, hardwall (under all wall panels)', ftin(floorFt) + ' total', Math.ceil(floorFt), 'lin ft', 15);
+  let baseFt = 0, trackFt = 0;
+  for (const p of A.pieces) { baseFt += p.len * 2; trackFt += p.len * 2; }
   for (const i of A.opInfo) {
-    if (i.o.type === 'glass' || i.o.type === 'pass') { baseFt += i.len * 2; floorFt += i.len; }
+    if (i.o.type === 'glass' || i.o.type === 'pass') baseFt += i.len * 2;
     trackFt += i.len * 2;
   }
-  for (const b of A.boxes) { const per = 2 * ((b.x1 - b.x0) + (b.z1 - b.z0)); baseFt += per; trackFt += per; floorFt += per; }
-  if (floorFt) add('Trim', 'Floor track', '', Math.ceil(floorFt), 'lin ft', 50);
+  for (const b of A.boxes) { const per = 2 * ((b.x1 - b.x0) + (b.z1 - b.z0)); baseFt += per; trackFt += per; }
   if (baseFt) add('Trim', 'Black rubber base, 4″', '', Math.ceil(baseFt), 'lin ft', 51);
   if (trackFt) add('Trim', 'Ceiling track', '', Math.ceil(trackFt), 'lin ft', 52);
 
@@ -156,5 +166,5 @@ function toCSV(rows, plan) {
   return '﻿' + out.map(r => r.map(q).join(',')).join('\r\n');
 }
 
-global.Plan3DParts = { partsList, toCSV };
+global.Plan3DParts = { partsList, toCSV, floorTrackFt, ftin };
 })(window);
