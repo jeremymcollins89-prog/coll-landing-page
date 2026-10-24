@@ -178,6 +178,51 @@ function stepStr(s) {
 }
 const num = (v) => { const r = Math.round(v * 1000) / 1000; const s = String(r); return /[.eE]/.test(s) ? s : s + '.'; };
 
+/* The outline(s) of a footprint grid: [{ outer: [[x, z] …], holes: [[[x, z] …] …] }], corners only. */
+function outlineAreas(fp) {
+  const { nx, nz, inside, cell, x0, z0 } = fp;
+  const at = (i, j) => i >= 0 && j >= 0 && i < nx && j < nz && !!inside[j * nx + i];
+  // directed boundary edges, inside on the left; keyed by start corner
+  const out = new Map(), key = (i, j) => i + ',' + j; let count = 0;
+  const add = (a, b) => { const k = key(a[0], a[1]); if (!out.has(k)) out.set(k, []); out.get(k).push(b); count++; };
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    if (!at(i, j)) continue;
+    if (!at(i, j - 1)) add([i + 1, j], [i, j]);
+    if (!at(i, j + 1)) add([i, j + 1], [i + 1, j + 1]);
+    if (!at(i - 1, j)) add([i, j], [i, j + 1]);
+    if (!at(i + 1, j)) add([i + 1, j + 1], [i + 1, j]);
+  }
+  const loops = [];
+  while (count) {
+    const [k0] = [...out.entries()].find(([, v]) => v.length);
+    let [ci, cj] = k0.split(',').map(Number), pi = null, pj = null;
+    const loop = [];
+    for (let guard = 0; guard < 1e6; guard++) {
+      const list = out.get(key(ci, cj)); if (!list || !list.length) break;
+      let n = 0;
+      if (list.length > 1 && pi !== null) {
+        // where two areas touch at a corner, turn the same way every time so the loops don't cross
+        const dx = ci - pi, dz = cj - pj;
+        n = list.findIndex(b => (dx * (b[1] - cj) - dz * (b[0] - ci)) < 0); if (n < 0) n = 0;
+      }
+      const nb = list.splice(n, 1)[0]; count--;
+      loop.push([ci, cj]); pi = ci; pj = cj; ci = nb[0]; cj = nb[1];
+    }
+    // drop the corners along straight runs
+    const pts = loop.filter((p, q) => { const a = loop[(q - 1 + loop.length) % loop.length], b = loop[(q + 1) % loop.length]; return (p[0] - a[0]) * (b[1] - p[1]) - (p[1] - a[1]) * (b[0] - p[0]) !== 0; });
+    if (pts.length >= 3) loops.push(pts.map(p => [x0 + p[0] * cell, z0 + p[1] * cell]));
+  }
+  const area = (P) => { let s = 0; for (let q = 0; q < P.length; q++) { const a = P[q], b = P[(q + 1) % P.length]; s += a[0] * b[1] - b[0] * a[1]; } return s / 2; };
+  const inPoly = (pt, P) => { let c = false; for (let q = 0, r = P.length - 1; q < P.length; r = q++) { const a = P[q], b = P[r]; if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < (b[0] - a[0]) * (pt[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
+  const sign = loops.length ? Math.sign(area(loops.reduce((m, l) => Math.abs(area(l)) > Math.abs(area(m)) ? l : m))) : 1;
+  const outers = loops.filter(l => Math.sign(area(l)) === sign).map(l => ({ outer: l, holes: [], a: Math.abs(area(l)) })).sort((p, q) => p.a - q.a);
+  for (const h of loops.filter(l => Math.sign(area(l)) !== sign)) {
+    const t = [(h[0][0] + h[1][0]) / 2 + 1e-4, (h[0][1] + h[1][1]) / 2 + 1e-4];
+    const o = outers.find(o => inPoly(h[0], o.outer) || inPoly(t, o.outer)); if (o) o.holes.push(h);
+  }
+  return outers.filter(o => o.a > 1).map(({ outer, holes }) => ({ outer, holes }));
+}
+
 function toIfc(plan, opts) {
   opts = opts || {};
   const A = V.analyze(plan), H = A.H, MM = 304.8;
@@ -257,14 +302,22 @@ function toIfc(plan, opts) {
 
   // ceiling, lights and fan filter units (Constrained strictly to room footprints)
   if (!A.empty && opts.ceiling !== false) {
+    // One ceiling per connected area, traced around the room footprint, so Revit shows no seams where
+    // smaller pieces would meet. Without a footprint, one slab over the plan.
     const footprint = V.footprint ? V.footprint(A) : null;
-    const rects = (footprint && footprint.rects && footprint.rects.length) 
-      ? footprint.rects 
-      : [[A.bounds.minX, A.bounds.minZ, A.bounds.maxX, A.bounds.maxZ]];
-
-    rects.forEach((r, idx) => {
-      const pts = [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]];
-      put('IFCCOVERING', `Ceiling Section ${idx + 1}`, 'Coll cleanroom ceiling', shape([solid(pts, H, H + 0.052, S.ceiling)]), ',.CEILING.');
+    const areas = footprint ? outlineAreas(footprint) : [];
+    if (!areas.length) {
+      const B = A.bounds; areas.push({ outer: [[B.minX, B.minZ], [B.maxX, B.minZ], [B.maxX, B.maxZ], [B.minX, B.maxZ]], holes: [] });
+    }
+    const ring = (pts) => { const r = pts.map(p => P2(p[0], p[1])); r.push(r[0]); return E(`IFCPOLYLINE((${r.join(',')}))`); };
+    areas.forEach((ar, idx) => {
+      const prof = ar.holes.length
+        ? E(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,${ring(ar.outer)},(${ar.holes.map(ring).join(',')}))`)
+        : E(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${ring(ar.outer)})`);
+      const pos = E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((0.,0.,${num(H * MM)}))`)},$,$)`);
+      const sl = E(`IFCEXTRUDEDAREASOLID(${prof},${pos},${dirZ},${num(0.052 * MM)})`);
+      E(`IFCSTYLEDITEM(${sl},(${S.ceiling}),$)`);
+      put('IFCCOVERING', areas.length > 1 ? `Ceiling ${idx + 1}` : 'Ceiling', 'Coll cleanroom ceiling', shape([sl]), ',.CEILING.');
     });
 
     for (const f of V.ceilingFixtures(plan, A)) {
@@ -322,5 +375,5 @@ function embeddedPlan(data) {
   } catch (e) { return null; }
 }
 
-global.Plan3DIfc = { planFromIfc, toIfc, embeddedPlan, minRect };
+global.Plan3DIfc = { planFromIfc, toIfc, embeddedPlan, minRect, outlineAreas };
 })(window);
