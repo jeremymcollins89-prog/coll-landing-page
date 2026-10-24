@@ -192,6 +192,9 @@ function leavesFor(i) {
 
 function analyze(plan) {
   const H = Math.max(6, plan.ceiling || 8);
+  // plenum: the space above the grid ceiling (FFU housings, ducts, wiring). Hardwall walls run up through it
+  // to the top (a lid) at H + plenum.
+  const PL = Math.max(0, Math.min(20, +plan.plenum || 0)), WH = H + PL;
   const walls = (plan.walls || []).filter(w => Math.hypot(w.x2 - w.x1, w.y2 - w.y1) > 0.01);
   const ops = plan.openings || [], chases = plan.chases || [];
   const pieces = [], ends = [];
@@ -211,7 +214,7 @@ function analyze(plan) {
     let c = 0; const segs = [];
     for (const [a, b] of cuts) { if (a > c + 0.004) segs.push([c, a]); c = Math.max(c, b); }
     if (len > c + 0.004) segs.push([c, len]);
-    const hard = isHard(w), kind = hard ? 'hardwall' : w.kind, wh = hard ? H : shellHeight(plan, w);
+    const hard = isHard(w), kind = hard ? 'hardwall' : w.kind, wh = hard ? WH : shellHeight(plan, w);
     for (const [a, b] of segs) pieces.push({ id: w.id, piece: w.piece || null, x1: w.x1 + ux * a, z1: w.y1 + uz * a, x2: w.x1 + ux * b, z2: w.y1 + uz * b, t, sp: !!w.sp && hard, s0: a, len: b - a, kind, hard, h: wh });
     ends.push({ x: w.x1, z: w.y1, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[0] < 0.01), w });
     ends.push({ x: w.x2, z: w.y2, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[1] > len - 0.01), w });
@@ -248,7 +251,7 @@ function analyze(plan) {
     for (const w of walls) { const d = segDist((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, w.x1, w.y1, w.x2, w.y2); if (d < best) { best = d; host = w; } }
     if (best > 1.5) host = null;
     if (!t) t = host && host.t ? host.t : 0.25;
-    const hard = isHard(host), i = { o, len, ux: dx / len, uz: dz / len, t, hard, kind: hard ? 'hardwall' : host.kind, wallH: hard ? H : shellHeight(plan, host) };
+    const hard = isHard(host), i = { o, len, ux: dx / len, uz: dz / len, t, hard, kind: hard ? 'hardwall' : host.kind, wallH: hard ? WH : shellHeight(plan, host) };
     i.leaves = leavesFor(i);
     opInfo.push(i);
   }
@@ -267,7 +270,7 @@ function analyze(plan) {
   });
   const boxes = chases.map(c => ({ x0: Math.min(c.x0, c.x1), x1: Math.max(c.x0, c.x1), z0: Math.min(c.y0, c.y1), z1: Math.max(c.y0, c.y1), grille: c.grille || '', c }));
   const hardAny = pieces.some(p => p.hard), shellTop = pieces.reduce((m, p) => p.hard ? m : Math.max(m, p.h), 0);
-  return { H, hardAny, shellTop, walls, pieces, ends, corners, opInfo, boxes, obs, empty, bounds: { minX, minZ, maxX, maxZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, w: maxX - minX, d: maxZ - minZ } };
+  return { H, PL, WH, hardAny, shellTop, walls, pieces, ends, corners, opInfo, boxes, obs, empty, bounds: { minX, minZ, maxX, maxZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, w: maxX - minX, d: maxZ - minZ } };
 }
 
 /* Return grille on an air chase: c.grW / c.grH (feet) and c.grSill (feet, floor to bottom of the grille),
@@ -317,7 +320,13 @@ function footprint(A, all) {
     if (!use(isHard(w))) continue;
     const t = w.t || 0.25;
     if (A.walls.some(o => o !== w && segD(x, z, o) < Math.max(t, o.t || 0.25) * 0.8)) continue;
-    if (A.opInfo.some(i => Math.min(Math.hypot(i.o.x1 - x, i.o.y1 - z), Math.hypot(i.o.x2 - x, i.o.y2 - z)) < 0.3)) continue;
+    // an end beside an opening is a door jamb (the opening closes it), unless the opening sits inside this
+    // same wall: then the end is the wall's real end and still needs closing
+    if (A.opInfo.some(i => {
+      if (Math.min(Math.hypot(i.o.x1 - x, i.o.y1 - z), Math.hypot(i.o.x2 - x, i.o.y2 - z)) >= 0.3) return false;
+      const mx = (i.o.x1 + i.o.x2) / 2, mz = (i.o.y1 + i.o.y2) / 2;
+      return segD(mx, mz, w) > (w.t || 0.25) || !(((mx - w.x1) * (w.x2 - w.x1) + (mz - w.y1) * (w.y2 - w.y1)) > 0 && ((mx - w.x2) * (w.x1 - w.x2) + (mz - w.y2) * (w.y1 - w.y2)) > 0);
+    })) continue;
     free.push({ x, z, w });
   }
   const crosses = (a, b) => A.walls.some(w => {
@@ -335,6 +344,23 @@ function footprint(A, all) {
     const key = Math.min(ia, best) + '-' + Math.max(ia, best); if (joined.has(key)) return; joined.add(key);
     stamp(a.x, a.z, free[best].x, free[best].z, 0.05);
   });
+  // gaps up to 12′ between wall ends on the same straight line count as closed (a doorway with no door, or
+  // where a building placed next to this one carries on) so the ceiling and floor stay inside
+  const LW = A.walls.filter(w => use(isHard(w)) && Math.hypot(w.x2 - w.x1, w.y2 - w.y1) > 0.3);
+  for (let i = 0; i < LW.length; i++) for (let j = i + 1; j < LW.length; j++) {
+    const a = LW[i], b = LW[j], la = Math.hypot(a.x2 - a.x1, a.y2 - a.y1), ux = (a.x2 - a.x1) / la, uz = (a.y2 - a.y1) / la;
+    const lb = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
+    if (Math.abs(ux * (b.y2 - b.y1) / lb - uz * (b.x2 - b.x1) / lb) > 0.01) continue;
+    if (Math.abs((b.x1 - a.x1) * -uz + (b.y1 - a.y1) * ux) > 0.1) continue;
+    let best = null, bd = 12;
+    for (const [ex, ez] of [[a.x1, a.y1], [a.x2, a.y2]]) for (const [fx, fz] of [[b.x1, b.y1], [b.x2, b.y2]]) {
+      const g = Math.hypot(fx - ex, fz - ez); if (g < 0.3 || g >= bd) continue;
+      const mx = (ex + fx) / 2, mz = (ez + fz) / 2;
+      if (segD(mx, mz, a) < g / 2 - 0.05 || segD(mx, mz, b) < g / 2 - 0.05) continue; // overlapping, not a gap
+      bd = g; best = [ex, ez, fx, fz];
+    }
+    if (best) stamp(best[0], best[1], best[2], best[3], 0.05);
+  }
   const dist = (seed) => {
     const D = new Float32Array(N); for (let k = 0; k < N; k++) D[k] = seed[k] ? 0 : 1e9;
     for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { const k = j * nx + i; let d = D[k];
@@ -470,7 +496,7 @@ const IMG_TEX = {};
 let ANISO = 4;
 function buildScene(THREE, plan, A) {
   const root = new THREE.Group();
-  const H = A.H, B = A.bounds;
+  const H = A.H, WH = A.WH || H, B = A.bounds;
   const pick = [];
   const doors = [];
   const doorObs = [];
@@ -586,7 +612,7 @@ function buildScene(THREE, plan, A) {
     const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO;
     tex.repeat.set(p.len / 4, 1); tex.offset.set(((p.s0 % 4) + 4) % 4 / 4, 0);
     const face = new THREE.MeshPhongMaterial({ map: tex, color: p.sp ? 0xf6dc80 : 0xffffff, emissive: p.sp ? 0x000000 : 0x141515, specular: 0x1c1c1c, shininess: 16 });
-    const m = segBox(p.x1, p.z1, p.x2, p.z2, 0, H, p.t, [M.edge, M.edge, M.edge, M.edge, face, face]);
+    const m = segBox(p.x1, p.z1, p.x2, p.z2, 0, WH, p.t, [M.edge, M.edge, M.edge, M.edge, face, face]);
     outline(m); pick.push(m);
     segBox(p.x1, p.z1, p.x2, p.z2, 0, 0.333, p.t + 0.022, M.base);
     segBox(p.x1, p.z1, p.x2, p.z2, H - 0.17, H, p.t + 0.03, M.track);
@@ -597,7 +623,7 @@ function buildScene(THREE, plan, A) {
     const legs = [[c.a, c.b], [c.b, c.a]];
     for (const [u, v] of legs) {
       const x1 = c.x + v[0] * c.wt / 2, z1 = c.z + v[1] * c.wt / 2, x2 = x1 + u[0] * c.size, z2 = z1 + u[1] * c.size;
-      const m = segBox(x1, z1, x2, z2, 0, H, c.wt + 0.006, M.white); outline(m); pick.push(m);
+      const m = segBox(x1, z1, x2, z2, 0, WH, c.wt + 0.006, M.white); outline(m); pick.push(m);
       segBox(x1, z1, x2, z2, 0, 0.333, c.wt + 0.024, M.base);
       segBox(x1, z1, x2, z2, H - 0.17, H, c.wt + 0.032, M.track);
     }
@@ -606,8 +632,8 @@ function buildScene(THREE, plan, A) {
   for (const e of A.ends) {
     if (e.cut || e.joined || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue;
     seen.push(e);
-    const m = new THREE.Mesh(new THREE.BoxGeometry(e.t, H, e.t), M.white);
-    m.position.set(e.x, H / 2, e.z); m.rotation.y = e.ang; root.add(m); pick.push(m);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(e.t, WH, e.t), M.white);
+    m.position.set(e.x, WH / 2, e.z); m.rotation.y = e.ang; root.add(m); pick.push(m);
     const pb = new THREE.Mesh(new THREE.BoxGeometry(e.t + 0.022, 0.333, e.t + 0.022), M.base); pb.position.set(e.x, 0.1665, e.z); pb.rotation.y = e.ang; root.add(pb);
     const pt = new THREE.Mesh(new THREE.BoxGeometry(e.t + 0.03, 0.17, e.t + 0.03), M.track); pt.position.set(e.x, H - 0.085, e.z); pt.rotation.y = e.ang; root.add(pt);
   }
@@ -616,7 +642,7 @@ function buildScene(THREE, plan, A) {
     const o = i.o, t = i.t, nx = -i.uz, nz = i.ux;
     curRef = o.id ? { kind: 'opening', id: o.id } : null;
     const head = Math.min(H, o.head || (o.type === 'glass' ? 7 : 7));
-    const top = i.hard ? H : i.wallH, hm = i.hard ? M.white : shellMat(i.kind, i.len, top - head, 0);
+    const top = i.wallH || H, hm = i.hard ? M.white : shellMat(i.kind, i.len, top - head, 0);
     if (top - head > 0.01) { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); if (i.hard && H - head > 0.2) segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); }
     const ax = o.x1, az = o.y1, bx = o.x2, bz = o.y2;
     const along = (s) => [ax + i.ux * s, az + i.uz * s];
@@ -755,7 +781,8 @@ function buildScene(THREE, plan, A) {
     const plain = cachedCanvas('ceilPlain', () => makeCanvas(128, 128, (g, w, h) => { g.fillStyle = '#f1f2f1'; g.fillRect(0, 0, w, h); for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(120,124,126,${Math.random() * .22})`; g.fillRect(Math.random() * w, Math.random() * h, 1, 1); } }));
     cMap = new THREE.CanvasTexture(plain); cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.repeat.set(B.w / 2, B.d / 2); cMap.anisotropy = ANISO;
   }
-  const cMat = new THREE.MeshLambertMaterial({ map: cMap, color: 0xbfc2c2, emissive: 0x9a9c9c, emissiveMap: cMap });
+  // both sides, so the grid shows from above in the Plenum view
+  const cMat = new THREE.MeshLambertMaterial({ map: cMap, color: 0xbfc2c2, emissive: 0x9a9c9c, emissiveMap: cMap, side: THREE.DoubleSide });
   let ceil;
   if (FP) {
     cMap.repeat.set(1, 1);
@@ -763,6 +790,12 @@ function buildScene(THREE, plan, A) {
     ceil = new THREE.Mesh(rectsGeometry(THREE, FP.rects, H, true, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, CG.swap && !ownGrid), cMat);
   } else if (A.hardAny || !A.shellTop) { ceil = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.d), cMat); ceil.rotation.x = Math.PI / 2; ceil.position.set(B.cx, H, B.cz); }
   if (ceil) ceiling.add(ceil);
+  // plenum lid: the top of the cleanroom, over the plenum (hidden in Dollhouse and Plenum views)
+  const lid = new THREE.Group(); root.add(lid);
+  if (A.PL > 0 && FP) {
+    const lm = new THREE.MeshLambertMaterial({ color: 0xeef0f0, side: THREE.DoubleSide });
+    lid.add(new THREE.Mesh(rectsGeometry(THREE, FP.rects, WH, true, 4, 4, 0, 0), lm));
+  }
   // building walls: a metal roof deck at the top of the walls (hidden in Dollhouse, like the ceiling)
   if (A.shellTop > 0 && FPall) {
     const deck = cachedCanvas('deck', () => makeCanvas(64, 64, (g, w, h) => { g.fillStyle = '#a9afb3'; g.fillRect(0, 0, w, h); for (let x = 0; x < w; x += 16) { g.fillStyle = 'rgba(255,255,255,.28)'; g.fillRect(x, 0, 5, h); g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x + 9, 0, 3, h); } }));
@@ -837,7 +870,7 @@ function buildScene(THREE, plan, A) {
     if (f.id) m.userData.ref = { kind: 'fixture', id: f.id };
     fixtures.add(m);
   }
-  return { root, pick, floor, floors: [floor], ground, ceiling, ceilPlane: ceil || new THREE.Object3D(), fixtures, doors, doorObs };
+  return { root, pick, floor, floors: [floor], ground, ceiling, lid, ceilPlane: ceil || new THREE.Object3D(), fixtures, doors, doorObs };
 }
 
 /* Analysis of a plan with every placed building in it, merged (for walking, collisions and the mini map). */
@@ -845,7 +878,7 @@ function analyzeAll(plan) {
   const Z = zones(plan);
   if (Z.length === 1) { const A = analyze(plan); A.zones = [{ zone: Z[0], A }]; return A; }
   const parts = Z.map(z => ({ zone: z, A: analyze(z.plan) })), live = parts.filter(q => !q.A.empty);
-  const M = { H: Math.max(6, ...live.map(q => q.A.H)), hardAny: live.some(q => q.A.hardAny), shellTop: Math.max(0, ...live.map(q => q.A.shellTop)), zones: parts, empty: !live.length };
+  const M = { H: Math.max(6, ...live.map(q => q.A.H)), PL: Math.max(0, ...live.map(q => q.A.PL || 0)), WH: Math.max(6, ...live.map(q => q.A.WH || q.A.H)), hardAny: live.some(q => q.A.hardAny), shellTop: Math.max(0, ...live.map(q => q.A.shellTop)), zones: parts, empty: !live.length };
   for (const k of ['walls', 'pieces', 'ends', 'corners', 'opInfo', 'boxes', 'obs']) M[k] = [].concat(...live.map(q => q.A[k]));
   if (M.empty) { M.bounds = parts[0].A.bounds; return M; }
   const b = { minX: Math.min(...live.map(q => q.A.bounds.minX)), minZ: Math.min(...live.map(q => q.A.bounds.minZ)), maxX: Math.max(...live.map(q => q.A.bounds.maxX)), maxZ: Math.max(...live.map(q => q.A.bounds.maxZ)) };
@@ -857,15 +890,15 @@ function analyzeAll(plan) {
 function buildAll(THREE, plan, M) {
   M = M || analyzeAll(plan);
   if (M.zones.length === 1) return buildScene(THREE, plan, M.zones[0].A);
-  const root = new THREE.Group(), ceiling = new THREE.Group(), out = { root, pick: [], floors: [], ground: null, ceiling, ceilPlane: new THREE.Object3D(), fixtures: new THREE.Group(), doors: [], doorObs: [] };
-  root.add(ceiling); root.add(out.fixtures);
+  const root = new THREE.Group(), ceiling = new THREE.Group(), lid = new THREE.Group(), out = { root, pick: [], floors: [], ground: null, ceiling, lid, ceilPlane: new THREE.Object3D(), fixtures: new THREE.Group(), doors: [], doorObs: [] };
+  root.add(ceiling); root.add(lid); root.add(out.fixtures);
   let n = 0;
   for (const q of M.zones) {
     if (q.A.empty) continue;
     const b = buildScene(THREE, q.zone.plan, q.A), lift = n++ * 0.03;
     b.root.position.y = lift;
     if (out.ground) b.root.remove(b.ground); else { out.ground = b.ground; b.ground.position.y -= lift; }
-    ceiling.add(b.ceiling); b.ceiling.position.y = lift;
+    ceiling.add(b.ceiling); b.ceiling.position.y = lift; lid.add(b.lid); b.lid.position.y = lift;
     root.add(b.root);
     out.pick.push(...b.pick); out.floors.push(b.floor); out.doors.push(...b.doors); out.doorObs.push(...b.doorObs);
   }
@@ -885,7 +918,7 @@ function mount(container, plan, opts) {
     <div class="p3v-labels" hidden></div>
     <div class="p3v-top">
       <div class="p3v-panel p3v-card"><div class="p3v-title"></div><div class="p3v-meta"></div><div class="p3v-here"><b></b><span></span></div></div>
-      <div class="p3v-right"><div class="p3v-panel p3v-modes" role="group" aria-label="View"><button data-m="walk">Walk</button><button data-m="doll">Dollhouse</button><button data-m="plan">Plan</button></div>
+      <div class="p3v-right"><div class="p3v-panel p3v-modes" role="group" aria-label="View"><button data-m="walk">Walk</button><button data-m="doll">Dollhouse</button><button data-m="plenum" hidden title="Looks into the plenum: the grid ceiling stays, the top comes off">Plenum</button><button data-m="plan">Plan</button></div>
       <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button></div>
     </div>
     <div class="p3v-aim" aria-hidden="true"></div>
@@ -985,12 +1018,12 @@ function mount(container, plan, opts) {
   function goWalk(x, z, yaw, dur) {
     const p = freeSpot(x, z); target = null;
     const to = { pos: new THREE.Vector3(p.x, EYE, p.z), look: new THREE.Vector3(p.x - Math.sin(yaw) * 6, EYE, p.z - Math.cos(yaw) * 6), fov };
-    if (built) built.ceiling.visible = true; labelsEl.hidden = true;
+    if (built) { built.ceiling.visible = true; if (built.lid) built.lid.visible = true; } labelsEl.hidden = true;
     startTween(to, dur || 900, () => { st.x = p.x; st.z = p.z; st.yaw = yaw; st.pitch = 0; applyWalkCam(); });
     mode = 'walk'; setModeUI();
   }
   function goOrbit(kind) {
-    const pose = orbitPose(kind); target = null; if (built) built.ceiling.visible = false;
+    const pose = orbitPose(kind); target = null; if (built) { built.ceiling.visible = kind === 'plenum'; if (built.lid) built.lid.visible = false; }
     const wasWalk = mode === 'walk';
     startTween(pose, wasWalk ? 1100 : 800, () => { controls.target.copy(pose.look); controls.enabled = true; controls.update(); labelsEl.hidden = false; });
     mode = kind; setModeUI();
@@ -1215,6 +1248,9 @@ function mount(container, plan, opts) {
     built = buildAll(THREE, p, A);
     scene.add(built.root);
     emptyEl.hidden = !A.empty;
+    // the Plenum view only when there is a plenum
+    const pb = modeBtns.find(b => b.dataset.m === 'plenum'); if (pb) pb.hidden = !(A.PL > 0);
+    if (mode === 'plenum' && !(A.PL > 0)) mode = 'doll';
     buildHud(p);
     sizeMini();
     if (!keep) {
@@ -1223,11 +1259,13 @@ function mount(container, plan, opts) {
       const f = freeSpot(sx, sz); st.x = f.x; st.z = f.z; st.yaw = r0 ? Math.atan2(-(b.cx - sx), -(b.cz - sz)) || 0 : 0; st.pitch = -0.04;
       if (A.empty) { mode = 'doll'; }
       if (mode === 'walk') { built.ceiling.visible = true; labelsEl.hidden = true; applyWalkCam(); }
-      else { const pose = orbitPose(mode); camera.position.copy(pose.pos); camera.fov = 45; camera.updateProjectionMatrix(); controls.target.copy(pose.look); controls.enabled = true; controls.update(); built.ceiling.visible = false; labelsEl.hidden = false; }
+      else { const pose = orbitPose(mode); camera.position.copy(pose.pos); camera.fov = 45; camera.updateProjectionMatrix(); controls.target.copy(pose.look); controls.enabled = true; controls.update(); built.ceiling.visible = mode === 'plenum'; labelsEl.hidden = false; }
+      if (built.lid) built.lid.visible = mode === 'walk';
       setModeUI();
     } else {
       if (mode === 'walk') { if (collides(st.x, st.z)) { const f = freeSpot(st.x, st.z); st.x = f.x; st.z = f.z; } built.ceiling.visible = true; }
-      else built.ceiling.visible = false;
+      else built.ceiling.visible = mode === 'plenum';
+      if (built.lid) built.lid.visible = mode === 'walk';
     }
   }
 

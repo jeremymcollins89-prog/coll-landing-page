@@ -371,6 +371,7 @@ class Builder {
     if (this.built) { this.scene.remove(this.built.root); this.built.root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     this.built = V.buildScene(T, this.ed.plan, this.A);
     this.built.ceilPlane.visible = false;
+    if (this.built.lid) this.built.lid.visible = false;
     this.built.fixtures.visible = this.showCeil;
     this.built.ground.visible = false;
     if (this.A.empty) this.built.floor.visible = false;
