@@ -24,5 +24,8 @@ contextBridge.exposeInMainWorld('api', {
   closeCancelled: () => ipcRenderer.send('close-cancelled'),
   rendererReady: () => ipcRenderer.send('renderer-ready'),
   onMenu: (cb) => ipcRenderer.on('menu', (e, a) => cb(a)),
-  onOpenPath: (cb) => ipcRenderer.on('open-path', (e, p) => cb(p))
+  onOpenPath: (cb) => ipcRenderer.on('open-path', (e, p) => cb(p)),
+  onUpdate: (cb) => ipcRenderer.on('update', (e, s) => cb(s)),
+  checkUpdates: () => ipcRenderer.invoke('check-updates'),
+  installUpdate: () => ipcRenderer.invoke('install-update')
 });

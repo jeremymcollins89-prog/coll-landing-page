@@ -62,6 +62,7 @@ function buildMenu() {
       label: 'Help',
       submenu: [
         { label: 'Quick Guide', click: () => send('help') },
+        { label: 'Check for updates…', click: () => checkUpdates(true) },
         { label: 'About Coll Plan3D', click: () => dialog.showMessageBox(win, {
           type: 'info', title: 'About Coll Plan3D',
           message: 'Coll Plan3D ' + app.getVersion(),
@@ -659,10 +660,45 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
+/* ---------- Updates ----------
+   Checks the download page (the same GitHub release the website links to) a few seconds after start and every
+   4 hours. A newer version downloads in the background; the app then shows an Update now button. Update now
+   installs it quietly and starts the new version. Only in the installed app. */
+let updater = null, updateReady = null, manualCheck = false;
+function sendUpdate(state) { if (win && !win.isDestroyed()) win.webContents.send('update', state); }
+function setupUpdates() {
+  if (!app.isPackaged) return;
+  try { updater = require('electron-updater').autoUpdater; } catch (e) { return; }
+  updater.autoDownload = true;
+  updater.autoInstallOnAppQuit = true;
+  updater.on('update-available', (i) => sendUpdate({ state: 'downloading', version: i.version, percent: 0 }));
+  updater.on('download-progress', (p) => sendUpdate({ state: 'downloading', percent: Math.round(p.percent || 0) }));
+  updater.on('update-downloaded', (i) => { updateReady = i.version; sendUpdate({ state: 'ready', version: i.version }); });
+  updater.on('update-not-available', () => { if (manualCheck) sendUpdate({ state: 'current', version: app.getVersion() }); manualCheck = false; });
+  updater.on('error', (err) => { if (manualCheck) sendUpdate({ state: 'error', message: String(err && err.message || err).slice(0, 200) }); manualCheck = false; });
+  setTimeout(() => checkUpdates(false), 8000);
+  setInterval(() => checkUpdates(false), 4 * 3600 * 1000);
+}
+function checkUpdates(manual) {
+  if (!updater) { if (manual) sendUpdate({ state: 'error', message: app.isPackaged ? 'The updater could not start.' : 'Updates work in the installed app.' }); return; }
+  if (updateReady) { sendUpdate({ state: 'ready', version: updateReady }); return; }
+  manualCheck = !!manual;
+  if (manual) sendUpdate({ state: 'checking' });
+  updater.checkForUpdates().catch(() => {});
+}
+ipcMain.handle('check-updates', () => checkUpdates(true));
+ipcMain.handle('install-update', () => {
+  if (!updater || !updateReady) return false;
+  if (win) win.__allowClose = true;
+  setImmediate(() => updater.quitAndInstall(true, true));
+  return true;
+});
+
 app.whenReady().then(() => {
   if (!app.hasSingleInstanceLock()) return;
   buildMenu();
   createWindow();
+  setupUpdates();
   // File passed on the command line / "Open with"
   const arg = process.argv.slice(1).find(a => /\.(dxf|dwg|ifc|rvt|png|jpe?g|bmp|webp|plan3d)$/i.test(a));
   if (arg) win.webContents.once('did-finish-load', () => win.webContents.send('open-path', arg));

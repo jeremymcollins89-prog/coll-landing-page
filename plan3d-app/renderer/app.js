@@ -1190,6 +1190,27 @@ if (api.onMenu) api.onMenu(async (a) => {
        if (await guardUnsaved()) api.confirmClose(); else if (api.closeCancelled) api.closeCancelled();
      } }[a] || (() => {}))();
 });
+/* ---------- Updates: a new version downloads in the background, then Update now installs it ---------- */
+if (api.onUpdate) {
+  const b = $('#bUpdate');
+  api.onUpdate((u) => {
+    if (u.state === 'downloading') { b.hidden = false; b.disabled = true; b.textContent = 'Downloading update' + (u.percent ? ' ' + u.percent + '%' : '…'); }
+    else if (u.state === 'ready') {
+      b.hidden = false; b.disabled = false; b.textContent = 'Update now' + (u.version ? ' to ' + u.version : '');
+      toast('Coll Plan3D ' + (u.version || '') + ' is ready to install.', { label: 'Update now', fn: () => b.click() });
+    }
+    else if (u.state === 'checking') toast('Checking for updates…');
+    else if (u.state === 'current') toast('You have the latest version (' + u.version + ').');
+    else if (u.state === 'error') toast("Couldn't check for updates. " + (u.message || ''));
+  });
+  b.onclick = async () => {
+    if (b.disabled) return;
+    if (!(await guardUnsaved())) return;
+    b.disabled = true; b.textContent = 'Installing…';
+    const ok = await api.installUpdate();
+    if (!ok) { b.disabled = false; b.textContent = 'Update now'; toast("The update isn't ready yet."); }
+  };
+}
 if (api.onOpenPath) api.onOpenPath(async p => handleLoaded(await api.loadPath(p)));
 
 // Drag and drop
