@@ -225,7 +225,7 @@ function outlineAreas(fp) {
 
 function toIfc(plan, opts) {
   opts = opts || {};
-  const A = V.analyze(plan), H = A.H, MM = 304.8;
+  const MM = 304.8;
   const lines = []; let n = 0;
   const E = (body) => { n++; lines.push('#' + n + '=' + body + ';'); return '#' + n; };
   const P2 = (x, y) => E(`IFCCARTESIANPOINT((${num(x * MM)},${num(-y * MM)}))`);
@@ -267,8 +267,15 @@ function toIfc(plan, opts) {
     grid: style('Coll ceiling grid, white', 0.96, 0.97, 0.97, 0, 0.13, 24),
     led: style('Coll LED light lens', 1, 1, 1, 0, 0.05, 8),
     ffu: style('Coll FFU, white powder coat', 0.95, 0.96, 0.96, 0, 0.13, 18),
-    face: style('Coll FFU filter face', 0.78, 0.8, 0.81, 0, 0.1, 16)
+    face: style('Coll FFU filter face', 0.78, 0.8, 0.81, 0, 0.1, 16),
+    concrete: style('Coll building wall, concrete', 0.73, 0.71, 0.68, 0, 0.03, 6, 'MATT'),
+    cmu: style('Coll building wall, concrete block', 0.79, 0.77, 0.74, 0, 0.03, 6, 'MATT'),
+    metal: style('Coll building wall, metal panel', 0.87, 0.89, 0.9, 0, 0.3, 30, 'METAL'),
+    stud: style('Coll building wall, drywall', 0.94, 0.93, 0.91, 0, 0.04, 8),
+    slab: style('Coll floor slab, concrete', 0.72, 0.71, 0.68, 0, 0.04, 8),
+    deck: style('Coll roof deck, metal', 0.66, 0.69, 0.71, 0, 0.3, 30, 'METAL')
   };
+  const KIND_NAME = (k) => (V.WALL_KINDS && V.WALL_KINDS[k] ? V.WALL_KINDS[k].label : 'Building wall');
   S.ffuFace = S.face;
   const elPl = E(`IFCLOCALPLACEMENT(${stPl},${ax3})`);
   const contained = [];
@@ -295,12 +302,17 @@ function toIfc(plan, opts) {
   const seg = (x1, y1, x2, y2, z0, z1, t, st) => solid(quad(x1, y1, x2, y2, t), z0, z1, st);
   const box = (x0, y0, x1, y1, z0, z1, st) => solid([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], z0, z1, st);
   const put = (cls, name, objType, sh, tail, mat) => { const id = E(`${cls}('${guid()}',$,${stepStr(name)},$,${objType ? stepStr(objType) : '$'},${elPl},${sh},$${tail})`); contained.push(id); if (mat) (matOf[mat] = matOf[mat] || []).push(id); return id; };
+  // Each building (the main plan, then each placed building, already moved into place) is written out in turn.
+  const emit = (plan, onSlab) => {
+  const A = V.analyze(plan), H = A.H;
+  if (A.empty && !(plan.fixtures || []).length) return;
   // rubber base (4″) and ceiling track on both faces of a wall line, as in the 3D view
   const trim = (x1, y1, x2, y2, t, top) => [seg(x1, y1, x2, y2, 0, 0.333, t + 0.022, S.base), ...(top ? [seg(x1, y1, x2, y2, H - 0.17, H, t + 0.03, S.track)] : [])];
 
   // walls: the panel runs between openings, full height, with the panel joints (H-studs) on the 48″ module
   // from the wall's start, rubber base and ceiling track
   for (const p of A.pieces) {
+    if (!p.hard) { put('IFCWALL', KIND_NAME(p.kind), 'Building wall', shape([seg(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, S[p.kind] || S.concrete)]), ',.STANDARD.', S[p.kind] || S.concrete); continue; }
     const ux = (p.x2 - p.x1) / (p.len || 1), uz = (p.z2 - p.z1) / (p.len || 1), parts = [seg(p.x1, p.z1, p.x2, p.z2, 0, H, p.t, p.sp ? S.sp : S.white), ...trim(p.x1, p.z1, p.x2, p.z2, p.t, true)];
     for (let m = Math.floor(p.s0 / 4 + 1e-6) * 4 + 4; m < p.s0 + p.len - 0.2; m += 4) {
       if (m - p.s0 < 0.2) continue;
@@ -325,13 +337,14 @@ function toIfc(plan, opts) {
   }
   // openings: the door / glass / pass-thru, with wall above (and below glass)
   for (const i of A.opInfo) {
-    const o = i.o, t = i.t, head = Math.min(H, o.head || 7), ax = o.x1, ay = o.y1, bx = o.x2, by = o.y2;
+    const top = i.hard ? H : i.wallH, ws = i.hard ? S.white : (S[i.kind] || S.concrete), wName = i.hard ? 'Coll hardwall cleanroom wall' : 'Building wall';
+    const o = i.o, t = i.t, head = Math.min(top, o.head || 7), ax = o.x1, ay = o.y1, bx = o.x2, by = o.y2;
     const along = (s, off) => [ax + i.ux * s - i.uz * (off || 0), ay + i.uz * s + i.ux * (off || 0)];
-    if (H - head > 0.02) put('IFCWALL', 'Header panel', 'Coll hardwall cleanroom wall', shape([seg(ax, ay, bx, by, head, H, t, S.white), ...(H - head > 0.2 ? [seg(ax, ay, bx, by, H - 0.17, H, t + 0.03, S.track)] : [])]), ',.STANDARD.', S.white);
+    if (top - head > 0.02) put('IFCWALL', i.hard ? 'Header panel' : KIND_NAME(i.kind) + ', over opening', wName, shape([seg(ax, ay, bx, by, head, top, t, ws), ...(i.hard && H - head > 0.2 ? [seg(ax, ay, bx, by, H - 0.17, H, t + 0.03, S.track)] : [])]), ',.STANDARD.', ws);
     if (o.type === 'door' || o.type === 'door2') {
       // frame: jambs and head; leaves (closed) with a vision lite, lite frame, closer and lever, as in the 3D view
       const [j1x, j1y] = along(-0.14), [j2x, j2y] = along(i.len + 0.14);
-      const parts = [seg(j1x, j1y, ax, ay, 0, head, t + 0.06, S.frame), seg(bx, by, j2x, j2y, 0, head, t + 0.06, S.frame), seg(j1x, j1y, j2x, j2y, head - 0.02, Math.min(H, head + 0.12), t + 0.06, S.frame)];
+      const parts = [seg(j1x, j1y, ax, ay, 0, head, t + 0.06, S.frame), seg(bx, by, j2x, j2y, 0, head, t + 0.06, S.frame), seg(j1x, j1y, j2x, j2y, head - 0.02, Math.min(top, head + 0.12), t + 0.06, S.frame)];
       for (const l of i.leaves) {
         const L = Math.hypot(l.x2 - l.x1, l.z2 - l.z1) || 1, dx = (l.x2 - l.x1) / L, dz = (l.z2 - l.z1) / L;
         const f = (k) => [l.x1 + dx * L * k, l.z1 + dz * L * k];
@@ -350,7 +363,7 @@ function toIfc(plan, opts) {
         `,${num(head * MM)},${num(i.len * MM)},.DOOR.,${o.type === 'door2' ? '.DOUBLE_DOOR_SINGLE_SWING.' : '.SINGLE_SWING_LEFT.'},$`, S.door);
     } else if (o.type === 'glass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill));
-      if (sill > 0.02) put('IFCWALL', 'Sill panel', 'Coll hardwall cleanroom wall', shape([seg(ax, ay, bx, by, 0, sill, t, S.white), ...trim(ax, ay, bx, by, t, false)]), ',.STANDARD.', S.white);
+      if (sill > 0.02) put('IFCWALL', i.hard ? 'Sill panel' : KIND_NAME(i.kind) + ', under opening', wName, shape([seg(ax, ay, bx, by, 0, sill, t, ws), ...(i.hard ? trim(ax, ay, bx, by, t, false) : [])]), ',.STANDARD.', ws);
       const [p1x, p1y] = along(0.12), [p2x, p2y] = along(i.len - 0.12);
       put('IFCWINDOW', 'Vision glass', 'Coll cleanroom window', shape([seg(ax, ay, bx, by, sill, head, 0.05, S.glass),
         seg(ax, ay, bx, by, sill, sill + 0.12, t + 0.06, S.frame), seg(ax, ay, bx, by, head - 0.12, head, t + 0.06, S.frame),
@@ -358,7 +371,7 @@ function toIfc(plan, opts) {
         `,${num((head - sill) * MM)},${num(i.len * MM)},.WINDOW.,.SINGLE_PANEL.,$`, S.glass);
     } else if (o.type === 'pass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill)), D = Math.max(t + 0.1, o.depth || 2), ph = head - sill;
-      if (sill > 0.02) put('IFCWALL', 'Sill panel', 'Coll hardwall cleanroom wall', shape([seg(ax, ay, bx, by, 0, sill, t, S.white), ...trim(ax, ay, bx, by, t, false)]), ',.STANDARD.', S.white);
+      if (sill > 0.02) put('IFCWALL', i.hard ? 'Sill panel' : KIND_NAME(i.kind) + ', under opening', wName, shape([seg(ax, ay, bx, by, 0, sill, t, ws), ...(i.hard ? trim(ax, ay, bx, by, t, false) : [])]), ',.STANDARD.', ws);
       const [f1x, f1y] = along(-0.1), [f2x, f2y] = along(i.len + 0.1);
       const parts = [seg(ax, ay, bx, by, sill, head, D, S.steel),
         seg(f1x, f1y, f2x, f2y, sill - 0.1, sill, t + 0.05, S.steel), seg(f1x, f1y, f2x, f2y, head, head + 0.1, t + 0.05, S.steel),
@@ -386,12 +399,14 @@ function toIfc(plan, opts) {
     put('IFCBUILDINGELEMENTPROXY', 'Air chase', 'Coll air chase', shape(parts), ',.ELEMENT.', S.white);
   }
 
-  // floor, ceiling, ceiling grid, lights and fan filter units, all inside the room footprint
-  const footprint = !A.empty && V.footprint ? V.footprint(A) : null;
-  const areas = footprint ? outlineAreas(footprint) : [];
-  if (!areas.length && !A.empty) {
-    const B = A.bounds; areas.push({ outer: [[B.minX, B.minZ], [B.maxX, B.minZ], [B.maxX, B.maxZ], [B.minX, B.maxZ]], holes: [] });
+  // floor, ceiling, ceiling grid, lights and fan filter units. The cleanroom ceiling covers the hardwall
+  // footprint; the floor slab (and a building's roof) covers everything inside the walls.
+  const footprint = !A.empty && V.footprint ? V.footprint(A) : null, fpAll = !A.empty && V.footprint ? V.footprint(A, true) : null;
+  const areas = footprint ? outlineAreas(footprint) : [], areasAll = fpAll ? outlineAreas(fpAll) : areas.slice();
+  if (!areasAll.length && !A.empty) {
+    const B = A.bounds; areasAll.push({ outer: [[B.minX, B.minZ], [B.maxX, B.minZ], [B.maxX, B.maxZ], [B.minX, B.maxZ]], holes: [] });
   }
+  if (!areas.length && A.hardAny) areas.push(...areasAll);
   const ring = (pts) => { const r = pts.map(p => P2(p[0], p[1])); r.push(r[0]); return E(`IFCPOLYLINE((${r.join(',')}))`); };
   const slab = (ar, z0, z1, st) => {
     const prof = ar.holes.length
@@ -403,7 +418,11 @@ function toIfc(plan, opts) {
     return sl;
   };
   // the cleanroom floor (gray epoxy), its top at the floor level
-  if (opts.floor !== false) areas.forEach((ar, idx) => put('IFCSLAB', areas.length > 1 ? `Cleanroom floor ${idx + 1}` : 'Cleanroom floor', 'Coll cleanroom floor, epoxy', shape([slab(ar, -0.33, 0, S.floor)]), ',.FLOOR.', S.floor));
+  const fl = A.hardAny ? ['Cleanroom floor', 'Coll cleanroom floor, epoxy', S.floor] : ['Floor slab', 'Concrete floor slab', S.slab];
+  // a building placed inside another sits on that building's slab: its floor is a thin epoxy topping
+  if (opts.floor !== false) areasAll.forEach((ar, idx) => put('IFCSLAB', areasAll.length > 1 ? `${fl[0]} ${idx + 1}` : fl[0], fl[1], shape([onSlab ? slab(ar, 0, 0.02, fl[2]) : slab(ar, -0.33, 0, fl[2])]), onSlab ? ',.BASESLAB.' : ',.FLOOR.', fl[2]));
+  // a building's roof deck at the top of its walls
+  if (A.shellTop > 0 && opts.ceiling !== false) areasAll.forEach((ar, idx) => put('IFCSLAB', areasAll.length > 1 ? `Roof deck ${idx + 1}` : 'Roof deck', 'Metal roof deck', shape([slab(ar, A.shellTop, A.shellTop + 0.25, S.deck)]), ',.ROOF.', S.deck));
   if (!A.empty && opts.ceiling !== false) {
     // One ceiling per connected area, traced around the room footprint, so Revit shows no seams where
     // smaller pieces would meet.
@@ -462,6 +481,9 @@ function toIfc(plan, opts) {
       }
     }
   }
+  };
+  const ZS = V.zones ? V.zones(plan) : [{ plan, main: true }], hostSlab = ZS.length > 1 && (ZS[0].plan.walls || []).length > 0;
+  for (const z of ZS) emit(z.plan, !z.main && hostSlab);
   E(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid()}',$,$,$,(${contained.join(',')}),${storey})`);
   // named materials carrying each style, so Revit builds proper materials for rendering
   for (const [name, st] of styleMats) {

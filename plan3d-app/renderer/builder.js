@@ -374,6 +374,13 @@ class Builder {
     this.built.fixtures.visible = this.showCeil;
     this.built.ground.visible = false;
     if (this.A.empty) this.built.floor.visible = false;
+    // placed buildings show in Build mode too, as context (edit them on the Plan tab)
+    if ((this.ed.plan.inserts || []).length && V.buildAll) {
+      const ex = V.buildAll(T, { name: '', walls: [], openings: [], chases: [], rooms: [], inserts: this.ed.plan.inserts });
+      ex.root.traverse(o => { if (o.userData) delete o.userData.ref; });
+      ex.ceiling.visible = false; if (ex.ground) ex.ground.visible = false; ex.fixtures.visible = this.showCeil;
+      this.built.root.add(ex.root);
+    }
     this.scene.add(this.built.root);
     if (first) { this.resize(); this.frame(); }
     this.drawSel();

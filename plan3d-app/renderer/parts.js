@@ -16,8 +16,8 @@ const PIECE_NAMES = { panel: 'Wall panel', sp: 'S.P. panel', glass: 'Glass panel
 function floorTrackFt(plan, A) {
   A = A || global.Plan3DViewer.analyze(plan);
   let ft = 0;
-  for (const p of A.pieces) ft += p.len;
-  for (const i of A.opInfo) if (i.o.type === 'glass' || i.o.type === 'pass') ft += i.len;
+  for (const p of A.pieces) if (p.hard !== false) ft += p.len;
+  for (const i of A.opInfo) if (i.hard !== false && (i.o.type === 'glass' || i.o.type === 'pass')) ft += i.len;
   for (const b of A.boxes) ft += 2 * ((b.x1 - b.x0) + (b.z1 - b.z0));
   return ft;
 }
@@ -30,7 +30,8 @@ function partsList(plan) {
     const r = rows.get(k) || { cat, item, size, qty: 0, unit: unit || 'ea', order: order || 50 };
     r.qty += qty; rows.set(k, r);
   };
-  const walls = A.walls, built = new Set(walls.filter(w => w.piece).map(w => w.id));
+  // hardwall (cleanroom) walls get panels, studs, posts, track and base; building walls get their own lines
+  const walls = A.walls.filter(w => V.isHard(w)), built = new Set(walls.filter(w => w.piece).map(w => w.id));
   const hgt = ' × ' + ftin(H);
 
   // --- Panels
@@ -43,7 +44,7 @@ function partsList(plan) {
   // Walls drawn as long runs: panels fall on a 48″ module from the wall's start (as on the plan sheet);
   // a door or glass cut leaves a cut panel on each side. Slivers under 1″ are trim, not panels.
   for (const p of A.pieces) {
-    if (built.has(p.id)) continue;
+    if (built.has(p.id) || p.hard === false) continue;
     const a = p.s0, b = p.s0 + p.len, cuts = [a];
     for (let m = Math.floor(a / 4 + 1e-6) * 4 + 4; m < b - 1e-6; m += 4) cuts.push(m);
     cuts.push(b);
@@ -116,10 +117,28 @@ function partsList(plan) {
   const floorFt = floorTrackFt(plan, A);
   if (floorFt) add('Wall panels', 'Floor track, hardwall (under all wall panels)', ftin(floorFt) + ' total', Math.ceil(floorFt), 'lin ft', 15);
   let baseFt = 0, trackFt = 0;
-  for (const p of A.pieces) { baseFt += p.len * 2; trackFt += p.len * 2; }
+  for (const p of A.pieces) if (p.hard !== false) { baseFt += p.len * 2; trackFt += p.len * 2; }
   for (const i of A.opInfo) {
+    if (i.hard === false) continue;
     if (i.o.type === 'glass' || i.o.type === 'pass') baseFt += i.len * 2;
     trackFt += i.len * 2;
+  }
+  // building walls (concrete, block, metal panel, stud): length and face area by type, thickness and height
+  const shell = new Map();
+  for (const p of A.pieces) {
+    if (p.hard !== false) continue;
+    const k = p.kind + '|' + p.t.toFixed(3) + '|' + p.h.toFixed(3), r = shell.get(k) || { kind: p.kind, t: p.t, h: p.h, len: 0, area: 0 };
+    r.len += p.len; r.area += p.len * p.h; shell.set(k, r);
+  }
+  for (const i of A.opInfo) {
+    if (i.hard !== false) continue;
+    const head = Math.min(i.wallH, i.o.head || 7), sill = i.o.type === 'glass' || i.o.type === 'pass' ? (i.o.sill == null ? 3 : i.o.sill) : 0;
+    const k = i.kind + '|' + i.t.toFixed(3) + '|' + i.wallH.toFixed(3), r = shell.get(k) || { kind: i.kind, t: i.t, h: i.wallH, len: 0, area: 0 };
+    r.len += i.len; r.area += i.len * (i.wallH - head + sill); shell.set(k, r);
+  }
+  for (const r of shell.values()) {
+    const K = V.WALL_KINDS[r.kind] || { label: r.kind };
+    add('Building walls', K.label + ', ' + inch(r.t) + ' thick', ftin(r.h) + ' high · ' + Math.round(r.area) + ' sq ft of wall', Math.ceil(r.len), 'lin ft', 5);
   }
   for (const b of A.boxes) { const per = 2 * ((b.x1 - b.x0) + (b.z1 - b.z0)); baseFt += per; trackFt += per; }
   if (baseFt) add('Trim', 'Black rubber base, 4″', '', Math.ceil(baseFt), 'lin ft', 51);
@@ -148,7 +167,7 @@ function partsList(plan) {
     let gl = 0; for (const q of plan.ceilingGrid) gl += Math.hypot(q[2] - q[0], q[3] - q[1]);
     add('Ceiling', 'T-grid, from ceiling drawing', '', Math.ceil(gl), 'lin ft', 64);
   }
-  if (!A.empty) {
+  if (!A.empty && A.hardAny) {
     const fpr = V.footprint ? V.footprint(A) : null;
     const area = fpr ? fpr.area : A.bounds.w * A.bounds.d, tiles = Math.max(0, Math.ceil(area / 8) - nLed - nFfu);
     add('Ceiling', 'Ceiling tile, 2×4 (approx.)', '2′ × 4′', tiles, 'ea', 62);
@@ -158,13 +177,29 @@ function partsList(plan) {
   return [...rows.values()].sort((a, b) => a.order - b.order || a.item.localeCompare(b.item) || a.size.localeCompare(b.size, undefined, { numeric: true }));
 }
 
+/* The whole project's parts list: one section per building (the main plan, then each placed building).
+   With a single building there's one untitled section, as before. */
+function projectParts(plan) {
+  const V = global.Plan3DViewer, Z = V.zones ? V.zones(plan) : [{ name: plan.name, plan, main: true }];
+  const out = [];
+  for (const z of Z) {
+    const A = V.analyze(z.plan); if (A.empty && !(z.plan.fixtures || []).length) continue;
+    const rows = partsList(z.plan); if (!rows.length) continue;
+    out.push({ title: z.main ? (z.plan.name || 'Main building') : z.name, main: z.main, rows, floorFt: floorTrackFt(z.plan, A) });
+  }
+  if (out.length === 1) out[0].title = '';
+  return out;
+}
+
 function toCSV(rows, plan) {
   const q = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const out = [['Project', plan.name || ''], ['Ceiling height', ftin(plan.ceiling || 8)], [], ['Category', 'Item', 'Size', 'Qty', 'Unit']];
-  rows.forEach(r => out.push([r.cat, r.item, r.size, r.qty, r.unit]));
+  // rows, or sections [{ title, rows }] from projectParts
+  if (rows.length && rows[0].rows) rows.forEach((sec, k) => { if (sec.title) { if (k) out.push([]); out.push([sec.title.toUpperCase()]); } sec.rows.forEach(r => out.push([r.cat, r.item, r.size, r.qty, r.unit])); });
+  else rows.forEach(r => out.push([r.cat, r.item, r.size, r.qty, r.unit]));
   out.push([], ['Made with Coll Plan3D · Coll Business Solutions LLC']);
   return '﻿' + out.map(r => r.map(q).join(',')).join('\r\n');
 }
 
-global.Plan3DParts = { partsList, toCSV, floorTrackFt, ftin };
+global.Plan3DParts = { partsList, projectParts, toCSV, floorTrackFt, ftin };
 })(window);

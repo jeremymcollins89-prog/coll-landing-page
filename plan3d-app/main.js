@@ -634,6 +634,10 @@ ipcMain.handle('read-rfa', async () => {
 });
 // Equipment added from Revit families, kept for every project on this computer
 const equipFile = () => path.join(app.getPath('userData'), 'equipment.json');
+// Saved buildings (cleanrooms, warehouses …) for inserting into other projects, in this computer's library.
+const bldFile = () => path.join(app.getPath('userData'), 'buildings.json');
+ipcMain.handle('bld-lib', () => { try { return JSON.parse(fs.readFileSync(bldFile(), 'utf8')); } catch (e) { return []; } });
+ipcMain.handle('bld-lib-save', (e, list) => { try { fs.writeFileSync(bldFile(), JSON.stringify(list || [])); return true; } catch (err) { return false; } });
 ipcMain.handle('equip-lib', () => { try { return JSON.parse(fs.readFileSync(equipFile(), 'utf8')); } catch (e) { return []; } });
 ipcMain.handle('equip-lib-save', (e, list) => { try { fs.writeFileSync(equipFile(), JSON.stringify(list || [], null, 1)); return true; } catch (err) { return false; } });
 

@@ -137,16 +137,32 @@ function renderProps(opt) {
   let h = '';
   if (s && o && s.kind === 'wall') {
     const len = Math.hypot(o.x2 - o.x1, o.y2 - o.y1);
-    h = `<div class="hd"><span class="kind">Wall</span><button class="btn small danger" id="pDel">Delete</button></div>
+    const KINDS = Plan3DViewer.WALL_KINDS, kind = Plan3DViewer.isHard(o) ? 'hardwall' : o.kind, hard = kind === 'hardwall';
+    h = `<div class="hd"><span class="kind">${hard ? 'Wall' : esc(KINDS[kind].short) + ' wall'}</span><button class="btn small danger" id="pDel">Delete</button></div>
+      ${fld('Wall type', `<select id="pKind">${Object.entries(KINDS).map(([k, v]) => `<option value="${k}" ${k === kind ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select>`)}
       ${fld('Length', txt('pLen', fmt(len)))}
       ${fld('Thickness', txt('pT', fmtIn(o.t || 0.25)))}
-      ${fld('S.P. panel', `<label class="chk"><input type="checkbox" id="pSP" ${o.sp ? 'checked' : ''}> Highlight yellow</label>`)}
+      ${hard ? fld('S.P. panel', `<label class="chk"><input type="checkbox" id="pSP" ${o.sp ? 'checked' : ''}> Highlight yellow</label>`) : fld('Height', txt('pWH', fmt(Plan3DViewer.shellHeight(P, o))))}
       <div class="row"><button class="btn small" id="pSplit">Split in half</button><button class="btn small" id="pAllT">Use this thickness on all walls</button></div>
-      <p class="note">Length changes move the second end. Drag the square handles on the plan to stretch.</p>`;
+      ${hard ? '' : '<div class="row"><button class="btn small" id="pAllK">Make every connected wall this type</button></div>'}
+      <p class="note">${hard ? 'Hardwall panels are cleanroom walls: panels, studs, floor track, base and the grid ceiling.' : 'Building walls run to their own height, have no cleanroom ceiling, and go on the parts list by length and area.'} Length changes move the second end.</p>`;
     box.innerHTML = h;
+    $('#pKind').onchange = e => ed.edit(() => {
+      const k = e.target.value;
+      if (k === 'hardwall') { delete o.kind; delete o.h; if ((o.t || 0) > 0.4) o.t = P.wallT && P.wallT < 0.4 ? P.wallT : 0.25; }
+      else { o.kind = k; o.sp = false; o.t = KINDS[k].t; }
+    });
+    bindLen('pWH', 'ft', v => ed.edit(() => { o.h = Math.max(6, Math.min(80, v)); }));
+    if ($('#pAllK')) $('#pAllK').onclick = () => ed.edit(Pl => {
+      // walk along walls joined end to end
+      const todo = [o], done = new Set([o]), near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.05;
+      while (todo.length) { const w = todo.pop(); for (const q of Pl.walls) { if (done.has(q)) continue; const e1 = [[w.x1, w.y1], [w.x2, w.y2]], e2 = [[q.x1, q.y1], [q.x2, q.y2]]; if (e1.some(a => e2.some(b => near(a, b)))) { done.add(q); todo.push(q); } } }
+      done.forEach(q => { q.kind = o.kind; q.t = o.t; q.sp = false; if (o.h) q.h = o.h; else delete q.h; });
+      toast(done.size + ' walls set to ' + KINDS[o.kind].short + '.');
+    });
     bindLen('pLen', 'ft', v => ed.edit(() => { const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1; const ux = (o.x2 - o.x1) / L, uy = (o.y2 - o.y1) / L; const linked = ed.linkedEnds(o.x2, o.y2, o); o.x2 = o.x1 + ux * v; o.y2 = o.y1 + uy * v; linked.forEach(l => { if (l.end === 1) { l.w.x1 = o.x2; l.w.y1 = o.y2; } else { l.w.x2 = o.x2; l.w.y2 = o.y2; } }); }));
     bindLen('pT', 'in', v => ed.edit(() => { o.t = Math.max(1 / 48, v); }));
-    $('#pSP').onchange = e => ed.edit(() => { o.sp = e.target.checked; });
+    if ($('#pSP')) $('#pSP').onchange = e => ed.edit(() => { o.sp = e.target.checked; });
     $('#pSplit').onclick = () => ed.edit(Pl => { const mx = (o.x1 + o.x2) / 2, my = (o.y1 + o.y2) / 2; const n = { ...o, id: Plan3DEditor.uid(), x1: mx, y1: my }; o.x2 = mx; o.y2 = my; Pl.walls.push(n); });
     $('#pAllT').onclick = () => ed.edit(Pl => { Pl.walls.forEach(w => { w.t = o.t; }); Pl.wallT = o.t; });
     $('#pDel').onclick = () => ed.deleteSel();
@@ -166,7 +182,9 @@ function renderProps(opt) {
     box.innerHTML = h;
     $('#pType').onchange = e => ed.edit(() => { const was = o.type; o.type = e.target.value; if (o.type === 'glass' && o.sill == null) o.sill = 3; if (o.type === 'pass') { o.sill = 3; o.head = 5; o.depth = o.depth || 2; } else if (was === 'pass') { o.head = 7; if (o.type !== 'glass') delete o.sill; } });
     bindLen('pW', 'ft', v => ed.edit(() => { const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1, ux = (o.x2 - o.x1) / L, uy = (o.y2 - o.y1) / L, cx = (o.x1 + o.x2) / 2, cy = (o.y1 + o.y2) / 2; o.x1 = cx - ux * v / 2; o.y1 = cy - uy * v / 2; o.x2 = cx + ux * v / 2; o.y2 = cy + uy * v / 2; }));
-    bindLen('pHead', 'ft', v => ed.edit(() => { o.head = Math.min(P.ceiling, Math.max(1, v)); }));
+    // openings in building walls can be taller than the cleanroom ceiling (an overhead door, say)
+    const topFor = () => { let best = null, bd = 1.5; for (const w of P.walls) { const d = Plan3DViewer.segDist((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, w.x1, w.y1, w.x2, w.y2); if (d < bd) { bd = d; best = w; } } return best && !Plan3DViewer.isHard(best) ? Plan3DViewer.shellHeight(P, best) : P.ceiling; };
+    bindLen('pHead', 'ft', v => ed.edit(() => { o.head = Math.min(topFor(), Math.max(1, v)); }));
     bindLen('pSill', 'ft', v => ed.edit(() => { const h = (o.head || 5) - (o.sill == null ? 3 : o.sill); o.sill = Math.max(0, v); if (isPass) o.head = Math.min(P.ceiling - 0.25, o.sill + h); }));
     bindLen('pPH', 'in', v => ed.edit(() => { o.head = Math.min(P.ceiling - 0.25, (o.sill == null ? 3 : o.sill) + Math.max(0.5, v)); }));
     bindLen('pDepth', 'in', v => ed.edit(() => { o.depth = Math.max(o.t || 0.25, v); }));
@@ -222,6 +240,7 @@ function renderProps(opt) {
     $('#pDel').onclick = () => ed.deleteSel();
     return;
   }
+  if (s && o && s.kind === 'insert') { insertProps(box, o); return; }
   if (s && o && s.kind === 'room') {
     h = `<div class="hd"><span class="kind">Room label</span><button class="btn small danger" id="pDel">Delete</button></div>
       ${fld('Name', txt('pName', o.name))}
@@ -241,7 +260,9 @@ function renderProps(opt) {
   h = `<div class="hd"><span class="kind">Plan</span></div>
     ${fld('Name', txt('pPName', P.name))}
     ${fld('Ceiling', txt('pCeil', fmt(P.ceiling)))}
+    ${fld('New wall type', `<select id="pNK">${Object.entries(Plan3DViewer.WALL_KINDS).map(([k, v]) => `<option value="${k}" ${(P.newKind || 'hardwall') === k ? 'selected' : ''}>${esc(v.short)}</option>`).join('')}</select>`)}
     ${fld('New walls', txt('pWT', fmtIn(P.wallT || 0.25)))}
+    ${(P.walls.some(w => !Plan3DViewer.isHard(w)) || (P.newKind && P.newKind !== 'hardwall')) ? fld('Building wall height', txt('pSH', fmt(P.shellH || 20))) : ''}
     ${fld('Snap to', `<select id="pSnap">${[[0, 'Off'], [0.125, '⅛″'], [0.25, '¼″'], [1, '1″'], [6, '6″'], [12, '1′']].map(([v, l]) => `<option value="${v}" ${ed.snapIn === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
     <div class="grp"><h3>Contents</h3><div class="stats">
       <span>Overall</span><span>${hasGeo ? fmt(ext.x1 - ext.x0) + ' × ' + fmt(ext.y1 - ext.y0) : '—'}</span>
@@ -249,7 +270,8 @@ function renderProps(opt) {
       <span>Doors &amp; glass</span><span>${P.openings.length}</span>
       <span>Air chases</span><span>${P.chases.length}</span>
       <span>Rooms</span><span>${P.rooms.length}</span>
-      ${hasGeo ? (() => { const ft = Plan3DParts.floorTrackFt(P); return `<span>Floor track</span><span>${Math.ceil(ft)} lin ft <small>(${Plan3DParts.ftin(ft)})</small></span>`; })() : ''}</div>
+      ${(P.inserts || []).length ? `<span>Placed buildings</span><span>${P.inserts.length}</span>` : ''}
+      ${hasGeo || (P.inserts || []).length ? (() => { const ft = Plan3DParts.projectParts(P).reduce((t, q) => t + q.floorFt, 0); return ft > 0 ? `<span>Floor track</span><span>${Math.ceil(ft)} lin ft <small>(${Plan3DParts.ftin(ft)})</small></span>` : ''; })() : ''}</div>
       ${hasGeo ? '<div class="row"><button class="btn small" id="pClearAuto">Clear all walls</button></div>' : ''}
     </div>
     ${ffuPanelHtml(P)}`;
@@ -273,6 +295,8 @@ function renderProps(opt) {
   $('#pPName').onchange = e => ed.edit(Pl => { Pl.name = e.target.value.trim() || 'Untitled plan'; });
   bindLen('pCeil', 'ft', v => ed.edit(Pl => { Pl.ceiling = Math.max(6, Math.min(30, v)); }));
   bindLen('pWT', 'in', v => { ed.plan.wallT = Math.max(1 / 48, v); renderProps(); });
+  $('#pNK').onchange = e => { const k = e.target.value, K = Plan3DViewer.WALL_KINDS[k]; ed.plan.newKind = k === 'hardwall' ? undefined : k; ed.plan.wallT = k === 'hardwall' ? 0.25 : K.t; ed.dirty = true; renderProps(); msg(k === 'hardwall' ? 'New walls: hardwall cleanroom panels.' : 'New walls: ' + K.label + ', ' + fmtIn(K.t) + ' thick. Draw them with the Wall tool (W).'); };
+  bindLen('pSH', 'ft', v => ed.edit(Pl => { Pl.shellH = Math.max(6, Math.min(80, v)); }));
   $('#pSnap').onchange = e => { ed.snapIn = +e.target.value; };
   bindParts();
   bindFfuPanel(P);
@@ -294,12 +318,16 @@ function renderProps(opt) {
 
 /* ---------- Parts list ---------- */
 function partsGroup() {
-  if (!ed.plan.walls.length && !ed.plan.chases.length) return '';
-  const rows = Plan3DParts.partsList(ed.plan);
-  let cat = '', body = '';
-  for (const r of rows) {
-    if (r.cat !== cat) { cat = r.cat; body += `<div class="pl-cat">${esc(cat)}</div>`; }
-    body += `<div class="pl-row"><span>${esc(r.item)}${r.size ? `<small>${esc(r.size)}</small>` : ''}</span><b>${r.qty}${r.unit !== 'ea' ? ' <small>' + esc(r.unit) + '</small>' : ''}</b></div>`;
+  if (!ed.plan.walls.length && !ed.plan.chases.length && !(ed.plan.inserts || []).length) return '';
+  // one list, a section per building (the main plan, then each placed building)
+  let body = '';
+  for (const sec of Plan3DParts.projectParts(ed.plan)) {
+    if (sec.title) body += `<div class="pl-sec">${esc(sec.title)}</div>`;
+    let cat = '';
+    for (const r of sec.rows) {
+      if (r.cat !== cat) { cat = r.cat; body += `<div class="pl-cat">${esc(cat)}</div>`; }
+      body += `<div class="pl-row"><span>${esc(r.item)}${r.size ? `<small>${esc(r.size)}</small>` : ''}</span><b>${r.qty}${r.unit !== 'ea' ? ' <small>' + esc(r.unit) + '</small>' : ''}</b></div>`;
+    }
   }
   return `<div class="grp"><h3>Parts list</h3><div class="pl">${body}</div>
     <div class="row"><button class="btn small primary" id="pPartsCsv">Export parts list (.csv)</button></div>
@@ -307,7 +335,7 @@ function partsGroup() {
 }
 function bindParts() { const b = $('#pPartsCsv'); if (b) b.onclick = exportParts; }
 async function exportParts() {
-  const csv = Plan3DParts.toCSV(Plan3DParts.partsList(ed.plan), ed.plan);
+  const csv = Plan3DParts.toCSV(Plan3DParts.projectParts(ed.plan), ed.plan);
   if (!api.exportFile) return;
   const p = await api.exportFile(csv, ed.plan.name + ' parts list', 'csv');
   if (p) toast('Parts list saved.', { label: 'Open it', fn: () => api.openPath(p) });
@@ -802,6 +830,141 @@ function dxfDialog(data, preset) {
   }
 }
 
+/* ---------- Buildings: a library of saved buildings, and buildings placed in a plan ----------
+   A placed building is a full copy of the saved one (plan.inserts[].plan). It never changes on its own: when
+   the library has a newer version you update it from its panel, or swap it for another building. */
+let bldLib = null;
+async function loadBldLib() { if (!bldLib) { try { bldLib = (api.bldLib ? await api.bldLib() : []) || []; } catch (e) { bldLib = []; } } return bldLib; }
+async function saveBldLib() { if (api.bldLibSave) await api.bldLibSave(bldLib); }
+const fmtDate = (iso) => { try { return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch (e) { return iso || ''; } };
+function planThumb(plan) {
+  const F = Plan3DViewer.flatten(plan), W = F.walls || [];
+  if (!W.length) return '<svg viewBox="0 0 96 64"></svg>';
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; W.forEach(w => { x0 = Math.min(x0, w.x1, w.x2); y0 = Math.min(y0, w.y1, w.y2); x1 = Math.max(x1, w.x1, w.x2); y1 = Math.max(y1, w.y1, w.y2); });
+  const pad = Math.max(x1 - x0, y1 - y0) * 0.06 + 0.5, K = Plan3DViewer.WALL_KINDS;
+  return `<svg viewBox="${(x0 - pad).toFixed(2)} ${(y0 - pad).toFixed(2)} ${(x1 - x0 + pad * 2).toFixed(2)} ${(y1 - y0 + pad * 2).toFixed(2)}" preserveAspectRatio="xMidYMid meet">` +
+    W.map(w => `<line x1="${w.x1.toFixed(2)}" y1="${w.y1.toFixed(2)}" x2="${w.x2.toFixed(2)}" y2="${w.y2.toFixed(2)}" stroke="${w.kind && K[w.kind] ? K[w.kind].plan : '#e9eef0'}" stroke-width="${Math.max(w.t || 0.25, (x1 - x0) / 90).toFixed(3)}" stroke-linecap="square"/>`).join('') + '</svg>';
+}
+function bldSize(plan) { const b = Plan3DViewer.insertBox({ x: 0, y: 0, rot: 0, plan }); return fmt(b.x1 - b.x0) + ' × ' + fmt(b.y1 - b.y0); }
+
+async function saveBuildingDialog() {
+  const P = ed.plan;
+  if (!P.walls.length && !(P.inserts || []).length) { toast('Draw or import a building first.'); return; }
+  const lib = await loadBldLib(), prev = P.libId ? lib.find(x => x.id === P.libId) : null;
+  const r = await dialogOpen({
+    title: 'Save this building to the library',
+    body: `<p>Saves this whole plan, with its doors, chases, ceiling, FFUs and wall types, so you can place it in other projects with <b>Buildings → Insert a saved building</b>.</p>
+      ${fld('Name', txt('bName', prev ? prev.name : (P.name || 'Building')))}
+      <p class="note">${prev ? `This plan was saved before as “${esc(prev.name)}” (${esc(fmtDate(prev.savedAt))}). Updating it doesn't change copies already placed in other projects; each of those can be updated from its own panel.` : 'Copies you place are independent: changing the library later never changes them on its own.'}</p>`,
+    buttons: prev ? [{ label: 'Cancel', ret: null }, { label: 'Save as new', value: () => ({ asNew: true, name: $('#bName').value.trim() }) }, { label: 'Update “' + prev.name + '”', primary: true, value: () => ({ asNew: false, name: $('#bName').value.trim() }) }]
+      : [{ label: 'Cancel', ret: null }, { label: 'Save', primary: true, value: () => ({ asNew: true, name: $('#bName').value.trim() }) }],
+    onOpen: () => { const n = $('#bName'); n.focus(); n.select(); }
+  });
+  if (!r) return;
+  const plan = Plan3DViewer.centredCopy(clonePlan()); delete plan.libId;
+  const now = new Date().toISOString(), name = r.name || P.name || 'Building';
+  let entry;
+  if (!r.asNew && prev) { entry = prev; Object.assign(entry, { name, savedAt: now, plan }); }
+  else { entry = { id: Plan3DEditor.uid() + Plan3DEditor.uid(), name, savedAt: now, plan }; lib.unshift(entry); }
+  entry.size = bldSize(plan);
+  await saveBldLib();
+  ed.plan.libId = entry.id; ed.dirty = true; updateChrome();
+  toast(`Saved “${name}” to the library (${entry.size}).`);
+}
+
+/* Pick a building from the library. Resolves to the entry, or null. */
+async function pickBuilding(title, okLabel) {
+  const lib = await loadBldLib(); let picked = null;
+  const list = () => lib.length ? lib.map(e => `<div class="blib-item" data-id="${esc(e.id)}">${planThumb(e.plan)}<div><b>${esc(e.name)}</b><small>${esc(e.size || bldSize(e.plan))} · ${esc(Plan3DViewer.zones(e.plan).length > 1 ? Plan3DViewer.zones(e.plan).length + ' buildings · ' : '')}${esc(fmt(e.plan.ceiling || 8))} ceiling</small><small>Saved ${esc(fmtDate(e.savedAt))}</small></div>
+      <div class="row"><button class="btn small primary" data-use="${esc(e.id)}">${esc(okLabel)}</button><button class="btn small danger" data-del="${esc(e.id)}" title="Remove from the library (placed copies stay)">Delete</button></div></div>`).join('')
+    : '<div class="blib-empty">No saved buildings yet. Open or draw a building, then use <b>Buildings → Save this building to the library</b>.</div>';
+  await dialogOpen({
+    wide: true, title,
+    body: `<div class="blib" id="blib">${list()}</div><p class="note">Saved on this computer. A placed building is its own copy; deleting it here doesn't remove copies already placed.</p>`,
+    buttons: [{ label: 'Close', ret: null }],
+    onOpen: (d) => {
+      const bind = () => {
+        $$('#blib [data-use]').forEach(b => b.onclick = () => { picked = lib.find(x => x.id === b.dataset.use); d.close(); });
+        $$('#blib [data-del]').forEach(b => b.onclick = async () => {
+          const e = lib.find(x => x.id === b.dataset.del); if (!e) return;
+          if (!window.confirm(`Remove “${e.name}” from the library? Copies already placed in projects stay.`)) return;
+          lib.splice(lib.indexOf(e), 1); await saveBldLib(); $('#blib').innerHTML = list(); bind();
+        });
+      };
+      bind();
+    }
+  });
+  return picked;
+}
+function placeBuilding(src, name, libId, libSaved) {
+  const plan = Plan3DViewer.centredCopy(src); delete plan.libId;
+  const g = 0.5, cx = ed.W ? ed.wx(ed.W / 2) : 0, cy = ed.H ? ed.wy(ed.H / 2) : 0;
+  const ins = { id: Plan3DEditor.uid(), name: name || plan.name || 'Building', libId: libId || null, libSaved: libSaved || null, x: Math.round(cx / g) * g, y: Math.round(cy / g) * g, rot: 0, mirror: false, plan };
+  ed.edit(P => { (P.inserts = P.inserts || []).push(ins); });
+  ed.setTool('select'); ed.sel = { kind: 'insert', id: ins.id }; ed.emit('select'); ed.render(); queue3D();
+  toast(`Placed “${ins.name}”. Drag it into place; R turns it. Its parts are a separate section of the parts list.`);
+}
+async function insertBuildingDialog() {
+  const e = await pickBuilding('Insert a saved building', 'Insert');
+  if (e) placeBuilding(e.plan, e.name, e.id, e.savedAt);
+}
+async function insertFromFile() {
+  if (!api.openFile) return;
+  const r = await api.openFile('project');
+  if (!r || r.kind !== 'project') { if (r && r.kind === 'error') toast("That file couldn't be read."); return; }
+  let p; try { p = JSON.parse(r.json); } catch (e) { toast('That project file is damaged.'); return; }
+  if (!p.walls || (!p.walls.length && !(p.inserts || []).length)) { toast('That project has no walls.'); return; }
+  placeBuilding(p, p.name || r.name, null, null);
+}
+async function insertProps(box, o) {
+  const b = ed.insBox(o), lib = await loadBldLib(), L = o.libId ? lib.find(x => x.id === o.libId) : null;
+  if (ed.sel && ed.sel.kind === 'insert' && ed.sel.id !== o.id) return;
+  const newer = L && o.libSaved && L.savedAt > o.libSaved;
+  box.innerHTML = `<div class="hd"><span class="kind">Placed building</span><button class="btn small danger" id="pDel">Delete</button></div>
+    ${fld('Name', txt('iName', o.name || ''))}
+    <div class="grp"><div class="stats"><span>Size</span><span>${fmt(b.x1 - b.x0)} × ${fmt(b.y1 - b.y0)}</span><span>Turned</span><span>${((o.rot || 0) % 4) * 90}°${o.mirror ? ', mirrored' : ''}</span>
+      <span>From</span><span>${L ? 'Library: ' + esc(L.name) : o.libId ? 'Library (removed since)' : 'Project file'}</span>${o.libSaved ? `<span>Version</span><span>${esc(fmtDate(o.libSaved))}</span>` : ''}</div></div>
+    ${fld('Left side at', txt('iX', fmt(b.x0)))}
+    ${fld('Top side at', txt('iY', fmt(b.y0)))}
+    ${fld('Ceiling', txt('iCeil', fmt(o.plan.ceiling || 8)))}
+    <div class="row"><button class="btn small" id="iL">⟲ Turn left</button><button class="btn small" id="iR">⟳ Turn right</button><button class="btn small" id="iM">Mirror</button></div>
+    ${newer ? `<p class="note" style="color:#f2c84b">A newer version of “${esc(L.name)}” is in the library (saved ${esc(fmtDate(L.savedAt))}).</p><div class="row"><button class="btn small primary" id="iUpd">Update to the newer version</button></div>` : ''}
+    <div class="row"><button class="btn small" id="iSwap">Replace with another building…</button></div>
+    <div class="row"><button class="btn small" id="iUngroup">Ungroup into plain walls</button></div>
+    <p class="note">Drag it on the plan to move it (its edges snap to wall ends); R turns it. It keeps its own ceiling, FFUs and parts-list section. Placed copies don't change when the library does; update or replace them here.</p>`;
+  const nm = $('#iName'); nm.onchange = () => ed.edit(() => { o.name = nm.value.trim() || 'Building'; });
+  bindLen('iX', 'ft', v => ed.edit(() => { o.x += v - b.x0; }));
+  bindLen('iY', 'ft', v => ed.edit(() => { o.y += v - b.y0; }));
+  bindLen('iCeil', 'ft', v => ed.edit(() => { o.plan.ceiling = Math.max(6, Math.min(30, v)); o._v = Date.now(); }));
+  $('#iL').onclick = () => ed.edit(() => { o.rot = ((o.rot || 0) + 3) % 4; });
+  $('#iR').onclick = () => ed.edit(() => { o.rot = ((o.rot || 0) + 1) % 4; });
+  $('#iM').onclick = () => ed.edit(() => { o.mirror = !o.mirror; });
+  const swapIn = (e) => ed.edit(() => { o.plan = Plan3DViewer.centredCopy(e.plan); delete o.plan.libId; o.libId = e.id; o.libSaved = e.savedAt; o.name = e.name; o._v = Date.now(); });
+  if ($('#iUpd')) $('#iUpd').onclick = () => { swapIn(L); toast(`Updated to the ${fmtDate(L.savedAt)} version of “${L.name}”.`); };
+  $('#iSwap').onclick = async () => { const e = await pickBuilding('Replace “' + (o.name || 'building') + '” with…', 'Use this'); if (e) { swapIn(e); toast(`Replaced with “${e.name}”, in the same spot.`); } };
+  $('#iUngroup').onclick = async () => {
+    const H0 = ed.plan.ceiling || 8, H1 = o.plan.ceiling || 8;
+    const ok = await confirmDlg('Ungroup this building?', `Its walls, doors, chases and rooms become part of this plan, so you can edit them one by one. It stops being a separate building: it uses this plan's ${fmt(H0)} ceiling${Math.abs(H0 - H1) > 0.01 ? ' (it has ' + fmt(H1) + ' now)' : ''} and joins the main parts-list section. Ctrl+Z undoes it.`, 'Ungroup');
+    if (!ok) return;
+    ed.edit(Pl => {
+      const zs = Plan3DViewer.zones({ walls: [], inserts: [o] }).slice(1), uid = Plan3DEditor.uid;
+      if (zs.some(z => z.plan.ceilingMode === 'manual' && (z.plan.fixtures || []).length) && Pl.ceilingMode !== 'manual') { Pl.fixtures = Plan3DViewer.ceilingFixtures(Pl).map(f => ({ ...f, id: uid() })); Pl.ceilingMode = 'manual'; }
+      for (const z of zs) {
+        const ids = {}, nid = (id) => (ids[id] = ids[id] || uid());
+        for (const w of z.plan.walls || []) Pl.walls.push({ ...w, id: nid(w.id) });
+        for (const op of z.plan.openings || []) Pl.openings.push({ ...op, id: uid(), ...(op.unit ? { unit: nid(op.unit) } : {}) });
+        for (const k of z.plan.chases || []) Pl.chases.push({ ...k, id: uid() });
+        for (const r of z.plan.rooms || []) Pl.rooms.push({ ...r, id: uid() });
+        if (Pl.ceilingMode === 'manual') for (const f of Plan3DViewer.ceilingFixtures(z.plan)) Pl.fixtures.push({ ...f, id: uid() });
+        if (!Pl.ffuModel && z.plan.ffuModel) Pl.ffuModel = z.plan.ffuModel;
+      }
+      Pl.inserts = Pl.inserts.filter(x => x !== o);
+    });
+    ed.sel = null; ed.emit('select'); toast('Ungrouped. Its walls are now part of this plan.');
+  };
+  $('#pDel').onclick = () => ed.deleteSel();
+}
+
 /* ---------- Files ---------- */
 async function guardUnsaved() {
   if (!ed.dirty) return true;
@@ -903,6 +1066,7 @@ function helpDialog() {
       <h4>Ceiling</h4><ul><li>Add ceiling picks a ceiling drawing (DWG, DXF) or a picture of one. Lights, fan filter units and the T-grid are placed over your room and show in 3D.</li><li>Click Add ceiling again to move, turn, replace or remove it.</li></ul>
       <h4>Revit</h4><ul><li>In Revit: File → Export → IFC, then Import plan here and pick the .ifc. Walls, doors, windows, rooms, lights and FFUs become an editable plan.</li><li>Save DWG / IFC → Revit 3D model saves the whole room in 3D. In Revit: File → Open → IFC, then Save As → Project for an .rvt.</li></ul>
       <h4>Back to AutoCAD</h4><ul><li>Save DWG / IFC (Ctrl+D) saves the plan 1:1 in inches on standard layers, with dimensions. DWG is built in (AutoCAD 2000 format, which every AutoCAD opens); with the free ODA File Converter installed you can also pick newer DWG versions.</li><li>Open that file in Coll Plan3D again and the doors, glass, chases and rooms come back exactly.</li></ul>
+      <h4>Buildings</h4><ul><li>Buildings → Save this building to the library keeps the whole plan (walls, doors, chases, ceiling, FFUs) on this computer.</li><li>Buildings → Insert a saved building places a copy in the current plan, a cleanroom inside a warehouse for example. Drag it, R turns it; its panel can mirror it, set its ceiling, update it to a newer library version, swap it for another, or ungroup it into plain walls.</li><li>Placed copies never change on their own. Each building gets its own section of the parts list.</li><li>Pick a wall and set its Wall type: hardwall cleanroom panel, concrete, block, metal panel or stud/drywall. Set New wall type in the Plan panel to draw building walls with the Wall tool.</li></ul>
       <h4>Sharing</h4><ul><li>Export walkthrough saves one .html file. Anyone can open it in a browser, on a phone too.</li><li>Export .glb opens in Windows 3D Viewer, SketchUp, Blender and most 3D tools.</li></ul></div>`,
     buttons: [{ label: 'Close', primary: true, ret: null }]
   });
@@ -924,6 +1088,16 @@ $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave
   const item = (id, fn) => { $(id).onclick = () => { close(); fn(); }; };
   item('#bExportHtml', exportHtml); item('#bSheet', sheetDialog); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
   item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportParts', exportParts);
+}
+// Buildings dropdown
+{
+  const btn = $('#bBld'), menu = $('#bldMenu');
+  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+  btn.onclick = (e) => { e.stopPropagation(); const open = menu.hidden; menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); if (open) menu.querySelector('button').focus(); };
+  document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); btn.focus(); } });
+  const item = (id, fn) => { $(id).onclick = () => { close(); fn(); }; };
+  item('#bBldInsert', insertBuildingDialog); item('#bBldFile', insertFromFile); item('#bBldSave', saveBuildingDialog);
 }
 $('#bCeiling').onclick = ceilingMenu; $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
 $('#wDraw').onclick = () => { $('#welcome').hidden = true; ed.setTool('wall'); $('#plan').focus(); };
@@ -954,5 +1128,5 @@ window.addEventListener('drop', async e => {
 
 renderProps(); updateChrome(); toolHint('select');
 if (api.rendererReady) api.rendererReady();
-window.__app = { ed, setView, handleLoaded, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
+window.__app = { ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
 })();
