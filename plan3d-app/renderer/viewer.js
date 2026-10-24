@@ -80,16 +80,16 @@ function leavesFor(i) {
     const w = Math.max(0.5, i.len - 0.22);
     const bx = o.x1 + i.ux * 0.1, bz = o.y1 + i.uz * 0.1;
     const sx = bx + nx * sw * (i.t / 2 + 0.07), sz = bz + nz * sw * (i.t / 2 + 0.07);
-    out.push({ x1: sx, z1: sz, x2: sx + i.ux * w, z2: sz + i.uz * w, w, leafSw: sw });
+    out.push({ x1: sx, z1: sz, x2: sx + i.ux * w, z2: sz + i.uz * w, w, leafSw: sw, tx: nx * sw, tz: nz * sw });
   } else if (o.type === 'door2') {
     const halfW = Math.max(0.4, i.len / 2 - 0.14);
     const bx1 = o.x1 + i.ux * 0.1, bz1 = o.y1 + i.uz * 0.1;
     const sx1 = bx1 + nx * sw * (i.t / 2 + 0.07), sz1 = bz1 + nz * sw * (i.t / 2 + 0.07);
-    out.push({ x1: sx1, z1: sz1, x2: sx1 + i.ux * halfW, z2: sz1 + i.uz * halfW, w: halfW, leafSw: sw });
+    out.push({ x1: sx1, z1: sz1, x2: sx1 + i.ux * halfW, z2: sz1 + i.uz * halfW, w: halfW, leafSw: sw, tx: nx * sw, tz: nz * sw });
 
     const bx2 = o.x2 - i.ux * 0.1, bz2 = o.y2 - i.uz * 0.1;
     const sx2 = bx2 + nx * sw * (i.t / 2 + 0.07), sz2 = bz2 + nz * sw * (i.t / 2 + 0.07);
-    out.push({ x1: sx2, z1: sz2, x2: sx2 - i.ux * halfW, z2: sz2 - i.uz * halfW, w: halfW, leafSw: sw });
+    out.push({ x1: sx2, z1: sz2, x2: sx2 - i.ux * halfW, z2: sz2 - i.uz * halfW, w: halfW, leafSw: sw, tx: nx * sw, tz: nz * sw });
   }
   return out;
 }
@@ -486,7 +486,10 @@ function buildScene(THREE, plan, A) {
       segBox(j1x, j1z, j2x, j2z, head - 0.02, Math.min(H, head + 0.12), t + 0.06, M.frame);
       for (const l of i.leaves) {
         const baseAngle = Math.atan2(-(l.z2 - l.z1), l.x2 - l.x1);
-        const swingDir = l.leafSw;
+        // Open toward the swing side shown on the plan. Turning by +90° sends the leaf's direction (dx, dz)
+        // to (dz, −dx); pick the turn that lands on the swing side. Both leaves of a pair then open the same way.
+        const ldx = l.x2 - l.x1, ldz = l.z2 - l.z1;
+        const swingDir = (l.tx != null ? (ldz * l.tx - ldx * l.tz) : l.leafSw) >= 0 ? 1 : -1;
 
         const doorGroup = new THREE.Group();
         doorGroup.position.set(l.x1, 0, l.z1);
@@ -496,7 +499,8 @@ function buildScene(THREE, plan, A) {
           isOpen: false, 
           baseRotation: baseAngle,
           openAngle: 0,
-          swingDir: swingDir 
+          swingDir: swingDir,
+          side: [l.tx, l.tz]
         };
         root.add(doorGroup);
         doors.push(doorGroup);
