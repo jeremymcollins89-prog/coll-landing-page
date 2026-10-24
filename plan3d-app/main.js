@@ -528,9 +528,10 @@ ipcMain.handle('open-file', async (e, which) => {
 
 ipcMain.handle('load-path', (e, p) => loadAny(p));
 
-ipcMain.handle('load-sample', () => {
-  const p = path.join(__dirname, 'samples', 'SOM base cleanroom.plan3d');
-  return { kind: 'project', name: 'SOM base cleanroom', path: null, json: fs.readFileSync(p, 'utf8') };
+ipcMain.handle('load-sample', (e, which) => {
+  const name = which === 'house' ? 'Sample house' : 'SOM base cleanroom';
+  const p = path.join(__dirname, 'samples', name + '.plan3d');
+  return { kind: 'project', name, path: null, json: fs.readFileSync(p, 'utf8') };
 });
 
 ipcMain.handle('save-project', async (e, json, current, suggested) => {

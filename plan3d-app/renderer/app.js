@@ -15,7 +15,7 @@ const ed = new Editor($('#plan'), {
   onChange: () => { updateChrome(); queue3D(); if (builder && view === 'build') builder.refresh(); renderProps(); },
   onLive: () => queue3D(),
   onSelect: (d) => { renderProps(d); if (builder && view === 'build') builder.drawSel(); },
-  onTool: (t) => { $$('.tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; if (t === 'piece') hideBanner(); toolHint(t); },
+  onTool: (t) => { $$('.tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; $('#itemPal').hidden = t !== 'item'; if (t === 'item') itemPalette(); if (t === 'piece') hideBanner(); toolHint(t); },
   onStatus: (m) => msg(m || toolHintText(ed.tool)),
   onCursor: (p) => { $('#sXY').textContent = fmt(p.x) + ', ' + fmt(p.y); $('#sZoom').textContent = Math.round(ed.view.s) + ' px/ft'; },
   onCalibrate: (cal) => calibrateDialog(cal),
@@ -28,6 +28,17 @@ pieces2d.onFlash = (m) => msg(m);
 ed.pieces = pieces2d;
 const pal2d = new Plan3DBuilder.Palette($('#pal2d'), pieces2d, { layout: 'row', onTool: (t) => { if (ed.tool !== 'piece') ed.setTool('piece'); ed.pieceGhost = null; toolHint('piece'); $('#plan').focus(); } });
 
+function welcomeText() {
+  const house = ed.plan.mode === 'house';
+  $('#wTitle').textContent = house ? 'Design a house in 3D' : 'Turn a floor plan into a 3D walkthrough';
+  $('#wText').textContent = house ? 'Draw the walls (wood or steel studs), add doors and windows, pick a roof, place the kitchen, bath and laundry, then walk through it. The parts list counts the framing, drywall, siding, roof and more.' : 'Bring in an AutoCAD drawing or a photo of the plan sheet, check the walls, add doors, glass and air chases, then walk through it.';
+  $('#wSampleText').textContent = house ? 'A 3-bedroom ranch house with kitchen, two baths and laundry' : 'SOM base cleanroom: 8′-6″ and 11′ grids, 3′ plenum, MAC 10 FFUs';
+}
+function pickMode(m) {
+  modePicked = true;
+  const P = Editor.blank(); if (m === 'house') houseDefaults(P); else P.mode = 'cleanroom';
+  projectPath = null; ed.setPlan(P); updateChrome(); renderProps();
+}
 function msg(t) { $('#sMsg').textContent = t || 'Ready'; }
 const HINTS = {
   select: 'Click to select. Drag to move. Drag a wall end to stretch it. Drag empty space to pan. Delete removes.',
@@ -41,8 +52,16 @@ const HINTS = {
   chase: 'Drag a rectangle to place a full-height air chase.',
   room: 'Click inside a room to label it.',
   calibrate: 'Click both ends of a dimension you know, like the 40′ overall.',
+  item: 'Pick an item above, then click near a wall: it backs up against the wall. R turns it. Island goes anywhere.',
   piece: 'Pick a piece above and click to place it. Pieces snap to open ends and turn the corner toward the mouse. R turns a free piece. Right-drag pans.'
 };
+function itemPalette() {
+  const IT = Plan3DViewer.ITEMS, groups = {};
+  for (const [k, v] of Object.entries(IT)) (groups[v.group] = groups[v.group] || []).push([k, v]);
+  if (!ed.itemType) ed.itemType = 'base';
+  $('#itemPal').innerHTML = Object.entries(groups).map(([g, list]) => `<div class="grp"><h5>${esc(g)}</h5><div class="row">${list.map(([k, v]) => `<button data-it="${k}" class="${ed.itemType === k ? 'on' : ''}">${esc(v.label)}</button>`).join('')}</div></div>`).join('');
+  $$('#itemPal button').forEach(b => b.onclick = () => { ed.itemType = b.dataset.it; itemPalette(); $('#plan').focus(); });
+}
 function toolHintText(t) { return HINTS[t] || ''; }
 function toolHint(t) { msg(toolHintText(t)); }
 
@@ -52,12 +71,26 @@ function toast(text, action) {
   t.hidden = false; clearTimeout(t._h); t._h = setTimeout(() => { t.hidden = true; }, action ? 7000 : 3500);
 }
 
+/* House defaults: wood stud walls 4½″ thick, 8′ walls, 6/12 gable roof with a 1′ overhang, plank floors. */
+function houseDefaults(P, keepWalls) {
+  P.mode = 'house';
+  if (!keepWalls || !P.walls.length) { P.ceiling = 8; P.wallT = 4.5 / 12; }
+  P.newKind = 'wood';
+  if (!P.roof) P.roof = { type: 'gable', pitch: 6, overhang: 1 };
+  if (!P.floorType) P.floorType = 'lvp';
+  if (!P.items) P.items = [];
+  if (!P.name || P.name === 'Untitled plan') P.name = 'Untitled house';
+}
+let modePicked = false;
 function updateChrome() {
-  const P = ed.plan;
+  const P = ed.plan, house = P.mode === 'house';
+  document.body.dataset.mode = house ? 'house' : 'cleanroom';
+  $('#modeChip').textContent = house ? 'House' : 'Cleanroom';
   $('#docName').textContent = (P.name || 'Untitled plan') + (ed.dirty ? ' •' : '');
   document.title = (P.name || 'Untitled plan') + ' — Coll Plan3D';
-  const empty = !P.walls.length && !P.chases.length && !P.background;
+  const empty = !P.walls.length && !P.chases.length && !P.background && !(P.inserts || []).length;
   $('#welcome').hidden = !empty;
+  if (empty) { $('#wPick').hidden = modePicked; $('#wNext').hidden = !modePicked; welcomeText(); }
 }
 
 /* ---------- 3D ---------- */
@@ -98,7 +131,8 @@ $$('.tools button').forEach(b => b.addEventListener('click', () => { ed.setTool(
 $('#optOrtho').addEventListener('change', e => { ed.ortho = e.target.checked; });
 $('#optDims').addEventListener('change', e => { ed.showDims = e.target.checked; ed.render(); });
 
-const TOOL_KEYS = { v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate' };
+const TOOL_KEYS = { v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', i: 'item' };
+const HOUSE_ONLY = new Set(['item']), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase']);
 function inField(e) { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA'); }
 window.addEventListener('keydown', e => {
   if ($('#dlg').open || inField(e)) return;
@@ -119,8 +153,8 @@ window.addEventListener('keydown', e => {
   if (view === 'build') { if (builder && builder.key(e)) e.preventDefault(); return; }
   if (ed.key(e)) { e.preventDefault(); return; }
   if (Plan3DBuilder.NUM_KEYS[e.key] && !e.altKey) { ed.setTool('piece'); pal2d.setTool(Plan3DBuilder.NUM_KEYS[e.key]); e.preventDefault(); return; }
-  const t = TOOL_KEYS[e.key.toLowerCase()];
-  if (t && !e.altKey) { ed.setTool(t); e.preventDefault(); }
+  const t = TOOL_KEYS[e.key.toLowerCase()], hm = ed.plan.mode === 'house';
+  if (t && !e.altKey && !(hm && CLEANROOM_ONLY.has(t)) && !(!hm && HOUSE_ONLY.has(t))) { ed.setTool(t); e.preventDefault(); }
 });
 window.addEventListener('keyup', e => { if (e.key === ' ') ed.key(e); });
 
@@ -138,14 +172,17 @@ function renderProps(opt) {
   if (s && o && s.kind === 'wall') {
     const len = Math.hypot(o.x2 - o.x1, o.y2 - o.y1);
     const KINDS = Plan3DViewer.WALL_KINDS, kind = Plan3DViewer.isHard(o) ? 'hardwall' : o.kind, hard = kind === 'hardwall';
+    const kindOrder = Object.entries(KINDS).sort((a, b) => P.mode === 'house' ? (!!b[1].frame - !!a[1].frame) : 0);
     h = `<div class="hd"><span class="kind">${hard ? 'Wall' : esc(KINDS[kind].short) + ' wall'}</span><button class="btn small danger" id="pDel">Delete</button></div>
-      ${fld('Wall type', `<select id="pKind">${Object.entries(KINDS).map(([k, v]) => `<option value="${k}" ${k === kind ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select>`)}
+      ${fld('Wall type', `<select id="pKind">${kindOrder.map(([k, v]) => `<option value="${k}" ${k === kind ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select>`)}
       ${fld('Length', txt('pLen', fmt(len)))}
       ${fld('Thickness', txt('pT', fmtIn(o.t || 0.25)))}
-      ${hard ? fld('S.P. panel', `<label class="chk"><input type="checkbox" id="pSP" ${o.sp ? 'checked' : ''}> Highlight yellow</label>`) : fld('Height', txt('pWH', fmt(Plan3DViewer.shellHeight(P, o))))}
+      ${hard ? fld('S.P. panel', `<label class="chk"><input type="checkbox" id="pSP" ${o.sp ? 'checked' : ''}> Highlight yellow</label>`) : fld('Height', txt('pWH', fmt(KINDS[kind].frame ? (o.h || P.ceiling || 8) : Plan3DViewer.shellHeight(P, o))))}
+      ${KINDS[kind].frame ? fld('Studs', `<select id="pStud">${(kind === 'steel' ? [['', 'Auto (6″ outside, 3⅝″ inside)'], ['3⅝″', '3⅝″ steel'], ['6″', '6″ steel']] : [['', 'Auto (2×6 outside, 2×4 inside)'], ['2×4', '2×4'], ['2×6', '2×6']]).map(([v, l]) => `<option value="${v}" ${(o.stud || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`)
+        + fld('Exterior wall', `<select id="pExt"><option value="" ${o.ext == null ? 'selected' : ''}>Auto (outside walls)</option><option value="1" ${o.ext === true ? 'selected' : ''}>Yes: sheathing, wrap, siding</option><option value="0" ${o.ext === false ? 'selected' : ''}>No: drywall both sides</option></select>`) : ''}
       <div class="row"><button class="btn small" id="pSplit">Split in half</button><button class="btn small" id="pAllT">Use this thickness on all walls</button></div>
       ${hard ? '' : '<div class="row"><button class="btn small" id="pAllK">Make every connected wall this type</button></div>'}
-      <p class="note">${hard ? 'Hardwall panels are cleanroom walls: panels, studs, floor track, base and the grid ceiling.' : 'Building walls run to their own height, have no cleanroom ceiling, and go on the parts list by length and area.'} Length changes move the second end.</p>`;
+      <p class="note">${hard ? 'Hardwall panels are cleanroom walls: panels, studs, floor track, base and the grid ceiling.' : KINDS[kind].frame ? 'House wall: studs at 16″, plates and headers; drywall inside; sheathing, wrap and siding on outside walls.' : 'Building walls run to their own height, have no cleanroom ceiling, and go on the parts list by length and area.'} Length changes move the second end.</p>`;
     box.innerHTML = h;
     $('#pKind').onchange = e => ed.edit(() => {
       const k = e.target.value;
@@ -153,6 +190,8 @@ function renderProps(opt) {
       else { o.kind = k; o.sp = false; o.t = KINDS[k].t; }
     });
     bindLen('pWH', 'ft', v => ed.edit(() => { o.h = Math.max(6, Math.min(80, v)); }));
+    if ($('#pStud')) $('#pStud').onchange = e => ed.edit(() => { if (e.target.value) o.stud = e.target.value; else delete o.stud; });
+    if ($('#pExt')) $('#pExt').onchange = e => ed.edit(() => { if (e.target.value === '') delete o.ext; else o.ext = e.target.value === '1'; });
     if ($('#pAllK')) $('#pAllK').onclick = () => ed.edit(Pl => {
       // walk along walls joined end to end
       const todo = [o], done = new Set([o]), near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.05;
@@ -170,17 +209,17 @@ function renderProps(opt) {
   }
   if (s && o && s.kind === 'opening') {
     const len = Math.hypot(o.x2 - o.x1, o.y2 - o.y1);
-    const types = [['door', 'Single door'], ['door2', 'Pair of doors'], ['glass', 'Glass panel'], ['open', 'Cased opening'], ['pass', 'Pass-thru']];
+    const types = P.mode === 'house' ? [['door', 'Door'], ['door2', 'Double door'], ['window', 'Window'], ['open', 'Cased opening'], ['glass', 'Glass panel']] : [['door', 'Single door'], ['door2', 'Pair of doors'], ['glass', 'Glass panel'], ['window', 'Window'], ['open', 'Cased opening'], ['pass', 'Pass-thru']];
     const isPass = o.type === 'pass', sill = o.sill == null ? 3 : o.sill;
     h = `<div class="hd"><span class="kind">${esc(types.find(t => t[0] === o.type)[1])}</span><button class="btn small danger" id="pDel">Delete</button></div>
       ${fld('Type', `<select id="pType">${types.map(t => `<option value="${t[0]}" ${t[0] === o.type ? 'selected' : ''}>${t[1]}</option>`).join('')}</select>`)}
       ${fld('Width', txt('pW', fmt(len)))}
-      ${isPass ? fld('Height', txt('pPH', fmtIn((o.head || 5) - sill))) + fld('Bottom at', txt('pSill', fmt(sill))) + fld('Depth', txt('pDepth', fmtIn(o.depth || 2))) : fld(o.type === 'glass' ? 'Top' : 'Head height', txt('pHead', fmt(o.head || 7)))}
-      ${o.type === 'glass' ? fld('Sill height', txt('pSill', fmt(sill))) : ''}
+      ${isPass ? fld('Height', txt('pPH', fmtIn((o.head || 5) - sill))) + fld('Bottom at', txt('pSill', fmt(sill))) + fld('Depth', txt('pDepth', fmtIn(o.depth || 2))) : fld(o.type === 'glass' || o.type === 'window' ? 'Top' : 'Head height', txt('pHead', fmt(o.head || 7)))}
+      ${o.type === 'glass' || o.type === 'window' ? fld('Sill height', txt('pSill', fmt(sill))) : ''}
       ${o.type === 'door' || o.type === 'door2' ? `<div class="row"><button class="btn small" id="pSwing">Flip swing side</button>${o.type === 'door' ? '<button class="btn small" id="pHinge">Swap hinge side</button>' : ''}</div>` : ''}
       <p class="note">${isPass ? 'Stainless box with a door on each face. Depth is front to back through the wall. ' : ''}Drag along the wall to slide it. Drag it onto another wall to move it there.</p>`;
     box.innerHTML = h;
-    $('#pType').onchange = e => ed.edit(() => { const was = o.type; o.type = e.target.value; if (o.type === 'glass' && o.sill == null) o.sill = 3; if (o.type === 'pass') { o.sill = 3; o.head = 5; o.depth = o.depth || 2; } else if (was === 'pass') { o.head = 7; if (o.type !== 'glass') delete o.sill; } });
+    $('#pType').onchange = e => ed.edit(() => { const was = o.type; o.type = e.target.value; if (o.type === 'window' && was !== 'window') { o.sill = 3; o.head = 6 + 8 / 12; } if (o.type === 'glass' && o.sill == null) o.sill = 3; if (o.type === 'pass') { o.sill = 3; o.head = 5; o.depth = o.depth || 2; } else if (was === 'pass') { o.head = 7; if (o.type !== 'glass') delete o.sill; } });
     bindLen('pW', 'ft', v => ed.edit(() => { const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1, ux = (o.x2 - o.x1) / L, uy = (o.y2 - o.y1) / L, cx = (o.x1 + o.x2) / 2, cy = (o.y1 + o.y2) / 2; o.x1 = cx - ux * v / 2; o.y1 = cy - uy * v / 2; o.x2 = cx + ux * v / 2; o.y2 = cy + uy * v / 2; }));
     // openings in building walls can be taller than the cleanroom ceiling (an overhead door, say)
     const topFor = () => { let best = null, bd = 1.5; for (const w of P.walls) { const d = Plan3DViewer.segDist((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, w.x1, w.y1, w.x2, w.y2); if (d < bd) { bd = d; best = w; } } return best && !Plan3DViewer.isHard(best) ? Plan3DViewer.shellHeight(P, best) : P.ceiling; };
@@ -241,14 +280,32 @@ function renderProps(opt) {
     return;
   }
   if (s && o && s.kind === 'insert') { insertProps(box, o); return; }
+  if (s && o && s.kind === 'item') {
+    const D = Plan3DViewer.ITEMS[o.type] || { label: o.type };
+    h = `<div class="hd"><span class="kind">${esc(D.label)}</span><button class="btn small danger" id="pDel">Delete</button></div>
+      ${D.wv ? fld('Width', txt('pIW', fmtIn(o.w || D.w))) : fld('Size', `<span>${fmtIn(o.w || D.w)} × ${fmtIn(o.d || D.d)}</span>`)}
+      ${o.type === 'island' || o.type === 'shower' ? fld('Depth', txt('pID', fmtIn(o.d || D.d))) : ''}
+      <div class="row"><button class="btn small" id="pIL">⟲ Turn</button><button class="btn small" id="pIR">⟳ Turn</button><button class="btn small" id="pIDup">Add another beside it</button></div>
+      <p class="note">Drag it along a wall; it stays backed against the wall. R turns it. It goes on the parts list${o.type === 'base' || o.type === 'sinkbase' || o.type === 'island' ? ' with its countertop' : ''}.</p>`;
+    box.innerHTML = h;
+    bindLen('pIW', 'in', v => ed.edit(() => { o.w = Math.max(0.75, Math.min(16, v)); }));
+    bindLen('pID', 'in', v => ed.edit(() => { o.d = Math.max(1, Math.min(10, v)); }));
+    $('#pIL').onclick = () => ed.edit(() => { o.a = (o.a || 0) - Math.PI / 2; });
+    $('#pIR').onclick = () => ed.edit(() => { o.a = (o.a || 0) + Math.PI / 2; });
+    $('#pIDup').onclick = () => { const w = o.w || D.w, c = Math.cos(o.a || 0), sn = Math.sin(o.a || 0), n = { ...o, id: Plan3DEditor.uid(), x: o.x + c * w, y: o.y + sn * w }; ed.edit(Pl => Pl.items.push(n)); ed.sel = { kind: 'item', id: n.id }; ed.emit('select'); };
+    $('#pDel').onclick = () => ed.deleteSel();
+    return;
+  }
   if (s && o && s.kind === 'room') {
     h = `<div class="hd"><span class="kind">Room label</span><button class="btn small danger" id="pDel">Delete</button></div>
       ${fld('Name', txt('pName', o.name))}
       ${fld('Size note', txt('pDims', o.dims || ''))}
+      ${P.mode === 'house' ? fld('Floor', `<select id="pRFloor"><option value="">Same as the house (${esc(Plan3DViewer.FLOORS[P.floorType || 'lvp'])})</option>${Object.entries(Plan3DViewer.FLOORS).map(([k, l]) => `<option value="${k}" ${o.floor === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`) : ''}
       <p class="note">Rooms show as jump buttons in the walkthrough. The size note is optional, e.g. 15′-5½″ × 29′-4⅞″.</p>`;
     box.innerHTML = h;
     const nm = $('#pName'); nm.onchange = () => ed.edit(() => { o.name = nm.value.trim() || 'Room'; });
     $('#pDims').onchange = e => ed.edit(() => { o.dims = e.target.value.trim(); });
+    if ($('#pRFloor')) $('#pRFloor').onchange = e => ed.edit(() => { if (e.target.value) o.floor = e.target.value; else delete o.floor; });
     $('#pDel').onclick = () => ed.deleteSel();
     if (opt && opt.focusName) { nm.focus(); nm.select(); }
     return;
@@ -256,27 +313,35 @@ function renderProps(opt) {
   // No selection: plan settings
   const B = P.background;
   const partsHtml = partsGroup();
-  const ext = ed.extents(), hasGeo = P.walls.length > 0;
-  h = `<div class="hd"><span class="kind">Plan</span></div>
+  const ext = ed.extents(), hasGeo = P.walls.length > 0, house = P.mode === 'house', R = P.roof || {};
+  const kindList = Object.entries(Plan3DViewer.WALL_KINDS).sort((a, b) => house ? (!!b[1].frame - !!a[1].frame) : 0);
+  const shellNew = P.newKind && P.newKind !== 'hardwall' && !(Plan3DViewer.WALL_KINDS[P.newKind] || {}).frame;
+  h = `<div class="hd"><span class="kind">${house ? 'House' : 'Plan'}</span></div>
     ${fld('Name', txt('pPName', P.name))}
-    ${fld('Ceiling', txt('pCeil', fmt(P.ceiling)))}
-    ${fld('Plenum above', txt('pPlen', fmt(P.plenum || 0)))}
-    <p class="note" style="margin-top:-4px">Plenum: the space between the grid ceiling and the top of the cleanroom. Walls are ${esc(fmt((P.ceiling || 8) + (P.plenum || 0)))} tall.</p>
-    ${fld('New wall type', `<select id="pNK">${Object.entries(Plan3DViewer.WALL_KINDS).map(([k, v]) => `<option value="${k}" ${(P.newKind || 'hardwall') === k ? 'selected' : ''}>${esc(v.short)}</option>`).join('')}</select>`)}
+    ${fld(house ? 'Wall height' : 'Ceiling', txt('pCeil', fmt(P.ceiling)))}
+    ${house ? '' : fld('Plenum above', txt('pPlen', fmt(P.plenum || 0))) + `<p class="note" style="margin-top:-4px">Plenum: the space between the grid ceiling and the top of the cleanroom. Walls are ${esc(fmt((P.ceiling || 8) + (P.plenum || 0)))} tall.</p>`}
+    ${fld('New wall type', `<select id="pNK">${kindList.map(([k, v]) => `<option value="${k}" ${(P.newKind || (house ? 'wood' : 'hardwall')) === k ? 'selected' : ''}>${esc(v.short)}</option>`).join('')}</select>`)}
     ${fld('New walls', txt('pWT', fmtIn(P.wallT || 0.25)))}
-    ${(P.walls.some(w => !Plan3DViewer.isHard(w)) || (P.newKind && P.newKind !== 'hardwall')) ? fld('Building wall height', txt('pSH', fmt(P.shellH || 20))) : ''}
+    ${(P.walls.some(w => !Plan3DViewer.isHard(w) && !Plan3DViewer.isFrame(w)) || shellNew) ? fld('Building wall height', txt('pSH', fmt(P.shellH || 20))) : ''}
+    ${house ? `<div class="grp"><h3>Roof and floors</h3>
+      ${fld('Roof', `<select id="pRoof">${[['gable', 'Gable'], ['hip', 'Hip'], ['flat', 'Flat (low slope)'], ['none', 'No roof']].map(([k, l]) => `<option value="${k}" ${(R.type || 'none') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
+      ${R.type && R.type !== 'none' && R.type !== 'flat' ? fld('Pitch (rise in 12)', txt('pPitch', String(R.pitch == null ? 6 : R.pitch))) : ''}
+      ${R.type && R.type !== 'none' ? fld('Overhang', txt('pOver', fmt(R.overhang == null ? 1 : R.overhang))) : ''}
+      ${fld('Floors', `<select id="pFloor">${Object.entries(Plan3DViewer.FLOORS).map(([k, l]) => `<option value="${k}" ${(P.floorType || 'lvp') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
+      <p class="note">Pick a room label to give that room its own floor. Pick a wall for its framing (wood or steel), stud size and exterior / interior.</p></div>` : ''}
     ${fld('Snap to', `<select id="pSnap">${[[0, 'Off'], [0.125, '⅛″'], [0.25, '¼″'], [1, '1″'], [6, '6″'], [12, '1′']].map(([v, l]) => `<option value="${v}" ${ed.snapIn === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
     <div class="grp"><h3>Contents</h3><div class="stats">
       <span>Overall</span><span>${hasGeo ? fmt(ext.x1 - ext.x0) + ' × ' + fmt(ext.y1 - ext.y0) : '—'}</span>
       <span>Walls</span><span>${P.walls.length}</span>
-      <span>Doors &amp; glass</span><span>${P.openings.length}</span>
-      <span>Air chases</span><span>${P.chases.length}</span>
+      <span>${house ? 'Doors &amp; windows' : 'Doors &amp; glass'}</span><span>${P.openings.length}</span>
+      ${house ? `<span>Items</span><span>${(P.items || []).length}</span>` : `<span>Air chases</span><span>${P.chases.length}</span>`}
       <span>Rooms</span><span>${P.rooms.length}</span>
       ${(P.inserts || []).length ? `<span>Placed buildings</span><span>${P.inserts.length}</span>` : ''}
       ${hasGeo || (P.inserts || []).length ? (() => { const ft = Plan3DParts.projectParts(P).reduce((t, q) => t + q.floorFt, 0); return ft > 0 ? `<span>Floor track</span><span>${Math.ceil(ft)} lin ft <small>(${Plan3DParts.ftin(ft)})</small></span>` : ''; })() : ''}</div>
       ${hasGeo ? '<div class="row"><button class="btn small" id="pClearAuto">Clear all walls</button></div>' : ''}
     </div>
-    ${ffuPanelHtml(P)}`;
+    ${house ? '' : ffuPanelHtml(P)}
+    ${fld('Project type', `<select id="pMode"><option value="cleanroom" ${house ? '' : 'selected'}>Cleanroom</option><option value="house" ${house ? 'selected' : ''}>House</option></select>`)}`;
   if (view === 'build') h = `<div class="hd"><span class="kind">Build</span></div>
     <p class="note">Pick a piece on the left and click to place it. Pieces snap to open ends, turn corners toward the mouse, and start T-joints off the middle of a wall.</p>` + partsHtml + h.replace('<div class="hd"><span class="kind">Plan</span></div>', '<div class="grp"><h3>Plan</h3>') + '</div>';
   else h += partsHtml;
@@ -297,12 +362,17 @@ function renderProps(opt) {
   $('#pPName').onchange = e => ed.edit(Pl => { Pl.name = e.target.value.trim() || 'Untitled plan'; });
   bindLen('pCeil', 'ft', v => ed.edit(Pl => { Pl.ceiling = Math.max(6, Math.min(30, v)); }));
   bindLen('pPlen', 'ft', v => ed.edit(Pl => { Pl.plenum = Math.max(0, Math.min(20, v)); }));
+  if ($('#pRoof')) $('#pRoof').onchange = e => ed.edit(Pl => { Pl.roof = Object.assign({ pitch: 6, overhang: 1 }, Pl.roof || {}, { type: e.target.value }); });
+  if ($('#pPitch')) $('#pPitch').onchange = e => { const v = parseFloat(e.target.value); if (v >= 0 && v <= 24) ed.edit(Pl => { Pl.roof.pitch = v; }); };
+  bindLen('pOver', 'ft', v => ed.edit(Pl => { Pl.roof.overhang = Math.max(0, Math.min(4, v)); }));
+  if ($('#pFloor')) $('#pFloor').onchange = e => ed.edit(Pl => { Pl.floorType = e.target.value; });
+  $('#pMode').onchange = e => { const m = e.target.value; ed.edit(Pl => { if (m === 'house') houseDefaults(Pl, true); else Pl.mode = 'cleanroom'; }); updateChrome(); renderProps(); };
   bindLen('pWT', 'in', v => { ed.plan.wallT = Math.max(1 / 48, v); renderProps(); });
-  $('#pNK').onchange = e => { const k = e.target.value, K = Plan3DViewer.WALL_KINDS[k]; ed.plan.newKind = k === 'hardwall' ? undefined : k; ed.plan.wallT = k === 'hardwall' ? 0.25 : K.t; ed.dirty = true; renderProps(); msg(k === 'hardwall' ? 'New walls: hardwall cleanroom panels.' : 'New walls: ' + K.label + ', ' + fmtIn(K.t) + ' thick. Draw them with the Wall tool (W).'); };
+  $('#pNK').onchange = e => { const k = e.target.value, K = Plan3DViewer.WALL_KINDS[k]; ed.plan.newKind = k === 'hardwall' && !house ? undefined : k; ed.plan.wallT = k === 'hardwall' ? 0.25 : K.t; ed.dirty = true; renderProps(); msg(k === 'hardwall' ? 'New walls: hardwall cleanroom panels.' : 'New walls: ' + K.label + ', ' + fmtIn(K.t) + ' thick. Draw them with the Wall tool (W).'); };
   bindLen('pSH', 'ft', v => ed.edit(Pl => { Pl.shellH = Math.max(6, Math.min(80, v)); }));
   $('#pSnap').onchange = e => { ed.snapIn = +e.target.value; };
   bindParts();
-  bindFfuPanel(P);
+  if (!house) bindFfuPanel(P);
   if ($('#pClearAuto')) $('#pClearAuto').onclick = () => confirmDlg('Clear all walls?', 'This removes every wall, door, glass panel and chase. Room labels and the background stay. You can undo with Ctrl+Z.', 'Clear walls').then(ok => { if (ok) ed.edit(Pl => { Pl.walls = []; Pl.openings = []; Pl.chases = []; }); });
   if (B) {
     $('#pBgVis').onchange = e => ed.edit(() => { B.visible = e.target.checked; });
@@ -994,7 +1064,7 @@ async function handleLoaded(r) {
   }
   if (r.kind === 'project') {
     let p; try { p = JSON.parse(r.json); } catch (e) { toast('That project file is damaged.'); return; }
-    projectPath = r.path; ed.setPlan(p); hideBanner(); updateChrome(); if (view !== '2d' && viewer) viewer.loadPlan(clonePlan());
+    projectPath = r.path; modePicked = true; ed.setPlan(p); hideBanner(); updateChrome(); if (view !== '2d' && viewer) viewer.loadPlan(clonePlan());
     toast('Opened ' + (p.name || r.name)); return;
   }
   if (r.kind === 'dxf') { if (await openCadProject(r)) return; dxfDialog(r); return; }
@@ -1024,7 +1094,7 @@ async function openProject() {
 }
 async function openSample() {
   if (!(await guardUnsaved())) return;
-  handleLoaded(await api.loadSample());
+  handleLoaded(await api.loadSample(ed.plan.mode === 'house' ? 'house' : 'cleanroom'));
 }
 async function save(as) {
   if (!api.saveProject) return null;
@@ -1060,7 +1130,7 @@ async function exportGlb() {
     if (p) toast('3D model saved.', { label: 'Open it', fn: () => api.openPath(p) });
   } catch (e) { toast('Export failed: ' + e.message); }
 }
-async function newPlan() { if (!(await guardUnsaved())) return; projectPath = null; ed.setPlan(Editor.blank()); hideBanner(); updateChrome(); }
+async function newPlan() { if (!(await guardUnsaved())) return; projectPath = null; modePicked = false; ed.setPlan(Editor.blank()); hideBanner(); updateChrome(); }
 
 function helpDialog() {
   dialogOpen({
@@ -1072,6 +1142,7 @@ function helpDialog() {
       <h4>Revit</h4><ul><li>In Revit: File → Export → IFC, then Import plan here and pick the .ifc. Walls, doors, windows, rooms, lights and FFUs become an editable plan.</li><li>Save DWG / IFC → Revit 3D model saves the whole room in 3D. In Revit: File → Open → IFC, then Save As → Project for an .rvt.</li></ul>
       <h4>Back to AutoCAD</h4><ul><li>Save DWG / IFC (Ctrl+D) saves the plan 1:1 in inches on standard layers, with dimensions. DWG is built in (AutoCAD 2000 format, which every AutoCAD opens); with the free ODA File Converter installed you can also pick newer DWG versions.</li><li>Open that file in Coll Plan3D again and the doors, glass, chases and rooms come back exactly.</li></ul>
       <h4>Buildings</h4><ul><li>Buildings → Save this building to the library keeps the whole plan (walls, doors, chases, ceiling, FFUs) on this computer.</li><li>Buildings → Insert a saved building places a copy in the current plan, a cleanroom inside a warehouse for example. Drag it, R turns it; its panel can mirror it, set its ceiling, update it to a newer library version, swap it for another, or ungroup it into plain walls.</li><li>Placed copies never change on their own. Each building gets its own section of the parts list.</li><li>Pick a wall and set its Wall type: hardwall cleanroom panel, concrete, block, metal panel or stud/drywall. Set New wall type in the Plan panel to draw building walls with the Wall tool.</li></ul>
+      <h4>Houses</h4><ul><li>Start with Build a house (or set Project type to House in the Plan panel). New walls are wood studs; pick a wall to switch it to steel, set 2×4 / 2×6, or mark it exterior / interior.</li><li>Window (G) places 3′ windows; doors are 2′-8″ panel doors with 6′-8″ heads. Items (I) places kitchen, bath and laundry items that back up against the nearest wall; R turns them.</li><li>Roof: gable, hip or flat, with pitch and overhang, in the Plan panel. The Exterior view in 3D shows it.</li><li>Floors: one finish for the house, and per room from a room label. The parts list counts framing, sheathing, wrap, siding, insulation, drywall, roof, floors, doors, windows, trim, cabinets, counters and fixtures.</li></ul>
       <h4>Sharing</h4><ul><li>Export walkthrough saves one .html file. Anyone can open it in a browser, on a phone too.</li><li>Export .glb opens in Windows 3D Viewer, SketchUp, Blender and most 3D tools.</li></ul></div>`,
     buttons: [{ label: 'Close', primary: true, ret: null }]
   });
@@ -1105,6 +1176,8 @@ $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave
   item('#bBldInsert', insertBuildingDialog); item('#bBldFile', insertFromFile); item('#bBldSave', saveBuildingDialog);
 }
 $('#bCeiling').onclick = ceilingMenu; $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
+$('#wCleanroom').onclick = () => pickMode('cleanroom'); $('#wHouse').onclick = () => pickMode('house');
+$('#wBack').onclick = (e) => { e.preventDefault(); modePicked = false; updateChrome(); };
 $('#wDraw').onclick = () => { $('#welcome').hidden = true; ed.setTool('wall'); $('#plan').focus(); };
 
 if (api.onMenu) api.onMenu(async (a) => {

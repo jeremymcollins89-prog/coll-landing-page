@@ -273,8 +273,18 @@ function toIfc(plan, opts) {
     metal: style('Coll building wall, metal panel', 0.87, 0.89, 0.9, 0, 0.3, 30, 'METAL'),
     stud: style('Coll building wall, drywall', 0.94, 0.93, 0.91, 0, 0.04, 8),
     slab: style('Coll floor slab, concrete', 0.72, 0.71, 0.68, 0, 0.04, 8),
-    deck: style('Coll roof deck, metal', 0.66, 0.69, 0.71, 0, 0.3, 30, 'METAL')
+    deck: style('Coll roof deck, metal', 0.66, 0.69, 0.71, 0, 0.3, 30, 'METAL'),
+    wood: style('Coll house wall, painted drywall', 0.95, 0.94, 0.91, 0, 0.04, 8),
+    siding: style('Coll lap siding', 0.84, 0.86, 0.85, 0, 0.05, 10),
+    shingles: style('Coll asphalt shingles', 0.29, 0.31, 0.33, 0, 0.05, 8, 'MATT'),
+    cabinet: style('Coll cabinet, painted', 0.95, 0.94, 0.92, 0, 0.1, 16),
+    counter: style('Coll countertop', 0.24, 0.25, 0.27, 0, 0.3, 40),
+    porcelain: style('Coll porcelain', 0.98, 0.98, 0.98, 0, 0.4, 60),
+    appliance: style('Coll stainless appliance', 0.79, 0.81, 0.82, 0, 0.6, 55, 'METAL'),
+    lvp: style('Coll floor, luxury vinyl plank', 0.69, 0.53, 0.37, 0, 0.08, 16), hardwood: style('Coll floor, hardwood', 0.48, 0.31, 0.18, 0, 0.1, 20),
+    carpet: style('Coll floor, carpet', 0.73, 0.68, 0.6, 0, 0, 4, 'MATT'), tile: style('Coll floor, ceramic tile', 0.85, 0.84, 0.81, 0, 0.2, 30)
   };
+  S.steel_frame = S.wood;
   const KIND_NAME = (k) => (V.WALL_KINDS && V.WALL_KINDS[k] ? V.WALL_KINDS[k].label : 'Building wall');
   S.ffuFace = S.face;
   const elPl = E(`IFCLOCALPLACEMENT(${stPl},${ax3})`);
@@ -312,6 +322,13 @@ function toIfc(plan, opts) {
   // walls: the panel runs between openings, full height, with the panel joints (H-studs) on the 48″ module
   // from the wall's start, rubber base and ceiling track
   for (const p of A.pieces) {
+    if (p.frame) {
+      // house wall: drywall, with siding on the outside face when it's an outside wall
+      const FPo = V.footprint(A, true), L = p.len || 1, nx = -(p.z2 - p.z1) / L, nz = (p.x2 - p.x1) / L, cx = (p.x1 + p.x2) / 2, cz = (p.z1 + p.z2) / 2, off = p.t / 2 + 0.8;
+      const out = (x, z) => !FPo || !FPo.has(x, z), parts = [seg(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t - 0.04, S.wood)];
+      for (const sd of [1, -1]) if (p.ext !== false && out(cx + nx * sd * off, cz + nz * sd * off)) { const ox = nx * sd * (p.t / 2 - 0.02), oz = nz * sd * (p.t / 2 - 0.02); parts.push(seg(p.x1 + ox, p.z1 + oz, p.x2 + ox, p.z2 + oz, 0, p.h, 0.04, S.siding)); }
+      put('IFCWALL', KIND_NAME(p.kind), 'House wall', shape(parts), ',.STANDARD.', S.wood); continue;
+    }
     if (!p.hard) { put('IFCWALL', KIND_NAME(p.kind), 'Building wall', shape([seg(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, S[p.kind] || S.concrete)]), ',.STANDARD.', S[p.kind] || S.concrete); continue; }
     const ux = (p.x2 - p.x1) / (p.len || 1), uz = (p.z2 - p.z1) / (p.len || 1), parts = [seg(p.x1, p.z1, p.x2, p.z2, 0, WH, p.t, p.sp ? S.sp : S.white), ...trim(p.x1, p.z1, p.x2, p.z2, p.t, true)];
     for (let m = Math.floor(p.s0 / 4 + 1e-6) * 4 + 4; m < p.s0 + p.len - 0.2; m += 4) {
@@ -337,7 +354,7 @@ function toIfc(plan, opts) {
   }
   // openings: the door / glass / pass-thru, with wall above (and below glass)
   for (const i of A.opInfo) {
-    const top = i.wallH || H, ws = i.hard ? S.white : (S[i.kind] || S.concrete), wName = i.hard ? 'Coll hardwall cleanroom wall' : 'Building wall';
+    const top = i.wallH || H, ws = i.hard ? S.white : i.frame ? S.wood : (S[i.kind] || S.concrete), wName = i.hard ? 'Coll hardwall cleanroom wall' : 'Building wall';
     const o = i.o, t = i.t, head = Math.min(top, o.head || 7), ax = o.x1, ay = o.y1, bx = o.x2, by = o.y2;
     const along = (s, off) => [ax + i.ux * s - i.uz * (off || 0), ay + i.uz * s + i.ux * (off || 0)];
     if (top - head > 0.02) put('IFCWALL', i.hard ? 'Header panel' : KIND_NAME(i.kind) + ', over opening', wName, shape([seg(ax, ay, bx, by, head, top, t, ws), ...(i.hard && H - head > 0.2 ? [seg(ax, ay, bx, by, H - 0.17, H, t + 0.03, S.track)] : [])]), ',.STANDARD.', ws);
@@ -348,6 +365,12 @@ function toIfc(plan, opts) {
       for (const l of i.leaves) {
         const L = Math.hypot(l.x2 - l.x1, l.z2 - l.z1) || 1, dx = (l.x2 - l.x1) / L, dz = (l.z2 - l.z1) / L;
         const f = (k) => [l.x1 + dx * L * k, l.z1 + dz * L * k];
+        if (i.frame) {
+          // house door: painted two-panel slab with a knob
+          const top2 = Math.min(head - 0.05, 6.7), [a0x, a0z] = f(0), [a1x, a1z] = f(1), [p0x, p0z] = f(0.18), [p1x, p1z] = f(0.82), [k0x, k0z] = f(0.88), [k1x, k1z] = f(0.92);
+          parts.push(seg(a0x, a0z, a1x, a1z, 0.03, top2, 0.145, S.door), seg(p0x, p0z, p1x, p1z, 0.6, 3.1, 0.165, S.frame), seg(p0x, p0z, p1x, p1z, 3.6, top2 - 0.5, 0.165, S.frame), seg(k0x, k0z, k1x, k1z, 2.92, 3.08, 0.36, S.hardware));
+          continue;
+        }
         const top = Math.min(head - 0.1, 6.9), v0 = 3.6, v1 = Math.min(6.05, top - 0.5);
         const [a0x, a0z] = f(0), [b0x, b0z] = f(0.2), [b1x, b1z] = f(0.8), [a1x, a1z] = f(1), [c0x, c0z] = f(0.165), [c1x, c1z] = f(0.835);
         parts.push(seg(a0x, a0z, a1x, a1z, 0.05, v0, 0.14, S.door), seg(a0x, a0z, a1x, a1z, v1, top, 0.14, S.door),
@@ -359,8 +382,16 @@ function toIfc(plan, opts) {
         const [d0x, d0z] = f(0.08), [d1x, d1z] = f(0.45), ox = l.tx * 0.13, oz = l.tz * 0.13;
         parts.push(seg(d0x + ox, d0z + oz, d1x + ox, d1z + oz, top - 0.42, top - 0.2, 0.13, S.hardware));
       }
-      put('IFCDOOR', o.type === 'door2' ? 'Pair of doors 6070' : 'Door 3070', 'Coll cleanroom door', shape(parts),
+      put('IFCDOOR', i.frame ? (o.type === 'door2' ? 'Double door' : 'Door') : o.type === 'door2' ? 'Pair of doors 6070' : 'Door 3070', i.frame ? 'Panel door' : 'Coll cleanroom door', shape(parts),
         `,${num(head * MM)},${num(i.len * MM)},.DOOR.,${o.type === 'door2' ? '.DOUBLE_DOOR_SINGLE_SWING.' : '.SINGLE_SWING_LEFT.'},$`, S.door);
+    } else if (o.type === 'window') {
+      const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill)), fw = 0.17;
+      if (sill > 0.02) put('IFCWALL', (i.hard ? 'Hardwall' : KIND_NAME(i.kind)) + ', under window', wName, shape([seg(ax, ay, bx, by, 0, sill, t, ws)]), ',.STANDARD.', ws);
+      const [p1x, p1y] = along(fw), [p2x, p2y] = along(i.len - fw), mid = (sill + head) / 2;
+      put('IFCWINDOW', 'Window', 'Vinyl double-hung window', shape([seg(p1x, p1y, p2x, p2y, sill + fw, head - fw, 0.03, S.glass),
+        seg(ax, ay, bx, by, sill, sill + fw, t * 0.7, S.frame), seg(ax, ay, bx, by, head - fw, head, t * 0.7, S.frame),
+        seg(ax, ay, p1x, p1y, sill, head, t * 0.7, S.frame), seg(p2x, p2y, bx, by, sill, head, t * 0.7, S.frame), seg(p1x, p1y, p2x, p2y, mid - 0.05, mid + 0.05, t * 0.5, S.frame)]),
+        `,${num((head - sill) * MM)},${num(i.len * MM)},.WINDOW.,.DOUBLE_PANEL_VERTICAL.,$`, S.glass);
     } else if (o.type === 'glass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill));
       if (sill > 0.02) put('IFCWALL', i.hard ? 'Sill panel' : KIND_NAME(i.kind) + ', under opening', wName, shape([seg(ax, ay, bx, by, 0, sill, t, ws), ...(i.hard ? trim(ax, ay, bx, by, t, false) : [])]), ',.STANDARD.', ws);
@@ -418,10 +449,53 @@ function toIfc(plan, opts) {
     return sl;
   };
   // the cleanroom floor (gray epoxy), its top at the floor level
-  const fl = A.hardAny ? ['Cleanroom floor', 'Coll cleanroom floor, epoxy', S.floor] : ['Floor slab', 'Concrete floor slab', S.slab];
+  const fl = A.hardAny ? ['Cleanroom floor', 'Coll cleanroom floor, epoxy', S.floor] : A.house ? ['Floor', 'House floor, ' + ((V.FLOORS || {})[plan.floorType || 'lvp'] || 'plank'), S[plan.floorType || 'lvp'] || S.lvp] : ['Floor slab', 'Concrete floor slab', S.slab];
   // a building placed inside another sits on that building's slab: its floor is a thin epoxy topping
   if (opts.floor !== false) areasAll.forEach((ar, idx) => put('IFCSLAB', areasAll.length > 1 ? `${fl[0]} ${idx + 1}` : fl[0], fl[1], shape([onSlab ? slab(ar, 0, 0.02, fl[2]) : slab(ar, -0.33, 0, fl[2])]), onSlab ? ',.BASESLAB.' : ',.FLOOR.', fl[2]));
   // a building's roof deck at the top of its walls
+  // house roof: the 3D view's roof surface, as triangles (a surface model Revit can show and render)
+  if (A.frameAny && plan.roof && plan.roof.type && plan.roof.type !== 'none' && fpAll && opts.ceiling !== false) {
+    const F = V.roofField(A, plan, fpAll), tri = [], step = 2; // 1′ cells keep the file small
+    const vz = (i, j) => { let t = 0, n = 0; for (const [a, b] of [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]]) { if (a < 0 || b < 0 || a >= F.nx || b >= F.nz || !F.roofed[b * F.nx + a]) continue; t += F.Z[b * F.nx + a]; n++; } return n ? t / n : F.H; };
+    for (let j = 0; j < F.nz; j += step) for (let i = 0; i < F.nx; i += step) {
+      let any = false; for (let b = j; b < Math.min(F.nz, j + step); b++) for (let a = i; a < Math.min(F.nx, i + step); a++) if (F.roofed[b * F.nx + a]) any = true; if (!any) continue;
+      const i2 = Math.min(F.nx, i + step), j2 = Math.min(F.nz, j + step), X = (q) => F.gx0 + q * F.s, Zc = (q) => F.gz0 + q * F.s;
+      const P = [[X(i), Zc(j), vz(i, j)], [X(i2), Zc(j), vz(i2, j)], [X(i2), Zc(j2), vz(i2, j2)], [X(i), Zc(j2), vz(i, j2)]];
+      tri.push([P[0], P[1], P[2]], [P[0], P[2], P[3]]);
+    }
+    if (tri.length) {
+      const P3 = (p) => E(`IFCCARTESIANPOINT((${num(p[0] * MM)},${num(-p[1] * MM)},${num(p[2] * MM)}))`);
+      const faces = tri.map(t => E(`IFCFACE((${E(`IFCFACEOUTERBOUND(${E(`IFCPOLYLOOP((${t.map(P3).join(',')}))`)},.T.)`)}))`));
+      const sm = E(`IFCSHELLBASEDSURFACEMODEL((${E(`IFCOPENSHELL((${faces.join(',')}))`)}))`);
+      E(`IFCSTYLEDITEM(${sm},(${S.shingles}),$)`);
+      const rs = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${E(`IFCSHAPEREPRESENTATION(${body},'Body','SurfaceModel',(${sm}))`)}))`);
+      // gable ends: siding from the top of the wall up to the roof
+      const gf = [];
+      for (const p of A.pieces) {
+        if (!p.frame) continue;
+        const n = Math.max(1, Math.ceil(p.len / 1));
+        for (let k = 0; k < n; k++) {
+          const a = k / n, b = (k + 1) / n, xa = p.x1 + (p.x2 - p.x1) * a, za = p.z1 + (p.z2 - p.z1) * a, xb = p.x1 + (p.x2 - p.x1) * b, zb = p.z1 + (p.z2 - p.z1) * b;
+          const ha = F.at(xa, za) - 0.15, hb = F.at(xb, zb) - 0.15; if (ha < p.h + 0.05 && hb < p.h + 0.05) continue;
+          gf.push([[xa, za, p.h], [xb, zb, p.h], [xb, zb, Math.max(p.h, hb)], [xa, za, Math.max(p.h, ha)]]);
+        }
+      }
+      if (gf.length) {
+        const gm = E(`IFCSHELLBASEDSURFACEMODEL((${E(`IFCOPENSHELL((${gf.map(q => E(`IFCFACE((${E(`IFCFACEOUTERBOUND(${E(`IFCPOLYLOOP((${q.map(P3).join(',')}))`)},.T.)`)}))`)).join(',')}))`)}))`);
+        E(`IFCSTYLEDITEM(${gm},(${S.siding}),$)`);
+        put('IFCWALL', 'Gable ends', 'Siding above the wall plates', E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${E(`IFCSHAPEREPRESENTATION(${body},'Body','SurfaceModel',(${gm}))`)}))`), ',.STANDARD.', S.siding);
+      }
+      put('IFCROOF', (({ gable: 'Gable', hip: 'Hip', flat: 'Flat' })[F.type] || 'Roof') + ' roof', 'Asphalt shingle roof', rs, `,.${F.type === 'hip' ? 'HIP_ROOF' : F.type === 'flat' ? 'FLAT_ROOF' : 'GABLE_ROOF'}.`, S.shingles);
+    }
+  }
+  // house items (cabinets, appliances, plumbing fixtures) as simple boxes
+  for (const q of A.items || []) {
+    const it = q.it, D = V.ITEMS[it.type], z0 = D.z || 0, st = /base|sinkbase|upper|tall|island|vanity/.test(it.type) ? S.cabinet : /range|fridge|dishwasher|washer|dryer|furnace|waterheater/.test(it.type) ? S.appliance : S.porcelain;
+    const parts = [solid(q.c, z0, z0 + D.h, st)];
+    if (/^(base|sinkbase|island|dishwasher)$/.test(it.type)) parts.push(solid(q.c, D.h - 0.12, D.h, S.counter));
+    put(/toilet|tub|shower|vanity|sinkbase/.test(it.type) ? 'IFCSANITARYTERMINAL' : /range|fridge|dishwasher|washer|dryer/.test(it.type) ? 'IFCELECTRICAPPLIANCE' : 'IFCFURNISHINGELEMENT', D.label, D.group, shape(parts),
+      /toilet|tub|shower|vanity|sinkbase/.test(it.type) ? `,.${it.type === 'toilet' ? 'TOILETPAN' : it.type === 'tub' ? 'BATH' : it.type === 'shower' ? 'SHOWER' : 'WASHHANDBASIN'}.` : /range|fridge|dishwasher|washer|dryer/.test(it.type) ? `,.${it.type === 'range' ? 'ELECTRICCOOKER' : it.type === 'fridge' ? 'REFRIGERATOR' : it.type === 'dishwasher' ? 'DISHWASHER' : it.type === 'washer' ? 'WASHINGMACHINE' : 'TUMBLEDRYER'}.` : '', st);
+  }
   if (A.shellTop > 0 && opts.ceiling !== false) areasAll.forEach((ar, idx) => put('IFCSLAB', areasAll.length > 1 ? `Roof deck ${idx + 1}` : 'Roof deck', 'Metal roof deck', shape([slab(ar, A.shellTop, A.shellTop + 0.25, S.deck)]), ',.ROOF.', S.deck));
   if (!A.empty && opts.ceiling !== false) {
     // One ceiling per connected area, traced around the room footprint, so Revit shows no seams where
@@ -434,7 +508,7 @@ function toIfc(plan, opts) {
     const tees = [], TW = 15 / 16 / 12;
     if (Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length) {
       for (const q of plan.ceilingGrid) tees.push(seg(q[0], q[1], q[2], q[3], H - 0.035, H, TW, S.grid));
-    } else if (footprint) {
+    } else if (footprint && A.hardAny) {
       const G = V.ceilingGrid(plan, A), B = A.bounds, step = footprint.cell / 2;
       const runs = (fixed, lo, hi, isX) => {
         let st = null;
