@@ -69,7 +69,7 @@ class Editor {
     new ResizeObserver(() => this.resize()).observe(canvas.parentElement);
     this.resize();
   }
-  static blank() { return { version: 1, name: 'Untitled plan', ceiling: 8, wallT: 0.25, walls: [], openings: [], chases: [], rooms: [], fixtures: [], ceilingMode: 'auto', background: null }; }
+  static blank() { return { version: 1, name: 'Untitled plan', ceiling: 8, wallT: 0.25, walls: [], openings: [], chases: [], rooms: [], fixtures: [], inserts: [], ceilingMode: 'auto', background: null }; }
 
   /* ---------- plan + history ---------- */
   setPlan(p, keepView) {
@@ -97,8 +97,8 @@ class Editor {
   emit(ev, d) { const f = this.o['on' + ev[0].toUpperCase() + ev.slice(1)]; if (f) f(d); }
   find(sel) {
     if (!sel) return null;
-    const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures' }[sel.kind];
-    return list ? this.plan[list].find(x => x.id === sel.id) : (sel.kind === 'bg' ? this.plan.background : null);
+    const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts' }[sel.kind];
+    return list ? (this.plan[list] || []).find(x => x.id === sel.id) : (sel.kind === 'bg' ? this.plan.background : null);
   }
   selected() { return this.find(this.sel); }
 
@@ -119,6 +119,7 @@ class Editor {
     const e = (x, y) => { a = Math.min(a, x); b = Math.min(b, y); c = Math.max(c, x); d = Math.max(d, y); };
     P.walls.forEach(w => { e(w.x1, w.y1); e(w.x2, w.y2); }); P.chases.forEach(k => { e(k.x0, k.y0); e(k.x1, k.y1); });
     P.rooms.forEach(r => e(r.x, r.y));
+    (P.inserts || []).forEach(i => { const b = this.insBox(i); e(b.x0, b.y0); e(b.x1, b.y1); });
     if (this.bgImg && P.background && P.background.visible !== false && this.bgImg.naturalWidth) {
       const B = P.background, w = this.bgImg.naturalWidth * B.scale / 2, h = this.bgImg.naturalHeight * B.scale / 2, r = Math.hypot(w, h);
       if (!P.walls.length) { e(B.cx - r, B.cy - r); e(B.cx + r, B.cy + r); }
@@ -220,12 +221,21 @@ class Editor {
     return best;
   }
 
+  /* a placed building: its box on the plan, and its plan moved into place (cached until it changes) */
+  insView(ins) {
+    const V = global.Plan3DViewer; if (!V || !V.zones) return null;
+    const key = JSON.stringify([ins.x, ins.y, ins.rot, ins.mirror, ins.libSaved, ins.plan && ins.plan.walls && ins.plan.walls.length, ins._v]);
+    if (ins.__k !== key) { Object.defineProperty(ins, '__k', { value: key, writable: true, enumerable: false }); Object.defineProperty(ins, '__z', { value: V.zones({ walls: [], inserts: [ins] }).slice(1), writable: true, enumerable: false }); Object.defineProperty(ins, '__b', { value: V.insertBox(ins), writable: true, enumerable: false }); }
+    return ins.__z;
+  }
+  insBox(ins) { this.insView(ins); return ins.__b || { x0: ins.x - 1, y0: ins.y - 1, x1: ins.x + 1, y1: ins.y + 1 }; }
   hitTest(x, y) {
     const P = this.plan, tol = 7 / this.view.s;
     for (let i = P.openings.length - 1; i >= 0; i--) { const o = P.openings[i]; if (segProj(x, y, o.x1, o.y1, o.x2, o.y2).d < (o.t || 0.25) / 2 + tol) return { kind: 'opening', id: o.id }; }
     for (let i = P.rooms.length - 1; i >= 0; i--) { const r = P.rooms[i]; if (Math.abs(x - r.x) < 50 / this.view.s && Math.abs(y - r.y) < 14 / this.view.s) return { kind: 'room', id: r.id }; }
     for (let i = P.chases.length - 1; i >= 0; i--) { const k = P.chases[i]; if (x >= Math.min(k.x0, k.x1) - tol && x <= Math.max(k.x0, k.x1) + tol && y >= Math.min(k.y0, k.y1) - tol && y <= Math.max(k.y0, k.y1) + tol) return { kind: 'chase', id: k.id }; }
     const h = this.wallAt(x, y, 7); if (h) return { kind: 'wall', id: h.w.id };
+    for (let i = (P.inserts || []).length - 1; i >= 0; i--) { const b = this.insBox(P.inserts[i]); if (x >= b.x0 - tol && x <= b.x1 + tol && y >= b.y0 - tol && y <= b.y1 + tol) return { kind: 'insert', id: P.inserts[i].id }; }
     return null;
   }
 
@@ -354,6 +364,15 @@ class Editor {
         } else { const k = dx * ux + dy * uy; o.x1 = O.x1 + ux * k; o.y1 = O.y1 + uy * k; o.x2 = O.x2 + ux * k; o.y2 = O.y2 + uy * k; }
       } else if (D.sel.kind === 'chase') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
       else if (D.sel.kind === 'room') { o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy); }
+      else if (D.sel.kind === 'insert') {
+        // snap the building's box edges to nearby wall ends, otherwise move on the snap grid
+        o.x = O.x + dx; o.y = O.y + dy;
+        const b = this.insBox(o), tol = 10 / this.view.s; let bx = null, by = null, bdx = tol, bdy = tol;
+        for (const w of this.plan.walls) for (const [px, py] of [[w.x1, w.y1], [w.x2, w.y2]]) for (const ex of [b.x0, b.x1]) for (const ey of [b.y0, b.y1]) {
+          if (Math.abs(px - ex) < bdx) { bdx = Math.abs(px - ex); bx = px - ex; } if (Math.abs(py - ey) < bdy) { bdy = Math.abs(py - ey); by = py - ey; }
+        }
+        if (bx != null) o.x += bx; if (by != null) o.y += by;
+      }
       this.emit('live'); this.render(); return;
     }
     if (D && D.kind === 'chase') { const s = this.snap(p.x, p.y, null); D.x1 = s.x; D.y1 = s.y; this.render(); return; }
@@ -395,6 +414,7 @@ class Editor {
     const pts = this.draft.pts, a = pts[pts.length - 1];
     if (Math.hypot(x - a.x, y - a.y) < 0.05) return;
     const w = { id: uid(), x1: a.x, y1: a.y, x2: x, y2: y, t: this.plan.wallT || 0.25, sp: false };
+    if (this.plan.newKind && this.plan.newKind !== 'hardwall') w.kind = this.plan.newKind;
     this.edit(P => P.walls.push(w));
     pts.push({ x, y });
     // close the loop when back at the first point
@@ -425,6 +445,7 @@ class Editor {
       if (this.cursor) this.pieceGhost = this.pieces.ghostAt({ x: this.cursor.x, y: this.cursor.y });
       this.render(); return true;
     }
+    if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'insert') { const o = this.selected(); if (o) this.edit(() => { o.rot = (((o.rot || 0) + (e.shiftKey ? 3 : 1)) % 4); }); return true; }
     if (k === 'Escape') { if (this.draft) this.endChain(); else if (this.cal) { this.cal = null; this.render(); } else if (this.tool !== 'select') this.setTool('select'); else { this.sel = null; this.emit('select'); this.render(); } return true; }
     if ((k === 'Delete' || k === 'Backspace') && this.sel) { this.deleteSel(); return true; }
     return false;
@@ -432,7 +453,7 @@ class Editor {
   deleteSel() {
     const s = this.sel; if (!s) return;
     if (s.kind === 'bg') { this.edit(P => { P.background = null; }); this.bgImg = null; }
-    else { const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures' }[s.kind]; this.edit(P => { P[list] = (P[list] || []).filter(x => x.id !== s.id); if (s.kind === 'wall') P.openings = P.openings.filter(o => o.unit !== s.id); }); }
+    else { const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts' }[s.kind]; this.edit(P => { P[list] = (P[list] || []).filter(x => x.id !== s.id); if (s.kind === 'wall') P.openings = P.openings.filter(o => o.unit !== s.id); }); }
     this.sel = null; this.emit('select'); this.render();
   }
 
@@ -451,31 +472,10 @@ class Editor {
     this.cal = null; this.fit();
   }
 
-  /* ---------- render ---------- */
-  render() {
-    if (this._raf) return;
-    this._raf = requestAnimationFrame(() => { this._raf = 0; this.draw(); });
-  }
-  draw() {
-    const g = this.g, P = this.plan, s = this.view.s;
-    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    g.fillStyle = COL.bg; g.fillRect(0, 0, this.W, this.H);
-    // grid
-    const step = s * 1 < 6 ? (s * 4 < 6 ? 16 : 4) : 1;
-    const x0 = Math.floor(this.wx(0) / step) * step, x1 = this.wx(this.W), y0 = Math.floor(this.wy(0) / step) * step, y1 = this.wy(this.H);
-    g.lineWidth = 1;
-    for (let x = x0; x <= x1; x += step) { g.strokeStyle = (Math.round(x) % (step * 4) === 0) ? COL.gridMajor : COL.gridMinor; g.beginPath(); g.moveTo(Math.round(this.sx(x)) + 0.5, 0); g.lineTo(Math.round(this.sx(x)) + 0.5, this.H); g.stroke(); }
-    for (let y = y0; y <= y1; y += step) { g.strokeStyle = (Math.round(y) % (step * 4) === 0) ? COL.gridMajor : COL.gridMinor; g.beginPath(); g.moveTo(0, Math.round(this.sy(y)) + 0.5); g.lineTo(this.W, Math.round(this.sy(y)) + 0.5); g.stroke(); }
-    // background image
-    const B = P.background;
-    if (B && this.bgImg && this.bgImg.complete && B.visible !== false) {
-      g.save(); g.globalAlpha = B.opacity == null ? 0.55 : B.opacity;
-      g.translate(this.sx(B.cx), this.sy(B.cy)); g.rotate(B.rot || 0);
-      const w = this.bgImg.naturalWidth * B.scale * s, h = this.bgImg.naturalHeight * B.scale * s;
-      g.drawImage(this.bgImg, -w / 2, -h / 2, w, h);
-      if (this.sel && this.sel.kind === 'bg') { g.globalAlpha = 1; g.strokeStyle = COL.sel; g.lineWidth = 2; g.strokeRect(-w / 2, -h / 2, w, h); }
-      g.restore();
-    }
+  /* chases, walls, openings and room labels of a plan (the main plan, or a placed building moved into place) */
+  drawContent(P) {
+    const g = this.g, s = this.view.s, V = global.Plan3DViewer, KC = {};
+    if (V && V.WALL_KINDS) for (const k in V.WALL_KINDS) KC[k] = V.WALL_KINDS[k].plan;
     // chases
     for (const k of P.chases) {
       const X = this.sx(Math.min(k.x0, k.x1)), Y = this.sy(Math.min(k.y0, k.y1)), W = Math.abs(k.x1 - k.x0) * s, H = Math.abs(k.y1 - k.y0) * s;
@@ -509,7 +509,7 @@ class Editor {
       const len = Math.hypot(x2 - x1, y2 - y1) || 1, nx = -(y2 - y1) / len * t / 2, ny = (x2 - x1) / len * t / 2;
       g.beginPath(); g.moveTo(this.sx(x1 + nx), this.sy(y1 + ny)); g.lineTo(this.sx(x2 + nx), this.sy(y2 + ny)); g.lineTo(this.sx(x2 - nx), this.sy(y2 - ny)); g.lineTo(this.sx(x1 - nx), this.sy(y1 - ny)); g.closePath();
     };
-    for (const w of P.walls) { quad(w.x1, w.y1, w.x2, w.y2, Math.max(w.t || 0.25, 1.5 / s)); g.fillStyle = w.sp ? COL.sp : COL.wall; g.fill(); }
+    for (const w of P.walls) { quad(w.x1, w.y1, w.x2, w.y2, Math.max(w.t || 0.25, 1.5 / s)); g.fillStyle = w.sp ? COL.sp : (w.kind && KC[w.kind]) || COL.wall; g.fill(); }
     for (const w of P.walls) { quad(w.x1, w.y1, w.x2, w.y2, Math.max(w.t || 0.25, 1.5 / s)); g.strokeStyle = COL.wallLine; g.lineWidth = 1; g.stroke(); }
     // openings (cut + symbol)
     for (const o of P.openings) {
@@ -543,6 +543,56 @@ class Editor {
         g.strokeStyle = COL.door; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(this.sx(o.x1), this.sy(o.y1)); g.lineTo(this.sx(o.x2), this.sy(o.y2)); g.stroke(); g.setLineDash([]);
       }
     }
+    // rooms
+    for (const r of P.rooms) {
+      g.font = '600 13px Bahnschrift, "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = COL.room; g.fillText(r.name || 'Room', this.sx(r.x), this.sy(r.y) - (r.dims ? 7 : 0));
+      if (r.dims) { g.font = '11px Consolas, monospace'; g.fillStyle = COL.roomSub; g.fillText(r.dims, this.sx(r.x), this.sy(r.y) + 8); }
+    }
+  }
+
+  /* ---------- render ---------- */
+  render() {
+    if (this._raf) return;
+    this._raf = requestAnimationFrame(() => { this._raf = 0; this.draw(); });
+  }
+  draw() {
+    const g = this.g, P = this.plan, s = this.view.s;
+    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    g.fillStyle = COL.bg; g.fillRect(0, 0, this.W, this.H);
+    // grid
+    const step = s * 1 < 6 ? (s * 4 < 6 ? 16 : 4) : 1;
+    const x0 = Math.floor(this.wx(0) / step) * step, x1 = this.wx(this.W), y0 = Math.floor(this.wy(0) / step) * step, y1 = this.wy(this.H);
+    g.lineWidth = 1;
+    for (let x = x0; x <= x1; x += step) { g.strokeStyle = (Math.round(x) % (step * 4) === 0) ? COL.gridMajor : COL.gridMinor; g.beginPath(); g.moveTo(Math.round(this.sx(x)) + 0.5, 0); g.lineTo(Math.round(this.sx(x)) + 0.5, this.H); g.stroke(); }
+    for (let y = y0; y <= y1; y += step) { g.strokeStyle = (Math.round(y) % (step * 4) === 0) ? COL.gridMajor : COL.gridMinor; g.beginPath(); g.moveTo(0, Math.round(this.sy(y)) + 0.5); g.lineTo(this.W, Math.round(this.sy(y)) + 0.5); g.stroke(); }
+    // background image
+    const B = P.background;
+    if (B && this.bgImg && this.bgImg.complete && B.visible !== false) {
+      g.save(); g.globalAlpha = B.opacity == null ? 0.55 : B.opacity;
+      g.translate(this.sx(B.cx), this.sy(B.cy)); g.rotate(B.rot || 0);
+      const w = this.bgImg.naturalWidth * B.scale * s, h = this.bgImg.naturalHeight * B.scale * s;
+      g.drawImage(this.bgImg, -w / 2, -h / 2, w, h);
+      if (this.sel && this.sel.kind === 'bg') { g.globalAlpha = 1; g.strokeStyle = COL.sel; g.lineWidth = 2; g.strokeRect(-w / 2, -h / 2, w, h); }
+      g.restore();
+    }
+    // placed buildings, then the main plan on top
+    for (const ins of P.inserts || []) {
+      const zs = this.insView(ins); if (!zs) continue;
+      g.save(); g.globalAlpha = 0.92; for (const z of zs) this.drawContent(z.plan); g.restore();
+      const b = this.insBox(ins), X = this.sx(b.x0), Y = this.sy(b.y0), W = (b.x1 - b.x0) * s, H = (b.y1 - b.y0) * s;
+      const on = this.sel && this.sel.kind === 'insert' && this.sel.id === ins.id;
+      g.save(); g.setLineDash([6, 4]); g.strokeStyle = on ? COL.sel : 'rgba(127,211,227,.75)'; g.lineWidth = on ? 2 : 1.2; g.strokeRect(X - 4, Y - 4, W + 8, H + 8); g.restore();
+      g.font = '600 11.5px Bahnschrift, "Segoe UI", sans-serif'; g.textAlign = 'left'; g.textBaseline = 'bottom';
+      const lbl = (ins.name || 'Building') + '  ' + fmt(b.x1 - b.x0) + ' × ' + fmt(b.y1 - b.y0), tw = g.measureText(lbl).width;
+      g.fillStyle = 'rgba(26,32,36,.88)'; g.fillRect(X - 4, Y - 22, tw + 12, 17); g.fillStyle = on ? COL.sel : '#9fdbe8'; g.fillText(lbl, X + 2, Y - 7);
+    }
+    this.drawContent(P);
+    // walls (outline helper used below)
+    const quad = (x1, y1, x2, y2, t) => {
+      const len = Math.hypot(x2 - x1, y2 - y1) || 1, nx = -(y2 - y1) / len * t / 2, ny = (x2 - x1) / len * t / 2;
+      g.beginPath(); g.moveTo(this.sx(x1 + nx), this.sy(y1 + ny)); g.lineTo(this.sx(x2 + nx), this.sy(y2 + ny)); g.lineTo(this.sx(x2 - nx), this.sy(y2 - ny)); g.lineTo(this.sx(x1 - nx), this.sy(y1 - ny)); g.closePath();
+    };
     // dimensions
     const dimFor = (x1, y1, x2, y2, t, color, always) => {
       const len = Math.hypot(x2 - x1, y2 - y1); if (len * s < 34 && !always) return;
@@ -555,12 +605,6 @@ class Editor {
       g.fillStyle = color; g.fillText(txt, 0, 0); g.restore();
     };
     if (this.showDims && s > 5) for (const w of P.walls) dimFor(w.x1, w.y1, w.x2, w.y2, w.t || 0.25, COL.dim);
-    // rooms
-    for (const r of P.rooms) {
-      g.font = '600 13px Bahnschrift, "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillStyle = COL.room; g.fillText(r.name || 'Room', this.sx(r.x), this.sy(r.y) - (r.dims ? 7 : 0));
-      if (r.dims) { g.font = '11px Consolas, monospace'; g.fillStyle = COL.roomSub; g.fillText(r.dims, this.sx(r.x), this.sy(r.y) + 8); }
-    }
     // hover / selection
     const outlineSel = (sel, color, width) => {
       const o = this.find(sel); if (!o) return;
@@ -569,6 +613,7 @@ class Editor {
       else if (sel.kind === 'opening') { quad(o.x1, o.y1, o.x2, o.y2, (o.t || 0.25) + 6 / s); g.stroke(); }
       else if (sel.kind === 'chase') { g.strokeRect(this.sx(Math.min(o.x0, o.x1)) - 2, this.sy(Math.min(o.y0, o.y1)) - 2, Math.abs(o.x1 - o.x0) * s + 4, Math.abs(o.y1 - o.y0) * s + 4); }
       else if (sel.kind === 'room') { g.strokeRect(this.sx(o.x) - 48, this.sy(o.y) - 14, 96, 28); }
+      else if (sel.kind === 'insert') { const b = this.insBox(o); g.strokeRect(this.sx(b.x0) - 6, this.sy(b.y0) - 6, (b.x1 - b.x0) * s + 12, (b.y1 - b.y0) * s + 12); }
     };
     if (this.hover && this.tool === 'select' && !(this.sel && this.sel.id === this.hover.id)) outlineSel(this.hover, COL.hover, 1.5);
     if (this.sel) {

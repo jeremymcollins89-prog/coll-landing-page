@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('api', {
   readRfa: () => ipcRenderer.invoke('read-rfa'),
   equipLib: () => ipcRenderer.invoke('equip-lib'),
   equipLibSave: (list) => ipcRenderer.invoke('equip-lib-save', list),
+  bldLib: () => ipcRenderer.invoke('bld-lib'),
+  bldLibSave: (list) => ipcRenderer.invoke('bld-lib-save', list),
   exportCad: (o) => ipcRenderer.invoke('export-cad', o),
   hasDwgConverter: () => ipcRenderer.invoke('has-dwg-converter'),
   openPath: (p) => ipcRenderer.invoke('open-path', p),

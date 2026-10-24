@@ -13,14 +13,14 @@ const DATA_LAYER = 'P3D-DATA';
 const DATA_TAG = 'COLLPLAN3D';
 // name, AutoCAD color, linetype
 const LAYERS = [
-  ['A-WALL', 7, 'CONTINUOUS'], ['A-WALL-SP', 2, 'CONTINUOUS'], ['A-WALL-JOINT', 8, 'CONTINUOUS'], ['A-WALL-POST', 7, 'CONTINUOUS'],
+  ['A-WALL', 7, 'CONTINUOUS'], ['A-WALL-SP', 2, 'CONTINUOUS'], ['A-WALL-JOINT', 8, 'CONTINUOUS'], ['A-WALL-POST', 7, 'CONTINUOUS'], ['A-WALL-BLDG', 8, 'CONTINUOUS'],
   ['A-DOOR', 4, 'CONTINUOUS'], ['A-DOOR-SWING', 4, 'DASHED'], ['A-GLAZ', 5, 'CONTINUOUS'], ['A-PASS', 6, 'CONTINUOUS'],
   ['A-OPEN', 4, 'DASHED'], ['A-CHASE', 8, 'CONTINUOUS'], ['A-CHASE-HATCH', 9, 'CONTINUOUS'], ['A-GRILLE', 7, 'CONTINUOUS'],
   ['A-CLNG-FIXT', 8, 'DASHED'], ['A-CLNG-GRID', 9, 'CONTINUOUS'], ['A-DIMS', 3, 'CONTINUOUS'], ['A-ANNO-ROOM', 7, 'CONTINUOUS'], ['A-ANNO-TAG', 2, 'CONTINUOUS'],
   [DATA_LAYER, 8, 'CONTINUOUS', true]
 ];
 // Layers whose lines make up the walls (used to tell whether the drawing was changed in AutoCAD)
-const WALL_LAYERS = ['A-WALL', 'A-WALL-SP'];
+const WALL_LAYERS = ['A-WALL', 'A-WALL-SP', 'A-WALL-BLDG'];
 
 const r6 = (v) => (Math.abs(v) < 1e-9 ? 0 : +v.toFixed(6));
 // plan feet (y down) → drawing inches (y up)
@@ -43,6 +43,8 @@ function wallPrint(segs) {
 
 function toDxf(plan, opts) {
   opts = opts || {};
+  // placed buildings are drawn in place; the project itself (with its buildings) is kept on the data layer
+  const full = plan; if (V.flatten && plan.inserts && plan.inserts.length) plan = V.flatten(plan);
   const A = V.analyze(plan), B = A.bounds;
   const ents = [];
   const wallSegs = [];
@@ -93,7 +95,7 @@ function toDxf(plan, opts) {
   }
 
   // ---- walls (pieces between openings), joint studs, corner posts, 48″ module joints
-  for (const p of A.pieces) pline(p.sp ? 'A-WALL-SP' : 'A-WALL', quad(p.x1, p.z1, p.x2, p.z2, p.t), true);
+  for (const p of A.pieces) pline(p.hard === false ? 'A-WALL-BLDG' : p.sp ? 'A-WALL-SP' : 'A-WALL', quad(p.x1, p.z1, p.x2, p.z2, p.t), true);
   const seen = [];
   for (const e of A.ends) {
     if (e.cut || e.joined || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue; seen.push(e);
@@ -104,7 +106,7 @@ function toDxf(plan, opts) {
     pline('A-WALL-POST', [P(c.a, c.b, 0, 0), P(c.a, c.b, c.size, 0), P(c.a, c.b, c.size, c.wt), P(c.a, c.b, c.wt, c.wt), P(c.b, c.a, c.size, c.wt), P(c.b, c.a, c.size, 0)], true);
   }
   for (const w of A.walls) {
-    if (w.piece) continue;
+    if (w.piece || !V.isHard(w)) continue;
     const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, t = w.t || 0.25;
     for (let s = 4; s < L - 0.05; s += 4) {
       const px = w.x1 + ux * s, py = w.y1 + uy * s;
@@ -196,7 +198,7 @@ function toDxf(plan, opts) {
   }
 
   // ---- the Coll Plan3D project, on a frozen layer
-  const json = JSON.stringify(plan);
+  const json = JSON.stringify(full);
   const data = b64(json), CH = 200, n = Math.ceil(data.length / CH);
   const head = { v: 1, n, print: wallPrint(wallSegs), name: plan.name || '' };
   put(0, 'TEXT', 8, DATA_LAYER, 10, 0, 20, 0, 30, 0, 40, 1, 1, DATA_TAG + ' ' + b64(JSON.stringify(head)));
