@@ -55,18 +55,21 @@ jobs:
           $global:LASTEXITCODE = 0
           Get-ChildItem libredwg
 
+      # Builds Coll-Plan3D-Setup.exe plus latest.yml and the .blockmap, which the app's updater reads
+      # from this same release to find, download and check new versions.
       - name: Build the installer
-        run: npm run dist
+        run: npx electron-builder --win nsis --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
-      - name: Give the installer the name the website links to
+      - name: Read the version
         id: ver
         shell: pwsh
         run: |
           $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          Copy-Item "dist/Coll-Plan3D-Setup-$v.exe" "dist/Coll-Plan3D-Setup.exe"
           "version=$v" >> $env:GITHUB_OUTPUT
+          Get-Content dist/latest.yml
+          if (-not (Select-String -Path dist/latest.yml -Pattern "version: $v" -Quiet)) { throw 'latest.yml has the wrong version' }
 
       - name: Publish the release
         uses: softprops/action-gh-release@v2
@@ -78,4 +81,7 @@ jobs:
             Download it from https://collbusinesssolutions.com/projects.html
           make_latest: false
           overwrite_files: true
-          files: plan3d-app/dist/Coll-Plan3D-Setup.exe
+          files: |
+            plan3d-app/dist/Coll-Plan3D-Setup.exe
+            plan3d-app/dist/Coll-Plan3D-Setup.exe.blockmap
+            plan3d-app/dist/latest.yml

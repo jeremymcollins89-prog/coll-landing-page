@@ -227,3 +227,8 @@ body[data-mode="house"] .modechip { background: rgba(127,211,227,.16); color: #9
 #itemPal .row { display: flex; flex-wrap: wrap; gap: 4px; }
 #itemPal button { font: 12px inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
 #itemPal button.on { border-color: #f2c84b; color: #f2c84b; }
+
+/* update button in the top bar */
+.updbtn { margin-left: auto; white-space: nowrap; }
+.updbtn[disabled] { opacity: .75; cursor: default; background: transparent; color: var(--muted); border-color: var(--line); }
+.updbtn + .views { margin-left: 12px; }
