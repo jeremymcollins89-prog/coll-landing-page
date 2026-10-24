@@ -998,7 +998,7 @@ function buildScene(THREE, plan, A) {
     cMap = new THREE.CanvasTexture(plain); cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.repeat.set(B.w / 2, B.d / 2); cMap.anisotropy = ANISO;
   }
   // both sides, so the grid shows from above in the Plenum view
-  const cMat = new THREE.MeshLambertMaterial({ map: cMap, color: 0xbfc2c2, emissive: 0x9a9c9c, emissiveMap: cMap, side: THREE.DoubleSide });
+  const cMat = new THREE.MeshLambertMaterial({ map: cMap, color: 0xbfc2c2, emissive: 0x9a9c9c, emissiveMap: cMap });
   let ceil;
   if (FP) {
     cMap.repeat.set(1, 1);
@@ -1008,6 +1008,41 @@ function buildScene(THREE, plan, A) {
   // a house has a plain drywall ceiling, no grid
   if (ceil && A.house) ceil.material = new THREE.MeshLambertMaterial({ color: 0xf4f2ee, emissive: 0xa9a7a3, side: THREE.DoubleSide });
   if (ceil) ceiling.add(ceil);
+  // The top of the grid ceiling, as seen from the plenum: the backs of the tiles framed by the T-grid
+  // (main and cross tees standing up 1½″), so the Plenum view shows the grid instead of a white sheet.
+  if (ceil && !A.house && FP) {
+    const CG = ceilingGrid(plan, A), sw = CG.swap && !ownGrid;
+    const topCanvas = cachedCanvas(ownGrid ? 'ceilTopPlain' : 'ceilTop', () => makeCanvas(128, ownGrid ? 128 : 256, (g, w, h) => {
+      g.fillStyle = '#9d9a91'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 1800; i++) { const v = Math.random() < .5 ? '0,0,0' : '255,255,255'; g.fillStyle = `rgba(${v},${Math.random() * .08})`; g.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1); }
+      if (!ownGrid) { g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, 0, w, 4); g.fillRect(0, 0, 4, h); g.fillStyle = '#f1f3f4'; g.fillRect(0, 0, w, 2.5); g.fillRect(0, 0, 2.5, h); }
+    }));
+    const tt = new THREE.CanvasTexture(topCanvas); tt.wrapS = tt.wrapT = THREE.RepeatWrapping; tt.anisotropy = ANISO;
+    ceiling.add(new THREE.Mesh(rectsGeometry(THREE, FP.rects, H + 0.004, false, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, sw), new THREE.MeshLambertMaterial({ map: tt, color: 0xd8d8d8 })));
+    // the tees: thin webs standing up along every grid line, only over the ceiling
+    const lines = [];
+    if (ownGrid) for (const q of plan.ceilingGrid) lines.push(q);
+    else {
+      const step = FP.cell / 2, runs = (fixed, lo, hi, isX) => {
+        let st = null;
+        for (let v = lo; v <= hi + 1e-9; v += step) {
+          const inside = isX ? FP.has(fixed, v) : FP.has(v, fixed);
+          if (inside && st === null) st = v;
+          if ((!inside || v + step > hi + 1e-9) && st !== null) { const e = inside ? v : v - step; if (e - st > 0.3) lines.push(isX ? [fixed, st, fixed, e] : [st, fixed, e, fixed]); st = null; }
+        }
+      };
+      for (let x = CG.ox + Math.ceil((B.minX - CG.ox) / CG.cw) * CG.cw; x <= B.maxX; x += CG.cw) runs(x, B.minZ, B.maxZ, true);
+      for (let z = CG.oz + Math.ceil((B.minZ - CG.oz) / CG.cl) * CG.cl; z <= B.maxZ; z += CG.cl) runs(z, B.minX, B.maxX, false);
+    }
+    const tp = [], web = 0.014, y0 = H + 0.004, y1 = H + 0.14;
+    for (const q of lines) {
+      const L = Math.hypot(q[2] - q[0], q[3] - q[1]); if (!(L > 0.05)) continue;
+      const nx = -(q[3] - q[1]) / L * web, nz = (q[2] - q[0]) / L * web;
+      for (const sd of [1, -1]) { const a = [q[0] + nx * sd, y0, q[1] + nz * sd], b = [q[2] + nx * sd, y0, q[3] + nz * sd], c = [q[2] + nx * sd, y1, q[3] + nz * sd], d = [q[0] + nx * sd, y1, q[1] + nz * sd]; tp.push(...a, ...b, ...c, ...a, ...c, ...d); }
+      const a = [q[0] + nx, y1, q[1] + nz], b = [q[2] + nx, y1, q[3] + nz], c = [q[2] - nx, y1, q[3] - nz], d = [q[0] - nx, y1, q[1] - nz]; tp.push(...a, ...b, ...c, ...a, ...c, ...d);
+    }
+    if (tp.length) { const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3)); tg.computeVertexNormals(); ceiling.add(new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ color: 0xf4f6f7, emissive: 0x303234, side: THREE.DoubleSide }))); }
+  }
   // the roof (houses): gable, hip or flat, over the outside walls with an overhang
   const roof = new THREE.Group(); root.add(roof);
   if (A.frameAny && FPall && plan.roof && plan.roof.type && plan.roof.type !== 'none') buildRoof(THREE, roof, A, plan, FPall, sidingMat, M);
@@ -1045,6 +1080,7 @@ function buildScene(THREE, plan, A) {
   const led = new THREE.MeshBasicMaterial({ color: 0xffffff }), ffu = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(ffuCanvas) });
   const fg = new THREE.BoxGeometry(1.9, 0.08, 3.9), fgs = {};
   const fixtures = new THREE.Group(); root.add(fixtures);
+  const housingMat = new THREE.MeshPhongMaterial({ color: 0xc9ced1, specular: 0x666666, shininess: 40 });
   // house items: cabinets, appliances, plumbing fixtures
   for (const q of A.items || []) { const g = itemMesh(THREE, q.it, M); fixtures.add(g); g.traverse(o => { if (o.isMesh) { pick.push(o); if (q.it.id) o.userData.ref = { kind: 'item', id: q.it.id }; } }); }
   // A real fan filter unit model (plan.ffuModel: manufacturer sizes from a Revit family): the cabinet and blower
@@ -1092,6 +1128,9 @@ function buildScene(THREE, plan, A) {
     const m = new THREE.Mesh(geo, f.type === 'ffu' ? ffu : led); m.position.set(f.x, H - 0.04, f.y);
     if (f.id) m.userData.ref = { kind: 'fixture', id: f.id };
     fixtures.add(m);
+    // its housing above the grid (seen in the Plenum view)
+    const fw = Math.max(0.3, (f.w || 2) - 0.12), fd = Math.max(0.3, (f.h || 4) - 0.12), hh = f.type === 'ffu' ? 0.9 : 0.28;
+    const hs = new THREE.Mesh(new THREE.BoxGeometry(fw, hh, fd), f.type === 'ffu' ? M.white : housingMat); hs.position.set(f.x, H + 0.005 + hh / 2, f.y); outline(hs); fixtures.add(hs);
   }
   return { root, pick, floor, floors: [floor], ground, ceiling, lid, roof, ceilPlane: ceil || new THREE.Object3D(), fixtures, doors, doorObs };
 }
