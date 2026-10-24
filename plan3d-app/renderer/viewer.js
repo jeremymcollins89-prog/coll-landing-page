@@ -279,12 +279,35 @@ function rectsGeometry(THREE, rects, y, down, su, sv, ox, oz) {
   return g;
 }
 
+/* The 2′ × 4′ lay-in ceiling grid: 2′ across (x), 4′ along (z, plan y), starting at plan.ceilGrid when the
+   project has one (saved the first time fixtures are placed, so later wall edits don't slide the grid under
+   them), otherwise at the walls' outside corner. Main / cross tee takeoffs will build on this. */
+function ceilingGrid(plan, A) {
+  const g = plan && plan.ceilGrid;
+  if (g && isFinite(g.ox) && isFinite(g.oy)) return { ox: g.ox, oz: g.oy, cw: 2, cl: 4 };
+  A = A || analyze(plan);
+  return { ox: A.empty ? 0 : A.bounds.minX, oz: A.empty ? 0 : A.bounds.minZ, cw: 2, cl: 4 };
+}
+/* Snap a fixture into whole grid cells so it never straddles a tee: a 2′ × 4′ (or 2 × 2) fixture centres on
+   its cell. Fixtures from an imported ceiling drawing follow that drawing's own grid instead. */
+function snapFixture(f, G) {
+  const w = f.w || 2, h = f.h || 4;
+  const sx = w > 2.2 ? G.cl : G.cw, sz = h > 2.2 ? G.cl : (h <= 2.2 && w <= 2.2 ? G.cw : G.cl);
+  const fw = Math.max(sx, Math.round(w / sx) * sx), fh = Math.max(sz, Math.round(h / sz) * sz);
+  const x0 = G.ox + Math.round((f.x - fw / 2 - G.ox) / sx) * sx, z0 = G.oz + Math.round((f.y - fh / 2 - G.oz) / sz) * sz;
+  return { ...f, x: x0 + fw / 2, y: z0 + fh / 2 };
+}
 function ceilingFixtures(plan, A) {
   A = A || analyze(plan);
-  if (plan.ceilingMode === 'manual') return (plan.fixtures || []).slice();
+  const G = ceilingGrid(plan, A);
+  if (plan.ceilingMode === 'manual') {
+    const own = Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length > 0;
+    return (plan.fixtures || []).map(f => own ? { ...f } : snapFixture(f, G));
+  }
   const B = A.bounds, out = []; let k = 0;
-  for (let x = B.minX + 2; x + 2 <= B.maxX; x += 6) {
-    for (let z = B.minZ + 4; z + 4 <= B.maxZ; z += 8) {
+  const gx0 = G.ox + Math.ceil((B.minX + 2 - G.ox) / 2) * 2, gz0 = G.oz + Math.ceil((B.minZ + 4 - G.oz) / 4) * 4;
+  for (let x = gx0; x + 2 <= B.maxX; x += 6) {
+    for (let z = gz0; z + 4 <= B.maxZ; z += 8) {
       const cx = x + 1, cz = z + 2;
       let clear = true;
       for (const p of A.pieces) { if (segDist(cx, cz, p.x1, p.z1, p.x2, p.z2) < 2.3) { clear = false; break; } }
@@ -562,7 +585,8 @@ function buildScene(THREE, plan, A) {
   let ceil;
   if (FP) {
     cMap.repeat.set(1, 1);
-    ceil = new THREE.Mesh(rectsGeometry(THREE, FP.rects, H, true, 2, ownGrid ? 2 : 4, B.minX, B.minZ), cMat);
+    const CG = ceilingGrid(plan, A);
+    ceil = new THREE.Mesh(rectsGeometry(THREE, FP.rects, H, true, 2, ownGrid ? 2 : 4, CG.ox, CG.oz), cMat);
   } else { ceil = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.d), cMat); ceil.rotation.x = Math.PI / 2; ceil.position.set(B.cx, H, B.cz); }
   ceiling.add(ceil);
   if (ownGrid) {
@@ -1023,5 +1047,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { mount, analyze, footprint, grilleSize, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { mount, analyze, footprint, grilleSize, ceilingGrid, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);

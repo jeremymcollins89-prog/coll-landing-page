@@ -163,7 +163,7 @@ class PieceLogic {
     return { x0, x1: x0 + W0, y0, y1: y0 + D0, grille: '', mode: 'free' };
   }
   fixtureCell(P) {
-    const A = this.A, b = A.bounds, ox = A.empty ? 0 : b.minX, oy = A.empty ? 0 : b.minZ;
+    const G = V.ceilingGrid(this.ed.plan, this.A), ox = G.ox, oy = G.oz;
     const x0 = ox + Math.floor((P.x - ox) / 2) * 2, y0 = oy + Math.floor((P.y - oy) / 4) * 4;
     return { x: x0 + 1, y: y0 + 2, mode: 'cell' };
   }
@@ -238,7 +238,10 @@ class PieceLogic {
       ed.edit(Pl => Pl.chases.push(k)); return true;
     }
     ed.edit(Pl => {
+      // lock the ceiling grid where it is now, so later wall changes don't slide it under the fixtures
+      if (!Pl.ceilGrid) { const G = V.ceilingGrid(Pl); Pl.ceilGrid = { ox: G.ox, oy: G.oz }; }
       if (Pl.ceilingMode !== 'manual') { Pl.fixtures = V.ceilingFixtures(Pl).map(f => ({ id: uid(), type: f.type, x: f.x, y: f.y })); Pl.ceilingMode = 'manual'; }
+      else if (!(Array.isArray(Pl.ceilingGrid) && Pl.ceilingGrid.length)) { const G = V.ceilingGrid(Pl); Pl.fixtures = Pl.fixtures.map(f => V.snapFixture(f, G)); }
       const hit = Pl.fixtures.find(f => Math.abs(f.x - I.x) < 0.5 && Math.abs(f.y - I.y) < 1);
       Pl.fixtures = Pl.fixtures.filter(f => f !== hit);
       if (!hit || hit.type !== tool) Pl.fixtures.push({ id: uid(), type: tool, x: I.x, y: I.y });

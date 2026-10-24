@@ -246,10 +246,19 @@ function toIfc(plan, opts) {
   }
   // air chases
   for (const b of A.boxes) put('IFCBUILDINGELEMENTPROXY', 'Air chase', 'Coll air chase', shape([solid([[b.x0, b.z0], [b.x1, b.z0], [b.x1, b.z1], [b.x0, b.z1]], 0, H, S.white)]), ',.ELEMENT.');
-  // ceiling, lights and fan filter units
+
+  // ceiling, lights and fan filter units (Constrained strictly to room footprints)
   if (!A.empty && opts.ceiling !== false) {
-    const Bd = A.bounds;
-    put('IFCCOVERING', 'Ceiling, 2x4 lay-in grid', 'Coll cleanroom ceiling', shape([solid([[Bd.minX, Bd.minZ], [Bd.maxX, Bd.minZ], [Bd.maxX, Bd.maxZ], [Bd.minX, Bd.maxZ]], H, H + 0.052, S.ceiling)]), ',.CEILING.');
+    const footprint = V.footprint ? V.footprint(A) : null;
+    const rects = (footprint && footprint.rects && footprint.rects.length) 
+      ? footprint.rects 
+      : [[A.bounds.minX, A.bounds.minZ, A.bounds.maxX, A.bounds.maxZ]];
+
+    rects.forEach((r, idx) => {
+      const pts = [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]];
+      put('IFCCOVERING', `Ceiling Section ${idx + 1}`, 'Coll cleanroom ceiling', shape([solid(pts, H, H + 0.052, S.ceiling)]), ',.CEILING.');
+    });
+
     for (const f of V.ceilingFixtures(plan, A)) {
       const hw = (f.w || 1.9) / 2, hh = (f.h || 3.9) / 2, pts = [[f.x - hw, f.y - hh], [f.x + hw, f.y - hh], [f.x + hw, f.y + hh], [f.x - hw, f.y + hh]];
       if (f.type === 'ffu') put('IFCAIRTERMINAL', 'Fan filter unit', 'FFU', shape([solid(pts, H - 0.04, H + 1, S.ffu)]), ',.DIFFUSER.');
