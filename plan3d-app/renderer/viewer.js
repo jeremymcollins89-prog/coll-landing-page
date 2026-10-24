@@ -166,11 +166,13 @@ function zones(plan, T, idp, out) {
     const C = composeXform(T, insertXform(ins)), sub = Object.assign({}, ins.plan, { name: ins.name || ins.plan.name });
     zones(sub, C, (idp ? idp + '/' : '') + ins.id, out);
   }
+  // each building knows the walls of the buildings around it (where one carries on into another)
+  if (!idp) for (const z of out) Object.defineProperty(z.plan, '__sib', { value: [].concat(...out.filter(q => q !== z).map(q => q.plan.walls || [])), enumerable: false, configurable: true });
   return out;
 }
 /* One flat plan with every building merged in (for 2D drawings: DWG/DXF and the plan sheet). */
 function flatten(plan) {
-  const Z = zones(plan), F = Object.assign({}, Z[0].plan, { inserts: [] });
+  const Z = zones(plan), F = Object.assign({}, Z[0].plan, { inserts: [] }); delete F.__sib;
   for (const k of ['walls', 'openings', 'chases', 'rooms']) F[k] = [].concat(...Z.map(z => z.plan[k] || []));
   // each building's own lights and FFUs, already laid out on its own grid
   F.fixtures = [].concat(...Z.map(z => ceilingFixtures(z.plan))); F.ceilingMode = 'manual'; F.fixturesFinal = true;
@@ -306,7 +308,7 @@ function analyze(plan) {
   // house items block walking
   const items = (plan.items || []).filter(it => ITEMS[it.type]).map(it => ({ it, c: itemCorners(it) }));
   for (const q of items) for (let k = 0; k < 4; k++) { const a = q.c[k], b = q.c[(k + 1) % 4]; obs.push({ x1: a[0], z1: a[1], x2: b[0], z2: b[1], r: 0.05 }); }
-  return { H, PL, WH, hardAny, frameAny, ceilAny: hardAny || frameAny, house: frameAny && !hardAny, items, shellTop, walls, pieces, ends, corners, opInfo, boxes, obs, empty, bounds: { minX, minZ, maxX, maxZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, w: maxX - minX, d: maxZ - minZ } };
+  return { sib: plan.__sib || [], H, PL, WH, hardAny, frameAny, ceilAny: hardAny || frameAny, house: frameAny && !hardAny, items, shellTop, walls, pieces, ends, corners, opInfo, boxes, obs, empty, bounds: { minX, minZ, maxX, maxZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, w: maxX - minX, d: maxZ - minZ } };
 }
 
 /* Return grille on an air chase: c.grW / c.grH (feet) and c.grSill (feet, floor to bottom of the grille),
@@ -380,9 +382,11 @@ function footprint(A, all) {
     const key = Math.min(ia, best) + '-' + Math.max(ia, best); if (joined.has(key)) return; joined.add(key);
     stamp(a.x, a.z, free[best].x, free[best].z, 0.05);
   });
-  // gaps up to 12′ between wall ends on the same straight line count as closed (a doorway with no door, or
-  // where a building placed next to this one carries on) so the ceiling and floor stay inside
-  const LW = A.walls.filter(w => use(isHard(w) || isFrame(w)) && Math.hypot(w.x2 - w.x1, w.y2 - w.y1) > 0.3);
+  // a gap up to 12′ between wall ends on the same straight line counts as closed only where a building placed
+  // next to this one carries on through it (its walls meet both ends), so the ceiling and floor stay inside.
+  // Gaps between buildings that lead outside (notches, open areas) stay open.
+  const SIB = A.sib || [], meets = (x, z) => SIB.some(w => Math.hypot(w.x1 - x, w.y1 - z) < 0.6 || Math.hypot(w.x2 - x, w.y2 - z) < 0.6);
+  const LW = SIB.length ? A.walls.filter(w => use(isHard(w) || isFrame(w)) && Math.hypot(w.x2 - w.x1, w.y2 - w.y1) > 0.3) : [];
   for (let i = 0; i < LW.length; i++) for (let j = i + 1; j < LW.length; j++) {
     const a = LW[i], b = LW[j], la = Math.hypot(a.x2 - a.x1, a.y2 - a.y1), ux = (a.x2 - a.x1) / la, uz = (a.y2 - a.y1) / la;
     const lb = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
@@ -393,6 +397,7 @@ function footprint(A, all) {
       const g = Math.hypot(fx - ex, fz - ez); if (g < 0.3 || g >= bd) continue;
       const mx = (ex + fx) / 2, mz = (ez + fz) / 2;
       if (segD(mx, mz, a) < g / 2 - 0.05 || segD(mx, mz, b) < g / 2 - 0.05) continue; // overlapping, not a gap
+      if (!meets(ex, ez) || !meets(fx, fz)) continue;
       bd = g; best = [ex, ez, fx, fz];
     }
     if (best) stamp(best[0], best[1], best[2], best[3], 0.05);
