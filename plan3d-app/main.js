@@ -620,6 +620,23 @@ ipcMain.handle('get-assets', () => {
 });
 
 ipcMain.handle('open-path', (e, p) => shell.openPath(p));
+// ---------- Equipment from Revit families (.rfa): their type table (PartAtom XML) holds sizes and specs ----------
+ipcMain.handle('read-rfa', async () => {
+  const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'Revit family', extensions: ['rfa'] }] });
+  if (r.canceled || !r.filePaths[0]) return null;
+  try {
+    const CFB = require('cfb');
+    const c = CFB.read(fs.readFileSync(r.filePaths[0]), { type: 'buffer' });
+    const e = CFB.find(c, 'PartAtom');
+    if (!e || !e.content) return { error: 'This Revit family has no type table (PartAtom) to read sizes from.' };
+    return { name: path.basename(r.filePaths[0]), xml: Buffer.from(e.content).toString('utf8') };
+  } catch (err) { return { error: 'Couldn\u2019t read that file: ' + (err && err.message || err) }; }
+});
+// Equipment added from Revit families, kept for every project on this computer
+const equipFile = () => path.join(app.getPath('userData'), 'equipment.json');
+ipcMain.handle('equip-lib', () => { try { return JSON.parse(fs.readFileSync(equipFile(), 'utf8')); } catch (e) { return []; } });
+ipcMain.handle('equip-lib-save', (e, list) => { try { fs.writeFileSync(equipFile(), JSON.stringify(list || [], null, 1)); return true; } catch (err) { return false; } });
+
 ipcMain.handle('show-in-folder', (e, p) => shell.showItemInFolder(p));
 ipcMain.handle('open-url', (e, u) => { if (/^https:\/\//.test(u)) shell.openExternal(u); });
 
