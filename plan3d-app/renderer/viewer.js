@@ -615,7 +615,46 @@ function buildScene(THREE, plan, A) {
   const led = new THREE.MeshBasicMaterial({ color: 0xffffff }), ffu = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(ffuCanvas) });
   const fg = new THREE.BoxGeometry(1.9, 0.08, 3.9), fgs = {};
   const fixtures = new THREE.Group(); root.add(fixtures);
+  // A real fan filter unit model (plan.ffuModel: manufacturer sizes from a Revit family): the cabinet and blower
+  // housing sit above the grid (seen in Dollhouse, where the ceiling is hidden); the perforated face shows from below.
+  const FM = plan.ffuModel && Array.isArray(plan.ffuModel.sizes) && plan.ffuModel.sizes.length ? plan.ffuModel : null;
+  const ffuParts = {};
+  const fin = FM ? ({ sst: M.steel, alum: new THREE.MeshPhongMaterial({ color: 0xc8ced2, specular: 0x8a8f93, shininess: 60 }) }[FM.finish] || new THREE.MeshPhongMaterial({ color: 0xf1f3f3, emissive: 0x101111, specular: 0x222222, shininess: 18 })) : null;
+  const dark = FM ? new THREE.MeshPhongMaterial({ color: 0x3a3f42, specular: 0x222222, shininess: 10 }) : null;
+  const galv = FM ? new THREE.MeshPhongMaterial({ color: 0xaeb4b8, specular: 0x777777, shininess: 45 }) : null;
+  function ffuUnit(sz) {
+    const key = [sz.w, sz.d, sz.h, sz.overall, sz.hw, sz.hd, sz.ebox].map(v => v.toFixed(3)).join(',');
+    if (ffuParts[key]) return ffuParts[key].clone();
+    const g = new THREE.Group(), e = 1.25 / 12, add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); g.add(m); return m; };
+    // perforated face, a hair below the ceiling, inside a white knife-edge frame
+    add(new THREE.BoxGeometry(sz.d - 2 * e, 0.012, sz.w - 2 * e), ffu, 0, -0.03, 0);
+    add(new THREE.BoxGeometry(sz.d, 0.05, e), fin, 0, -0.02, sz.w / 2 - e / 2); add(new THREE.BoxGeometry(sz.d, 0.05, e), fin, 0, -0.02, -sz.w / 2 + e / 2);
+    add(new THREE.BoxGeometry(e, 0.05, sz.w - 2 * e), fin, sz.d / 2 - e / 2, -0.02, 0); add(new THREE.BoxGeometry(e, 0.05, sz.w - 2 * e), fin, -sz.d / 2 + e / 2, -0.02, 0);
+    // cabinet above the grid
+    const cab = add(new THREE.BoxGeometry(sz.d - 0.03, sz.h, sz.w - 0.03), fin, 0, sz.h / 2, 0); outline(cab);
+    // blower housing on top, centred
+    const hh = Math.max(0.05, sz.overall - sz.h), hs = add(new THREE.BoxGeometry(Math.min(sz.hd, sz.d - 0.1), hh, Math.min(sz.hw, sz.w - 0.1)), fin, 0, sz.h + hh / 2, 0); outline(hs);
+    // inlet ring and pre-filter on the housing
+    const r = Math.min(sz.hw, sz.hd) * 0.36;
+    add(new THREE.CylinderGeometry(r, r, 0.06, 32), galv, 0, sz.overall + 0.03, 0);
+    add(new THREE.CylinderGeometry(r * 0.86, r * 0.86, 0.065, 32), dark, 0, sz.overall + 0.035, 0);
+    // electrical box on the cabinet top, toward one end
+    const eb = add(new THREE.BoxGeometry(sz.ebox, 3.5 / 12, 4.5 / 12), fin, -sz.d / 2 + sz.ebox / 2 + 0.12, sz.h + 3.5 / 24, sz.w / 2 - 0.45); outline(eb);
+    ffuParts[key] = g;
+    return g.clone();
+  }
+  const ffuSize = (f) => {
+    const long = Math.max(f.w || 2, f.h || 4), nominal = '2x' + Math.max(2, Math.min(4, Math.round(long)));
+    return FM.sizes.find(s => s.nominal === nominal) || FM.sizes.slice().sort((a, b) => Math.abs(a.w - long) - Math.abs(b.w - long))[0];
+  };
   for (const f of ceilingFixtures(plan, A)) {
+    if (FM && f.type === 'ffu') {
+      const u = ffuUnit(ffuSize(f)); u.position.set(f.x, H, f.y);
+      if ((f.w || 2) > (f.h || 4)) u.rotation.y = Math.PI / 2; // long side across the room
+      if (f.id) u.traverse(o => { o.userData.ref = { kind: 'fixture', id: f.id }; });
+      fixtures.add(u);
+      continue;
+    }
     let geo = fg;
     if (f.w > 0 && f.h > 0 && !(Math.abs(f.w - 2) < 0.06 && Math.abs(f.h - 4) < 0.06)) { const key = f.w.toFixed(2) + 'x' + f.h.toFixed(2); geo = fgs[key] || (fgs[key] = new THREE.BoxGeometry(Math.max(0.3, f.w - 0.1), 0.08, Math.max(0.3, f.h - 0.1))); }
     const m = new THREE.Mesh(geo, f.type === 'ffu' ? ffu : led); m.position.set(f.x, H - 0.04, f.y);

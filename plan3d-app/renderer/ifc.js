@@ -261,7 +261,15 @@ function toIfc(plan, opts) {
 
     for (const f of V.ceilingFixtures(plan, A)) {
       const hw = (f.w || 1.9) / 2, hh = (f.h || 3.9) / 2, pts = [[f.x - hw, f.y - hh], [f.x + hw, f.y - hh], [f.x + hw, f.y + hh], [f.x - hw, f.y + hh]];
-      if (f.type === 'ffu') put('IFCAIRTERMINAL', 'Fan filter unit', 'FFU', shape([solid(pts, H - 0.04, H + 1, S.ffu)]), ',.DIFFUSER.');
+      const FM = plan.ffuModel && plan.ffuModel.sizes && plan.ffuModel.sizes.length ? plan.ffuModel : null;
+      if (f.type === 'ffu' && FM) {
+        // the real unit: cabinet in the grid, blower housing on top
+        const long = Math.max(f.w || 2, f.h || 4), nominal = '2x' + Math.max(2, Math.min(4, Math.round(long)));
+        const z = FM.sizes.find(q => q.nominal === nominal) || FM.sizes[0], alongZ = (f.h || 4) >= (f.w || 2);
+        const rect = (a, b) => { const hx = (alongZ ? b : a) / 2, hz = (alongZ ? a : b) / 2; return [[f.x - hx, f.y - hz], [f.x + hx, f.y - hz], [f.x + hx, f.y + hz], [f.x - hx, f.y + hz]]; };
+        put('IFCAIRTERMINAL', 'Fan filter unit, ' + (FM.maker ? FM.maker + ' ' : '') + (FM.model || FM.name), (FM.name || 'FFU') + ' ' + nominal + ', ' + (FM.finishLabel || ''),
+          shape([solid(rect(z.w, z.d), H - 0.04, H + z.h, S.ffu), solid(rect(Math.min(z.hw, z.w), Math.min(z.hd, z.d)), H + z.h, H + z.overall, S.ffu)]), ',.DIFFUSER.');
+      } else if (f.type === 'ffu') put('IFCAIRTERMINAL', 'Fan filter unit', 'FFU', shape([solid(pts, H - 0.04, H + 1, S.ffu)]), ',.DIFFUSER.');
       else put('IFCLIGHTFIXTURE', 'LED light', 'LED troffer', shape([solid(pts, H - 0.04, H + 0.33, S.white)]), ',.DIRECTIONSOURCE.');
     }
   }

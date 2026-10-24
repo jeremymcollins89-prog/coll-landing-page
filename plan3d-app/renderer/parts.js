@@ -120,7 +120,20 @@ function partsList(plan) {
   const nLed = fx.filter(f => f.type !== 'ffu').length, nFfu = fx.filter(f => f.type === 'ffu').length;
   const ftS = (v) => { const r = Math.round(v * 2) / 2; return (r % 1 ? r.toFixed(1) : String(r)) + '′'; };
   const fxSize = (f) => { const a = f.w || 2, b = f.h || 4, lo = Math.min(a, b), hi = Math.max(a, b); return [ftS(lo).replace('′', '') + '×' + ftS(hi).replace('′', ''), ftS(lo) + ' × ' + ftS(hi)]; };
-  for (const f of fx) { const [nm, sz] = fxSize(f); add('Ceiling', f.type === 'ffu' ? 'Fan filter unit, ' + nm : 'LED light, ' + nm, sz, 1, 'ea', f.type === 'ffu' ? 61 : 60); }
+  const FM = plan.ffuModel && Array.isArray(plan.ffuModel.sizes) && plan.ffuModel.sizes.length ? plan.ffuModel : null;
+  let ffuLb = 0, ffuCfm = 0, ffuN = 0;
+  for (const f of fx) {
+    if (f.type === 'ffu' && FM) {
+      const long = Math.max(f.w || 2, f.h || 4), nominal = '2x' + Math.max(2, Math.min(4, Math.round(long)));
+      const z = FM.sizes.find(q => q.nominal === nominal) || FM.sizes[0];
+      add('Ceiling', 'Fan filter unit, ' + (FM.maker ? FM.maker + ' ' : '') + (FM.model || FM.name) + ', ' + nominal.replace('x', '×'), (z.w * 12).toFixed(2) + '″ × ' + (z.d * 12).toFixed(2) + '″, ' + (FM.finishLabel || ''), 1, 'ea', 61);
+      ffuLb += z.lb || 0; ffuCfm += z.cfm || 0; ffuN++;
+      continue;
+    }
+    const [nm, sz] = fxSize(f); add('Ceiling', f.type === 'ffu' ? 'Fan filter unit, ' + nm : 'LED light, ' + nm, sz, 1, 'ea', f.type === 'ffu' ? 61 : 60);
+  }
+  if (ffuN && ffuLb) add('Ceiling', 'FFU weight on the grid, total', '', Math.round(ffuLb), 'lb', 65);
+  if (ffuN && ffuCfm) add('Ceiling', 'FFU airflow, total at max', '', Math.round(ffuCfm), 'CFM', 66);
   if (plan.ceilingGrid && plan.ceilingGrid.length) {
     let gl = 0; for (const q of plan.ceilingGrid) gl += Math.hypot(q[2] - q[0], q[3] - q[1]);
     add('Ceiling', 'T-grid, from ceiling drawing', '', Math.ceil(gl), 'lin ft', 64);

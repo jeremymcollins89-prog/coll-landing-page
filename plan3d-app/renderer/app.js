@@ -250,7 +250,8 @@ function renderProps(opt) {
       <span>Air chases</span><span>${P.chases.length}</span>
       <span>Rooms</span><span>${P.rooms.length}</span></div>
       ${hasGeo ? '<div class="row"><button class="btn small" id="pClearAuto">Clear all walls</button></div>' : ''}
-    </div>`;
+    </div>
+    ${ffuPanelHtml(P)}`;
   if (view === 'build') h = `<div class="hd"><span class="kind">Build</span></div>
     <p class="note">Pick a piece on the left and click to place it. Pieces snap to open ends, turn corners toward the mouse, and start T-joints off the middle of a wall.</p>` + partsHtml + h.replace('<div class="hd"><span class="kind">Plan</span></div>', '<div class="grp"><h3>Plan</h3>') + '</div>';
   else h += partsHtml;
@@ -273,6 +274,7 @@ function renderProps(opt) {
   bindLen('pWT', 'in', v => { ed.plan.wallT = Math.max(1 / 48, v); renderProps(); });
   $('#pSnap').onchange = e => { ed.snapIn = +e.target.value; };
   bindParts();
+  bindFfuPanel(P);
   if ($('#pClearAuto')) $('#pClearAuto').onclick = () => confirmDlg('Clear all walls?', 'This removes every wall, door, glass panel and chase. Room labels and the background stay. You can undo with Ctrl+Z.', 'Clear walls').then(ok => { if (ok) ed.edit(Pl => { Pl.walls = []; Pl.openings = []; Pl.chases = []; }); });
   if (B) {
     $('#pBgVis').onchange = e => ed.edit(() => { B.visible = e.target.checked; });
@@ -612,6 +614,51 @@ function ifcDialog(data) {
     if (view === '2d') setView('split'); else if (viewer) viewer.loadPlan(clonePlan());
     toast(a === 'saved' ? 'Opened ' + p.name + ' from the IFC.' : `Imported ${p.walls.length} walls and ${p.openings.length} doors and windows from ${data.name}. Edit anything, then Save.`);
   });
+}
+
+/* ---------- Fan filter unit model (manufacturer data, Revit families) ---------- */
+let equipLib = [];
+if (api.equipLib) api.equipLib().then(l => { equipLib = Array.isArray(l) ? l : []; if (!ed.sel) renderProps(); });
+const allFfuModels = () => [...Plan3DEquipment.BUILT_IN, ...equipLib.filter(m => !Plan3DEquipment.BUILT_IN.some(b => b.id === m.id))];
+function ffuPanelHtml(P) {
+  const cur = P.ffuModel, models = allFfuModels(), m = cur && models.find(x => x.id === cur.id);
+  const n = Plan3DViewer.ceilingFixtures(P).filter(f => f.type === 'ffu').length;
+  let h = `<div class="grp"><h3>Fan filter units</h3>
+    ${fld('Model', `<select id="pFfuM"><option value="">Generic 2×4 (flat)</option>${models.map(x => `<option value="${esc(x.id)}" ${cur && cur.id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}${cur && !m ? `<option value="${esc(cur.id)}" selected>${esc(cur.name)}</option>` : ''}<option value="+rfa">Add from Revit family (.rfa)…</option></select>`)}`;
+  if (cur) {
+    const src = m || { finishes: [{ key: cur.finish, label: cur.finishLabel }], fits: [{ key: cur.fit, label: cur.fitLabel }] };
+    h += fld('Finish', `<select id="pFfuF">${src.finishes.map(f => `<option value="${f.key}" ${f.key === cur.finish ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}</select>`);
+    if (src.fits.length > 1) h += fld('Fits grid', `<select id="pFfuG">${src.fits.map(f => `<option value="${f.key}" ${f.key === cur.fit ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}</select>`);
+    const s4 = cur.sizes.find(z => z.nominal === '2x4') || cur.sizes[0];
+    h += `<p class="note">${n} FFU${n === 1 ? '' : 's'} on this plan. ${s4 ? `2×4: ${(s4.w * 12).toFixed(2)}″ × ${(s4.d * 12).toFixed(2)}″, ${(s4.overall * 12).toFixed(2)}″ tall above the grid${s4.cfm ? ', ' + s4.cfm + ' CFM' : ''}${s4.lb ? ', ' + s4.lb + ' lb' : ''}.` : ''} Dollhouse view shows the units above the ceiling.</p>`;
+  } else h += `<p class="note">Pick a manufacturer model to see each FFU as the real unit in 3D and on the parts list.</p>`;
+  return h + '</div>';
+}
+function bindFfuPanel(P) {
+  const sel = $('#pFfuM'); if (!sel) return;
+  sel.onchange = async () => {
+    const v = sel.value;
+    if (v === '+rfa') { await addRevitFamily(); renderProps(); return; }
+    if (!v) { ed.edit(Q => { delete Q.ffuModel; }); return; }
+    const m = allFfuModels().find(x => x.id === v); if (!m) return;
+    ed.edit(Q => { Q.ffuModel = Plan3DEquipment.planSpec(m, (Q.ffuModel && Q.ffuModel.fit) || null, (Q.ffuModel && Q.ffuModel.finish) || null); });
+  };
+  const re = (fit, finish) => { const m = allFfuModels().find(x => x.id === P.ffuModel.id); if (!m) return; ed.edit(Q => { Q.ffuModel = Plan3DEquipment.planSpec(m, fit, finish); }); };
+  if ($('#pFfuF')) $('#pFfuF').onchange = (e) => re(P.ffuModel.fit, e.target.value);
+  if ($('#pFfuG')) $('#pFfuG').onchange = (e) => re(e.target.value, P.ffuModel.finish);
+}
+async function addRevitFamily() {
+  if (!api.readRfa) return;
+  const r = await api.readRfa(); if (!r) return;
+  if (r.error) { dialogOpen({ title: 'Can’t use that family', body: `<p>${esc(r.error)}</p>`, buttons: [{ label: 'OK', primary: true, ret: null }] }); return; }
+  let m;
+  try { m = Plan3DEquipment.readRevitFamily(r.xml, r.name); }
+  catch (e) { dialogOpen({ title: 'Can’t use that family', body: `<p>${esc(e.message)}</p><p>Coll Plan3D reads a family's sizes (width, depth, height, housing) from its type table. Fan filter unit families from Envirco, Price, Terra and others usually have them.</p>`, buttons: [{ label: 'OK', primary: true, ret: null }] }); return; }
+  const sizes = m.fits.reduce((a, f) => a + f.sizes.length, 0);
+  equipLib = equipLib.filter(x => x.id !== m.id).concat([m]);
+  if (api.equipLibSave) await api.equipLibSave(equipLib);
+  ed.edit(Q => { Q.ffuModel = Plan3DEquipment.planSpec(m); });
+  toast(`Added ${m.name}: ${sizes} size${sizes === 1 ? '' : 's'}, ${m.finishes.length} finish${m.finishes.length === 1 ? '' : 'es'}. It's saved for your other projects too.`);
 }
 
 /* ---------- Dialog helper ---------- */
