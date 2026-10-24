@@ -116,9 +116,12 @@ function analyze(plan) {
     for (const [a, b] of cuts) { if (a > c + 0.004) segs.push([c, a]); c = Math.max(c, b); }
     if (len > c + 0.004) segs.push([c, len]);
     for (const [a, b] of segs) pieces.push({ id: w.id, piece: w.piece || null, x1: w.x1 + ux * a, z1: w.y1 + uz * a, x2: w.x1 + ux * b, z2: w.y1 + uz * b, t, sp: !!w.sp, s0: a, len: b - a });
-    ends.push({ x: w.x1, z: w.y1, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[0] < 0.01) });
-    ends.push({ x: w.x2, z: w.y2, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[1] > len - 0.01) });
+    ends.push({ x: w.x1, z: w.y1, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[0] < 0.01), w });
+    ends.push({ x: w.x2, z: w.y2, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[1] > len - 0.01), w });
   }
+  // A wall end that meets another wall (a straight run drawn in pieces, or a tee) is a joint, not a free end:
+  // it gets no end post, so runs don't sprout a post at every joint.
+  for (const e of ends) e.joined = walls.some(o => o !== e.w && segDist(e.x, e.z, o.x1, o.y1, o.x2, o.y2) < Math.max(e.t, o.t || 0.25) / 2 + 0.06);
   const CORNER = 4 / 12, corners = [], nodes = [];
   for (const w of walls) for (const [x, y, st] of [[w.x1, w.y1, true], [w.x2, w.y2, false]]) {
     let n = nodes.find(n => Math.hypot(n.x - x, n.y - y) < 0.3);
@@ -297,12 +300,39 @@ function snapFixture(f, G) {
   const x0 = G.ox + Math.round((f.x - fw / 2 - G.ox) / sx) * sx, z0 = G.oz + Math.round((f.y - fh / 2 - G.oz) / sz) * sz;
   return { ...f, x: x0 + fw / 2, y: z0 + fh / 2 };
 }
+/* Does a wall run through this fixture? (its centreline crosses the fixture's box, ignoring a 1″ edge so a
+   fixture that just meets a wall face doesn't count) */
+function fixtureHitsWall(f, A) {
+  const hw = (f.w || 2) / 2 - 0.09, hh = (f.h || 4) / 2 - 0.09;
+  for (const p of A.pieces) {
+    const x0 = f.x - hw, x1 = f.x + hw, z0 = f.y - hh, z1 = f.y + hh;
+    // clip the wall's centreline to the box (Liang–Barsky)
+    let t0 = 0, t1 = 1; const dx = p.x2 - p.x1, dz = p.z2 - p.z1;
+    const clip = (q, d) => { if (Math.abs(d) < 1e-12) return q >= 0; const t = q / d; if (d < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; } return true; };
+    if (clip(p.x1 - x0, -dx) && clip(x1 - p.x1, dx) && clip(p.z1 - z0, -dz) && clip(z1 - p.z1, dz) && t0 <= t1) return true;
+  }
+  return false;
+}
+/* Snapping to the grid can push a fixture into a wall. Then use the nearest whole cell that's clear of walls
+   (within a cell of where it was put); if none is, keep the snapped spot. */
+function clearOfWalls(s, f, G, A) {
+  if (!A.pieces.length || !fixtureHitsWall(s, A)) return s;
+  const w = s.w || 2, h = s.h || 4, sx = w > 2.2 ? G.cl : G.cw, sz = h > 2.2 ? G.cl : (h <= 2.2 && w <= 2.2 ? G.cw : G.cl);
+  let best = null, bd = 1e9;
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+    if (!i && !j) continue;
+    const c = snapFixture({ ...s, x: s.x + i * sx, y: s.y + j * sz }, G);
+    if (fixtureHitsWall(c, A)) continue;
+    const d = Math.hypot(c.x - f.x, c.y - f.y); if (d < bd) { bd = d; best = c; }
+  }
+  return best || s;
+}
 function ceilingFixtures(plan, A) {
   A = A || analyze(plan);
   const G = ceilingGrid(plan, A);
   if (plan.ceilingMode === 'manual') {
     const own = Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length > 0;
-    return (plan.fixtures || []).map(f => own ? { ...f } : snapFixture(f, G));
+    return (plan.fixtures || []).map(f => own ? { ...f } : clearOfWalls(snapFixture(f, G), f, G, A));
   }
   const B = A.bounds, out = []; let k = 0;
   const gx0 = G.ox + Math.ceil((B.minX + 2 - G.ox) / 2) * 2, gz0 = G.oz + Math.ceil((B.minZ + 4 - G.oz) / 4) * 4;
@@ -437,7 +467,7 @@ function buildScene(THREE, plan, A) {
   }
   const seen = [];
   for (const e of A.ends) {
-    if (e.cut || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue;
+    if (e.cut || e.joined || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue;
     seen.push(e);
     const m = new THREE.Mesh(new THREE.BoxGeometry(e.t, H, e.t), M.white);
     m.position.set(e.x, H / 2, e.z); m.rotation.y = e.ang; root.add(m); pick.push(m);

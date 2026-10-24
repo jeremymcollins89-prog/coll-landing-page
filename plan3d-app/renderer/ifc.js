@@ -197,13 +197,21 @@ function toIfc(plan, opts) {
   E(`IFCRELAGGREGATES('${guid()}',$,$,$,${project},(${site}))`); E(`IFCRELAGGREGATES('${guid()}',$,$,$,${site},(${bld}))`); E(`IFCRELAGGREGATES('${guid()}',$,$,$,${bld},(${storey}))`);
   // colours
   const style = (name, r, g, b, tr) => E(`IFCSURFACESTYLE(${stepStr(name)},.BOTH.,(${E(`IFCSURFACESTYLESHADING(${E(`IFCCOLOURRGB($,${num(r)},${num(g)},${num(b)})`)},${num(tr || 0)})`)}))`);
-  const S = { white: style('Panel white', 0.97, 0.97, 0.97), door: style('Door', 0.9, 0.91, 0.91), glass: style('Glass', 0.7, 0.85, 0.9, 0.6), steel: style('Stainless', 0.66, 0.68, 0.69), ffu: style('FFU', 0.85, 0.88, 0.89), ceiling: style('Ceiling tile', 0.95, 0.95, 0.94) };
+  const S = { white: style('Panel white', 0.97, 0.97, 0.97), door: style('Door', 0.9, 0.91, 0.91), glass: style('Glass', 0.7, 0.85, 0.9, 0.6), steel: style('Stainless', 0.66, 0.68, 0.69), ffu: style('FFU', 0.85, 0.88, 0.89), face: style('Filter face', 0.78, 0.8, 0.81), ceiling: style('Ceiling tile', 0.95, 0.95, 0.94) };
   const elPl = E(`IFCLOCALPLACEMENT(${stPl},${ax3})`);
   const contained = [];
   // a solid: a plan outline (feet) pushed up from z0 to z1 (feet)
   const solid = (pts, z0, z1, st) => {
     const ring = pts.map(p => P2(p[0], p[1])); ring.push(ring[0]);
     const prof = E(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${E(`IFCPOLYLINE((${ring.join(',')}))`)})`);
+    const pos = E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((0.,0.,${num(z0 * MM)}))`)},$,$)`);
+    const s = E(`IFCEXTRUDEDAREASOLID(${prof},${pos},${dirZ},${num(Math.max(1, (z1 - z0) * MM))})`);
+    if (st) E(`IFCSTYLEDITEM(${s},(${st}),$)`);
+    return s;
+  };
+  // a round solid (inlet ring): centre (feet), radius (feet), from z0 to z1
+  const disc = (cx, cy, r, z0, z1, st) => {
+    const prof = E(`IFCCIRCLEPROFILEDEF(.AREA.,$,${E(`IFCAXIS2PLACEMENT2D(${P2(cx, cy)},$)`)},${num(r * MM)})`);
     const pos = E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((0.,0.,${num(z0 * MM)}))`)},$,$)`);
     const s = E(`IFCEXTRUDEDAREASOLID(${prof},${pos},${dirZ},${num(Math.max(1, (z1 - z0) * MM))})`);
     if (st) E(`IFCSTYLEDITEM(${s},(${st}),$)`);
@@ -223,7 +231,7 @@ function toIfc(plan, opts) {
   }
   const seen = [];
   for (const e of A.ends) {
-    if (e.cut || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue; seen.push(e);
+    if (e.cut || e.joined || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue; seen.push(e);
     const h = e.t / 2; put('IFCCOLUMN', 'End post', 'Coll wall post', shape([solid([[e.x - h, e.z - h], [e.x + h, e.z - h], [e.x + h, e.z + h], [e.x - h, e.z + h]], 0, H, S.white)]), ',.COLUMN.');
   }
   // openings: the door / glass / pass-thru, with wall above (and below glass)
@@ -266,9 +274,25 @@ function toIfc(plan, opts) {
         // the real unit: cabinet in the grid, blower housing on top
         const long = Math.max(f.w || 2, f.h || 4), nominal = '2x' + Math.max(2, Math.min(4, Math.round(long)));
         const z = FM.sizes.find(q => q.nominal === nominal) || FM.sizes[0], alongZ = (f.h || 4) >= (f.w || 2);
-        const rect = (a, b) => { const hx = (alongZ ? b : a) / 2, hz = (alongZ ? a : b) / 2; return [[f.x - hx, f.y - hz], [f.x + hx, f.y - hz], [f.x + hx, f.y + hz], [f.x - hx, f.y + hz]]; };
+        const fs = FM.finish === 'sst' || FM.finish === 'alum' ? S.steel : S.white;
+        // the same unit the 3D view draws: local u across the short side (d), v along the long side (w)
+        const at = (u, v) => alongZ ? [f.x + u, f.y + v] : [f.x + v, f.y - u];
+        const box = (u0, u1, v0, v1) => [at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)];
+        const e = 1.25 / 12, hd = Math.min(z.hd, z.d - 0.1) / 2, hwl = Math.min(z.hw, z.w - 0.1) / 2, r = Math.min(z.hw, z.hd) * 0.36;
+        const solids = [
+          // knife-edge frame in the grid and the filter face inside it
+          solid(box(-z.d / 2, z.d / 2, -z.w / 2, -z.w / 2 + e), H - 0.04, H + 0.01, fs), solid(box(-z.d / 2, z.d / 2, z.w / 2 - e, z.w / 2), H - 0.04, H + 0.01, fs),
+          solid(box(-z.d / 2, -z.d / 2 + e, -z.w / 2 + e, z.w / 2 - e), H - 0.04, H + 0.01, fs), solid(box(z.d / 2 - e, z.d / 2, -z.w / 2 + e, z.w / 2 - e), H - 0.04, H + 0.01, fs),
+          solid(box(-z.d / 2 + e, z.d / 2 - e, -z.w / 2 + e, z.w / 2 - e), H - 0.035, H + 0.01, S.face),
+          // cabinet above the grid, blower housing centred on it, inlet ring on top
+          solid(box(-z.d / 2 + 0.015, z.d / 2 - 0.015, -z.w / 2 + 0.015, z.w / 2 - 0.015), H + 0.01, H + z.h, fs),
+          solid(box(-hd, hd, -hwl, hwl), H + z.h, H + z.overall, fs),
+          disc(...at(0, 0), r, H + z.overall, H + z.overall + 0.06, S.steel),
+          // electrical box on the cabinet top, toward one end
+          solid(box(-z.d / 2 + 0.12, -z.d / 2 + 0.12 + z.ebox, z.w / 2 - 0.45 - 2.25 / 12, z.w / 2 - 0.45 + 2.25 / 12), H + z.h, H + z.h + 3.5 / 12, fs)
+        ];
         put('IFCAIRTERMINAL', 'Fan filter unit, ' + (FM.maker ? FM.maker + ' ' : '') + (FM.model || FM.name), (FM.name || 'FFU') + ' ' + nominal + ', ' + (FM.finishLabel || ''),
-          shape([solid(rect(z.w, z.d), H - 0.04, H + z.h, S.ffu), solid(rect(Math.min(z.hw, z.w), Math.min(z.hd, z.d)), H + z.h, H + z.overall, S.ffu)]), ',.DIFFUSER.');
+          shape(solids), ',.DIFFUSER.');
       } else if (f.type === 'ffu') put('IFCAIRTERMINAL', 'Fan filter unit', 'FFU', shape([solid(pts, H - 0.04, H + 1, S.ffu)]), ',.DIFFUSER.');
       else put('IFCLIGHTFIXTURE', 'LED light', 'LED troffer', shape([solid(pts, H - 0.04, H + 0.33, S.white)]), ',.DIRECTIONSOURCE.');
     }
