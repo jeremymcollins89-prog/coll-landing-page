@@ -32,7 +32,8 @@ function partsList(plan) {
   };
   // hardwall (cleanroom) walls get panels, studs, posts, track and base; building walls get their own lines
   const walls = A.walls.filter(w => V.isHard(w)), built = new Set(walls.filter(w => w.piece).map(w => w.id));
-  const hgt = ' × ' + ftin(H);
+  // panels and posts run the full wall height: up through the plenum when there is one
+  const WH = A.WH || H, hgt = ' × ' + ftin(WH);
 
   // --- Panels
   for (const w of walls) {
@@ -86,11 +87,11 @@ function partsList(plan) {
     else if (k === 3) tees++;
     else crosses++;
   }
-  if (hStuds) add('Studs & posts', 'H-stud, 3″ with insert (panel joint)', '3″ × ' + ftin(H), hStuds, 'ea', 20);
-  if (corners) add('Studs & posts', 'Corner post', '4″ × 4″ × ' + ftin(H), corners, 'ea', 21);
-  if (tees) add('Studs & posts', 'T-post', ftin(H), tees, 'ea', 22);
-  if (crosses) add('Studs & posts', 'Cross post', ftin(H), crosses, 'ea', 23);
-  if (caps) add('Studs & posts', 'End cap', ftin(H), caps, 'ea', 24);
+  if (hStuds) add('Studs & posts', 'H-stud, 3″ with insert (panel joint)', '3″ × ' + ftin(WH), hStuds, 'ea', 20);
+  if (corners) add('Studs & posts', 'Corner post', '4″ × 4″ × ' + ftin(WH), corners, 'ea', 21);
+  if (tees) add('Studs & posts', 'T-post', ftin(WH), tees, 'ea', 22);
+  if (crosses) add('Studs & posts', 'Cross post', ftin(WH), crosses, 'ea', 23);
+  if (caps) add('Studs & posts', 'End cap', ftin(WH), caps, 'ea', 24);
 
   // --- Doors, glass, pass-thrus
   for (const i of A.opInfo) {
@@ -171,6 +172,7 @@ function partsList(plan) {
     const fpr = V.footprint ? V.footprint(A) : null;
     const area = fpr ? fpr.area : A.bounds.w * A.bounds.d, tiles = Math.max(0, Math.ceil(area / 8) - nLed - nFfu);
     add('Ceiling', 'Ceiling tile, 2×4 (approx.)', '2′ × 4′', tiles, 'ea', 62);
+    if (A.PL > 0) add('Ceiling', 'Plenum lid (top of the cleanroom)', ftin(A.PL) + ' plenum above the grid, top at ' + ftin(A.WH), Math.ceil(area), 'sq ft', 67);
     if (!(plan.ceilingGrid && plan.ceilingGrid.length)) add('Ceiling', 'Ceiling grid (area, approx.)', '', Math.ceil(area), 'sq ft', 63);
   }
 

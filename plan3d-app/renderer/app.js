@@ -260,6 +260,8 @@ function renderProps(opt) {
   h = `<div class="hd"><span class="kind">Plan</span></div>
     ${fld('Name', txt('pPName', P.name))}
     ${fld('Ceiling', txt('pCeil', fmt(P.ceiling)))}
+    ${fld('Plenum above', txt('pPlen', fmt(P.plenum || 0)))}
+    <p class="note" style="margin-top:-4px">Plenum: the space between the grid ceiling and the top of the cleanroom. Walls are ${esc(fmt((P.ceiling || 8) + (P.plenum || 0)))} tall.</p>
     ${fld('New wall type', `<select id="pNK">${Object.entries(Plan3DViewer.WALL_KINDS).map(([k, v]) => `<option value="${k}" ${(P.newKind || 'hardwall') === k ? 'selected' : ''}>${esc(v.short)}</option>`).join('')}</select>`)}
     ${fld('New walls', txt('pWT', fmtIn(P.wallT || 0.25)))}
     ${(P.walls.some(w => !Plan3DViewer.isHard(w)) || (P.newKind && P.newKind !== 'hardwall')) ? fld('Building wall height', txt('pSH', fmt(P.shellH || 20))) : ''}
@@ -294,6 +296,7 @@ function renderProps(opt) {
   box.innerHTML = h;
   $('#pPName').onchange = e => ed.edit(Pl => { Pl.name = e.target.value.trim() || 'Untitled plan'; });
   bindLen('pCeil', 'ft', v => ed.edit(Pl => { Pl.ceiling = Math.max(6, Math.min(30, v)); }));
+  bindLen('pPlen', 'ft', v => ed.edit(Pl => { Pl.plenum = Math.max(0, Math.min(20, v)); }));
   bindLen('pWT', 'in', v => { ed.plan.wallT = Math.max(1 / 48, v); renderProps(); });
   $('#pNK').onchange = e => { const k = e.target.value, K = Plan3DViewer.WALL_KINDS[k]; ed.plan.newKind = k === 'hardwall' ? undefined : k; ed.plan.wallT = k === 'hardwall' ? 0.25 : K.t; ed.dirty = true; renderProps(); msg(k === 'hardwall' ? 'New walls: hardwall cleanroom panels.' : 'New walls: ' + K.label + ', ' + fmtIn(K.t) + ' thick. Draw them with the Wall tool (W).'); };
   bindLen('pSH', 'ft', v => ed.edit(Pl => { Pl.shellH = Math.max(6, Math.min(80, v)); }));
@@ -927,6 +930,7 @@ async function insertProps(box, o) {
     ${fld('Left side at', txt('iX', fmt(b.x0)))}
     ${fld('Top side at', txt('iY', fmt(b.y0)))}
     ${fld('Ceiling', txt('iCeil', fmt(o.plan.ceiling || 8)))}
+    ${fld('Plenum above', txt('iPlen', fmt(o.plan.plenum || 0)))}
     <div class="row"><button class="btn small" id="iL">⟲ Turn left</button><button class="btn small" id="iR">⟳ Turn right</button><button class="btn small" id="iM">Mirror</button></div>
     ${newer ? `<p class="note" style="color:#f2c84b">A newer version of “${esc(L.name)}” is in the library (saved ${esc(fmtDate(L.savedAt))}).</p><div class="row"><button class="btn small primary" id="iUpd">Update to the newer version</button></div>` : ''}
     <div class="row"><button class="btn small" id="iSwap">Replace with another building…</button></div>
@@ -936,6 +940,7 @@ async function insertProps(box, o) {
   bindLen('iX', 'ft', v => ed.edit(() => { o.x += v - b.x0; }));
   bindLen('iY', 'ft', v => ed.edit(() => { o.y += v - b.y0; }));
   bindLen('iCeil', 'ft', v => ed.edit(() => { o.plan.ceiling = Math.max(6, Math.min(30, v)); o._v = Date.now(); }));
+  bindLen('iPlen', 'ft', v => ed.edit(() => { o.plan.plenum = Math.max(0, Math.min(20, v)); o._v = Date.now(); }));
   $('#iL').onclick = () => ed.edit(() => { o.rot = ((o.rot || 0) + 3) % 4; });
   $('#iR').onclick = () => ed.edit(() => { o.rot = ((o.rot || 0) + 1) % 4; });
   $('#iM').onclick = () => ed.edit(() => { o.mirror = !o.mirror; });
