@@ -500,14 +500,20 @@ function toIfc(plan, opts) {
   if (!A.empty && opts.ceiling !== false) {
     // One ceiling per connected area, traced around the room footprint, so Revit shows no seams where
     // smaller pieces would meet.
-    areas.forEach((ar, idx) => put('IFCCOVERING', areas.length > 1 ? `Ceiling ${idx + 1}` : 'Ceiling', 'Coll cleanroom ceiling', shape([slab(ar, H, H + 0.052, S.ceiling)]), ',.CEILING.', S.ceiling));
+    // names carry the heights, so they read in Revit's properties and schedules
+    const cName = A.house ? 'Ceiling, drywall at ' + V.fmtFt(H) : 'Ceiling, grid at ' + V.fmtFt(H);
+    areas.forEach((ar, idx) => put('IFCCOVERING', areas.length > 1 ? `${cName} (${idx + 1})` : cName, A.house ? 'House ceiling' : 'Coll cleanroom grid ceiling, 2×4 tiles', shape([slab(ar, H, H + 0.052, S.ceiling)]), ',.CEILING.', S.ceiling));
     // the plenum lid: the top of the cleanroom, over the plenum
-    if (A.PL > 0) areas.forEach((ar, idx) => put('IFCSLAB', areas.length > 1 ? `Plenum lid ${idx + 1}` : 'Plenum lid', 'Coll cleanroom top over the plenum', shape([slab(ar, WH, WH + 0.17, S.white)]), ',.ROOF.', S.white));
+    // (a roof-type slab, so in Revit it hides with Roofs in Visibility/Graphics while the grid ceiling stays,
+    // like the Plenum view)
+    const lName = 'Plenum lid, top at ' + V.fmtFt(WH) + ' (' + V.fmtFt(A.PL) + ' plenum)';
+    if (A.PL > 0) areas.forEach((ar, idx) => put('IFCSLAB', areas.length > 1 ? `${lName} (${idx + 1})` : lName, 'Coll cleanroom top over the plenum', shape([slab(ar, WH, WH + 0.17, S.white)]), ',.ROOF.', S.white));
     // the T-grid just under the tiles: 15/16″ tees on the 2′ × 4′ layout (or the imported ceiling drawing's
     // own grid), only where there's ceiling
-    const tees = [], TW = 15 / 16 / 12;
+    // each tee: the 15/16″ face below the tiles and its web standing up 1½″ into the plenum
+    const tees = [], TW = 15 / 16 / 12, tee = (x1, y1, x2, y2) => [seg(x1, y1, x2, y2, H - 0.035, H, TW, S.grid), seg(x1, y1, x2, y2, H + 0.052, H + 0.17, 0.028, S.grid)];
     if (Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length) {
-      for (const q of plan.ceilingGrid) tees.push(seg(q[0], q[1], q[2], q[3], H - 0.035, H, TW, S.grid));
+      for (const q of plan.ceilingGrid) tees.push(...tee(q[0], q[1], q[2], q[3]));
     } else if (footprint && A.hardAny) {
       const G = V.ceilingGrid(plan, A), B = A.bounds, step = footprint.cell / 2;
       const runs = (fixed, lo, hi, isX) => {
@@ -515,7 +521,7 @@ function toIfc(plan, opts) {
         for (let v = lo; v <= hi + 1e-9; v += step) {
           const inside = isX ? footprint.has(fixed, v) : footprint.has(v, fixed);
           if (inside && st === null) st = v;
-          if ((!inside || v + step > hi + 1e-9) && st !== null) { const e = inside ? v : v - step; if (e - st > 0.3) tees.push(isX ? seg(fixed, st, fixed, e, H - 0.035, H, TW, S.grid) : seg(st, fixed, e, fixed, H - 0.035, H, TW, S.grid)); st = null; }
+          if ((!inside || v + step > hi + 1e-9) && st !== null) { const e = inside ? v : v - step; if (e - st > 0.3) tees.push(...(isX ? tee(fixed, st, fixed, e) : tee(st, fixed, e, fixed))); st = null; }
         }
       };
       for (let x = G.ox + Math.ceil((B.minX - G.ox) / G.cw) * G.cw; x <= B.maxX; x += G.cw) runs(x, B.minZ, B.maxZ, true);
