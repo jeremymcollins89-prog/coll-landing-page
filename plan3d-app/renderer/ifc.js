@@ -240,9 +240,36 @@ function toIfc(plan, opts) {
   const bld = E(`IFCBUILDING('${guid()}',$,${stepStr(plan.name || 'Building')},$,$,${bldPl},$,$,.ELEMENT.,$,$,$)`);
   const storey = E(`IFCBUILDINGSTOREY('${guid()}',$,'Level 1',$,$,${stPl},$,$,.ELEMENT.,0.)`);
   E(`IFCRELAGGREGATES('${guid()}',$,$,$,${project},(${site}))`); E(`IFCRELAGGREGATES('${guid()}',$,$,$,${site},(${bld}))`); E(`IFCRELAGGREGATES('${guid()}',$,$,$,${bld},(${storey}))`);
-  // colours
-  const style = (name, r, g, b, tr) => E(`IFCSURFACESTYLE(${stepStr(name)},.BOTH.,(${E(`IFCSURFACESTYLESHADING(${E(`IFCCOLOURRGB($,${num(r)},${num(g)},${num(b)})`)},${num(tr || 0)})`)}))`);
-  const S = { white: style('Panel white', 0.97, 0.97, 0.97), door: style('Door', 0.9, 0.91, 0.91), glass: style('Glass', 0.7, 0.85, 0.9, 0.6), steel: style('Stainless', 0.66, 0.68, 0.69), ffu: style('FFU', 0.85, 0.88, 0.89), face: style('Filter face', 0.78, 0.8, 0.81), ceiling: style('Ceiling tile', 0.95, 0.95, 0.94) };
+  // Materials, matched to the 3D view. Each is an IfcMaterial with a rendering style, so Revit creates a
+  // material of that colour, finish and transparency (glass stays see-through in a Revit render).
+  const matOf = {}, styleMats = [];
+  const style = (name, r, g, b, tr, spec, shine, method) => {
+    const col = E(`IFCCOLOURRGB($,${num(r)},${num(g)},${num(b)})`);
+    const st = E(`IFCSURFACESTYLE(${stepStr(name)},.BOTH.,(${E(`IFCSURFACESTYLERENDERING(${col},${num(tr || 0)},IFCNORMALISEDRATIOMEASURE(1.),$,$,$,IFCNORMALISEDRATIOMEASURE(${num(spec == null ? 0.1 : spec)}),IFCSPECULAREXPONENT(${num(shine || 16)}),.${method || 'PLASTIC'}.)`)}))`);
+    styleMats.push([name, st]);
+    return st;
+  };
+  const S = {
+    white: style('Coll panel, white', 0.97, 0.97, 0.97, 0, 0.08, 16),
+    sp: style('Coll S.P. panel, yellow', 0.96, 0.86, 0.5, 0, 0.08, 16),
+    batten: style('Coll panel joint, H-stud', 0.93, 0.94, 0.94, 0, 0.1, 20),
+    base: style('Coll rubber base, black', 0.09, 0.1, 0.1, 0, 0.16, 28),
+    track: style('Coll ceiling track, aluminum', 0.87, 0.89, 0.89, 0, 0.33, 40, 'METAL'),
+    frame: style('Coll door frame, white', 0.97, 0.98, 0.98, 0, 0.13, 24),
+    door: style('Coll door leaf, white', 0.98, 0.99, 0.99, 0, 0.11, 16),
+    hardware: style('Coll door hardware, satin', 0.73, 0.75, 0.76, 0, 0.53, 60, 'METAL'),
+    lite: style('Coll door vision lite', 0.72, 0.83, 0.86, 0.65, 1, 90, 'GLASS'),
+    glass: style('Coll vision glass', 0.62, 0.85, 0.9, 0.78, 1, 90, 'GLASS'),
+    steel: style('Coll stainless steel', 0.75, 0.77, 0.78, 0, 0.6, 55, 'METAL'),
+    grille: style('Coll return grille', 0.8, 0.82, 0.83, 0, 0.1, 16),
+    floor: style('Coll floor, gray epoxy', 0.6, 0.62, 0.63, 0, 0.06, 22),
+    ceiling: style('Coll ceiling tile, white', 0.95, 0.95, 0.94, 0, 0.02, 4, 'MATT'),
+    grid: style('Coll ceiling grid, white', 0.96, 0.97, 0.97, 0, 0.13, 24),
+    led: style('Coll LED light lens', 1, 1, 1, 0, 0.05, 8),
+    ffu: style('Coll FFU, white powder coat', 0.95, 0.96, 0.96, 0, 0.13, 18),
+    face: style('Coll FFU filter face', 0.78, 0.8, 0.81, 0, 0.1, 16)
+  };
+  S.ffuFace = S.face;
   const elPl = E(`IFCLOCALPLACEMENT(${stPl},${ax3})`);
   const contained = [];
   // a solid: a plan outline (feet) pushed up from z0 to z1 (feet)
@@ -264,61 +291,142 @@ function toIfc(plan, opts) {
   };
   const shape = (solids) => E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${E(`IFCSHAPEREPRESENTATION(${body},'Body','SweptSolid',(${solids.join(',')}))`)}))`);
   const quad = (x1, y1, x2, y2, t) => { const L = Math.hypot(x2 - x1, y2 - y1) || 1, nx = -(y2 - y1) / L * t / 2, ny = (x2 - x1) / L * t / 2; return [[x1 + nx, y1 + ny], [x2 + nx, y2 + ny], [x2 - nx, y2 - ny], [x1 - nx, y1 - ny]]; };
-  const put = (cls, name, objType, sh, tail) => { const id = E(`${cls}('${guid()}',$,${stepStr(name)},$,${objType ? stepStr(objType) : '$'},${elPl},${sh},$${tail})`); contained.push(id); return id; };
+  // a box along a line: from (x1, y1) to (x2, y2), t thick, z0 to z1 high
+  const seg = (x1, y1, x2, y2, z0, z1, t, st) => solid(quad(x1, y1, x2, y2, t), z0, z1, st);
+  const box = (x0, y0, x1, y1, z0, z1, st) => solid([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], z0, z1, st);
+  const put = (cls, name, objType, sh, tail, mat) => { const id = E(`${cls}('${guid()}',$,${stepStr(name)},$,${objType ? stepStr(objType) : '$'},${elPl},${sh},$${tail})`); contained.push(id); if (mat) (matOf[mat] = matOf[mat] || []).push(id); return id; };
+  // rubber base (4″) and ceiling track on both faces of a wall line, as in the 3D view
+  const trim = (x1, y1, x2, y2, t, top) => [seg(x1, y1, x2, y2, 0, 0.333, t + 0.022, S.base), ...(top ? [seg(x1, y1, x2, y2, H - 0.17, H, t + 0.03, S.track)] : [])];
 
-  // walls: the panel runs between openings, full height
-  for (const p of A.pieces) put('IFCWALL', p.sp ? 'S.P. panel wall' : 'Modular wall panel', 'Coll modular cleanroom wall', shape([solid(quad(p.x1, p.z1, p.x2, p.z2, p.t), 0, H, S.white)]), ',.STANDARD.');
+  // walls: the panel runs between openings, full height, with the panel joints (H-studs) on the 48″ module
+  // from the wall's start, rubber base and ceiling track
+  for (const p of A.pieces) {
+    const ux = (p.x2 - p.x1) / (p.len || 1), uz = (p.z2 - p.z1) / (p.len || 1), parts = [seg(p.x1, p.z1, p.x2, p.z2, 0, H, p.t, p.sp ? S.sp : S.white), ...trim(p.x1, p.z1, p.x2, p.z2, p.t, true)];
+    for (let m = Math.floor(p.s0 / 4 + 1e-6) * 4 + 4; m < p.s0 + p.len - 0.2; m += 4) {
+      if (m - p.s0 < 0.2) continue;
+      const k = m - p.s0, a = [p.x1 + ux * (k - 0.125), p.z1 + uz * (k - 0.125)], b = [p.x1 + ux * (k + 0.125), p.z1 + uz * (k + 0.125)];
+      parts.push(seg(a[0], a[1], b[0], b[1], 0.333, H - 0.17, p.t + 0.012, S.batten));
+    }
+    put('IFCWALL', p.sp ? 'S.P. panel wall' : 'Modular wall panel', 'Coll hardwall cleanroom wall', shape(parts), ',.STANDARD.', p.sp ? S.sp : S.white);
+  }
   // posts: corners (4″ × 4″, L-shaped and flush) and free wall ends
   for (const c of A.corners) {
     const O = [c.x, c.z], Pt = (u, v, du, dv) => [O[0] + u[0] * du + v[0] * dv, O[1] + u[1] * du + v[1] * dv];
     const pts = [Pt(c.a, c.b, 0, 0), Pt(c.a, c.b, c.size, 0), Pt(c.a, c.b, c.size, c.wt), Pt(c.a, c.b, c.wt, c.wt), Pt(c.b, c.a, c.size, c.wt), Pt(c.b, c.a, c.size, 0)];
-    put('IFCCOLUMN', 'Corner post 4x4', 'Coll corner post', shape([solid(pts, 0, H, S.white)]), ',.COLUMN.');
+    const parts = [solid(pts, 0, H, S.white)];
+    for (const [u, v] of [[c.a, c.b], [c.b, c.a]]) { const x1 = c.x + v[0] * c.wt / 2, z1 = c.z + v[1] * c.wt / 2; parts.push(...trim(x1, z1, x1 + u[0] * c.size, z1 + u[1] * c.size, c.wt, true)); }
+    put('IFCCOLUMN', 'Corner post 4x4', 'Coll corner post', shape(parts), ',.COLUMN.', S.white);
   }
   const seen = [];
   for (const e of A.ends) {
     if (e.cut || e.joined || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue; seen.push(e);
-    const h = e.t / 2; put('IFCCOLUMN', 'End post', 'Coll wall post', shape([solid([[e.x - h, e.z - h], [e.x + h, e.z - h], [e.x + h, e.z + h], [e.x - h, e.z + h]], 0, H, S.white)]), ',.COLUMN.');
+    const h = e.t / 2, g = h + 0.011;
+    put('IFCCOLUMN', 'End post', 'Coll wall post', shape([box(e.x - h, e.z - h, e.x + h, e.z + h, 0, H, S.white), box(e.x - g, e.z - g, e.x + g, e.z + g, 0, 0.333, S.base)]), ',.COLUMN.', S.white);
   }
   // openings: the door / glass / pass-thru, with wall above (and below glass)
   for (const i of A.opInfo) {
-    const o = i.o, t = i.t, head = Math.min(H, o.head || 7);
-    if (H - head > 0.02) put('IFCWALL', 'Header panel', 'Coll modular cleanroom wall', shape([solid(quad(o.x1, o.y1, o.x2, o.y2, t), head, H, S.white)]), ',.STANDARD.');
+    const o = i.o, t = i.t, head = Math.min(H, o.head || 7), ax = o.x1, ay = o.y1, bx = o.x2, by = o.y2;
+    const along = (s, off) => [ax + i.ux * s - i.uz * (off || 0), ay + i.uz * s + i.ux * (off || 0)];
+    if (H - head > 0.02) put('IFCWALL', 'Header panel', 'Coll hardwall cleanroom wall', shape([seg(ax, ay, bx, by, head, H, t, S.white), ...(H - head > 0.2 ? [seg(ax, ay, bx, by, H - 0.17, H, t + 0.03, S.track)] : [])]), ',.STANDARD.', S.white);
     if (o.type === 'door' || o.type === 'door2') {
-      const w = i.len * MM, hh = head * MM;
-      put('IFCDOOR', o.type === 'door2' ? 'Pair of doors 6070' : 'Door 3070', 'Coll cleanroom door', shape([solid(quad(o.x1, o.y1, o.x2, o.y2, Math.min(t, 0.15)), 0, head, S.door)]),
-        `,${num(hh)},${num(w)},.DOOR.,${o.type === 'door2' ? '.DOUBLE_DOOR_SINGLE_SWING.' : '.SINGLE_SWING_LEFT.'},$`);
+      // frame: jambs and head; leaves (closed) with a vision lite, lite frame, closer and lever, as in the 3D view
+      const [j1x, j1y] = along(-0.14), [j2x, j2y] = along(i.len + 0.14);
+      const parts = [seg(j1x, j1y, ax, ay, 0, head, t + 0.06, S.frame), seg(bx, by, j2x, j2y, 0, head, t + 0.06, S.frame), seg(j1x, j1y, j2x, j2y, head - 0.02, Math.min(H, head + 0.12), t + 0.06, S.frame)];
+      for (const l of i.leaves) {
+        const L = Math.hypot(l.x2 - l.x1, l.z2 - l.z1) || 1, dx = (l.x2 - l.x1) / L, dz = (l.z2 - l.z1) / L;
+        const f = (k) => [l.x1 + dx * L * k, l.z1 + dz * L * k];
+        const top = Math.min(head - 0.1, 6.9), v0 = 3.6, v1 = Math.min(6.05, top - 0.5);
+        const [a0x, a0z] = f(0), [b0x, b0z] = f(0.2), [b1x, b1z] = f(0.8), [a1x, a1z] = f(1), [c0x, c0z] = f(0.165), [c1x, c1z] = f(0.835);
+        parts.push(seg(a0x, a0z, a1x, a1z, 0.05, v0, 0.14, S.door), seg(a0x, a0z, a1x, a1z, v1, top, 0.14, S.door),
+          seg(a0x, a0z, b0x, b0z, v0, v1, 0.14, S.door), seg(b1x, b1z, a1x, a1z, v0, v1, 0.14, S.door),
+          seg(b0x, b0z, b1x, b1z, v0, v1, 0.06, S.lite),
+          seg(c0x, c0z, c1x, c1z, v0 - 0.07, v0, 0.18, S.frame), seg(c0x, c0z, c1x, c1z, v1, v1 + 0.07, 0.18, S.frame),
+          seg(c0x, c0z, b0x, b0z, v0, v1, 0.18, S.frame), seg(b1x, b1z, c1x, c1z, v0, v1, 0.18, S.frame));
+        const [h0x, h0z] = f(0.86), [h1x, h1z] = f(0.94); parts.push(seg(h0x, h0z, h1x, h1z, 3.25, 3.33, 0.42, S.hardware));
+        const [d0x, d0z] = f(0.08), [d1x, d1z] = f(0.45), ox = l.tx * 0.13, oz = l.tz * 0.13;
+        parts.push(seg(d0x + ox, d0z + oz, d1x + ox, d1z + oz, top - 0.42, top - 0.2, 0.13, S.hardware));
+      }
+      put('IFCDOOR', o.type === 'door2' ? 'Pair of doors 6070' : 'Door 3070', 'Coll cleanroom door', shape(parts),
+        `,${num(head * MM)},${num(i.len * MM)},.DOOR.,${o.type === 'door2' ? '.DOUBLE_DOOR_SINGLE_SWING.' : '.SINGLE_SWING_LEFT.'},$`, S.door);
     } else if (o.type === 'glass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill));
-      if (sill > 0.02) put('IFCWALL', 'Sill panel', 'Coll modular cleanroom wall', shape([solid(quad(o.x1, o.y1, o.x2, o.y2, t), 0, sill, S.white)]), ',.STANDARD.');
-      put('IFCWINDOW', 'Vision glass', 'Coll cleanroom window', shape([solid(quad(o.x1, o.y1, o.x2, o.y2, 0.05), sill, head, S.glass)]), `,${num((head - sill) * MM)},${num(i.len * MM)},.WINDOW.,.SINGLE_PANEL.,$`);
+      if (sill > 0.02) put('IFCWALL', 'Sill panel', 'Coll hardwall cleanroom wall', shape([seg(ax, ay, bx, by, 0, sill, t, S.white), ...trim(ax, ay, bx, by, t, false)]), ',.STANDARD.', S.white);
+      const [p1x, p1y] = along(0.12), [p2x, p2y] = along(i.len - 0.12);
+      put('IFCWINDOW', 'Vision glass', 'Coll cleanroom window', shape([seg(ax, ay, bx, by, sill, head, 0.05, S.glass),
+        seg(ax, ay, bx, by, sill, sill + 0.12, t + 0.06, S.frame), seg(ax, ay, bx, by, head - 0.12, head, t + 0.06, S.frame),
+        seg(ax, ay, p1x, p1y, sill, head, t + 0.06, S.frame), seg(p2x, p2y, bx, by, sill, head, t + 0.06, S.frame)]),
+        `,${num((head - sill) * MM)},${num(i.len * MM)},.WINDOW.,.SINGLE_PANEL.,$`, S.glass);
     } else if (o.type === 'pass') {
-      const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill)), D = Math.max(t + 0.1, o.depth || 2);
-      if (sill > 0.02) put('IFCWALL', 'Sill panel', 'Coll modular cleanroom wall', shape([solid(quad(o.x1, o.y1, o.x2, o.y2, t), 0, sill, S.white)]), ',.STANDARD.');
-      put('IFCBUILDINGELEMENTPROXY', 'Pass-thru', 'Coll pass-thru', shape([solid(quad(o.x1, o.y1, o.x2, o.y2, D), sill, head, S.steel)]), ',.ELEMENT.');
+      const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill)), D = Math.max(t + 0.1, o.depth || 2), ph = head - sill;
+      if (sill > 0.02) put('IFCWALL', 'Sill panel', 'Coll hardwall cleanroom wall', shape([seg(ax, ay, bx, by, 0, sill, t, S.white), ...trim(ax, ay, bx, by, t, false)]), ',.STANDARD.', S.white);
+      const [f1x, f1y] = along(-0.1), [f2x, f2y] = along(i.len + 0.1);
+      const parts = [seg(ax, ay, bx, by, sill, head, D, S.steel),
+        seg(f1x, f1y, f2x, f2y, sill - 0.1, sill, t + 0.05, S.steel), seg(f1x, f1y, f2x, f2y, head, head + 0.1, t + 0.05, S.steel),
+        seg(f1x, f1y, ax, ay, sill, head, t + 0.05, S.steel), seg(bx, by, f2x, f2y, sill, head, t + 0.05, S.steel)];
+      for (const sg of [1, -1]) {
+        const off = sg * (D / 2 + 0.02);
+        const [w1x, w1y] = along(i.len * 0.25, off + sg * 0.012), [w2x, w2y] = along(i.len * 0.75, off + sg * 0.012);
+        parts.push(seg(w1x, w1y, w2x, w2y, sill + ph * 0.42, head - 0.22, 0.03, S.lite));
+        const [h1x, h1y] = along(i.len - 0.3, off + sg * 0.05), [h2x, h2y] = along(i.len - 0.22, off + sg * 0.05);
+        parts.push(seg(h1x, h1y, h2x, h2y, sill + ph * 0.3, sill + ph * 0.62, 0.08, S.hardware));
+      }
+      put('IFCBUILDINGELEMENTPROXY', 'Pass-thru', 'Coll pass-thru, stainless', shape(parts), ',.ELEMENT.', S.steel);
     }
   }
-  // air chases
-  for (const b of A.boxes) put('IFCBUILDINGELEMENTPROXY', 'Air chase', 'Coll air chase', shape([solid([[b.x0, b.z0], [b.x1, b.z0], [b.x1, b.z1], [b.x0, b.z1]], 0, H, S.white)]), ',.ELEMENT.');
+  // air chases, with base, track and the return grille on the room face
+  for (const b of A.boxes) {
+    const w = b.x1 - b.x0, d = b.z1 - b.z0; if (w < 0.02 || d < 0.02) continue;
+    const parts = [box(b.x0, b.z0, b.x1, b.z1, 0, H, S.white), box(b.x0 - 0.011, b.z0 - 0.011, b.x1 + 0.011, b.z1 + 0.011, 0, 0.333, S.base), box(b.x0 - 0.015, b.z0 - 0.015, b.x1 + 0.015, b.z1 + 0.015, H - 0.17, H, S.track)];
+    const f = b.grille;
+    if (f) {
+      const G = V.grilleSize(b.c, (f === 'N' || f === 'S') ? w : d, H), gt = 0.04, cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2;
+      if (f === 'W' || f === 'E') { const x = f === 'W' ? b.x0 - gt : b.x1; parts.push(box(x, cz - G.w / 2, x + gt, cz + G.w / 2, G.sill, G.sill + G.h, S.grille)); }
+      else { const z = f === 'N' ? b.z0 - gt : b.z1; parts.push(box(cx - G.w / 2, z, cx + G.w / 2, z + gt, G.sill, G.sill + G.h, S.grille)); }
+    }
+    put('IFCBUILDINGELEMENTPROXY', 'Air chase', 'Coll air chase', shape(parts), ',.ELEMENT.', S.white);
+  }
 
-  // ceiling, lights and fan filter units (Constrained strictly to room footprints)
+  // floor, ceiling, ceiling grid, lights and fan filter units, all inside the room footprint
+  const footprint = !A.empty && V.footprint ? V.footprint(A) : null;
+  const areas = footprint ? outlineAreas(footprint) : [];
+  if (!areas.length && !A.empty) {
+    const B = A.bounds; areas.push({ outer: [[B.minX, B.minZ], [B.maxX, B.minZ], [B.maxX, B.maxZ], [B.minX, B.maxZ]], holes: [] });
+  }
+  const ring = (pts) => { const r = pts.map(p => P2(p[0], p[1])); r.push(r[0]); return E(`IFCPOLYLINE((${r.join(',')}))`); };
+  const slab = (ar, z0, z1, st) => {
+    const prof = ar.holes.length
+      ? E(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,${ring(ar.outer)},(${ar.holes.map(ring).join(',')}))`)
+      : E(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${ring(ar.outer)})`);
+    const pos = E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((0.,0.,${num(z0 * MM)}))`)},$,$)`);
+    const sl = E(`IFCEXTRUDEDAREASOLID(${prof},${pos},${dirZ},${num((z1 - z0) * MM)})`);
+    E(`IFCSTYLEDITEM(${sl},(${st}),$)`);
+    return sl;
+  };
+  // the cleanroom floor (gray epoxy), its top at the floor level
+  if (opts.floor !== false) areas.forEach((ar, idx) => put('IFCSLAB', areas.length > 1 ? `Cleanroom floor ${idx + 1}` : 'Cleanroom floor', 'Coll cleanroom floor, epoxy', shape([slab(ar, -0.33, 0, S.floor)]), ',.FLOOR.', S.floor));
   if (!A.empty && opts.ceiling !== false) {
     // One ceiling per connected area, traced around the room footprint, so Revit shows no seams where
-    // smaller pieces would meet. Without a footprint, one slab over the plan.
-    const footprint = V.footprint ? V.footprint(A) : null;
-    const areas = footprint ? outlineAreas(footprint) : [];
-    if (!areas.length) {
-      const B = A.bounds; areas.push({ outer: [[B.minX, B.minZ], [B.maxX, B.minZ], [B.maxX, B.maxZ], [B.minX, B.maxZ]], holes: [] });
+    // smaller pieces would meet.
+    areas.forEach((ar, idx) => put('IFCCOVERING', areas.length > 1 ? `Ceiling ${idx + 1}` : 'Ceiling', 'Coll cleanroom ceiling', shape([slab(ar, H, H + 0.052, S.ceiling)]), ',.CEILING.', S.ceiling));
+    // the T-grid just under the tiles: 15/16″ tees on the 2′ × 4′ layout (or the imported ceiling drawing's
+    // own grid), only where there's ceiling
+    const tees = [], TW = 15 / 16 / 12;
+    if (Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length) {
+      for (const q of plan.ceilingGrid) tees.push(seg(q[0], q[1], q[2], q[3], H - 0.035, H, TW, S.grid));
+    } else if (footprint) {
+      const G = V.ceilingGrid(plan, A), B = A.bounds, step = footprint.cell / 2;
+      const runs = (fixed, lo, hi, isX) => {
+        let st = null;
+        for (let v = lo; v <= hi + 1e-9; v += step) {
+          const inside = isX ? footprint.has(fixed, v) : footprint.has(v, fixed);
+          if (inside && st === null) st = v;
+          if ((!inside || v + step > hi + 1e-9) && st !== null) { const e = inside ? v : v - step; if (e - st > 0.3) tees.push(isX ? seg(fixed, st, fixed, e, H - 0.035, H, TW, S.grid) : seg(st, fixed, e, fixed, H - 0.035, H, TW, S.grid)); st = null; }
+        }
+      };
+      for (let x = G.ox + Math.ceil((B.minX - G.ox) / G.cw) * G.cw; x <= B.maxX; x += G.cw) runs(x, B.minZ, B.maxZ, true);
+      for (let z = G.oz + Math.ceil((B.minZ - G.oz) / G.cl) * G.cl; z <= B.maxZ; z += G.cl) runs(z, B.minX, B.maxX, false);
     }
-    const ring = (pts) => { const r = pts.map(p => P2(p[0], p[1])); r.push(r[0]); return E(`IFCPOLYLINE((${r.join(',')}))`); };
-    areas.forEach((ar, idx) => {
-      const prof = ar.holes.length
-        ? E(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,${ring(ar.outer)},(${ar.holes.map(ring).join(',')}))`)
-        : E(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${ring(ar.outer)})`);
-      const pos = E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((0.,0.,${num(H * MM)}))`)},$,$)`);
-      const sl = E(`IFCEXTRUDEDAREASOLID(${prof},${pos},${dirZ},${num(0.052 * MM)})`);
-      E(`IFCSTYLEDITEM(${sl},(${S.ceiling}),$)`);
-      put('IFCCOVERING', areas.length > 1 ? `Ceiling ${idx + 1}` : 'Ceiling', 'Coll cleanroom ceiling', shape([sl]), ',.CEILING.');
-    });
+    if (tees.length) put('IFCMEMBER', 'Ceiling grid', 'Coll ceiling T-grid, 15/16″', shape(tees), ',.MEMBER.', S.grid);
 
     for (const f of V.ceilingFixtures(plan, A)) {
       const hw = (f.w || 1.9) / 2, hh = (f.h || 3.9) / 2, pts = [[f.x - hw, f.y - hh], [f.x + hw, f.y - hh], [f.x + hw, f.y + hh], [f.x - hw, f.y + hh]];
@@ -327,7 +435,7 @@ function toIfc(plan, opts) {
         // the real unit: cabinet in the grid, blower housing on top
         const long = Math.max(f.w || 2, f.h || 4), nominal = '2x' + Math.max(2, Math.min(4, Math.round(long)));
         const z = FM.sizes.find(q => q.nominal === nominal) || FM.sizes[0], alongZ = (f.h || 4) >= (f.w || 2);
-        const fs = FM.finish === 'sst' || FM.finish === 'alum' ? S.steel : S.white;
+        const fs = FM.finish === 'sst' || FM.finish === 'alum' ? S.steel : S.ffu;
         // the same unit the 3D view draws: local u across the short side (d), v along the long side (w)
         const at = (u, v) => alongZ ? [f.x + u, f.y + v] : [f.x + v, f.y - u];
         const box = (u0, u1, v0, v1) => [at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)];
@@ -345,12 +453,23 @@ function toIfc(plan, opts) {
           solid(box(-z.d / 2 + 0.12, -z.d / 2 + 0.12 + z.ebox, z.w / 2 - 0.45 - 2.25 / 12, z.w / 2 - 0.45 + 2.25 / 12), H + z.h, H + z.h + 3.5 / 12, fs)
         ];
         put('IFCAIRTERMINAL', 'Fan filter unit, ' + (FM.maker ? FM.maker + ' ' : '') + (FM.model || FM.name), (FM.name || 'FFU') + ' ' + nominal + ', ' + (FM.finishLabel || ''),
-          shape(solids), ',.DIFFUSER.');
-      } else if (f.type === 'ffu') put('IFCAIRTERMINAL', 'Fan filter unit', 'FFU', shape([solid(pts, H - 0.04, H + 1, S.ffu)]), ',.DIFFUSER.');
-      else put('IFCLIGHTFIXTURE', 'LED light', 'LED troffer', shape([solid(pts, H - 0.04, H + 0.33, S.white)]), ',.DIRECTIONSOURCE.');
+          shape(solids), ',.DIFFUSER.', fs);
+      } else if (f.type === 'ffu') put('IFCAIRTERMINAL', 'Fan filter unit', 'FFU', shape([solid(pts, H - 0.04, H - 0.03, S.face), solid(pts, H - 0.03, H + 1, S.ffu)]), ',.DIFFUSER.', S.ffu);
+      else {
+        // LED flat panel: white lens a hair below the grid inside a thin white frame, housing above
+        const e = 0.06, inner = [[f.x - hw + e, f.y - hh + e], [f.x + hw - e, f.y - hh + e], [f.x + hw - e, f.y + hh - e], [f.x - hw + e, f.y + hh - e]];
+        put('IFCLIGHTFIXTURE', 'LED light', 'LED flat panel', shape([solid(pts, H - 0.03, H + 0.33, S.frame), solid(inner, H - 0.04, H - 0.03, S.led)]), ',.DIRECTIONSOURCE.', S.led);
+      }
     }
   }
   E(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid()}',$,$,$,(${contained.join(',')}),${storey})`);
+  // named materials carrying each style, so Revit builds proper materials for rendering
+  for (const [name, st] of styleMats) {
+    if (!matOf[st]) continue;
+    const mat = E(`IFCMATERIAL(${stepStr(name)},$,$)`);
+    E(`IFCMATERIALDEFINITIONREPRESENTATION($,$,(${E(`IFCSTYLEDREPRESENTATION(${ctx},'Style','Material',(${E(`IFCSTYLEDITEM($,(${st}),$)`)}))`)}),${mat})`);
+    E(`IFCRELASSOCIATESMATERIAL('${guid()}',$,$,$,(${matOf[st].join(',')}),${mat})`);
+  }
   // the Coll Plan3D project itself, for opening the file here again
   const bytes = new TextEncoder().encode(JSON.stringify(plan)); let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
