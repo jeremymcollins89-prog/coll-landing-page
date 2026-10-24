@@ -82,9 +82,42 @@ const WALL_KINDS = {
   concrete: { label: 'Concrete (tilt-up / poured)', short: 'Concrete', t: 8 / 12, color: 0xb9b6ae, plan: '#a9a59c' },
   cmu: { label: 'Concrete block (CMU)', short: 'Block', t: 8 / 12, color: 0xc9c5bb, plan: '#bdb7aa' },
   metal: { label: 'Metal building panel', short: 'Metal panel', t: 6 / 12, color: 0xdfe3e5, plan: '#b6c3ca' },
-  stud: { label: 'Stud wall, drywall', short: 'Stud / drywall', t: 4.875 / 12, color: 0xefede8, plan: '#d9d4c8' }
+  stud: { label: 'Stud wall, drywall', short: 'Stud / drywall', t: 4.875 / 12, color: 0xefede8, plan: '#d9d4c8' },
+  // house walls: framed, drywall inside, sheathing and siding outside; as tall as the ceiling
+  wood: { label: 'Wood stud wall (house)', short: 'Wood stud', t: 4.5 / 12, color: 0xf2efe9, plan: '#e6d3b3', frame: true },
+  steel: { label: 'Steel stud wall (house)', short: 'Steel stud', t: 4.5 / 12, color: 0xf2efe9, plan: '#c9d3da', frame: true }
 };
 const isHard = (w) => !w || !w.kind || w.kind === 'hardwall' || !WALL_KINDS[w.kind];
+const isFrame = (w) => !!(w && w.kind && WALL_KINDS[w.kind] && WALL_KINDS[w.kind].frame);
+
+/* ---------- House items: kitchen, bath, laundry, utility ----------
+   w = width along the wall, d = depth out from the wall, h = height (feet). wv: width can change. */
+const ITEMS = {
+  base: { label: 'Base cabinet', group: 'Kitchen', w: 3, d: 2, h: 3, wv: true },
+  sinkbase: { label: 'Sink base with sink', group: 'Kitchen', w: 3, d: 2, h: 3, wv: true },
+  upper: { label: 'Upper cabinet', group: 'Kitchen', w: 3, d: 1, h: 2.5, z: 4.5, wv: true },
+  tall: { label: 'Pantry cabinet', group: 'Kitchen', w: 2, d: 2, h: 7, wv: true },
+  island: { label: 'Island', group: 'Kitchen', w: 6, d: 3, h: 3, wv: true },
+  range: { label: 'Range / oven', group: 'Kitchen', w: 2.5, d: 2.17, h: 3 },
+  fridge: { label: 'Refrigerator', group: 'Kitchen', w: 3, d: 2.5, h: 5.83 },
+  dishwasher: { label: 'Dishwasher', group: 'Kitchen', w: 2, d: 2, h: 2.83 },
+  toilet: { label: 'Toilet', group: 'Bathroom', w: 1.67, d: 2.42, h: 2.5 },
+  vanity: { label: 'Vanity with sink', group: 'Bathroom', w: 3, d: 1.75, h: 2.83, wv: true },
+  tub: { label: 'Bathtub', group: 'Bathroom', w: 5, d: 2.5, h: 1.67 },
+  shower: { label: 'Shower', group: 'Bathroom', w: 3, d: 3, h: 6.67, wv: true },
+  washer: { label: 'Washer', group: 'Laundry & utility', w: 2.25, d: 2.33, h: 3.17 },
+  dryer: { label: 'Dryer', group: 'Laundry & utility', w: 2.25, d: 2.33, h: 3.17 },
+  waterheater: { label: 'Water heater', group: 'Laundry & utility', w: 1.83, d: 1.83, h: 5 },
+  furnace: { label: 'Furnace', group: 'Laundry & utility', w: 1.75, d: 2.33, h: 4 }
+};
+/* an item's footprint corners on the plan (a = angle of its width axis; the back is at -d/2) */
+function itemCorners(it) {
+  const D = ITEMS[it.type] || { w: 2, d: 2 }, w = it.w || D.w, d = it.d || D.d, a = it.a || 0, c = Math.cos(a), sn = Math.sin(a);
+  const P = (u, v) => [it.x + c * u - sn * v, it.y + sn * u + c * v];
+  return [P(-w / 2, -d / 2), P(w / 2, -d / 2), P(w / 2, d / 2), P(-w / 2, d / 2)];
+}
+/* floor finishes for houses (cleanrooms get the gray epoxy floor) */
+const FLOORS = { lvp: 'Luxury vinyl plank', hardwood: 'Hardwood', carpet: 'Carpet', tile: 'Ceramic tile', concrete: 'Sealed concrete' };
 const shellHeight = (plan, w) => Math.max(6, (w && w.h) || (plan && plan.shellH) || 20);
 
 /* ---------- Buildings placed in a plan ----------
@@ -214,8 +247,8 @@ function analyze(plan) {
     let c = 0; const segs = [];
     for (const [a, b] of cuts) { if (a > c + 0.004) segs.push([c, a]); c = Math.max(c, b); }
     if (len > c + 0.004) segs.push([c, len]);
-    const hard = isHard(w), kind = hard ? 'hardwall' : w.kind, wh = hard ? WH : shellHeight(plan, w);
-    for (const [a, b] of segs) pieces.push({ id: w.id, piece: w.piece || null, x1: w.x1 + ux * a, z1: w.y1 + uz * a, x2: w.x1 + ux * b, z2: w.y1 + uz * b, t, sp: !!w.sp && hard, s0: a, len: b - a, kind, hard, h: wh });
+    const hard = isHard(w), frame = isFrame(w), kind = hard ? 'hardwall' : w.kind, wh = hard ? WH : frame ? Math.max(6, w.h || H) : shellHeight(plan, w);
+    for (const [a, b] of segs) pieces.push({ id: w.id, piece: w.piece || null, x1: w.x1 + ux * a, z1: w.y1 + uz * a, x2: w.x1 + ux * b, z2: w.y1 + uz * b, t, sp: !!w.sp && hard, s0: a, len: b - a, kind, hard, frame, ceilw: hard || frame, h: wh, ext: w.ext });
     ends.push({ x: w.x1, z: w.y1, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[0] < 0.01), w });
     ends.push({ x: w.x2, z: w.y2, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[1] > len - 0.01), w });
   }
@@ -251,7 +284,7 @@ function analyze(plan) {
     for (const w of walls) { const d = segDist((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, w.x1, w.y1, w.x2, w.y2); if (d < best) { best = d; host = w; } }
     if (best > 1.5) host = null;
     if (!t) t = host && host.t ? host.t : 0.25;
-    const hard = isHard(host), i = { o, len, ux: dx / len, uz: dz / len, t, hard, kind: hard ? 'hardwall' : host.kind, wallH: hard ? WH : shellHeight(plan, host) };
+    const hard = isHard(host), frame = isFrame(host), i = { o, len, ux: dx / len, uz: dz / len, t, hard, frame, ceilw: hard || frame, kind: hard ? 'hardwall' : host.kind, wallH: hard ? WH : frame ? Math.max(6, host.h || H) : shellHeight(plan, host) };
     i.leaves = leavesFor(i);
     opInfo.push(i);
   }
@@ -265,12 +298,15 @@ function analyze(plan) {
   const obs = [];
   pieces.forEach(p => obs.push({ x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, r: p.t / 2 }));
   opInfo.forEach(i => {
-    if (i.o.type === 'glass') obs.push({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, r: i.t / 2 });
+    if (i.o.type === 'glass' || i.o.type === 'window') obs.push({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, r: i.t / 2 });
     if (i.o.type === 'pass') obs.push({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, r: Math.max(i.t, i.o.depth || 2) / 2 });
   });
   const boxes = chases.map(c => ({ x0: Math.min(c.x0, c.x1), x1: Math.max(c.x0, c.x1), z0: Math.min(c.y0, c.y1), z1: Math.max(c.y0, c.y1), grille: c.grille || '', c }));
-  const hardAny = pieces.some(p => p.hard), shellTop = pieces.reduce((m, p) => p.hard ? m : Math.max(m, p.h), 0);
-  return { H, PL, WH, hardAny, shellTop, walls, pieces, ends, corners, opInfo, boxes, obs, empty, bounds: { minX, minZ, maxX, maxZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, w: maxX - minX, d: maxZ - minZ } };
+  const hardAny = pieces.some(p => p.hard), frameAny = pieces.some(p => p.frame), shellTop = pieces.reduce((m, p) => p.hard || p.frame ? m : Math.max(m, p.h), 0);
+  // house items block walking
+  const items = (plan.items || []).filter(it => ITEMS[it.type]).map(it => ({ it, c: itemCorners(it) }));
+  for (const q of items) for (let k = 0; k < 4; k++) { const a = q.c[k], b = q.c[(k + 1) % 4]; obs.push({ x1: a[0], z1: a[1], x2: b[0], z2: b[1], r: 0.05 }); }
+  return { H, PL, WH, hardAny, frameAny, ceilAny: hardAny || frameAny, house: frameAny && !hardAny, items, shellTop, walls, pieces, ends, corners, opInfo, boxes, obs, empty, bounds: { minX, minZ, maxX, maxZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, w: maxX - minX, d: maxZ - minZ } };
 }
 
 /* Return grille on an air chase: c.grW / c.grH (feet) and c.grSill (feet, floor to bottom of the grille),
@@ -291,7 +327,7 @@ function footprint(A, all) {
   if (A[KEY] !== undefined) return A[KEY];
   A[KEY] = null;
   if (A.empty) return null;
-  if (!all && !A.hardAny) return null;
+  if (!all && !A.ceilAny) return null;
   const use = (h) => all || h !== false;
   const B = A.bounds, R = 0.75;
   let cell = 0.25;
@@ -311,13 +347,13 @@ function footprint(A, all) {
       if (d <= r) wall[j * nx + i] = 1;
     }
   };
-  for (const p of A.pieces) if (use(p.hard)) stamp(p.x1, p.z1, p.x2, p.z2, p.t);
-  for (const i of A.opInfo) if (use(i.hard)) stamp(i.o.x1, i.o.y1, i.o.x2, i.o.y2, i.t);
+  for (const p of A.pieces) if (use(p.ceilw)) stamp(p.x1, p.z1, p.x2, p.z2, p.t);
+  for (const i of A.opInfo) if (use(i.ceilw)) stamp(i.o.x1, i.o.y1, i.o.x2, i.o.y2, i.t);
   for (const b of A.boxes) { stamp(b.x0, b.z0, b.x1, b.z0, 0.1); stamp(b.x1, b.z0, b.x1, b.z1, 0.1); stamp(b.x1, b.z1, b.x0, b.z1, 0.1); stamp(b.x0, b.z1, b.x0, b.z0, 0.1); }
   const segD = (px, pz, w) => { const dx = w.x2 - w.x1, dz = w.y2 - w.y1, L2 = dx * dx + dz * dz || 1e-9, u = Math.max(0, Math.min(1, ((px - w.x1) * dx + (pz - w.y1) * dz) / L2)); return Math.hypot(px - w.x1 - u * dx, pz - w.y1 - u * dz); };
   const free = [];
   for (const w of A.walls) for (const [x, z] of [[w.x1, w.y1], [w.x2, w.y2]]) {
-    if (!use(isHard(w))) continue;
+    if (!use(isHard(w) || isFrame(w))) continue;
     const t = w.t || 0.25;
     if (A.walls.some(o => o !== w && segD(x, z, o) < Math.max(t, o.t || 0.25) * 0.8)) continue;
     // an end beside an opening is a door jamb (the opening closes it), unless the opening sits inside this
@@ -346,7 +382,7 @@ function footprint(A, all) {
   });
   // gaps up to 12′ between wall ends on the same straight line count as closed (a doorway with no door, or
   // where a building placed next to this one carries on) so the ceiling and floor stay inside
-  const LW = A.walls.filter(w => use(isHard(w)) && Math.hypot(w.x2 - w.x1, w.y2 - w.y1) > 0.3);
+  const LW = A.walls.filter(w => use(isHard(w) || isFrame(w)) && Math.hypot(w.x2 - w.x1, w.y2 - w.y1) > 0.3);
   for (let i = 0; i < LW.length; i++) for (let j = i + 1; j < LW.length; j++) {
     const a = LW[i], b = LW[j], la = Math.hypot(a.x2 - a.x1, a.y2 - a.y1), ux = (a.x2 - a.x1) / la, uz = (a.y2 - a.y1) / la;
     const lb = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
@@ -391,7 +427,7 @@ function footprint(A, all) {
       else { const [a, b] = key.split(',').map(Number); open.set(key, [x0 + a * cell, z0 + j * cell, x0 + b * cell, z0 + (j + 1) * cell]); }
     }
   }
-  const fp = { cell, x0, z0, nx, nz, inside, rects, area: n * cell * cell,
+  const fp = { cell, x0, z0, nx, nz, inside, wall, rects, area: n * cell * cell,
     has(x, z) { const i = Math.floor((x - x0) / cell), j = Math.floor((z - z0) / cell); return i >= 0 && j >= 0 && i < nx && j < nz && !!inside[j * nx + i]; } };
   A[KEY] = fp;
   return fp;
@@ -491,6 +527,124 @@ function ceilingFixtures(plan, A) {
   return out;
 }
 
+/* ---------- house helpers ---------- */
+const FLOOR_TEX = {};
+function floorMat(THREE, kind) {
+  if (FLOOR_TEX[kind]) return FLOOR_TEX[kind];
+  const draw = {
+    lvp: [256, 256, 4, 4, (g, w, h) => { const tones = ['#b58a5e', '#a97f55', '#c09468', '#9d7550', '#b9905f']; const pw = h / 8; for (let r = 0; r < 8; r++) { let x = -((r * 97) % w); while (x < w) { const L = w * (0.45 + ((r * 31 + x) % 40) / 100); g.fillStyle = tones[(((r + Math.floor(x / 7)) % tones.length) + tones.length) % tones.length]; g.fillRect(x, r * pw, L, pw); g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(x, r * pw, 1.2, pw); x += L; } g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(0, r * pw, w, 1); } for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(60,35,10,${Math.random() * .08})`; g.fillRect(Math.random() * w, Math.random() * h, 14, 1); } }],
+    hardwood: [256, 256, 3, 3, (g, w, h) => { const tones = ['#7a4f2e', '#6c4427', '#855733', '#5f3c22']; const pw = h / 12; for (let r = 0; r < 12; r++) { let x = -((r * 53) % w); while (x < w) { const L = w * (0.3 + ((r * 17 + x) % 30) / 100); g.fillStyle = tones[(((r + Math.floor(x / 7)) % tones.length) + tones.length) % tones.length]; g.fillRect(x, r * pw, L, pw); g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x, r * pw, 1, pw); x += L; } g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(0, r * pw, w, 1); } for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(30,15,5,${Math.random() * .1})`; g.fillRect(Math.random() * w, Math.random() * h, 16, 1); } }],
+    carpet: [128, 128, 3, 3, (g, w, h) => { g.fillStyle = '#b9ad9a'; g.fillRect(0, 0, w, h); for (let i = 0; i < 5000; i++) { const v = Math.random() < .5 ? '0,0,0' : '255,255,255'; g.fillStyle = `rgba(${v},${Math.random() * .07})`; g.fillRect(Math.random() * w, Math.random() * h, 1, 1); } }],
+    tile: [128, 128, 2, 2, (g, w, h) => { g.fillStyle = '#d9d6cf'; g.fillRect(0, 0, w, h); for (let i = 0; i < 1500; i++) { g.fillStyle = `rgba(0,0,0,${Math.random() * .04})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } g.fillStyle = '#a9a59d'; g.fillRect(0, 0, w, 2); g.fillRect(0, h / 2, w, 2); g.fillRect(0, 0, 2, h); g.fillRect(w / 2, 0, 2, h); }],
+    concrete: [128, 128, 8, 8, (g, w, h) => { g.fillStyle = '#b7b4ad'; g.fillRect(0, 0, w, h); for (let i = 0; i < 3000; i++) { const v = Math.random() < .5 ? '0,0,0' : '255,255,255'; g.fillStyle = `rgba(${v},${Math.random() * .05})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } }]
+  }[kind] || null;
+  if (!draw) return floorMat(THREE, 'lvp');
+  const t = new THREE.CanvasTexture(makeCanvas(draw[0], draw[1], draw[4])); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = ANISO;
+  return (FLOOR_TEX[kind] = { mat: new THREE.MeshLambertMaterial({ map: t }), su: draw[2], sv: draw[3] });
+}
+/* Rooms of a house: each room label's area, split by walls and openings (door cells count as walls here). */
+function roomRegions(A, plan) {
+  const fp = footprint(A, true); if (!fp || !fp.wall) return [];
+  const { nx, nz, inside, wall, cell, x0, z0 } = fp, comp = new Int32Array(nx * nz).fill(-1), out = [];
+  for (const room of plan.rooms || []) {
+    const i0 = Math.floor((room.x - x0) / cell), j0 = Math.floor((room.y - z0) / cell);
+    if (i0 < 0 || j0 < 0 || i0 >= nx || j0 >= nz) continue;
+    const k0 = j0 * nx + i0; if (!inside[k0] || wall[k0] || comp[k0] >= 0) continue;
+    const id = out.length, st = [k0], cells = []; comp[k0] = id;
+    while (st.length) { const k = st.pop(); cells.push(k); const i = k % nx, j = (k - i) / nx;
+      for (const q of [i > 0 ? k - 1 : -1, i < nx - 1 ? k + 1 : -1, j > 0 ? k - nx : -1, j < nz - 1 ? k + nx : -1]) if (q >= 0 && inside[q] && !wall[q] && comp[q] < 0) { comp[q] = id; st.push(q); } }
+    // rectangles: runs per row, merged down the rows (cells grown by half a cell so rooms meet the walls)
+    const rows = new Map(); for (const k of cells) { const i = k % nx, j = (k - i) / nx; (rows.get(j) || rows.set(j, []).get(j)).push(i); }
+    const rects = [];
+    for (const [j, is] of rows) { is.sort((a, b) => a - b); let a = is[0], b = a; for (let q = 1; q <= is.length; q++) { if (q < is.length && is[q] === b + 1) { b = is[q]; continue; } rects.push([x0 + (a - 0.5) * cell, z0 + (j - 0.5) * cell, x0 + (b + 1.5) * cell, z0 + (j + 1.5) * cell]); if (q < is.length) a = b = is[q]; } }
+    out.push({ room, rects, area: cells.length * cell * cell });
+  }
+  return out;
+}
+/* A roof over the house as a height field: hip = Chebyshev distance to the eaves (gives hips and valleys on
+   any square-cornered plan), gable = distance across the short way only, flat = a low-slope deck. */
+function roofField(A, plan, fp) {
+  const R = plan.roof || {}, ov = Math.max(0, R.overhang == null ? 1 : R.overhang), slope = (R.pitch == null ? 6 : R.pitch) / 12, s = 0.5;
+  const B = A.bounds, gx0 = B.minX - ov - 2, gz0 = B.minZ - ov - 2, nx = Math.ceil((B.w + 2 * ov + 4) / s), nz = Math.ceil((B.d + 2 * ov + 4) / s), N = nx * nz;
+  const ins = new Uint8Array(N); for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) ins[j * nx + i] = fp.has(gx0 + (i + 0.5) * s, gz0 + (j + 0.5) * s) ? 1 : 0;
+  const cheb = (seed, axis) => { // distance (cells) from each cell to the nearest seed cell
+    const D = new Float32Array(N); for (let k = 0; k < N; k++) D[k] = seed[k] ? 0 : 1e9;
+    const pass = (rev) => { for (let jj = 0; jj < nz; jj++) { const j = rev ? nz - 1 - jj : jj; for (let ii = 0; ii < nx; ii++) { const i = rev ? nx - 1 - ii : ii, k = j * nx + i; let d = D[k];
+      const nb = (di, dj) => { const a = i + di, b = j + dj; if (a < 0 || b < 0 || a >= nx || b >= nz) return; d = Math.min(d, D[b * nx + a] + 1); };
+      if (axis !== 'z') nb(rev ? 1 : -1, 0); if (axis !== 'x') nb(0, rev ? 1 : -1); if (!axis) { nb(-1, rev ? 1 : -1); nb(1, rev ? 1 : -1); }
+      D[k] = d; } } };
+    pass(false); pass(true); return D;
+  };
+  const toIns = cheb(ins), roofed = new Uint8Array(N); for (let k = 0; k < N; k++) roofed[k] = toIns[k] * s <= ov + 1e-6 ? 1 : 0;
+  const outside = new Uint8Array(N); for (let k = 0; k < N; k++) outside[k] = roofed[k] ? 0 : 1;
+  const type = R.type || 'gable', axis = type === 'gable' ? (B.w >= B.d ? 'z' : 'x') : null;
+  const D = cheb(outside, axis), H = A.H, Z = new Float32Array(N);
+  for (let k = 0; k < N; k++) Z[k] = !roofed[k] ? 0 : type === 'flat' ? H + 0.6 : H + slope * (D[k] * s - s / 2 - ov);
+  return { s, gx0, gz0, nx, nz, roofed, Z, H, ov, slope, type, at(x, z) { const i = Math.floor((x - gx0) / s), j = Math.floor((z - gz0) / s); if (i < 0 || j < 0 || i >= nx || j >= nz) return H; const k = j * nx + i; return roofed[k] ? Z[k] : H; } };
+}
+function buildRoof(THREE, group, A, plan, fp, sidingMat, M) {
+  const F = roofField(A, plan, fp), { s, gx0, gz0, nx, nz, roofed, Z } = F;
+  const pos = [], uv = [], h = (i, j) => { i = Math.max(0, Math.min(nx - 1, i)); j = Math.max(0, Math.min(nz - 1, j)); return Z[j * nx + i]; };
+  // vertex heights at cell corners: the average of the roofed cells around them
+  const vz = (i, j) => { let t = 0, n = 0; for (const [a, b] of [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]]) { if (a < 0 || b < 0 || a >= nx || b >= nz || !roofed[b * nx + a]) continue; t += Z[b * nx + a]; n++; } return n ? t / n : F.H; };
+  const V = new Float32Array((nx + 1) * (nz + 1)); for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) V[j * (nx + 1) + i] = vz(i, j);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    if (!roofed[j * nx + i]) continue;
+    const x0 = gx0 + i * s, z0 = gz0 + j * s, P = [[x0, V[j * (nx + 1) + i], z0], [x0 + s, V[j * (nx + 1) + i + 1], z0], [x0 + s, V[(j + 1) * (nx + 1) + i + 1], z0 + s], [x0, V[(j + 1) * (nx + 1) + i], z0 + s]];
+    for (const t of [0, 2, 1, 0, 3, 2]) { pos.push(...P[t]); uv.push(P[t][0] / 3, P[t][2] / 3); }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals();
+  const sh = cachedCanvas('shingle', () => makeCanvas(128, 128, (c, w, hh) => { c.fillStyle = '#4b4e52'; c.fillRect(0, 0, w, hh); for (let r = 0; r < 8; r++) { const off = r % 2 ? 8 : 0; for (let x = -16 + off; x < w; x += 16) { c.fillStyle = `rgb(${66 + Math.random() * 18 | 0},${69 + Math.random() * 18 | 0},${73 + Math.random() * 18 | 0})`; c.fillRect(x + 1, r * 16 + 1, 14, 14); } c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(0, r * 16, w, 2); } }));
+  const tex = new THREE.CanvasTexture(sh); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.anisotropy = ANISO;
+  group.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide })));
+  // gable ends and any wall face under a rising roof: siding from the wall top up to the roof
+  const gp = [];
+  for (const p of A.pieces) {
+    if (!p.frame) continue;
+    const L = p.len, n = Math.max(1, Math.ceil(L / s));
+    for (let k = 0; k < n; k++) {
+      const a = k / n, b = (k + 1) / n, xa = p.x1 + (p.x2 - p.x1) * a, za = p.z1 + (p.z2 - p.z1) * a, xb = p.x1 + (p.x2 - p.x1) * b, zb = p.z1 + (p.z2 - p.z1) * b;
+      const ha = F.at(xa, za) - 0.15, hb = F.at(xb, zb) - 0.15; if (ha < p.h + 0.05 && hb < p.h + 0.05) continue;
+      const A0 = [xa, p.h, za], B0 = [xb, p.h, zb], B1 = [xb, Math.max(p.h, hb), zb], A1 = [xa, Math.max(p.h, ha), za];
+      gp.push(...A0, ...B0, ...B1, ...A0, ...B1, ...A1);
+    }
+  }
+  if (gp.length) { const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3)); gg.computeVertexNormals(); group.add(new THREE.Mesh(gg, new THREE.MeshLambertMaterial({ color: 0xd7dbd8, side: THREE.DoubleSide }))); }
+}
+/* a house item as a small 3D model */
+function itemMesh(THREE, it, M) {
+  const D = ITEMS[it.type], w = it.w || D.w, d = it.d || D.d, h = D.h, z0 = D.z || 0, g = new THREE.Group();
+  const mat = (c, sp) => new THREE.MeshPhongMaterial({ color: c, specular: sp || 0x222222, shininess: sp ? 60 : 14 });
+  const cab = mat(0xf3f1ec), counter = mat(0x3d4044, 0x555555), steel = mat(0xc9ced2, 0x999999), porcelain = mat(0xfbfbfb, 0x777777), dark = mat(0x26292c, 0x444444), wood = mat(0xd9cfc0);
+  const box = (x, y, z, sx, sy, sz, m) => { const b = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), m); b.position.set(x, y, z); g.add(b); return b; };
+  const cyl = (x, y, z, r, hh, m, seg) => { const c = new THREE.Mesh(new THREE.CylinderGeometry(r, r, hh, seg || 24), m); c.position.set(x, y, z); g.add(c); return c; };
+  // local axes: x along the width, z out from the wall (back at -d/2), y up
+  switch (it.type) {
+    case 'base': case 'sinkbase': case 'island': {
+      box(0, 0.25, 0.05, w - 0.02, 0.33, d - 0.25, dark); box(0, 1.6, 0, w - 0.02, 2.55, d - 0.1, cab);
+      const doors = Math.max(1, Math.round(w / 1.5)); for (let k = 0; k < doors; k++) { const x = -w / 2 + (k + 0.5) * w / doors; box(x, 1.45, d / 2 - 0.03, w / doors - 0.1, 1.7, 0.04, wood); box(x, 2.6, d / 2 - 0.03, w / doors - 0.1, 0.42, 0.04, wood); }
+      box(0, 2.94, 0.04, w + 0.05, 0.12, d + 0.08, counter);
+      if (it.type === 'sinkbase') { box(0, 2.95, 0.05, Math.min(2.3, w - 0.5), 0.13, 1.3, steel); cyl(0, 3.25, -0.65, 0.04, 0.6, steel); }
+      break;
+    }
+    case 'upper': box(0, 1.25, 0, w - 0.02, 2.5, d, cab); for (let k = 0, n = Math.max(1, Math.round(w / 1.5)); k < n; k++) box(-w / 2 + (k + 0.5) * w / n, 1.25, d / 2, w / n - 0.1, 2.3, 0.04, wood); break;
+    case 'tall': box(0, 3.5, 0, w - 0.02, 7, d - 0.05, cab); box(0, 3.6, d / 2, w - 0.12, 6.6, 0.04, wood); break;
+    case 'range': box(0, 1.45, 0, w, 2.9, d, steel); box(0, 2.93, 0, w, 0.06, d, dark); for (const [x, z] of [[-0.55, -0.4], [0.55, -0.4], [-0.55, 0.4], [0.55, 0.4]]) cyl(x, 2.97, z, 0.33, 0.02, mat(0x111111)); box(0, 1.3, d / 2 + 0.01, w - 0.3, 1.5, 0.03, dark); box(0, 3.4, -d / 2 + 0.08, w, 0.8, 0.12, steel); break;
+    case 'fridge': box(0, h / 2, 0, w, h, d, steel); box(0, h * 0.68, d / 2 + 0.01, 0.02, h * 0.62, 0.02, dark); box(-0.12, h * 0.68, d / 2 + 0.06, 0.05, 1.6, 0.06, steel); box(0.12, h * 0.68, d / 2 + 0.06, 0.05, 1.6, 0.06, steel); box(0, h * 0.36, d / 2 + 0.01, w, 0.02, 0.02, dark); break;
+    case 'dishwasher': box(0, 1.42, 0, w - 0.02, 2.83, d - 0.05, steel); box(0, 2.6, d / 2, w - 0.1, 0.06, 0.06, dark); box(0, 2.94, 0.04, w + 0.05, 0.12, d + 0.08, counter); break;
+    case 'toilet': { box(0, 1.25, -d / 2 + 0.33, w * 0.95, 1.2, 0.62, porcelain); const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.45, 1.25, 24), porcelain); bowl.scale.set(0.95, 1, 1.25); bowl.position.set(0, 0.62, 0.3); g.add(bowl); box(0, 1.27, 0.32, 1.2, 0.06, 1.45, porcelain); break; }
+    case 'vanity': box(0, 1.3, 0, w - 0.02, 2.5, d - 0.05, wood); box(0, 2.78, 0.02, w + 0.04, 0.1, d + 0.04, mat(0xeae6df, 0x666666)); box(0, 2.8, 0.05, Math.min(1.6, w - 0.6), 0.1, 1.0, porcelain); cyl(0, 3.1, -d / 2 + 0.25, 0.04, 0.5, steel); box(0, 4.6, -d / 2 + 0.03, Math.min(w, 3), 2.6, 0.05, mat(0xcfe3ea, 0xffffff)); break;
+    case 'tub': box(0, h / 2, 0, w, h, d, porcelain); box(0, h - 0.05, 0.02, w - 0.5, 0.12, d - 0.45, mat(0xe9eef0)); cyl(-w / 2 + 0.35, h + 0.25, -d / 2 + 0.3, 0.04, 0.5, steel); break;
+    case 'shower': box(0, 0.12, 0, w, 0.24, d, porcelain); box(0, h / 2, d / 2 - 0.02, w, h, 0.03, M.glass); box(-w / 2 + 0.02, h / 2, 0, 0.03, h, d, M.glass); cyl(0, 6.2, -d / 2 + 0.25, 0.25, 0.04, steel); break;
+    case 'washer': case 'dryer': box(0, h / 2, 0, w, h, d, porcelain); box(0, h - 0.2, -d / 2 + 0.2, w, 0.4, 0.4, mat(0xdde1e3)); { const c = cyl(0, 1.55, d / 2 + 0.01, 0.7, 0.05, it.type === 'washer' ? mat(0x9fb6c2, 0xffffff) : dark, 32); c.rotation.x = Math.PI / 2; } break;
+    case 'waterheater': cyl(0, h / 2, 0, w / 2, h, mat(0xe8e9e6), 28); cyl(0, h + 0.2, 0, 0.1, 0.4, steel); break;
+    case 'furnace': box(0, h / 2, 0, w, h, d, mat(0xd9dcd9)); box(0, h + 0.6, 0, w * 0.9, 1.2, d * 0.9, steel); break;
+    default: box(0, h / 2, 0, w, h, d, cab);
+  }
+  g.position.set(it.x, z0, it.y); g.rotation.y = -(it.a || 0);
+  return g;
+}
+
 /* ---------- three.js scene ---------- */
 const IMG_TEX = {};
 let ANISO = 4;
@@ -560,6 +714,24 @@ function buildScene(THREE, plan, A) {
     const [ru, rv] = SHELL_REP[kind] || [8, 8]; t.repeat.set(len / ru, h / rv); t.offset.set(((s0 || 0) % ru) / ru, 0);
     return new THREE.MeshPhongMaterial({ map: t, color: 0xffffff, specular: kind === 'metal' ? 0x444444 : 0x0c0c0c, shininess: kind === 'metal' ? 30 : 6 });
   };
+  // house finishes: painted drywall inside, lap siding outside, white trim
+  const sidingCanvas = cachedCanvas('siding', () => makeCanvas(128, 128, (g, w, h) => {
+    g.fillStyle = '#d7dbd8'; g.fillRect(0, 0, w, h);
+    for (let y = 0; y < h; y += 16) { const gr = g.createLinearGradient(0, y, 0, y + 16); gr.addColorStop(0, 'rgba(0,0,0,.16)'); gr.addColorStop(.15, 'rgba(255,255,255,.18)'); gr.addColorStop(1, 'rgba(0,0,0,.02)'); g.fillStyle = gr; g.fillRect(0, y, w, 16); }
+    for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(0,0,0,${Math.random() * .03})`; g.fillRect(Math.random() * w, Math.random() * h, 6, 1); }
+  }));
+  const sidingMat = (len, h) => { const t = new THREE.CanvasTexture(sidingCanvas); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = ANISO; t.repeat.set(len / 8, h / (8 * 7 / 12 * 16 / 16)); return new THREE.MeshLambertMaterial({ map: t }); };
+  const drywall = new THREE.MeshLambertMaterial({ color: 0xf1eee8 });
+  // which face of a framed wall is outside: the side with no building behind it
+  const FPout = footprint(A, true);
+  const outsideAt = (x, z) => !FPout || !FPout.has(x, z);
+  const frameMats = (x1, z1, x2, z2, t, h, ext) => {
+    const L = Math.hypot(x2 - x1, z2 - z1) || 1, nx = -(z2 - z1) / L, nz = (x2 - x1) / L, cx = (x1 + x2) / 2, cz = (z1 + z2) / 2, off = t / 2 + 0.8;
+    let left = outsideAt(cx + nx * off, cz + nz * off), right = outsideAt(cx - nx * off, cz - nz * off);
+    if (ext === false) left = right = false;
+    const sm = (left || right) ? sidingMat(L, h) : null;
+    return { mats: [M.edge, M.edge, M.edge, M.edge, left ? sm : drywall, right ? sm : drywall], left, right, nx, nz };
+  };
   const M = {
     white: new THREE.MeshPhongMaterial({ color: 0xf7f8f8, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 }),
     edge: new THREE.MeshPhongMaterial({ color: 0xf2f3f3, emissive: 0x121313, specular: 0x111111, shininess: 10 }),
@@ -604,6 +776,18 @@ function buildScene(THREE, plan, A) {
 
   for (const p of A.pieces) {
     curRef = p.id ? { kind: 'wall', id: p.id } : null;
+    if (p.frame) {
+      // a house wall: drywall on room sides, siding outside, white baseboard inside
+      const F = frameMats(p.x1, p.z1, p.x2, p.z2, p.t, p.h, p.ext), m = segBox(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, F.mats);
+      outline(m); pick.push(m);
+      for (const [sd, isOut] of [[1, F.left], [-1, F.right]]) {
+        if (isOut) continue;
+        const ox = F.nx * sd * (p.t / 2 + 0.02), oz = F.nz * sd * (p.t / 2 + 0.02);
+        segBox(p.x1 + ox, p.z1 + oz, p.x2 + ox, p.z2 + oz, 0, 0.29, 0.04, M.frame);
+      }
+      shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1), 0.6);
+      continue;
+    }
     if (!p.hard) {
       const sm = shellMat(p.kind, p.len, p.h, p.s0), m = segBox(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, [M.edge, M.edge, M.edge, M.edge, sm, sm]);
       outline(m); pick.push(m); shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
@@ -642,7 +826,7 @@ function buildScene(THREE, plan, A) {
     const o = i.o, t = i.t, nx = -i.uz, nz = i.ux;
     curRef = o.id ? { kind: 'opening', id: o.id } : null;
     const head = Math.min(H, o.head || (o.type === 'glass' ? 7 : 7));
-    const top = i.wallH || H, hm = i.hard ? M.white : shellMat(i.kind, i.len, top - head, 0);
+    const top = i.wallH || H, hm = i.hard ? M.white : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head).mats : shellMat(i.kind, i.len, top - head, 0);
     if (top - head > 0.01) { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); if (i.hard && H - head > 0.2) segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); }
     const ax = o.x1, az = o.y1, bx = o.x2, bz = o.y2;
     const along = (s) => [ax + i.ux * s, az + i.uz * s];
@@ -663,6 +847,23 @@ function buildScene(THREE, plan, A) {
         segBox(h1x, h1z, h2x, h2z, sill + ph * 0.3, sill + ph * 0.62, 0.08, M.closer);
       }
       shadow((ax + bx) / 2, (az + bz) / 2, i.len, D, Math.atan2(-i.uz, i.ux), 0.5);
+    } else if (o.type === 'window') {
+      // house window: wall below, white vinyl frame with a meeting rail, glass, interior stool and casing
+      const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill));
+      if (sill > 0.01) { const sw = segBox(ax, az, bx, bz, 0, sill, t, i.frame ? frameMats(ax, az, bx, bz, t, sill).mats : i.hard ? M.white : shellMat(i.kind, i.len, sill, 0)); outline(sw); pick.push(sw); }
+      const fw = 0.17, [p1x, p1z] = along(fw), [p2x, p2z] = along(i.len - fw);
+      segBox(ax, az, bx, bz, sill, sill + fw, t * 0.7, M.frame); segBox(ax, az, bx, bz, head - fw, head, t * 0.7, M.frame);
+      segBox(ax, az, p1x, p1z, sill, head, t * 0.7, M.frame); segBox(p2x, p2z, bx, bz, sill, head, t * 0.7, M.frame);
+      const mid = (sill + head) / 2; segBox(p1x, p1z, p2x, p2z, mid - 0.05, mid + 0.05, t * 0.5, M.frame);
+      segBox(p1x, p1z, p2x, p2z, sill + fw, head - fw, 0.03, M.lite);
+      // stool (inside ledge) and casing on both faces
+      const [c1x, c1z] = along(-0.29), [c2x, c2z] = along(i.len + 0.29);
+      segBox(c1x, c1z, c2x, c2z, sill - 0.06, sill, t + 0.2, M.frame);
+      for (const sd of [1, -1]) {
+        const ox = nx * sd * (t / 2 + 0.02), oz = nz * sd * (t / 2 + 0.02);
+        segBox(c1x + ox, c1z + oz, c2x + ox, c2z + oz, head, head + 0.29, 0.05, M.frame);
+        segBox(c1x + ox, c1z + oz, ax + ox, az + oz, sill, head, 0.05, M.frame); segBox(bx + ox, bz + oz, c2x + ox, c2z + oz, sill, head, 0.05, M.frame);
+      }
     } else if (o.type === 'glass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill));
       if (sill > 0.01) { const s = segBox(ax, az, bx, bz, 0, sill, t, i.hard ? M.white : shellMat(i.kind, i.len, sill, 0)); outline(s); pick.push(s); if (i.hard) segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base); }
@@ -709,6 +910,15 @@ function buildScene(THREE, plan, A) {
 
         const leafMesh = new THREE.Group();
         doorGroup.add(leafMesh);
+        if (i.frame) {
+          // house door: a painted two-panel door with a round knob
+          const top2 = Math.min(head - 0.05, 6.7), L2 = leafLen;
+          const slab = localSegBox(leafMesh, 0, 0, L2, 0, 0.03, top2, 0.145, M.leaf); outline(slab); pick.push(slab);
+          for (const [z0, z1] of [[0.6, 3.1], [3.6, top2 - 0.5]]) localSegBox(leafMesh, L2 * 0.18, 0, L2 * 0.82, 0, z0, z1, 0.165, M.edge);
+          for (const sd of [1, -1]) { const k = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8), M.closer); k.position.set(L2 * 0.9, 3, sd * 0.16); leafMesh.add(k); }
+          shadow((l.x1 + l.x2) / 2, (l.z1 + l.z2) / 2, l.w, 0.14, Math.atan2(-(l.z2 - l.z1), l.x2 - l.x1), 0.45);
+          continue;
+        }
 
         const m1 = localSegBox(leafMesh, a0x, a0z, a1x, a1z, 0.05, v0, 0.14, M.leaf);
         const m2 = localSegBox(leafMesh, a0x, a0z, a1x, a1z, v1, top, 0.14, M.leaf);
@@ -767,9 +977,15 @@ function buildScene(THREE, plan, A) {
   // a building with no cleanroom walls has a plain concrete slab; cleanrooms get the gray epoxy floor
   const fMat = new THREE.MeshPhongMaterial({ map: fTex, color: A.hardAny ? 0x9ea2a3 : 0xb7b4ad, specular: 0x101010, shininess: A.hardAny ? 22 : 8 });
   let floor;
-  if (FPall) floor = new THREE.Mesh(rectsGeometry(THREE, FPall.rects, 0.01, false, 12, 12, 0, 0), fMat);
+  // houses: a floor finish for the whole house (plan.floorType), and per room where a room label sets one
+  const fl = A.house ? floorMat(THREE, plan.floorType || 'lvp') : null;
+  if (FPall) floor = fl ? new THREE.Mesh(rectsGeometry(THREE, FPall.rects, 0.01, false, fl.su, fl.sv, 0, 0), fl.mat) : new THREE.Mesh(rectsGeometry(THREE, FPall.rects, 0.01, false, 12, 12, 0, 0), fMat);
   else { fTex.repeat.set(B.w / 12, B.d / 12); floor = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.d), fMat); floor.rotation.x = -Math.PI / 2; floor.position.set(B.cx, 0.01, B.cz); }
   root.add(floor);
+  if (A.house && FPall) for (const r of roomRegions(A, plan)) {
+    if (!r.room.floor || r.room.floor === (plan.floorType || 'lvp')) continue;
+    const F = floorMat(THREE, r.room.floor); root.add(new THREE.Mesh(rectsGeometry(THREE, r.rects, 0.035, false, F.su, F.sv, 0, 0), F.mat));
+  }
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(B.w + 140, B.d + 140), new THREE.MeshLambertMaterial({ color: 0xc4c8c2 }));
   ground.rotation.x = -Math.PI / 2; ground.position.set(B.cx, -0.08, B.cz); root.add(ground);
 
@@ -789,7 +1005,12 @@ function buildScene(THREE, plan, A) {
     const CG = ceilingGrid(plan, A);
     ceil = new THREE.Mesh(rectsGeometry(THREE, FP.rects, H, true, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, CG.swap && !ownGrid), cMat);
   } else if (A.hardAny || !A.shellTop) { ceil = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.d), cMat); ceil.rotation.x = Math.PI / 2; ceil.position.set(B.cx, H, B.cz); }
+  // a house has a plain drywall ceiling, no grid
+  if (ceil && A.house) ceil.material = new THREE.MeshLambertMaterial({ color: 0xf4f2ee, emissive: 0xa9a7a3, side: THREE.DoubleSide });
   if (ceil) ceiling.add(ceil);
+  // the roof (houses): gable, hip or flat, over the outside walls with an overhang
+  const roof = new THREE.Group(); root.add(roof);
+  if (A.frameAny && FPall && plan.roof && plan.roof.type && plan.roof.type !== 'none') buildRoof(THREE, roof, A, plan, FPall, sidingMat, M);
   // plenum lid: the top of the cleanroom, over the plenum (hidden in Dollhouse and Plenum views)
   const lid = new THREE.Group(); root.add(lid);
   if (A.PL > 0 && FP) {
@@ -824,6 +1045,8 @@ function buildScene(THREE, plan, A) {
   const led = new THREE.MeshBasicMaterial({ color: 0xffffff }), ffu = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(ffuCanvas) });
   const fg = new THREE.BoxGeometry(1.9, 0.08, 3.9), fgs = {};
   const fixtures = new THREE.Group(); root.add(fixtures);
+  // house items: cabinets, appliances, plumbing fixtures
+  for (const q of A.items || []) { const g = itemMesh(THREE, q.it, M); fixtures.add(g); g.traverse(o => { if (o.isMesh) { pick.push(o); if (q.it.id) o.userData.ref = { kind: 'item', id: q.it.id }; } }); }
   // A real fan filter unit model (plan.ffuModel: manufacturer sizes from a Revit family): the cabinet and blower
   // housing sit above the grid (seen in Dollhouse, where the ceiling is hidden); the perforated face shows from below.
   const FM = plan.ffuModel && Array.isArray(plan.ffuModel.sizes) && plan.ffuModel.sizes.length ? plan.ffuModel : null;
@@ -870,7 +1093,7 @@ function buildScene(THREE, plan, A) {
     if (f.id) m.userData.ref = { kind: 'fixture', id: f.id };
     fixtures.add(m);
   }
-  return { root, pick, floor, floors: [floor], ground, ceiling, lid, ceilPlane: ceil || new THREE.Object3D(), fixtures, doors, doorObs };
+  return { root, pick, floor, floors: [floor], ground, ceiling, lid, roof, ceilPlane: ceil || new THREE.Object3D(), fixtures, doors, doorObs };
 }
 
 /* Analysis of a plan with every placed building in it, merged (for walking, collisions and the mini map). */
@@ -890,15 +1113,15 @@ function analyzeAll(plan) {
 function buildAll(THREE, plan, M) {
   M = M || analyzeAll(plan);
   if (M.zones.length === 1) return buildScene(THREE, plan, M.zones[0].A);
-  const root = new THREE.Group(), ceiling = new THREE.Group(), lid = new THREE.Group(), out = { root, pick: [], floors: [], ground: null, ceiling, lid, ceilPlane: new THREE.Object3D(), fixtures: new THREE.Group(), doors: [], doorObs: [] };
-  root.add(ceiling); root.add(lid); root.add(out.fixtures);
+  const root = new THREE.Group(), ceiling = new THREE.Group(), lid = new THREE.Group(), roof = new THREE.Group(), out = { root, pick: [], floors: [], ground: null, ceiling, lid, roof, ceilPlane: new THREE.Object3D(), fixtures: new THREE.Group(), doors: [], doorObs: [] };
+  root.add(ceiling); root.add(lid); root.add(roof); root.add(out.fixtures);
   let n = 0;
   for (const q of M.zones) {
     if (q.A.empty) continue;
     const b = buildScene(THREE, q.zone.plan, q.A), lift = n++ * 0.03;
     b.root.position.y = lift;
     if (out.ground) b.root.remove(b.ground); else { out.ground = b.ground; b.ground.position.y -= lift; }
-    ceiling.add(b.ceiling); b.ceiling.position.y = lift; lid.add(b.lid); b.lid.position.y = lift;
+    ceiling.add(b.ceiling); b.ceiling.position.y = lift; lid.add(b.lid); b.lid.position.y = lift; roof.add(b.roof); b.roof.position.y = lift;
     root.add(b.root);
     out.pick.push(...b.pick); out.floors.push(b.floor); out.doors.push(...b.doors); out.doorObs.push(...b.doorObs);
   }
@@ -918,7 +1141,7 @@ function mount(container, plan, opts) {
     <div class="p3v-labels" hidden></div>
     <div class="p3v-top">
       <div class="p3v-panel p3v-card"><div class="p3v-title"></div><div class="p3v-meta"></div><div class="p3v-here"><b></b><span></span></div></div>
-      <div class="p3v-right"><div class="p3v-panel p3v-modes" role="group" aria-label="View"><button data-m="walk">Walk</button><button data-m="doll">Dollhouse</button><button data-m="plenum" hidden title="Looks into the plenum: the grid ceiling stays, the top comes off">Plenum</button><button data-m="plan">Plan</button></div>
+      <div class="p3v-right"><div class="p3v-panel p3v-modes" role="group" aria-label="View"><button data-m="walk">Walk</button><button data-m="doll">Dollhouse</button><button data-m="plenum" hidden title="Looks into the plenum: the grid ceiling stays, the top comes off">Plenum</button><button data-m="exterior" hidden title="The outside, with the roof on">Exterior</button><button data-m="plan">Plan</button></div>
       <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button></div>
     </div>
     <div class="p3v-aim" aria-hidden="true"></div>
@@ -1000,6 +1223,14 @@ function mount(container, plan, opts) {
     if (kind === 'plan') return { pos: new THREE.Vector3(b.cx, d * 1.05, b.cz + 0.01), look: t, fov: 45 };
     return { pos: new THREE.Vector3(b.cx - d * 0.42, d * 0.72, b.cz + d * 0.62), look: t, fov: 45 };
   }
+  // what shows in each view: Walk = everything; Dollhouse/Plan = no ceiling, lid or roof;
+  // Plenum = the grid ceiling without the lid; Exterior = everything, from outside
+  function applyVis(m) {
+    if (!built) return;
+    built.ceiling.visible = m === 'walk' || m === 'plenum' || m === 'exterior';
+    if (built.lid) built.lid.visible = m === 'walk' || m === 'exterior';
+    if (built.roof) built.roof.visible = m === 'walk' || m === 'exterior';
+  }
   function startTween(to, dur, done) {
     const from = { pos: camera.position.clone(), look: mode === 'walk' ? walkLook() : controls.target.clone(), fov: camera.fov };
     tween = { t0: performance.now(), dur: reduce ? 1 : dur, from, to, done };
@@ -1018,14 +1249,14 @@ function mount(container, plan, opts) {
   function goWalk(x, z, yaw, dur) {
     const p = freeSpot(x, z); target = null;
     const to = { pos: new THREE.Vector3(p.x, EYE, p.z), look: new THREE.Vector3(p.x - Math.sin(yaw) * 6, EYE, p.z - Math.cos(yaw) * 6), fov };
-    if (built) { built.ceiling.visible = true; if (built.lid) built.lid.visible = true; } labelsEl.hidden = true;
+    applyVis('walk'); labelsEl.hidden = true;
     startTween(to, dur || 900, () => { st.x = p.x; st.z = p.z; st.yaw = yaw; st.pitch = 0; applyWalkCam(); });
     mode = 'walk'; setModeUI();
   }
   function goOrbit(kind) {
-    const pose = orbitPose(kind); target = null; if (built) { built.ceiling.visible = kind === 'plenum'; if (built.lid) built.lid.visible = false; }
+    const pose = orbitPose(kind); target = null; applyVis(kind);
     const wasWalk = mode === 'walk';
-    startTween(pose, wasWalk ? 1100 : 800, () => { controls.target.copy(pose.look); controls.enabled = true; controls.update(); labelsEl.hidden = false; });
+    startTween(pose, wasWalk ? 1100 : 800, () => { controls.target.copy(pose.look); controls.enabled = true; controls.update(); labelsEl.hidden = kind === 'exterior'; });
     mode = kind; setModeUI();
   }
   modeBtns.forEach(b => b.addEventListener('click', () => {
@@ -1251,6 +1482,9 @@ function mount(container, plan, opts) {
     // the Plenum view only when there is a plenum
     const pb = modeBtns.find(b => b.dataset.m === 'plenum'); if (pb) pb.hidden = !(A.PL > 0);
     if (mode === 'plenum' && !(A.PL > 0)) mode = 'doll';
+    let hasRoof = false; if (built.roof) built.roof.traverse(o => { if (o.isMesh) hasRoof = true; });
+    const eb = modeBtns.find(b => b.dataset.m === 'exterior'); if (eb) eb.hidden = !hasRoof;
+    if (mode === 'exterior' && !hasRoof) mode = 'doll';
     buildHud(p);
     sizeMini();
     if (!keep) {
@@ -1258,14 +1492,13 @@ function mount(container, plan, opts) {
       const sx = r0 ? r0.x : b.cx, sz = r0 ? r0.y : b.cz;
       const f = freeSpot(sx, sz); st.x = f.x; st.z = f.z; st.yaw = r0 ? Math.atan2(-(b.cx - sx), -(b.cz - sz)) || 0 : 0; st.pitch = -0.04;
       if (A.empty) { mode = 'doll'; }
-      if (mode === 'walk') { built.ceiling.visible = true; labelsEl.hidden = true; applyWalkCam(); }
-      else { const pose = orbitPose(mode); camera.position.copy(pose.pos); camera.fov = 45; camera.updateProjectionMatrix(); controls.target.copy(pose.look); controls.enabled = true; controls.update(); built.ceiling.visible = mode === 'plenum'; labelsEl.hidden = false; }
-      if (built.lid) built.lid.visible = mode === 'walk';
+      if (mode === 'walk') { labelsEl.hidden = true; applyWalkCam(); }
+      else { const pose = orbitPose(mode); camera.position.copy(pose.pos); camera.fov = 45; camera.updateProjectionMatrix(); controls.target.copy(pose.look); controls.enabled = true; controls.update(); labelsEl.hidden = false; }
+      applyVis(mode);
       setModeUI();
     } else {
-      if (mode === 'walk') { if (collides(st.x, st.z)) { const f = freeSpot(st.x, st.z); st.x = f.x; st.z = f.z; } built.ceiling.visible = true; }
-      else built.ceiling.visible = mode === 'plenum';
-      if (built.lid) built.lid.visible = mode === 'walk';
+      if (mode === 'walk') { if (collides(st.x, st.z)) { const f = freeSpot(st.x, st.z); st.x = f.x; st.z = f.z; } }
+      applyVis(mode);
     }
   }
 
@@ -1345,5 +1578,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, shellHeight, footprint, grilleSize, ceilingGrid, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);

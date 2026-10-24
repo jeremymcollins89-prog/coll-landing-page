@@ -8,10 +8,10 @@
 </head>
 <body>
 <header class="bar">
-  <div class="brand"><span class="mark" aria-hidden="true"></span><div><b>Coll Plan3D</b><small id="docName">Untitled plan</small></div></div>
+  <div class="brand"><span class="mark" aria-hidden="true"></span><div><b>Coll Plan3D <span class="modechip" id="modeChip">Cleanroom</span></b><small id="docName">Untitled plan</small></div></div>
   <div class="actions">
     <button id="bImport" class="btn primary" title="Import a DWG, DXF, Revit IFC or plan image (Ctrl+I)">Import plan…</button>
-    <button id="bCeiling" class="btn" title="Add a ceiling drawing (DWG, DXF or picture) on top of the room">Add ceiling</button>
+    <button id="bCeiling" class="btn" data-only="cleanroom" title="Add a ceiling drawing (DWG, DXF or picture) on top of the room">Add ceiling</button>
     <div class="dd">
       <button id="bBld" class="btn" aria-haspopup="menu" aria-expanded="false" title="Save this building to your library, or place a saved building (a cleanroom inside a warehouse, say)">Buildings <span class="caret" aria-hidden="true">▾</span></button>
       <div class="menu" id="bldMenu" role="menu" hidden>
@@ -40,7 +40,7 @@
   </div>
   <div class="views" role="group" aria-label="View">
     <button data-view="2d" aria-pressed="true">Plan</button>
-    <button data-view="build" aria-pressed="false" title="Build in 3D with snap-together pieces (F4)">Build</button>
+    <button data-view="build" data-only="cleanroom" aria-pressed="false" title="Build in 3D with snap-together pieces (F4)">Build</button>
     <button data-view="split" aria-pressed="false">Split</button>
     <button data-view="3d" aria-pressed="false">3D</button>
   </div>
@@ -49,14 +49,15 @@
 <main id="main" data-view="2d">
   <nav class="tools" aria-label="Tools">
     <button data-tool="select" class="on" title="Select and move (V)"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.6L10 19z"/></svg><span>Select</span><kbd>V</kbd></button>
-    <button data-tool="piece" title="Snap-together pieces: panels, doors, glass, pass-thrus, chases, ceiling (N, or 1–9)"><svg viewBox="0 0 24 24"><rect x="3" y="9" width="8" height="6" fill="none"/><rect x="13" y="9" width="8" height="6" fill="none"/><path d="M11 12h2" fill="none"/></svg><span>Pieces</span><kbd>N</kbd></button>
+    <button data-tool="piece" data-only="cleanroom" title="Snap-together pieces: panels, doors, glass, pass-thrus, chases, ceiling (N, or 1–9)"><svg viewBox="0 0 24 24"><rect x="3" y="9" width="8" height="6" fill="none"/><rect x="13" y="9" width="8" height="6" fill="none"/><path d="M11 12h2" fill="none"/></svg><span>Pieces</span><kbd>N</kbd></button>
     <button data-tool="wall" title="Draw walls (W)"><svg viewBox="0 0 24 24"><path d="M4 20V5h16v4H8v11z"/></svg><span>Wall</span><kbd>W</kbd></button>
     <button data-tool="door" title="Single door 3070 (D)"><svg viewBox="0 0 24 24"><path d="M4 20h16M6 20V6M6 6a14 14 0 0 1 14 14" fill="none"/></svg><span>Door</span><kbd>D</kbd></button>
     <button data-tool="door2" title="Double door 6070 (F)"><svg viewBox="0 0 24 24"><path d="M2 20h20M4 20V10M4 10a10 10 0 0 1 8 10M20 20V10M20 10a10 10 0 0 0-8 10" fill="none"/></svg><span>Pair</span><kbd>F</kbd></button>
-    <button data-tool="glass" title="Glass panel / window (G)"><svg viewBox="0 0 24 24"><path d="M3 9h18M3 15h18M3 9v6M21 9v6" fill="none"/></svg><span>Glass</span><kbd>G</kbd></button>
+    <button data-tool="glass" title="Glass panel / window (G)"><svg viewBox="0 0 24 24"><path d="M3 9h18M3 15h18M3 9v6M21 9v6" fill="none"/></svg><span data-only="cleanroom">Glass</span><span data-only="house">Window</span><kbd>G</kbd></button>
     <button data-tool="open" title="Cased opening (O)"><svg viewBox="0 0 24 24"><path d="M3 12h4M17 12h4M7 8v8M17 8v8" fill="none"/><path d="M9 12h6" fill="none" stroke-dasharray="2 2"/></svg><span>Opening</span><kbd>O</kbd></button>
-    <button data-tool="pass" title="Pass-thru, stainless (P)"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" fill="none"/><path d="M2 12h3M19 12h3M5 5l14 14M19 5L5 19" fill="none"/></svg><span>Pass-thru</span><kbd>P</kbd></button>
-    <button data-tool="chase" title="Air chase, full height (C)"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" fill="none"/><path d="M5 10l6-6M5 16l12-12M9 20l10-10M15 20l4-4" fill="none"/></svg><span>Chase</span><kbd>C</kbd></button>
+    <button data-tool="pass" data-only="cleanroom" title="Pass-thru, stainless (P)"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" fill="none"/><path d="M2 12h3M19 12h3M5 5l14 14M19 5L5 19" fill="none"/></svg><span>Pass-thru</span><kbd>P</kbd></button>
+    <button data-tool="chase" data-only="cleanroom" title="Air chase, full height (C)"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" fill="none"/><path d="M5 10l6-6M5 16l12-12M9 20l10-10M15 20l4-4" fill="none"/></svg><span>Chase</span><kbd>C</kbd></button>
+    <button data-tool="item" data-only="house" title="Kitchen, bath and laundry items (I)"><svg viewBox="0 0 24 24"><rect x="4" y="9" width="16" height="11" fill="none"/><path d="M4 13h16M9 9V5h6v4" fill="none"/></svg><span>Items</span><kbd>I</kbd></button>
     <button data-tool="room" title="Room label (R)"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13" fill="none"/></svg><span>Room</span><kbd>R</kbd></button>
     <div class="tsep"></div>
     <button data-tool="calibrate" title="Set scale from a known dimension (K)"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2" fill="none"/></svg><span>Scale</span><kbd>K</kbd></button>
@@ -65,16 +66,28 @@
   <section class="stage">
     <div class="pane pane2d"><canvas id="plan" tabindex="0"></canvas>
       <div class="welcome" id="welcome">
-        <h1>Turn a floor plan into a 3D walkthrough</h1>
-        <p>Bring in an AutoCAD drawing or a photo of the plan sheet, check the walls, add doors, glass and air chases, then walk through it.</p>
+        <div id="wPick">
+        <h1>What are you building?</h1>
+        <p>Pick one to start. Each has its own tools, materials and parts list; you can change it later in the Plan panel.</p>
+        <div class="wgrid wgrid2">
+          <button class="wcard wbig" id="wCleanroom"><b>Build a cleanroom</b><span>Hardwall panels, doors and glass, pass-thrus, air chases, grid ceiling, FFUs and plenum</span></button>
+          <button class="wcard wbig" id="wHouse"><b>Build a house</b><span>Wood or steel stud walls, windows and doors, roof, floors, kitchen, bath and laundry</span></button>
+        </div>
+        </div>
+        <div id="wNext" hidden>
+        <h1 id="wTitle">Turn a floor plan into a 3D walkthrough</h1>
+        <p id="wText">Bring in an AutoCAD drawing or a photo of the plan sheet, check the walls, add doors, glass and air chases, then walk through it.</p>
         <div class="wgrid">
           <button class="wcard" id="wImport"><b>Import a plan</b><span>DXF or DWG from AutoCAD, or a PNG/JPG photo or scan</span></button>
           <button class="wcard" id="wDraw"><b>Draw from scratch</b><span>Click corners to lay out walls. Type lengths like 23'8-3/4</span></button>
-          <button class="wcard" id="wSample"><b>Open the sample</b><span>SOM base cleanroom: 8′-6″ and 11′ grids, 3′ plenum, MAC 10 FFUs</span></button>
+          <button class="wcard" id="wSample"><b>Open the sample</b><span id="wSampleText">SOM base cleanroom: 8′-6″ and 11′ grids, 3′ plenum, MAC 10 FFUs</span></button>
+        </div>
+        <p class="wback"><a href="#" id="wBack">← Cleanroom or house</a></p>
         </div>
         <p class="drop">Or drop a file anywhere in this window.</p>
       </div>
       <div id="pal2d" hidden></div>
+      <div id="itemPal" hidden></div>
       <div class="banner" id="banner" hidden><span id="bannerText"></span><div class="bannerBtns" id="bannerBtns"></div></div>
     </div>
     <div class="pane pane3d" id="view3d"></div>

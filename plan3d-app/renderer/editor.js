@@ -39,6 +39,7 @@ function parseLen(s, defUnit) {
   if (!/^-?\d*\.?\d+$/.test(s)) return NaN;
   const v = parseFloat(s); return defUnit === 'in' ? v / 12 : v;
 }
+function inPoly(x, y, P) { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const a = P[i], b = P[j]; if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; }
 function segProj(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1, l2 = dx * dx + dy * dy;
   let t = l2 ? ((px - x1) * dx + (py - y1) * dy) / l2 : 0; const tc = Math.max(0, Math.min(1, t));
@@ -46,7 +47,9 @@ function segProj(px, py, x1, y1, x2, y2) {
   return { d: Math.hypot(px - x, py - y), t, tc, x, y, len: Math.sqrt(l2) };
 }
 
-const DEFAULT_W = { door: 3, door2: 6, glass: 4, open: 3, pass: 2 };
+const DEFAULT_W = { door: 3, door2: 6, glass: 4, open: 3, pass: 2, window: 3 };
+// houses: 2′-8″ doors, 5′ pairs, 3′ windows, 6′-8″ heads
+const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2 };
 const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass']);
 const COL = {
   bg: '#1a2024', gridMinor: 'rgba(255,255,255,.035)', gridMajor: 'rgba(255,255,255,.08)', axis: 'rgba(255,255,255,.14)',
@@ -97,7 +100,7 @@ class Editor {
   emit(ev, d) { const f = this.o['on' + ev[0].toUpperCase() + ev.slice(1)]; if (f) f(d); }
   find(sel) {
     if (!sel) return null;
-    const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts' }[sel.kind];
+    const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items' }[sel.kind];
     return list ? (this.plan[list] || []).find(x => x.id === sel.id) : (sel.kind === 'bg' ? this.plan.background : null);
   }
   selected() { return this.find(this.sel); }
@@ -191,8 +194,9 @@ class Editor {
     }
     return best;
   }
+  get house() { return this.plan.mode === 'house'; }
   openingPreview(x, y, type) {
-    const width = DEFAULT_W[type];
+    const width = (this.house ? HOUSE_W : DEFAULT_W)[type];
     const hit = this.wallAt(x, y, 14);
     if (hit) {
       const w = hit.w, len = hit.p.len; if (len < 0.5) return null;
@@ -229,9 +233,28 @@ class Editor {
     return ins.__z;
   }
   insBox(ins) { this.insView(ins); return ins.__b || { x0: ins.x - 1, y0: ins.y - 1, x1: ins.x + 1, y1: ins.y + 1 }; }
+  /* where a house item goes: backed against the nearest wall (within 2½′), else free at the R angle */
+  itemPlace(x, y, type, keep) {
+    const V = global.Plan3DViewer, D = V && V.ITEMS[type]; if (!D) return null;
+    const w = (keep && keep.w) || D.w, d = (keep && keep.d) || D.d;
+    if (type !== 'island') {
+      const hit = this.wallAt(x, y, 2.5 * this.view.s + 8);
+      if (hit && hit.p.len > 0.5) {
+        const W = hit.w, L = hit.p.len, ux = (W.x2 - W.x1) / L, uy = (W.y2 - W.y1) / L, nx = -uy, ny = ux;
+        const side = ((x - hit.p.x) * nx + (y - hit.p.y) * ny) >= 0 ? 1 : -1, g = 1 / 12;
+        let sAlong = Math.round(hit.p.tc * L / g) * g; sAlong = Math.max(Math.min(w / 2, L / 2), Math.min(L - Math.min(w / 2, L / 2), sAlong));
+        const off = (W.t || 0.25) / 2 + d / 2;
+        return { type, w, d, x: W.x1 + ux * sAlong + nx * side * off, y: W.y1 + uy * sAlong + ny * side * off, a: Math.atan2(side * uy, side * ux), wall: true };
+      }
+    }
+    const g = this.snapIn / 12 || 1 / 48;
+    return { type, w, d, x: Math.round(x / g) * g, y: Math.round(y / g) * g, a: (this.itemRot || 0) * Math.PI / 2, wall: false };
+  }
   hitTest(x, y) {
     const P = this.plan, tol = 7 / this.view.s;
     for (let i = P.openings.length - 1; i >= 0; i--) { const o = P.openings[i]; if (segProj(x, y, o.x1, o.y1, o.x2, o.y2).d < (o.t || 0.25) / 2 + tol) return { kind: 'opening', id: o.id }; }
+    const V = global.Plan3DViewer;
+    if (V && V.itemCorners) for (let i = (P.items || []).length - 1; i >= 0; i--) { const c = V.itemCorners(P.items[i]); if (inPoly(x, y, c)) return { kind: 'item', id: P.items[i].id }; }
     for (let i = P.rooms.length - 1; i >= 0; i--) { const r = P.rooms[i]; if (Math.abs(x - r.x) < 50 / this.view.s && Math.abs(y - r.y) < 14 / this.view.s) return { kind: 'room', id: r.id }; }
     for (let i = P.chases.length - 1; i >= 0; i--) { const k = P.chases[i]; if (x >= Math.min(k.x0, k.x1) - tol && x <= Math.max(k.x0, k.x1) + tol && y >= Math.min(k.y0, k.y1) - tol && y <= Math.max(k.y0, k.y1) + tol) return { kind: 'chase', id: k.id }; }
     const h = this.wallAt(x, y, 7); if (h) return { kind: 'wall', id: h.w.id };
@@ -297,7 +320,9 @@ class Editor {
       const pv = this.openingPreview(p.x, p.y, T);
       if (!pv) { this.status('Click on a wall, or in the gap between two walls.'); return; }
       const o = { id: uid(), type: T, x1: pv.x1, y1: pv.y1, x2: pv.x2, y2: pv.y2, t: pv.t, swing: 1 };
-      if (T === 'glass') { o.sill = 3; o.head = 7; }
+      if (this.house && T === 'glass') { o.type = 'window'; o.sill = 3; o.head = 6 + 8 / 12; }
+      else if (this.house && (T === 'door' || T === 'door2' || T === 'open')) o.head = 6 + 8 / 12;
+      else if (T === 'glass') { o.sill = 3; o.head = 7; }
       else if (T === 'pass') { o.sill = 3; o.head = 5; o.depth = 2; }
       else o.head = 7;
       this.edit(P => P.openings.push(o)); return;
@@ -307,6 +332,11 @@ class Editor {
       const g = this.pieces.ghostAt({ x: p.x, y: p.y });
       if (g && this.pieces.place(g)) { this.pieceGhost = this.pieces.ghostAt({ x: p.x, y: p.y }); this.render(); }
       return;
+    }
+    if (T === 'item') {
+      const q = this.itemPlace(p.x, p.y, this.itemType); if (!q) return;
+      const it = { id: uid(), type: q.type, x: q.x, y: q.y, a: q.a, w: q.w, d: q.d };
+      this.edit(P => { (P.items = P.items || []).push(it); }); return;
     }
     if (T === 'chase') {
       const s = this.snap(p.x, p.y, null);
@@ -364,6 +394,10 @@ class Editor {
         } else { const k = dx * ux + dy * uy; o.x1 = O.x1 + ux * k; o.y1 = O.y1 + uy * k; o.x2 = O.x2 + ux * k; o.y2 = O.y2 + uy * k; }
       } else if (D.sel.kind === 'chase') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
       else if (D.sel.kind === 'room') { o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy); }
+      else if (D.sel.kind === 'item') {
+        const q = this.itemPlace(O.x + (p.x - D.sx), O.y + (p.y - D.sy), o.type, o);
+        if (q) { o.x = q.x; o.y = q.y; if (q.wall) o.a = q.a; }
+      }
       else if (D.sel.kind === 'insert') {
         // snap the building's box edges to nearby wall ends, otherwise move on the snap grid
         o.x = O.x + dx; o.y = O.y + dy;
@@ -382,6 +416,7 @@ class Editor {
       this.render(); this.emit('cursor', p); return;
     }
     // hover feedback
+    if (this.tool === 'item') { const q = this.itemPlace(p.x, p.y, this.itemType); this.status(q ? (global.Plan3DViewer.ITEMS[q.type].label + (q.wall ? ' — against the wall. Click to place.' : ' — R turns it. Click to place.')) : ''); }
     if (this.tool === 'select') this.hover = this.hitTest(p.x, p.y);
     this.render();
     this.emit('cursor', p);
@@ -445,6 +480,8 @@ class Editor {
       if (this.cursor) this.pieceGhost = this.pieces.ghostAt({ x: this.cursor.x, y: this.cursor.y });
       this.render(); return true;
     }
+    if ((k === 'r' || k === 'R') && !e.ctrlKey && this.tool === 'item') { this.itemRot = ((this.itemRot || 0) + 1) % 4; this.render(); return true; }
+    if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'item') { const o = this.selected(); if (o) this.edit(() => { o.a = (o.a || 0) + Math.PI / 2 * (e.shiftKey ? -1 : 1); }); return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'insert') { const o = this.selected(); if (o) this.edit(() => { o.rot = (((o.rot || 0) + (e.shiftKey ? 3 : 1)) % 4); }); return true; }
     if (k === 'Escape') { if (this.draft) this.endChain(); else if (this.cal) { this.cal = null; this.render(); } else if (this.tool !== 'select') this.setTool('select'); else { this.sel = null; this.emit('select'); this.render(); } return true; }
     if ((k === 'Delete' || k === 'Backspace') && this.sel) { this.deleteSel(); return true; }
@@ -453,7 +490,7 @@ class Editor {
   deleteSel() {
     const s = this.sel; if (!s) return;
     if (s.kind === 'bg') { this.edit(P => { P.background = null; }); this.bgImg = null; }
-    else { const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts' }[s.kind]; this.edit(P => { P[list] = (P[list] || []).filter(x => x.id !== s.id); if (s.kind === 'wall') P.openings = P.openings.filter(o => o.unit !== s.id); }); }
+    else { const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items' }[s.kind]; this.edit(P => { P[list] = (P[list] || []).filter(x => x.id !== s.id); if (s.kind === 'wall') P.openings = P.openings.filter(o => o.unit !== s.id); }); }
     this.sel = null; this.emit('select'); this.render();
   }
 
@@ -472,6 +509,27 @@ class Editor {
     this.cal = null; this.fit();
   }
 
+  drawItem(it, ghost) {
+    const g = this.g, s = this.view.s, V = global.Plan3DViewer, D = V.ITEMS[it.type]; if (!D) return;
+    const c = V.itemCorners(it), P = (u, v) => { const a = it.a || 0, cs = Math.cos(a), sn = Math.sin(a); return [this.sx(it.x + cs * u - sn * v), this.sy(it.y + sn * u + cs * v)]; };
+    const w = it.w || D.w, d = it.d || D.d;
+    g.save();
+    g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath();
+    g.fillStyle = ghost ? 'rgba(242,200,75,.3)' : it.type === 'upper' ? 'rgba(160,175,182,.18)' : '#3a464c'; g.fill();
+    g.strokeStyle = ghost ? COL.draft : '#b9c4c9'; g.lineWidth = 1.1; if (it.type === 'upper') g.setLineDash([4, 3]); g.stroke(); g.setLineDash([]);
+    const circ = (u, v, r) => { const [X, Y] = P(u, v); g.beginPath(); g.arc(X, Y, Math.max(1, r * s), 0, Math.PI * 2); g.stroke(); };
+    const rect = (u0, v0, u1, v1) => { const q = [P(u0, v0), P(u1, v0), P(u1, v1), P(u0, v1)]; g.beginPath(); q.forEach((pt, k) => k ? g.lineTo(pt[0], pt[1]) : g.moveTo(pt[0], pt[1])); g.closePath(); g.stroke(); };
+    g.strokeStyle = ghost ? COL.draft : '#d5dde1';
+    if (it.type === 'range') { for (const [u, v] of [[-0.55, -0.4], [0.55, -0.4], [-0.55, 0.4], [0.55, 0.4]]) circ(u, v, 0.32); }
+    else if (it.type === 'sinkbase' || it.type === 'vanity') { rect(-Math.min(1.1, w / 2 - 0.25), -d / 2 + 0.35, Math.min(1.1, w / 2 - 0.25), d / 2 - 0.25); }
+    else if (it.type === 'toilet') { rect(-w / 2 + 0.05, -d / 2, w / 2 - 0.05, -d / 2 + 0.6); const [X, Y] = P(0, 0.3); g.beginPath(); g.ellipse(X, Y, 0.6 * s, 0.8 * s, -(it.a || 0) + Math.PI / 2, 0, Math.PI * 2); g.stroke(); }
+    else if (it.type === 'tub') rect(-w / 2 + 0.25, -d / 2 + 0.22, w / 2 - 0.25, d / 2 - 0.22);
+    else if (it.type === 'shower') { const [a1, b1] = [P(-w / 2, -d / 2), P(w / 2, d / 2)]; g.beginPath(); g.moveTo(a1[0], a1[1]); g.lineTo(b1[0], b1[1]); g.stroke(); }
+    else if (it.type === 'washer' || it.type === 'dryer') circ(0, 0.1, Math.min(w, d) * 0.32);
+    else if (it.type === 'waterheater') circ(0, 0, w / 2 - 0.05);
+    if (s > 12) { const [X, Y] = P(0, 0); g.font = '10px Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = ghost ? COL.draft : '#e8edef'; const lbl = { base: 'BASE', sinkbase: 'SINK', upper: 'UPPER', tall: 'PANTRY', island: 'ISLAND', range: '', fridge: 'REF', dishwasher: 'DW', toilet: '', vanity: '', tub: 'TUB', shower: 'SHWR', washer: 'W', dryer: 'D', waterheater: 'WH', furnace: 'FURN' }[it.type]; if (lbl && Math.min(w, d) * s > 22) g.fillText(lbl, X, Y); }
+    g.restore();
+  }
   /* chases, walls, openings and room labels of a plan (the main plan, or a placed building moved into place) */
   drawContent(P) {
     const g = this.g, s = this.view.s, V = global.Plan3DViewer, KC = {};
@@ -518,7 +576,12 @@ class Editor {
       g.strokeStyle = COL.wallLine; g.lineWidth = 1;
       // jamb ticks
       for (const [ex, ey] of [[o.x1, o.y1], [o.x2, o.y2]]) { g.beginPath(); g.moveTo(this.sx(ex + nx * t / 2), this.sy(ey + ny * t / 2)); g.lineTo(this.sx(ex - nx * t / 2), this.sy(ey - ny * t / 2)); g.stroke(); }
-      if (o.type === 'glass') {
+      if (o.type === 'window') {
+        // house window: frame lines on both faces and the glass line in the middle
+        g.strokeStyle = COL.wallLine; g.lineWidth = 1;
+        for (const k of [-0.5, 0.5]) { g.beginPath(); g.moveTo(this.sx(o.x1 + nx * t * k), this.sy(o.y1 + ny * t * k)); g.lineTo(this.sx(o.x2 + nx * t * k), this.sy(o.y2 + ny * t * k)); g.stroke(); }
+        g.strokeStyle = COL.glass; g.lineWidth = 1.6; g.beginPath(); g.moveTo(this.sx(o.x1), this.sy(o.y1)); g.lineTo(this.sx(o.x2), this.sy(o.y2)); g.stroke();
+      } else if (o.type === 'glass') {
         g.strokeStyle = COL.glass; g.lineWidth = 1.5;
         for (const k of [-0.25, 0.25]) { g.beginPath(); g.moveTo(this.sx(o.x1 + nx * t * k), this.sy(o.y1 + ny * t * k)); g.lineTo(this.sx(o.x2 + nx * t * k), this.sy(o.y2 + ny * t * k)); g.stroke(); }
       } else if (o.type === 'pass') {
@@ -543,6 +606,9 @@ class Editor {
         g.strokeStyle = COL.door; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(this.sx(o.x1), this.sy(o.y1)); g.lineTo(this.sx(o.x2), this.sy(o.y2)); g.stroke(); g.setLineDash([]);
       }
     }
+    // house items (kitchen, bath, laundry)
+    const V2 = global.Plan3DViewer;
+    if (V2 && V2.itemCorners) for (const it of P.items || []) this.drawItem(it, false);
     // rooms
     for (const r of P.rooms) {
       g.font = '600 13px Bahnschrift, "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -613,6 +679,7 @@ class Editor {
       else if (sel.kind === 'opening') { quad(o.x1, o.y1, o.x2, o.y2, (o.t || 0.25) + 6 / s); g.stroke(); }
       else if (sel.kind === 'chase') { g.strokeRect(this.sx(Math.min(o.x0, o.x1)) - 2, this.sy(Math.min(o.y0, o.y1)) - 2, Math.abs(o.x1 - o.x0) * s + 4, Math.abs(o.y1 - o.y0) * s + 4); }
       else if (sel.kind === 'room') { g.strokeRect(this.sx(o.x) - 48, this.sy(o.y) - 14, 96, 28); }
+      else if (sel.kind === 'item') { const c = global.Plan3DViewer.itemCorners(o); g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.stroke(); }
       else if (sel.kind === 'insert') { const b = this.insBox(o); g.strokeRect(this.sx(b.x0) - 6, this.sy(b.y0) - 6, (b.x1 - b.x0) * s + 12, (b.y1 - b.y0) * s + 12); }
     };
     if (this.hover && this.tool === 'select' && !(this.sel && this.sel.id === this.hover.id)) outlineSel(this.hover, COL.hover, 1.5);
@@ -640,6 +707,7 @@ class Editor {
       const pv = this.openingPreview(C.x, C.y, this.tool);
       if (pv) { quad(pv.x1, pv.y1, pv.x2, pv.y2, (pv.t || 0.25) + 6 / s); g.fillStyle = 'rgba(242,200,75,.35)'; g.fill(); g.strokeStyle = COL.draft; g.lineWidth = 1.5; g.stroke(); dimFor(pv.x1, pv.y1, pv.x2, pv.y2, (pv.t || 0.25) + 0.6, COL.draft, true); }
     }
+    if (C && this.tool === 'item' && global.Plan3DViewer) { const q = this.itemPlace(C.x, C.y, this.itemType); if (q) this.drawItem(q, true); }
     if (this.drag && this.drag.kind === 'chase') {
       const D = this.drag; g.fillStyle = 'rgba(242,200,75,.25)'; g.strokeStyle = COL.draft; g.lineWidth = 1.5;
       const X = this.sx(Math.min(D.x0, D.x1)), Y = this.sy(Math.min(D.y0, D.y1)), W = Math.abs(D.x1 - D.x0) * s, H = Math.abs(D.y1 - D.y0) * s;

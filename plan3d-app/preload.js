@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   openFile: (which) => ipcRenderer.invoke('open-file', which),
   loadPath: (p) => ipcRenderer.invoke('load-path', p),
-  loadSample: () => ipcRenderer.invoke('load-sample'),
+  loadSample: (which) => ipcRenderer.invoke('load-sample', which),
   pathForFile: (f) => { try { return webUtils.getPathForFile(f); } catch (e) { return null; } },
   saveProject: (json, current, suggested) => ipcRenderer.invoke('save-project', json, current, suggested),
   exportFile: (data, name, ext) => ipcRenderer.invoke('export-file', { data, name, ext }),
