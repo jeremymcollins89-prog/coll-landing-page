@@ -287,6 +287,11 @@ function toIfc(plan, opts) {
   S.steel_frame = S.wood;
   const KIND_NAME = (k) => (V.WALL_KINDS && V.WALL_KINDS[k] ? V.WALL_KINDS[k].label : 'Building wall');
   S.ffuFace = S.face;
+  // the colors seen from above in the Plenum view: tile backs, LED housings, FFU inlet ring and pre-filter
+  S.tileBack = style('Coll ceiling tile, back', 0.616, 0.604, 0.569, 0, 0.02, 4, 'MATT');
+  S.housing = style('Coll LED housing, steel', 0.79, 0.81, 0.82, 0, 0.4, 40, 'METAL');
+  S.galv = style('Coll FFU inlet ring, galvanized', 0.68, 0.71, 0.72, 0, 0.47, 45, 'METAL');
+  S.prefilter = style('Coll FFU pre-filter', 0.23, 0.25, 0.26, 0, 0.13, 10, 'MATT');
   const elPl = E(`IFCLOCALPLACEMENT(${stPl},${ax3})`);
   const contained = [];
   // Geometry is written the way Revit's own IFC exporter writes it: every element gets its own placement at
@@ -343,7 +348,7 @@ function toIfc(plan, opts) {
     if (g.k === 'disc') { const c = []; for (let k = 0; k < 24; k++) { const a = k / 24 * Math.PI * 2; c.push([g.cx + Math.cos(a) * g.r, g.cy + Math.sin(a) * g.r]); } return mesh(c, [], g.z0, g.z1, g.st); }
     return mesh(g.ar.outer, g.ar.holes, g.z0, g.z1, g.st);
   };
-  let shapeAt = null; // the corner the last shape() was measured from, for put()
+  let shapeAt = null, shapeSt = null; // the corner the last shape() was measured from, for put()
   const shape = (solids) => {
     let mx = Infinity, my = Infinity;
     const see = (x, y) => { if (x < mx) mx = x; if (y < my) my = y; };
@@ -356,6 +361,7 @@ function toIfc(plan, opts) {
     let Y = -Infinity; for (const g of solids) { if (g.k === 'solid') g.pts.forEach(p => { if (p[1] > Y) Y = p[1]; }); else if (g.k === 'disc') Y = Math.max(Y, g.cy + g.r); else g.ar.outer.forEach(p => { if (p[1] > Y) Y = p[1]; }); }
     O = isFinite(mx) ? [mx, Y] : [0, 0];
     const items = solids.map(build).filter(Boolean);
+    shapeSt = new Set(solids.filter(Boolean).map(g => g.st).filter(Boolean));
     shapeAt = O; O = [0, 0];
     return E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${E(`IFCSHAPEREPRESENTATION(${body},'Body','Tessellation',(${items.join(',')}))`)}))`);
   };
@@ -363,7 +369,13 @@ function toIfc(plan, opts) {
   // a box along a line: from (x1, y1) to (x2, y2), t thick, z0 to z1 high
   const seg = (x1, y1, x2, y2, z0, z1, t, st) => solid(quad(x1, y1, x2, y2, t), z0, z1, st);
   const box = (x0, y0, x1, y1, z0, z1, st) => solid([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], z0, z1, st);
-  const put = (cls, name, objType, sh, tail, mat) => { const at = shapeAt; shapeAt = null; const pl = at ? E(`IFCLOCALPLACEMENT(${stPl},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((${num(at[0] * MM)},${num(-at[1] * MM)},0.))`)},$,$)`)})`) : elPl; const id = E(`${cls}('${guid()}',$,${stepStr(name)},$,${objType ? stepStr(objType) : '$'},${pl},${sh},$${tail})`); contained.push(id); if (mat) (matOf[mat] = matOf[mat] || []).push(id); return id; };
+  const put = (cls, name, objType, sh, tail, mat) => { const at = shapeAt; shapeAt = null; const pl = at ? E(`IFCLOCALPLACEMENT(${stPl},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((${num(at[0] * MM)},${num(-at[1] * MM)},0.))`)},$,$)`)})`) : elPl; const id = E(`${cls}('${guid()}',$,${stepStr(name)},$,${objType ? stepStr(objType) : '$'},${pl},${sh},$${tail})`); contained.push(id);
+    // An element made of several finishes (a door: leaf, frame, glass, hardware; an FFU: housing and filter
+    // face) gets no single element material: Revit's IFC link paints the whole element in that material,
+    // so each part keeps its own color from its style instead.
+    const sts = shapeSt; shapeSt = null;
+    if (mat && !(sts && sts.size > 1)) (matOf[mat] = matOf[mat] || []).push(id);
+    return id; };
   // Each building (the main plan, then each placed building, already moved into place) is written out in turn.
   const emit = (plan, onSlab) => {
   const A = V.analyze(plan), H = A.H, WH = A.WH || H;
@@ -549,7 +561,7 @@ function toIfc(plan, opts) {
     // smaller pieces would meet.
     // names carry the heights, so they read in Revit's properties and schedules
     const cName = A.house ? 'Ceiling, drywall at ' + V.fmtFt(H) : 'Ceiling, grid at ' + V.fmtFt(H);
-    areas.forEach((ar, idx) => put('IFCCOVERING', areas.length > 1 ? `${cName} (${idx + 1})` : cName, A.house ? 'House ceiling' : 'Coll cleanroom grid ceiling, 2×4 tiles', shape([slab(ar, H, H + 0.052, S.ceiling)]), ',.CEILING.', S.ceiling));
+    areas.forEach((ar, idx) => put('IFCCOVERING', areas.length > 1 ? `${cName} (${idx + 1})` : cName, A.house ? 'House ceiling' : 'Coll cleanroom grid ceiling, 2×4 tiles', shape(A.house ? [slab(ar, H, H + 0.052, S.ceiling)] : [slab(ar, H, H + 0.04, S.ceiling), slab(ar, H + 0.04, H + 0.052, S.tileBack)]), ',.CEILING.', S.ceiling));
     // the plenum lid: the top of the cleanroom, over the plenum
     // (a roof-type slab, so in Revit it hides with Roofs in Visibility/Graphics while the grid ceiling stays,
     // like the Plenum view)
@@ -596,7 +608,7 @@ function toIfc(plan, opts) {
           // cabinet above the grid, blower housing centred on it, inlet ring on top
           solid(box(-z.d / 2 + 0.015, z.d / 2 - 0.015, -z.w / 2 + 0.015, z.w / 2 - 0.015), H + 0.01, H + z.h, fs),
           solid(box(-hd, hd, -hwl, hwl), H + z.h, H + z.overall, fs),
-          disc(...at(0, 0), r, H + z.overall, H + z.overall + 0.06, S.steel),
+          disc(...at(0, 0), r, H + z.overall, H + z.overall + 0.06, S.galv), disc(...at(0, 0), r * 0.86, H + z.overall + 0.06, H + z.overall + 0.065, S.prefilter),
           // electrical box on the cabinet top, toward one end
           solid(box(-z.d / 2 + 0.12, -z.d / 2 + 0.12 + z.ebox, z.w / 2 - 0.45 - 2.25 / 12, z.w / 2 - 0.45 + 2.25 / 12), H + z.h, H + z.h + 3.5 / 12, fs)
         ];
@@ -606,7 +618,7 @@ function toIfc(plan, opts) {
       else {
         // LED flat panel: white lens a hair below the grid inside a thin white frame, housing above
         const e = 0.06, inner = [[f.x - hw + e, f.y - hh + e], [f.x + hw - e, f.y - hh + e], [f.x + hw - e, f.y + hh - e], [f.x - hw + e, f.y + hh - e]];
-        put('IFCLIGHTFIXTURE', 'LED light', 'LED flat panel', shape([solid(pts, H - 0.03, H + 0.33, S.frame), solid(inner, H - 0.04, H - 0.03, S.led)]), ',.DIRECTIONSOURCE.', S.led);
+        put('IFCLIGHTFIXTURE', 'LED light', 'LED flat panel', shape([solid(pts, H - 0.03, H, S.frame), solid(pts, H + 0.052, H + 0.33, S.housing), solid(inner, H - 0.04, H - 0.03, S.led)]), ',.DIRECTIONSOURCE.', S.led);
       }
     }
   }
