@@ -165,7 +165,7 @@ function partsList(plan) {
     const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
     add('Wall panels', PIECE_NAMES[w.piece] || 'Wall panel', inch(L) + hgt, 1, 'ea', 10);
   }
-  let hStuds = 0;
+  let hStuds = 0, tranTrack = 0;
   // Walls drawn as long runs: panels fall on a 48″ module from the wall's start (as on the plan sheet);
   // a door or glass cut leaves a cut panel on each side. Slivers under 1″ are trim, not panels.
   for (const p of A.pieces) {
@@ -186,10 +186,13 @@ function partsList(plan) {
     let n = 0;
     for (let i = 0; i + 1 < cuts.length; i++) {
       const L = cuts[i + 1] - cuts[i]; if (L < 1 / 12) continue;
-      add('Wall panels', 'Transition panel (over lower building)', (Math.abs(L - 4) < 1 / 96 ? '48″' : inch(L)) + ' × ' + ftin(q.y1 - q.y0), 1, 'ea', 11); n++;
+      add('Wall panels', 'Transition panel (bulkhead over opening to lower ceiling)', (Math.abs(L - 4) < 1 / 96 ? '48″' : inch(L)) + ' × ' + ftin(q.y1 - q.y0), 1, 'ea', 11); n++;
     }
-    hStuds += Math.max(0, n - 1);
-    add('Wall panels', 'Track under transition panels (ceiling-type, at the lower top)', ftin(q.len), Math.ceil(q.len), 'lin ft', 16);
+    if (n > 1) add('Studs & posts', 'H-stud, 3″ with insert (transition panels)', '3″ × ' + ftin(q.y1 - q.y0), n - 1, 'ea', 20);
+    // bottom edge: closure channel; ceiling track on both faces (the lower ceiling's grid on one side,
+    // this area's grid on the other); hanger wire/rod to the structure over the opening
+    add('Trim', 'Closure channel, bottom of transition panels', ftin(q.len), Math.ceil(q.len), 'lin ft', 53);
+    tranTrack += q.len * (H - q.y0 > 0.25 ? 2 : 1);
   }
 
   // --- Joints: H-studs, corner posts, T-posts, end caps (from how wall ends meet).
@@ -279,6 +282,7 @@ function partsList(plan) {
   }
   for (const b of A.boxes) { const per = 2 * ((b.x1 - b.x0) + (b.z1 - b.z0)); baseFt += per; trackFt += per; }
   if (baseFt) add('Trim', 'Black rubber base, 4″', '', Math.ceil(baseFt), 'lin ft', 51);
+  trackFt += tranTrack;
   if (trackFt) add('Trim', 'Ceiling track', '', Math.ceil(trackFt), 'lin ft', 52);
 
   // --- Ceiling

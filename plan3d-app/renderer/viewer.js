@@ -228,7 +228,7 @@ function zones(plan, T, idp, out) {
   // each building knows the walls of the buildings around it (where one carries on into another)
   // (each sibling wall carries __top: how high it stands, so a taller building can fill the step above a lower one)
   const topOf = (q, w) => { const H = Math.max(6, q.plan.ceiling || 8), PL = Math.max(0, Math.min(20, +q.plan.plenum || 0)); return isHard(w) ? H + PL : isFrame(w) ? Math.max(6, w.h || H) : shellHeight(q.plan, w); };
-  if (!idp) for (const z of out) Object.defineProperty(z.plan, '__sib', { value: [].concat(...out.filter(q => q !== z).map(q => (q.plan.walls || []).map(w => Object.assign({}, w, { __top: topOf(q, w), __hard: isHard(w) })))), enumerable: false, configurable: true });
+  if (!idp) for (const z of out) Object.defineProperty(z.plan, '__sib', { value: [].concat(...out.filter(q => q !== z).map(q => (q.plan.walls || []).map(w => Object.assign({}, w, { __top: topOf(q, w), __ceil: Math.max(6, q.plan.ceiling || 8), __hard: isHard(w) })))), enumerable: false, configurable: true });
   return out;
 }
 /* One flat plan with every building merged in (for 2D drawings: DWG/DXF and the plan sheet). */
@@ -379,6 +379,7 @@ function analyze(plan) {
   if (SIB.length && PL >= 0) {
     const HW = walls.filter(w => isHard(w) && Math.hypot(w.x2 - w.x1, w.y2 - w.y1) > 0.3);
     const topAt = (x, z) => { let t = -1; for (const w of SIB) if (w.__hard && (Math.hypot(w.x1 - x, w.y1 - z) < 0.6 || Math.hypot(w.x2 - x, w.y2 - z) < 0.6)) t = Math.max(t, w.__top); return t; };
+    const ceilAt = (x, z) => { let c = -1; for (const w of SIB) if (w.__hard && (Math.hypot(w.x1 - x, w.y1 - z) < 0.6 || Math.hypot(w.x2 - x, w.y2 - z) < 0.6)) c = Math.max(c, w.__ceil || 0); return c; };
     for (let i = 0; i < HW.length; i++) for (let j = i + 1; j < HW.length; j++) {
       const a = HW[i], b = HW[j], la = Math.hypot(a.x2 - a.x1, a.y2 - a.y1), ux = (a.x2 - a.x1) / la, uz = (a.y2 - a.y1) / la;
       const lb = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
@@ -392,7 +393,11 @@ function analyze(plan) {
         const t1 = topAt(ex, ez), t2 = topAt(fx, fz); if (t1 < 0 || t2 < 0) continue;
         // an opening (door) already standing in the gap is not a gap
         if (ops.some(o => segDist((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, ex, ez, fx, fz) < 0.3)) continue;
-        bd = g; best = { x1: ex, z1: ez, x2: fx, z2: fz, t: Math.max(a.t || 0.25, b.t || 0.25), y0: Math.max(t1, t2), y1: WH, len: g };
+        // the panels hang from this area's top down to the lower area's ceiling (a bulkhead over the opening),
+        // closing both the step between the two tops and the lower area's plenum where it opens into this one
+        if (WH <= Math.max(t1, t2) + 0.05) continue;
+        const c0 = Math.max(ceilAt(ex, ez), ceilAt(fx, fz));
+        bd = g; best = { x1: ex, z1: ez, x2: fx, z2: fz, t: Math.max(a.t || 0.25, b.t || 0.25), y0: c0 > 0 ? Math.min(c0, H) : Math.max(t1, t2), y1: WH, hLow: c0 > 0 ? c0 : null, len: g };
       }
       if (best && best.y1 - best.y0 > 0.05 && !transitions.some(q => Math.hypot((q.x1 + q.x2 - best.x1 - best.x2) / 2, (q.z1 + q.z2 - best.z1 - best.z2) / 2) < 0.5 && Math.abs(q.len - best.len) < 0.5)) transitions.push(best);
     }
@@ -923,7 +928,9 @@ function buildScene(THREE, plan, A) {
     const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(q.len / 4, 1);
     const face = new THREE.MeshPhongMaterial({ map: tex, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 });
     const m = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); outline(m); pick.push(m);
-    segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y0 + 0.17, q.t + 0.03, M.track);
+    // closure channel along the bottom edge, ceiling track for each side's ceiling
+    segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.04, q.y0 + 0.13, q.t + 0.03, M.track);
+    if (H - q.y0 > 0.25) segBox(q.x1, q.z1, q.x2, q.z2, H - 0.17, H, q.t + 0.03, M.track);
   }
   for (const c of A.corners) {
     const legs = [[c.a, c.b], [c.b, c.a]];
