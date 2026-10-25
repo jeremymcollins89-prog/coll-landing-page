@@ -160,7 +160,7 @@ window.addEventListener('keyup', e => { if (e.key === ' ') ed.key(e); });
 
 /* ---------- Properties panel ---------- */
 function fld(label, html) { return `<div class="fld"><label>${label}</label>${html}</div>`; }
-function txt(id, val) { return `<input type="text" id="${id}" value="${esc(val)}" spellcheck="false">`; }
+function txt(id, val, ph) { return `<input type="text" id="${id}" value="${esc(val)}" spellcheck="false"${ph ? ` placeholder="${esc(ph)}"` : ''}>`; }
 function bindLen(id, unit, apply) {
   const el = $('#' + id); if (!el) return;
   const go = () => { const v = parseLen(el.value, unit); if (isFinite(v) && v >= 0) apply(v); else { el.style.borderColor = 'var(--warn)'; setTimeout(() => el.style.borderColor = '', 900); } };
@@ -301,11 +301,15 @@ function renderProps(opt) {
       ${fld('Name', txt('pName', o.name))}
       ${fld('Size note', txt('pDims', o.dims || ''))}
       ${P.mode === 'house' ? fld('Floor', `<select id="pRFloor"><option value="">Same as the house (${esc(Plan3DViewer.FLOORS[P.floorType || 'lvp'])})</option>${Object.entries(Plan3DViewer.FLOORS).map(([k, l]) => `<option value="${k}" ${o.floor === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`) : ''}
+      ${P.mode === 'house' ? '' : fld('Ceiling', txt('pRCeil', o.ceiling > 0 ? fmt(o.ceiling) : '', 'Same as the building (' + fmt(P.ceiling || 8) + ')')) + fld('Plenum above', txt('pRPlen', o.plenum != null && o.plenum !== '' ? fmt(+o.plenum) : '', 'Same as the building (' + fmt(+P.plenum || 0) + ')'))}
+      ${P.mode === 'house' ? '' : `<p class="note" style="margin-top:-4px">Give a room its own ceiling height and plenum. Its walls run up to its top (${esc(fmt(Plan3DViewer.roomKey(P, o).H + Plan3DViewer.roomKey(P, o).PL))}); where it meets a lower room through an opening, transition panels fill the step. Leave blank to use the building's.</p>`}
       <p class="note">Rooms show as jump buttons in the walkthrough. The size note is optional, e.g. 15′-5½″ × 29′-4⅞″.</p>`;
     box.innerHTML = h;
     const nm = $('#pName'); nm.onchange = () => ed.edit(() => { o.name = nm.value.trim() || 'Room'; });
     $('#pDims').onchange = e => ed.edit(() => { o.dims = e.target.value.trim(); });
     if ($('#pRFloor')) $('#pRFloor').onchange = e => ed.edit(() => { if (e.target.value) o.floor = e.target.value; else delete o.floor; });
+    const roomLen = (id, key, lo, hi) => { const el = $('#' + id); if (!el) return; const go = () => { const raw = el.value.trim(); if (!raw) { ed.edit(() => { delete o[key]; }); renderProps(); return; } const v = parseLen(raw, 'ft'); if (isFinite(v) && v >= 0) { ed.edit(() => { o[key] = Math.max(lo, Math.min(hi, v)); }); renderProps(); } else { el.style.borderColor = 'var(--warn)'; setTimeout(() => el.style.borderColor = '', 900); } }; el.addEventListener('change', go); el.addEventListener('keydown', e => { if (e.key === 'Enter') { go(); el.blur(); } }); };
+    roomLen('pRCeil', 'ceiling', 6, 30); roomLen('pRPlen', 'plenum', 0, 20);
     $('#pDel').onclick = () => ed.deleteSel();
     if (opt && opt.focusName) { nm.focus(); nm.select(); }
     return;
@@ -948,7 +952,7 @@ async function saveBuildingDialog() {
 /* Pick a building from the library. Resolves to the entry, or null. */
 async function pickBuilding(title, okLabel) {
   const lib = await loadBldLib(); let picked = null;
-  const list = () => lib.length ? lib.map(e => `<div class="blib-item" data-id="${esc(e.id)}">${planThumb(e.plan)}<div><b>${esc(e.name)}</b><small>${esc(e.size || bldSize(e.plan))} · ${esc(Plan3DViewer.zones(e.plan).length > 1 ? Plan3DViewer.zones(e.plan).length + ' buildings · ' : '')}${esc(fmt(e.plan.ceiling || 8))} ceiling</small><small>Saved ${esc(fmtDate(e.savedAt))}</small></div>
+  const list = () => lib.length ? lib.map(e => `<div class="blib-item" data-id="${esc(e.id)}">${planThumb(e.plan)}<div><b>${esc(e.name)}</b><small>${esc(e.size || bldSize(e.plan))} · ${esc(Plan3DViewer.zones(e.plan).filter(z => !z.virtual).length > 1 ? Plan3DViewer.zones(e.plan).filter(z => !z.virtual).length + ' buildings · ' : '')}${esc(fmt(e.plan.ceiling || 8))} ceiling</small><small>Saved ${esc(fmtDate(e.savedAt))}</small></div>
       <div class="row"><button class="btn small primary" data-use="${esc(e.id)}">${esc(okLabel)}</button><button class="btn small danger" data-del="${esc(e.id)}" title="Remove from the library (placed copies stay)">Delete</button></div></div>`).join('')
     : '<div class="blib-empty">No saved buildings yet. Open or draw a building, then use <b>Buildings → Save this building to the library</b>.</div>';
   await dialogOpen({
@@ -1019,7 +1023,7 @@ async function insertProps(box, o) {
   $('#iSwap').onclick = async () => { const e = await pickBuilding('Replace “' + (o.name || 'building') + '” with…', 'Use this'); if (e) { swapIn(e); toast(`Replaced with “${e.name}”, in the same spot.`); } };
   $('#iUngroup').onclick = async () => {
     const H0 = ed.plan.ceiling || 8, H1 = o.plan.ceiling || 8;
-    const ok = await confirmDlg('Ungroup this building?', `Its walls, doors, chases and rooms become part of this plan, so you can edit them one by one. It stops being a separate building: it uses this plan's ${fmt(H0)} ceiling${Math.abs(H0 - H1) > 0.01 ? ' (it has ' + fmt(H1) + ' now)' : ''} and joins the main parts-list section. Ctrl+Z undoes it.`, 'Ungroup');
+    const ok = await confirmDlg('Ungroup this building?', `Its walls, doors, chases and rooms become part of this plan, so you can edit them one by one. It stops being a separate building and joins the main parts-list section.${Math.abs(H0 - H1) > 0.01 ? ' Its rooms keep their ' + fmt(H1) + ' ceiling.' : ''} Ctrl+Z undoes it.`, 'Ungroup');
     if (!ok) return;
     ed.edit(Pl => {
       const zs = Plan3DViewer.zones({ walls: [], inserts: [o] }).slice(1), uid = Plan3DEditor.uid;
@@ -1029,7 +1033,9 @@ async function insertProps(box, o) {
         for (const w of z.plan.walls || []) Pl.walls.push({ ...w, id: nid(w.id) });
         for (const op of z.plan.openings || []) Pl.openings.push({ ...op, id: uid(), ...(op.unit ? { unit: nid(op.unit) } : {}) });
         for (const k of z.plan.chases || []) Pl.chases.push({ ...k, id: uid() });
-        for (const r of z.plan.rooms || []) Pl.rooms.push({ ...r, id: uid() });
+        // its rooms keep its ceiling and plenum, so it stays at its own height inside this building
+        const zk = { ceiling: z.plan.ceiling || 8, plenum: +z.plan.plenum || 0 };
+        for (const r of z.plan.rooms || []) { const nr = { ...r, id: uid() }; if (!(nr.ceiling > 0) && Math.abs(zk.ceiling - (Pl.ceiling || 8)) > 0.01) nr.ceiling = zk.ceiling; if ((nr.plenum == null || nr.plenum === '') && Math.abs(zk.plenum - (+Pl.plenum || 0)) > 0.01) nr.plenum = zk.plenum; Pl.rooms.push(nr); }
         if (Pl.ceilingMode === 'manual') for (const f of Plan3DViewer.ceilingFixtures(z.plan)) Pl.fixtures.push({ ...f, id: uid() });
         if (!Pl.ffuModel && z.plan.ffuModel) Pl.ffuModel = z.plan.ffuModel;
       }

@@ -324,7 +324,22 @@ function projectParts(plan) {
   for (const z of Z) {
     const A = V.analyze(z.plan); if (A.empty && !(z.plan.fixtures || []).length) continue;
     const rows = partsList(z.plan); if (!rows.length) continue;
-    out.push({ title: z.main ? (z.plan.name || 'Main building') : z.name, main: z.main, rows, floorFt: floorTrackFt(z.plan, A) });
+    const floorFt = floorTrackFt(z.plan, A);
+    // the areas of one building with several ceiling heights share their building's section
+    const home = z.virtual ? out.find(q => q.key === (z.of || '__main')) : null;
+    if (home) {
+      for (const r of rows) {
+        // counted items match on size; running totals (lin ft, sq ft…) add up whatever their size note says
+        const m = home.rows.find(q => q.cat === r.cat && q.item === r.item && q.unit === r.unit && (r.unit !== 'ea' || q.size === r.size));
+        if (!m) { home.rows.push({ ...r }); continue; }
+        m.qty = Math.round((m.qty + r.qty) * 100) / 100;
+        if (m.size !== r.size) m.size = /total$/.test(m.size) && m.unit === 'lin ft' ? ftin(m.qty) + ' total' : '';
+      }
+      home.rows.sort((a, b) => (a.order || 0) - (b.order || 0) || a.item.localeCompare(b.item) || String(a.size).localeCompare(String(b.size), undefined, { numeric: true }));
+      home.floorFt += floorFt;
+      continue;
+    }
+    out.push({ key: z.main ? '__main' : z.id, title: z.main ? (z.plan.name || 'Main building') : z.name, main: z.main, rows, floorFt });
   }
   if (out.length === 1) out[0].title = '';
   return out;

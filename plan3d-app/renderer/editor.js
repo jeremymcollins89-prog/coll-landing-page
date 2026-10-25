@@ -614,6 +614,8 @@ class Editor {
       g.font = '600 13px Bahnschrift, "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillStyle = COL.room; g.fillText(r.name || 'Room', this.sx(r.x), this.sy(r.y) - (r.dims ? 7 : 0));
       if (r.dims) { g.font = '11px Consolas, monospace'; g.fillStyle = COL.roomSub; g.fillText(r.dims, this.sx(r.x), this.sy(r.y) + 8); }
+      // a room with its own ceiling height says so
+      if (V2 && V2.roomKey && (r.ceiling > 0 || (r.plenum != null && r.plenum !== ''))) { const k = V2.roomKey(P, r); g.font = '11px Consolas, monospace'; g.fillStyle = COL.roomSub; g.fillText('ceiling ' + V2.fmtFt(k.H) + (k.PL ? ' · plenum ' + V2.fmtFt(k.PL) : ''), this.sx(r.x), this.sy(r.y) + (r.dims ? 22 : 14)); }
     }
   }
 
