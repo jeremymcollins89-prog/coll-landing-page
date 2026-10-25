@@ -167,7 +167,9 @@ function zones(plan, T, idp, out) {
     zones(sub, C, (idp ? idp + '/' : '') + ins.id, out);
   }
   // each building knows the walls of the buildings around it (where one carries on into another)
-  if (!idp) for (const z of out) Object.defineProperty(z.plan, '__sib', { value: [].concat(...out.filter(q => q !== z).map(q => q.plan.walls || [])), enumerable: false, configurable: true });
+  // (each sibling wall carries __top: how high it stands, so a taller building can fill the step above a lower one)
+  const topOf = (q, w) => { const H = Math.max(6, q.plan.ceiling || 8), PL = Math.max(0, Math.min(20, +q.plan.plenum || 0)); return isHard(w) ? H + PL : isFrame(w) ? Math.max(6, w.h || H) : shellHeight(q.plan, w); };
+  if (!idp) for (const z of out) Object.defineProperty(z.plan, '__sib', { value: [].concat(...out.filter(q => q !== z).map(q => (q.plan.walls || []).map(w => Object.assign({}, w, { __top: topOf(q, w), __hard: isHard(w) })))), enumerable: false, configurable: true });
   return out;
 }
 /* One flat plan with every building merged in (for 2D drawings: DWG/DXF and the plan sheet). */
@@ -308,7 +310,32 @@ function analyze(plan) {
   // house items block walking
   const items = (plan.items || []).filter(it => ITEMS[it.type]).map(it => ({ it, c: itemCorners(it) }));
   for (const q of items) for (let k = 0; k < 4; k++) { const a = q.c[k], b = q.c[(k + 1) % 4]; obs.push({ x1: a[0], z1: a[1], x2: b[0], z2: b[1], r: 0.05 }); }
-  return { sib: plan.__sib || [], H, PL, WH, hardAny, frameAny, ceilAny: hardAny || frameAny, house: frameAny && !hardAny, items, shellTop, walls, pieces, ends, corners, opInfo, boxes, obs, empty, bounds: { minX, minZ, maxX, maxZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, w: maxX - minX, d: maxZ - minZ } };
+  // Transition panels: where this building's hardwall run has a gap that a lower building carries on through
+  // (both gap ends meet its walls), the step between the lower building's top and this one's top is filled
+  // with hardwall panels so the taller plenum stays closed.
+  const transitions = [], SIB = plan.__sib || [];
+  if (SIB.length && PL >= 0) {
+    const HW = walls.filter(w => isHard(w) && Math.hypot(w.x2 - w.x1, w.y2 - w.y1) > 0.3);
+    const topAt = (x, z) => { let t = -1; for (const w of SIB) if (w.__hard && (Math.hypot(w.x1 - x, w.y1 - z) < 0.6 || Math.hypot(w.x2 - x, w.y2 - z) < 0.6)) t = Math.max(t, w.__top); return t; };
+    for (let i = 0; i < HW.length; i++) for (let j = i + 1; j < HW.length; j++) {
+      const a = HW[i], b = HW[j], la = Math.hypot(a.x2 - a.x1, a.y2 - a.y1), ux = (a.x2 - a.x1) / la, uz = (a.y2 - a.y1) / la;
+      const lb = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
+      if (Math.abs(ux * (b.y2 - b.y1) / lb - uz * (b.x2 - b.x1) / lb) > 0.01) continue;
+      if (Math.abs((b.x1 - a.x1) * -uz + (b.y1 - a.y1) * ux) > 0.1) continue;
+      let best = null, bd = 12;
+      for (const [ex, ez] of [[a.x1, a.y1], [a.x2, a.y2]]) for (const [fx, fz] of [[b.x1, b.y1], [b.x2, b.y2]]) {
+        const g = Math.hypot(fx - ex, fz - ez); if (g < 0.3 || g >= bd) continue;
+        const mx = (ex + fx) / 2, mz = (ez + fz) / 2;
+        if (segDist(mx, mz, a.x1, a.y1, a.x2, a.y2) < g / 2 - 0.05 || segDist(mx, mz, b.x1, b.y1, b.x2, b.y2) < g / 2 - 0.05) continue;
+        const t1 = topAt(ex, ez), t2 = topAt(fx, fz); if (t1 < 0 || t2 < 0) continue;
+        // an opening (door) already standing in the gap is not a gap
+        if (ops.some(o => segDist((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, ex, ez, fx, fz) < 0.3)) continue;
+        bd = g; best = { x1: ex, z1: ez, x2: fx, z2: fz, t: Math.max(a.t || 0.25, b.t || 0.25), y0: Math.max(t1, t2), y1: WH, len: g };
+      }
+      if (best && best.y1 - best.y0 > 0.05 && !transitions.some(q => Math.hypot((q.x1 + q.x2 - best.x1 - best.x2) / 2, (q.z1 + q.z2 - best.z1 - best.z2) / 2) < 0.5 && Math.abs(q.len - best.len) < 0.5)) transitions.push(best);
+    }
+  }
+  return { sib: plan.__sib || [], transitions, H, PL, WH, hardAny, frameAny, ceilAny: hardAny || frameAny, house: frameAny && !hardAny, items, shellTop, walls, pieces, ends, corners, opInfo, boxes, obs, empty, bounds: { minX, minZ, maxX, maxZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, w: maxX - minX, d: maxZ - minZ } };
 }
 
 /* Return grille on an air chase: c.grW / c.grH (feet) and c.grSill (feet, floor to bottom of the grille),
@@ -808,6 +835,13 @@ function buildScene(THREE, plan, A) {
     shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
   }
   curRef = null;
+  // transition panels over a lower building that carries on through a gap in this one's wall
+  for (const q of A.transitions || []) {
+    const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(q.len / 4, 1);
+    const face = new THREE.MeshPhongMaterial({ map: tex, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 });
+    const m = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); outline(m); pick.push(m);
+    segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y0 + 0.17, q.t + 0.03, M.track);
+  }
   for (const c of A.corners) {
     const legs = [[c.a, c.b], [c.b, c.a]];
     for (const [u, v] of legs) {
