@@ -295,29 +295,53 @@ function toIfc(plan, opts) {
   // render-ready materials) draws and selects elements reliably only in this form.
   // solid/disc/slab collect what to build; shape() writes them relative to the element's corner.
   let O = [0, 0];
-  const L2 = (x, y) => E(`IFCCARTESIANPOINT((${num((x - O[0]) * MM)},${num(-(y - O[1]) * MM)}))`);
   // a solid: a plan outline (feet) pushed up from z0 to z1 (feet)
   const solid = (pts, z0, z1, st) => ({ k: 'solid', pts, z0, z1, st });
   // a round solid (inlet ring): centre (feet), radius (feet), from z0 to z1
   const disc = (cx, cy, r, z0, z1, st) => ({ k: 'disc', cx, cy, r, z0, z1, st });
-  const zpos = (z0) => E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((0.,0.,${num(z0 * MM)}))`)},$,$)`);
-  const lring = (pts) => { const r = pts.map(p => L2(p[0], p[1])); r.push(r[0]); return E(`IFCPOLYLINE((${r.join(',')}))`); };
-  const build = (g) => {
-    let it;
-    if (g.k === 'solid') {
-      const prof = E(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${lring(g.pts)})`);
-      it = E(`IFCEXTRUDEDAREASOLID(${prof},${zpos(g.z0)},${dirZ},${num(Math.max(1, (g.z1 - g.z0) * MM))})`);
-    } else if (g.k === 'disc') {
-      const prof = E(`IFCCIRCLEPROFILEDEF(.AREA.,$,${E(`IFCAXIS2PLACEMENT2D(${L2(g.cx, g.cy)},$)`)},${num(g.r * MM)})`);
-      it = E(`IFCEXTRUDEDAREASOLID(${prof},${zpos(g.z0)},${dirZ},${num(Math.max(1, (g.z1 - g.z0) * MM))})`);
-    } else {
-      const ar = g.ar, prof = ar.holes.length
-        ? E(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,${lring(ar.outer)},(${ar.holes.map(lring).join(',')}))`)
-        : E(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${lring(ar.outer)})`);
-      it = E(`IFCEXTRUDEDAREASOLID(${prof},${zpos(g.z0)},${dirZ},${num(Math.max(1, (g.z1 - g.z0) * MM))})`);
+  // Each solid is written as a closed triangulated mesh (IfcTriangulatedFaceSet): the geometry the IFC4
+  // Reference View this file declares is built on, and what Revit's own Reference View export writes.
+  // Revit's IFC link draws these faces reliably; it dropped faces from extruded solids.
+  const T3 = global.THREE || (typeof THREE !== 'undefined' ? THREE : null);
+  const area2 = (r) => { let a = 0; for (let i = 0; i < r.length; i++) { const p = r[i], q = r[(i + 1) % r.length]; a += p[0] * q[1] - q[0] * p[1]; } return a / 2; };
+  const tidy = (r) => { const o = []; for (const p of r) { const l = o[o.length - 1]; if (!l || Math.abs(l[0] - p[0]) > 1e-4 || Math.abs(l[1] - p[1]) > 1e-4) o.push(p); } if (o.length > 1 && Math.abs(o[0][0] - o[o.length - 1][0]) < 1e-4 && Math.abs(o[0][1] - o[o.length - 1][1]) < 1e-4) o.pop(); return o; };
+  // plan points (feet) → local IFC (mm, y flipped, from the element's corner)
+  const loc = (pts) => pts.map(p => [(p[0] - O[0]) * MM, -(p[1] - O[1]) * MM]);
+  const mesh = (outer, holes, z0, z1, st) => {
+    let ro = tidy(loc(outer)); if (area2(ro) < 0) ro.reverse();
+    const rh = (holes || []).map(h => { const r = tidy(loc(h)); if (area2(r) > 0) r.reverse(); return r; }).filter(r => r.length >= 3);
+    if (ro.length < 3) return null;
+    const rings = [ro, ...rh], flat = [].concat(...rings), n = flat.length, Z0 = z0 * MM, Z1 = Math.max(z0 * MM + 1, z1 * MM);
+    let tris;
+    if (rh.length === 0 && ro.length === 4 || !T3) { tris = []; for (let k = 1; k + 1 < ro.length; k++) tris.push([0, k, k + 1]); }
+    else {
+      const V = (r) => r.map(p => new T3.Vector2(p[0], p[1]));
+      tris = T3.ShapeUtils.triangulateShape(V(ro), rh.map(V));
     }
-    if (g.st) E(`IFCSTYLEDITEM(${it},(${g.st}),$)`);
+    const F = [];
+    for (const t of tris) {
+      const a = flat[t[0]], b = flat[t[1]], c = flat[t[2]], ccwT = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]) > 0;
+      const [i, j, k] = ccwT ? t : [t[0], t[2], t[1]];
+      F.push([i + 1 + n, j + 1 + n, k + 1 + n]); // top (+Z)
+      F.push([i + 1, k + 1, j + 1]);             // bottom (−Z)
+    }
+    let base = 0;
+    for (const r of rings) {
+      for (let k = 0; k < r.length; k++) {
+        const a = base + k, b = base + (k + 1) % r.length;
+        F.push([a + 1, b + 1, b + 1 + n], [a + 1, b + 1 + n, a + 1 + n]);
+      }
+      base += r.length;
+    }
+    const P = [...flat.map(p => `(${num(p[0])},${num(p[1])},${num(Z0)})`), ...flat.map(p => `(${num(p[0])},${num(p[1])},${num(Z1)})`)];
+    const it = E(`IFCTRIANGULATEDFACESET(${E(`IFCCARTESIANPOINTLIST3D((${P.join(',')}))`)},$,.T.,(${F.map(f => `(${f.join(',')})`).join(',')}),$)`);
+    if (st) E(`IFCSTYLEDITEM(${it},(${st}),$)`);
     return it;
+  };
+  const build = (g) => {
+    if (g.k === 'solid') return mesh(g.pts, [], g.z0, g.z1, g.st);
+    if (g.k === 'disc') { const c = []; for (let k = 0; k < 24; k++) { const a = k / 24 * Math.PI * 2; c.push([g.cx + Math.cos(a) * g.r, g.cy + Math.sin(a) * g.r]); } return mesh(c, [], g.z0, g.z1, g.st); }
+    return mesh(g.ar.outer, g.ar.holes, g.z0, g.z1, g.st);
   };
   let shapeAt = null; // the corner the last shape() was measured from, for put()
   const shape = (solids) => {
@@ -331,9 +355,9 @@ function toIfc(plan, opts) {
     // corner in plan (feet); IFC y runs the other way, so the element's corner is its largest plan y
     let Y = -Infinity; for (const g of solids) { if (g.k === 'solid') g.pts.forEach(p => { if (p[1] > Y) Y = p[1]; }); else if (g.k === 'disc') Y = Math.max(Y, g.cy + g.r); else g.ar.outer.forEach(p => { if (p[1] > Y) Y = p[1]; }); }
     O = isFinite(mx) ? [mx, Y] : [0, 0];
-    const items = solids.map(build);
+    const items = solids.map(build).filter(Boolean);
     shapeAt = O; O = [0, 0];
-    return E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${E(`IFCSHAPEREPRESENTATION(${body},'Body','SweptSolid',(${items.join(',')}))`)}))`);
+    return E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${E(`IFCSHAPEREPRESENTATION(${body},'Body','Tessellation',(${items.join(',')}))`)}))`);
   };
   const quad = (x1, y1, x2, y2, t) => { const L = Math.hypot(x2 - x1, y2 - y1) || 1, nx = -(y2 - y1) / L * t / 2, ny = (x2 - x1) / L * t / 2; return [[x1 + nx, y1 + ny], [x2 + nx, y2 + ny], [x2 - nx, y2 - ny], [x1 - nx, y1 - ny]]; };
   // a box along a line: from (x1, y1) to (x2, y2), t thick, z0 to z1 high
