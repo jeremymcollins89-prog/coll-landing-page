@@ -126,6 +126,7 @@ function houseTakeoff(plan, A, add) {
     else if (o.type === 'door') add('Doors & windows', ext ? 'Exterior door, prehung' : 'Interior door, prehung', inch(W) + ' × ' + inch(o.head || 6.67), 1, 'ea', 116);
     else if (o.type === 'door2') add('Doors & windows', ext ? 'Exterior double door, prehung' : 'Interior double door', inch(W) + ' × ' + inch(o.head || 6.67), 1, 'ea', 117);
     else if (o.type === 'open') add('Doors & windows', 'Cased opening', inch(W) + ' × ' + inch(o.head || 6.67), 1, 'ea', 118);
+    else if (o.type === 'overhead') add('Doors & windows', 'Garage door, sectional (with opener)', ftin(W) + ' × ' + ftin(o.head || 7), 1, 'ea', 119);
   }
   if (baseFt > 0) add('Trim', 'Baseboard', '', Math.ceil(baseFt * 1.1), 'lin ft', 120);
   if (casingFt > 0) add('Trim', 'Door and window casing', '', Math.ceil(casingFt * 1.1), 'lin ft', 121);
@@ -240,6 +241,7 @@ function partsList(plan) {
     else if (o.type === 'glass') add('Doors & glass', 'Glass, 1/4″', inch(W) + ' × ' + inch((o.head || 7) - (o.sill == null ? 3 : o.sill)), 1, 'ea', 32);
     else if (o.type === 'pass') add('Doors & glass', 'Pass-thru, stainless', inch(W) + ' W × ' + inch((o.head || 5) - (o.sill == null ? 3 : o.sill)) + ' H × ' + inch(o.depth || 2) + ' D', 1, 'ea', 33);
     else if (o.type === 'open') add('Doors & glass', 'Cased opening frame', inch(W) + ' × ' + ftin(o.head || 7), 1, 'ea', 34);
+    else if (o.type === 'overhead') add('Doors & glass', 'Overhead door, sectional steel (with tracks, opener)', ftin(W) + ' × ' + ftin(o.head || 12), 1, 'ea', 35);
   }
 
   // --- Air chases
@@ -313,9 +315,40 @@ function partsList(plan) {
     const area = fpr ? fpr.area : A.bounds.w * A.bounds.d, tiles = Math.max(0, Math.ceil(area / 8) - nLed - nFfu);
     add('Ceiling', 'Ceiling tile, 2×4 (approx.)', '2′ × 4′', tiles, 'ea', 62);
     if (A.PL > 0) add('Ceiling', 'Plenum lid (top of the cleanroom)', ftin(A.PL) + ' plenum above the grid, top at ' + ftin(A.WH), Math.ceil(area), 'sq ft', 67);
-    if (!(plan.ceilingGrid && plan.ceilingGrid.length)) add('Ceiling', 'Ceiling grid (area, approx.)', '', Math.ceil(area), 'sq ft', 63);
+    if (!(plan.ceilingGrid && plan.ceilingGrid.length)) {
+      add('Ceiling', 'Ceiling grid (area, approx.)', '', Math.ceil(area), 'sq ft', 63);
+      // tee takeoff from the grid as laid out
+      const T = V.gridTakeoff ? V.gridTakeoff(plan, A) : null;
+      if (T) {
+        if (T.mainPcs) add('Ceiling grid', 'Main tee, 15/16″, 12′ (runs spliced, +5%)', '12′', T.mainPcs, 'ea', 70);
+        if (T.cross4) add('Ceiling grid', 'Cross tee, 15/16″, 4′', '', T.cross4, 'ea', 71);
+        if (T.cross2) add('Ceiling grid', 'Cross tee, 15/16″, 2′ (at 2 × 2 fixtures)', '', T.cross2, 'ea', 72);
+        if (T.hangers) add('Ceiling grid', 'Hanger wire, 12 ga (every 4′ on mains + 4 per fixture)', '', T.hangers, 'ea', 73);
+      }
+    }
   }
 
+  // --- Building structure: columns, roof joists, roof deck
+  for (const c of plan.columns || []) add('Structure', c.kind === 'concrete' ? 'Concrete column' : 'Steel column, wide flange, with base plate', Math.round((c.size || 0.67) * 12) + '″ × ' + ftin(c.h || A.shellTop || V.shellHeight(plan, null)), 1, 'ea', 6);
+  const RS = V.roofStructure ? V.roofStructure(plan, A) : null;
+  if (RS) {
+    const byLen = new Map(); for (const j of RS.joists) { const L = Math.ceil(j.len); byLen.set(L, (byLen.get(L) || 0) + 1); }
+    for (const [L, n] of byLen) add('Structure', 'Open-web steel joist, ' + Math.round(RS.depth * 12) + 'K (' + RS.spacing + '′ on center)', L + '′ long', n, 'ea', 7);
+    const fpa = V.footprint ? V.footprint(A, true) : null;
+    if (fpa) add('Structure', 'Metal roof deck, 1½″', '', Math.ceil(fpa.area * 1.05), 'sq ft', 8);
+  }
+  // --- Electrical: devices as placed, and a branch-circuit estimate (20A, 120V) for the planner
+  const DV = V.DEVICES || {}, devs = (plan.devices || []).filter(d => DV[d.type]);
+  for (const d of devs) add('Electrical', DV[d.type].label, '', 1, 'ea', 90);
+  if (devs.length || nFfu || nLed) {
+    const recs = devs.filter(d => d.type === 'outlet' || d.type === 'gfci').length;
+    const ded = devs.filter(d => d.type === 'dedicated' || d.type === 'r208' || d.type === 'jbox').length;
+    const cFfu = nFfu ? Math.ceil(nFfu / 6) : 0, cLed = nLed ? Math.ceil(nLed / 24) : 0, cRec = recs ? Math.ceil(recs / 8) : 0;
+    if (cFfu) add('Electrical', 'Branch circuits for FFUs, 20A (est., 6 FFUs per circuit)', '', cFfu, 'ea', 95);
+    if (cLed) add('Electrical', 'Branch circuits for lights, 20A (est., 24 fixtures per circuit)', '', cLed, 'ea', 96);
+    if (cRec) add('Electrical', 'Branch circuits for receptacles, 20A (est., 8 per circuit)', '', cRec, 'ea', 97);
+    if (ded) add('Electrical', 'Dedicated circuits (equipment)', '', ded, 'ea', 98);
+  }
   if (A.frameAny) houseTakeoff(plan, A, add);
   return [...rows.values()].sort((a, b) => a.order - b.order || a.item.localeCompare(b.item) || a.size.localeCompare(b.size, undefined, { numeric: true }));
 }

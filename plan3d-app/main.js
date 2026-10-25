@@ -667,7 +667,8 @@ if (!app.requestSingleInstanceLock()) {
 let updater = null, updateReady = null, manualCheck = false;
 function sendUpdate(state) { if (win && !win.isDestroyed()) win.webContents.send('update', state); }
 function setupUpdates() {
-  if (!app.isPackaged) return;
+  // the Microsoft Store copy is updated by the Store itself
+  if (!app.isPackaged || process.windowsStore) return;
   try { updater = require('electron-updater').autoUpdater; } catch (e) { return; }
   updater.autoDownload = true;
   updater.autoInstallOnAppQuit = true;

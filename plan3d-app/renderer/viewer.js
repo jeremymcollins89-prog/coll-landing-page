@@ -43,6 +43,12 @@ const CSS = `
 .p3v-rl b{display:block;font-size:12.5px;font-weight:600}
 .p3v-rl span{font:10.5px Consolas,ui-monospace,monospace;color:#f2c84b}
 .p3v button:focus-visible{outline:2px solid #f2c84b;outline-offset:2px}
+.p3v-cbtn{pointer-events:auto;cursor:pointer;font:600 13px/1 inherit;color:#e8edef;padding:9px 12px;border:0}.p3v-cbtn[aria-pressed=true]{background:#f2c84b;color:#1a1f22}
+.p3v-clist{position:absolute;left:12px;bottom:12px;z-index:6;max-width:min(360px,calc(100% - 24px));max-height:40%;overflow:auto;padding:10px 12px;color:#e8edef;font:13px/1.4 system-ui,sans-serif;pointer-events:auto}
+.p3v-clist ol{margin:6px 0;padding-left:20px}.p3v-clist li{margin:3px 0}.p3v-clist small{color:#9fb0b7}.p3v-clist button{font:600 12px inherit;margin:6px 6px 0 0;padding:6px 10px;border-radius:7px;border:0;background:#f2c84b;color:#1a1f22;cursor:pointer}.p3v-clist button.x{background:transparent;color:#9fb0b7;padding:0 4px;margin:0}
+.p3v-cform{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:8;display:flex;flex-direction:column;gap:8px;padding:14px;width:min(340px,calc(100% - 40px));color:#e8edef;font:13px system-ui,sans-serif;pointer-events:auto}
+.p3v-cform textarea,.p3v-cform input{font:13px system-ui,sans-serif;padding:7px 8px;border-radius:7px;border:1px solid #3d4a50;background:#1b2226;color:#e8edef}
+.p3v-cform button{font:600 13px inherit;padding:7px 12px;border-radius:7px;border:0;margin-right:6px;cursor:pointer;background:#f2c84b;color:#1a1f22}.p3v-cform .p3v-ccancel{background:#3d4a50;color:#e8edef}
 .p3v-empty{position:absolute;inset:0;display:grid;place-items:center;color:#5b676d;font-size:16px;pointer-events:none;z-index:2}
 `;
 
@@ -134,6 +140,21 @@ function composeXform(P, C) {
 }
 const FACE = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
 /* A copy of a building's plan moved, turned and mirrored into place (inserts inside it are left out). */
+/* ---------- Electrical and utility devices on wall faces ----------
+   Each device: { id, type, x, y (plan feet, on the wall face), a (radians, the way it faces), h (feet,
+   center above the floor) }. w × hh is the cover plate (feet); ifc is how it goes to Revit. */
+const DEVICES = {
+  outlet: { label: 'Receptacle, duplex 20A', short: 'R', group: 'Power', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
+  gfci: { label: 'Receptacle, GFCI 20A', short: 'GFI', group: 'Power', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
+  dedicated: { label: 'Receptacle, dedicated (equipment)', short: 'DR', group: 'Power', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
+  r208: { label: 'Receptacle, 208V 30A', short: '208', group: 'Power', h: 1.5, w: 4.5 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
+  jbox: { label: 'Junction box (equipment hookup)', short: 'J', group: 'Power', h: 1.5, w: 4 / 12, hh: 4 / 12, ifc: ['IFCJUNCTIONBOX', '.POWER.'] },
+  switch: { label: 'Light switch', short: 'S', group: 'Controls', h: 4, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCSWITCHINGDEVICE', '.TOGGLESWITCH.'] },
+  ffuctl: { label: 'FFU speed controller', short: 'FC', group: 'Controls', h: 4.5, w: 4.5 / 12, hh: 4.5 / 12, ifc: ['IFCSWITCHINGDEVICE', '.SELECTORSWITCH.'] },
+  monitor: { label: 'Room pressure monitor', short: 'PM', group: 'Controls', h: 5, w: 6 / 12, hh: 4.5 / 12, ifc: ['IFCSENSOR', '.PRESSURESENSOR.'] },
+  data: { label: 'Data jack', short: 'D', group: 'Data', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.DATAOUTLET.'] },
+  panel: { label: 'Electrical panel', short: 'EP', group: 'Power', h: 5, w: 20 / 12, hh: 40 / 12, d: 4 / 12, ifc: ['IFCELECTRICDISTRIBUTIONBOARD', '.DISTRIBUTIONBOARD.'] }
+};
 function transformPlan(src, T, idp) {
   const P = JSON.parse(JSON.stringify(src)), X = (x, y) => [T.a * x + T.b * y + T.tx, T.c * x + T.d * y + T.ty];
   const flip = T.a * T.d - T.b * T.c < 0, turned = Math.abs(T.a) < 0.5, pre = idp ? idp + ':' : '';
@@ -147,6 +168,11 @@ function transformPlan(src, T, idp) {
     if (k.id) k.id = pre + k.id;
   }
   for (const r of P.rooms || []) { [r.x, r.y] = X(r.x, r.y); if (r.id) r.id = pre + r.id; }
+  // things facing a way (devices, house items) turn with the building
+  const turnA = (a) => { const cx = Math.cos(a || 0), sy = Math.sin(a || 0); return Math.atan2(T.c * cx + T.d * sy, T.a * cx + T.b * sy); };
+  for (const dv of P.devices || []) { [dv.x, dv.y] = X(dv.x, dv.y); dv.a = turnA(dv.a); if (dv.id) dv.id = pre + dv.id; }
+  for (const c of P.columns || []) { [c.x, c.y] = X(c.x, c.y); if (c.id) c.id = pre + c.id; }
+  for (const it of P.items || []) { [it.x, it.y] = X(it.x, it.y); it.a = turnA(it.a); if (it.id) it.id = pre + it.id; }
   for (const f of P.fixtures || []) { [f.x, f.y] = X(f.x, f.y); if (turned) { const w = f.w || 2, h = f.h || 4; f.w = h; f.h = w; } if (f.id) f.id = pre + f.id; }
   if (P.ceilGrid && isFinite(P.ceilGrid.ox)) { const [gx, gy] = X(P.ceilGrid.ox, P.ceilGrid.oy); P.ceilGrid = { ox: gx, oy: gy, swap: !!P.ceilGrid.swap !== turned }; }
   else if (turned) P.ceilGrid = null, P.ceilSwap = !P.ceilSwap;
@@ -174,8 +200,8 @@ function splitByCeiling(P) {
     if (G.comp[k] >= 0) return keyOfComp[G.comp[k]];
     return G.inside[k] && !G.wall[k] ? def : null;
   };
-  const groups = new Map([[def.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [] }, def)]]);
-  const grp = (k) => { if (!groups.has(k.key)) groups.set(k.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [] }, k)); return groups.get(k.key); };
+  const groups = new Map([[def.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [], devices: [], items: [], columns: [] }, def)]]);
+  const grp = (k) => { if (!groups.has(k.key)) groups.set(k.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [], devices: [], items: [], columns: [] }, k)); return groups.get(k.key); };
   const top = (k) => k.H + k.PL;
   const wallOf = new Map();
   for (const w of P.walls || []) {
@@ -198,12 +224,15 @@ function splitByCeiling(P) {
   for (const c of P.chases || []) grp(at((c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2) || def).chases.push(c);
   for (const r of rooms) grp(roomKey(P, r)).rooms.push(r);
   for (const f of P.fixtures || []) grp(at(f.x, f.y) || def).fixtures.push(f);
+  for (const dv of P.devices || []) { const back = at(dv.x + Math.cos(dv.a || 0) * 0.6, dv.y + Math.sin(dv.a || 0) * 0.6); grp(back || def).devices.push(dv); }
+  for (const it of P.items || []) grp(at(it.x, it.y) || def).items.push(it);
+  for (const c of P.columns || []) groups.get(def.key).columns.push(c);
   // every area keeps the building's one ceiling grid, so tees line up across the areas
   const cg = P.ceilGrid && isFinite(P.ceilGrid.ox) ? P.ceilGrid : (() => { const g = ceilingGrid(P, A0); return { ox: g.ox, oy: g.oz, swap: g.swap }; })();
   const out = [];
   for (const g of groups.values()) {
     if (!g.walls.length && !g.rooms.length) continue;
-    const q = Object.assign({}, P, { inserts: undefined, walls: g.walls, openings: g.openings, chases: g.chases, rooms: g.rooms, fixtures: g.fixtures, ceiling: g.H, plenum: g.PL, ceilGrid: cg });
+    const q = Object.assign({}, P, { inserts: undefined, walls: g.walls, openings: g.openings, chases: g.chases, rooms: g.rooms, fixtures: g.fixtures, devices: g.devices, items: g.items, columns: g.columns, ceiling: g.H, plenum: g.PL, ceilGrid: cg });
     Object.defineProperty(q, '__ghost', { value: g.ghost, enumerable: false, configurable: true });
     out.push({ plan: q, H: g.H, PL: g.PL, def: g.key === def.key });
   }
@@ -234,7 +263,7 @@ function zones(plan, T, idp, out) {
 /* One flat plan with every building merged in (for 2D drawings: DWG/DXF and the plan sheet). */
 function flatten(plan) {
   const Z = zones(plan), F = Object.assign({}, Z[0].plan, { inserts: [] }); delete F.__sib;
-  for (const k of ['walls', 'openings', 'chases', 'rooms']) F[k] = [].concat(...Z.map(z => z.plan[k] || []));
+  for (const k of ['walls', 'openings', 'chases', 'rooms', 'devices', 'items', 'columns']) F[k] = [].concat(...Z.map(z => z.plan[k] || []));
   // each building's own lights and FFUs, already laid out on its own grid
   F.fixtures = [].concat(...Z.map(z => ceilingFixtures(z.plan))); F.ceilingMode = 'manual'; F.fixturesFinal = true;
   return F;
@@ -365,10 +394,13 @@ function analyze(plan) {
   pieces.forEach(p => obs.push({ x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, r: p.t / 2 }));
   opInfo.forEach(i => {
     if (i.o.type === 'glass' || i.o.type === 'window') obs.push({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, r: i.t / 2 });
+    if (i.o.type === 'overhead') obs.push({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, r: i.t / 2 });
     if (i.o.type === 'pass') obs.push({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, r: Math.max(i.t, i.o.depth || 2) / 2 });
   });
   const boxes = chases.map(c => ({ x0: Math.min(c.x0, c.x1), x1: Math.max(c.x0, c.x1), z0: Math.min(c.y0, c.y1), z1: Math.max(c.y0, c.y1), grille: c.grille || '', c }));
   const hardAny = pieces.some(p => p.hard), frameAny = pieces.some(p => p.frame), shellTop = pieces.reduce((m, p) => p.hard || p.frame ? m : Math.max(m, p.h), 0);
+  // building columns block walking
+  for (const c of plan.columns || []) { const r = (c.size || 0.67) / 2; obs.push({ x1: c.x - r, z1: c.y, x2: c.x + r, z2: c.y, r }); }
   // house items block walking
   const items = (plan.items || []).filter(it => ITEMS[it.type]).map(it => ({ it, c: itemCorners(it) }));
   for (const q of items) for (let k = 0; k < 4; k++) { const a = q.c[k], b = q.c[(k + 1) % 4]; obs.push({ x1: a[0], z1: a[1], x2: b[0], z2: b[1], r: 0.05 }); }
@@ -557,6 +589,99 @@ function ceilingGrid(plan, A) {
   if (g && isFinite(g.ox) && isFinite(g.oy)) return { ox: g.ox, oz: g.oy, cw, cl, swap: sw };
   A = A || analyze(plan);
   return { ox: A.empty ? 0 : A.bounds.minX, oz: A.empty ? 0 : A.bounds.minZ, cw, cl, swap: sw };
+}
+/* Tee takeoff for a 2′ × 4′ lay-in grid over the cleanroom ceiling: main tees are the continuous runners
+   4′ apart (12′ pieces, spliced), 4′ cross tees span between them every 2′ (a cut bay at a wall still takes
+   a whole tee), a 2′ cross tee splits a cell for each 2 × 2 fixture, and hanger wires go every 4′ along the
+   mains plus four at each light and FFU. The ceiling track on the walls is the perimeter support. */
+function gridTakeoff(plan, A) {
+  A = A || analyze(plan);
+  const fp = footprint(A); if (!fp || !A.hardAny) return null;
+  const G = ceilingGrid(plan, A), B = A.bounds, step = Math.min(0.25, fp.cell / 2);
+  // mains run along the 2′ direction (lines 4′ apart); crosses run along the 4′ direction (lines 2′ apart)
+  const mainAlongX = G.cl === 4, runs = [];
+  const scan = (fixed, lo, hi, alongX) => {
+    let st = null;
+    for (let v = lo; v <= hi + 1e-9; v += step) {
+      const inside = alongX ? fp.has(v, fixed) : fp.has(fixed, v);
+      if (inside && st === null) st = v;
+      if ((!inside || v + step > hi + 1e-9) && st !== null) { const e = inside ? v : v - step; if (e - st > 0.3) runs.push({ fixed, a: st, b: e, alongX }); st = null; }
+    }
+  };
+  const first = (o, lo, sp) => o + Math.ceil((lo - o) / sp - 1e-9) * sp;
+  const mains = [], crosses = [];
+  if (mainAlongX) {
+    for (let z = first(G.oz, B.minZ, 4); z <= B.maxZ + 1e-9; z += 4) { runs.length = 0; scan(z, B.minX, B.maxX, true); mains.push(...runs); }
+    for (let x = first(G.ox, B.minX, 2); x <= B.maxX + 1e-9; x += 2) { runs.length = 0; scan(x, B.minZ, B.maxZ, false); crosses.push(...runs); }
+  } else {
+    for (let x = first(G.ox, B.minX, 4); x <= B.maxX + 1e-9; x += 4) { runs.length = 0; scan(x, B.minZ, B.maxZ, false); mains.push(...runs); }
+    for (let z = first(G.oz, B.minZ, 2); z <= B.maxZ + 1e-9; z += 2) { runs.length = 0; scan(z, B.minX, B.maxX, true); crosses.push(...runs); }
+  }
+  const mainFt = mains.reduce((t, r) => t + (r.b - r.a), 0);
+  // cross tees: one per 4′ bay between mains that the run passes through (cut bays included)
+  const mo = mainAlongX ? G.oz : G.ox;
+  let cross4 = 0;
+  for (const r of crosses) { const k0 = Math.floor((r.a - mo) / 4 + 1e-6), k1 = Math.ceil((r.b - mo) / 4 - 1e-6); for (let k = k0; k < k1; k++) { const a = Math.max(r.a, mo + k * 4), b = Math.min(r.b, mo + (k + 1) * 4); if (b - a > 0.3) cross4++; } }
+  const fx = ceilingFixtures(plan, A), cross2 = fx.filter(f => Math.max(f.w || 2, f.h || 4) <= 2.2).length;
+  const hangers = mains.reduce((t, r) => t + Math.ceil((r.b - r.a) / 4) + 1, 0) + fx.length * 4;
+  return { mainFt, mainPcs: Math.ceil(mainFt * 1.05 / 12), mainRuns: mains.length, cross4, cross2, hangers, fixtures: fx.length };
+}
+/* Cleanroom check: for every room label, its floor area and volume, the FFUs over it, their airflow, air
+   changes per hour and filter coverage, against its ISO class; and for every door or opening between two
+   rooms, which way the air goes (from higher to lower pressure) and whether that's from the cleaner side.
+   Targets are typical industry design ranges (minimums), not a certification. */
+const ISO_TARGETS = { 5: { ach: 240, cov: 35 }, 6: { ach: 150, cov: 25 }, 7: { ach: 60, cov: 15 }, 8: { ach: 20, cov: 5 }, 9: { ach: 10, cov: 0 } };
+function cleanroomCheck(plan) {
+  const Z = zones(plan), rooms = [], grids = [];
+  for (const z of Z) {
+    const A = analyze(z.plan); if (A.empty) continue;
+    const R = roomRegions(A, z.plan, true); if (!R.grid) continue;
+    grids.push({ R, z });
+    const FM = z.plan.ffuModel && Array.isArray(z.plan.ffuModel.sizes) && z.plan.ffuModel.sizes.length ? z.plan.ffuModel : null;
+    const fx = ceilingFixtures(z.plan, A), G = R.grid;
+    const compAt = (x, y) => { const i = Math.floor((x - G.x0) / G.cell), j = Math.floor((y - G.z0) / G.cell); return i < 0 || j < 0 || i >= G.nx || j >= G.nz ? -1 : G.comp[j * G.nx + i]; };
+    R.forEach((q, ci) => {
+      const r = q.room, area = q.area, vol = area * A.H;
+      let n = 0, cfm = 0, face = 0;
+      for (const f of fx) {
+        if (f.type !== 'ffu' || compAt(f.x, f.y) !== ci) continue;
+        n++;
+        const long = Math.max(f.w || 2, f.h || 4), short = Math.min(f.w || 2, f.h || 4);
+        const zz = FM ? (FM.sizes.find(s2 => s2.nominal === '2x' + Math.max(2, Math.min(4, Math.round(long)))) || FM.sizes[0]) : null;
+        const fa = Math.max(0.5, (long - 0.2) * (short - 0.2));
+        face += fa; cfm += zz && zz.cfm ? zz.cfm : fa * 90; // 90 fpm face velocity when the unit's airflow isn't known
+      }
+      const iso = r.iso ? +r.iso : null, T = iso ? ISO_TARGETS[iso] : null, achT = r.ach > 0 ? +r.ach : T ? T.ach : null;
+      const ach = vol > 0 ? cfm * 60 / vol : 0, cov = area > 0 ? face / area * 100 : 0;
+      const short = [];
+      if (achT && ach + 1e-6 < achT) short.push(`air changes ${Math.round(ach)}/hr, needs ${achT}`);
+      if (T && T.cov && cov + 1e-6 < T.cov) short.push(`filter coverage ${Math.round(cov)}%, needs ${T.cov}%`);
+      if (achT && vol > 0 && ach < achT) { const per = n ? cfm / n : (FM ? (FM.sizes[0].cfm || 650) : 630); short.push(`about ${Math.ceil((achT * vol / 60 - cfm) / per)} more FFU${Math.ceil((achT * vol / 60 - cfm) / per) === 1 ? '' : 's'}`); }
+      rooms.push({ room: r, zone: z, area, volume: vol, H: A.H, ffus: n, cfm, ach, coverage: cov, iso, achTarget: achT, covTarget: T ? T.cov : null, pressure: r.pressure != null && r.pressure !== '' ? +r.pressure : null, ok: !short.length, short });
+    });
+  }
+  // which room is at a point (any area), or null outside every labeled room
+  const roomAt = (x, y) => { for (const g of grids) { const G = g.R.grid, i = Math.floor((x - G.x0) / G.cell), j = Math.floor((y - G.z0) / G.cell); if (i < 0 || j < 0 || i >= G.nx || j >= G.nz) continue; const c = G.comp[j * G.nx + i]; if (c >= 0) return g.R[c].room; } return null; };
+  const byRoom = new Map(rooms.map(q => [q.room, q]));
+  const doors = [];
+  for (const z of Z) for (const o of z.plan.openings || []) {
+    if (o.type === 'window' || o.type === 'glass') continue;
+    const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1); if (L < 0.1) continue;
+    const nx = -(o.y2 - o.y1) / L, ny = (o.x2 - o.x1) / L, mx = (o.x1 + o.x2) / 2, my = (o.y1 + o.y2) / 2, off = (o.t || 0.3) / 2 + 1.2;
+    const a = roomAt(mx + nx * off, my + ny * off), b = roomAt(mx - nx * off, my - ny * off);
+    if (!a && !b) continue;
+    const qa = a ? byRoom.get(a) : null, qb = b ? byRoom.get(b) : null;
+    const pa = qa && qa.pressure != null ? qa.pressure : (a ? null : 0), pb = qb && qb.pressure != null ? qb.pressure : (b ? null : 0);
+    if (pa == null || pb == null) { doors.push({ o, a, b, mx, my, nx, ny, dp: null }); continue; }
+    const dp = pa - pb; // > 0: air flows from a's side to b's side (along -n)
+    const ia = qa && qa.iso ? qa.iso : 10, ib = qb && qb.iso ? qb.iso : 10;
+    let warn = null;
+    if (Math.abs(dp) < 0.5) warn = 'no pressure difference';
+    else if ((dp > 0 && ia > ib) || (dp < 0 && ib > ia)) warn = 'air flows from the less clean side into the cleaner room';
+    else if (Math.abs(dp) < 5) warn = 'less than 5 Pa difference';
+    doors.push({ o, a, b, mx, my, nx, ny, dp, warn });
+  }
+  return { rooms, doors, targets: ISO_TARGETS };
 }
 /* Grid steps for a fixture: its long side steps on 4′, its short side on 2′ (a 2 × 2 on 2′ both ways).
    On a turned grid the two axes trade places. */
@@ -954,7 +1079,7 @@ function buildScene(THREE, plan, A) {
   for (const i of A.opInfo) {
     const o = i.o, t = i.t, nx = -i.uz, nz = i.ux;
     curRef = o.id ? { kind: 'opening', id: o.id } : null;
-    const head = Math.min(H, o.head || (o.type === 'glass' ? 7 : 7));
+    const head = Math.min(i.hard ? H : (i.wallH || H), o.head || 7);
     const top = i.wallH || H, hm = i.hard ? M.white : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head).mats : shellMat(i.kind, i.len, top - head, 0);
     if (top - head > 0.01) { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); if (i.hard && H - head > 0.2) segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); }
     const ax = o.x1, az = o.y1, bx = o.x2, bz = o.y2;
@@ -1002,6 +1127,16 @@ function buildScene(THREE, plan, A) {
       const [p1x, p1z] = along(0.12), [p2x, p2z] = along(i.len - 0.12);
       segBox(ax, az, p1x, p1z, sill, head, t + 0.06, M.frame);
       segBox(p2x, p2z, bx, bz, sill, head, t + 0.06, M.frame);
+      shadow((ax + bx) / 2, (az + bz) / 2, i.len, t, Math.atan2(-i.uz, i.ux), 0.6);
+    } else if (o.type === 'overhead') {
+      // overhead sectional door: steel jamb guards, the closed curtain of ribbed panels, the coil/track
+      // housing above it on the inside face
+      const ohd = new THREE.MeshPhongMaterial({ map: (() => { const tx = new THREE.CanvasTexture(cachedCanvas('ohd', () => makeCanvas(32, 128, (g, w, h) => { g.fillStyle = '#d9dee1'; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y += 32) { g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(0, y, w, 2); g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(0, y + 2, w, 2); for (let k = 8; k < 32; k += 8) { g.fillStyle = 'rgba(0,0,0,.07)'; g.fillRect(0, y + k, w, 1); } } }))); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.repeat.set(Math.max(1, i.len / 4), head / 8); return tx; })(), specular: 0x666666, shininess: 40 });
+      const cur = segBox(ax, az, bx, bz, 0, head, 0.14, ohd); outline(cur); pick.push(cur);
+      const [j1x, j1z] = along(-0.33), [j2x, j2z] = along(i.len + 0.33);
+      segBox(j1x, j1z, ax, az, 0, head, t + 0.1, M.steel); segBox(bx, bz, j2x, j2z, 0, head, t + 0.1, M.steel);
+      const osw = o.swing === -1 ? -1 : 1, inX = nx * osw * (t / 2 + 0.55), inZ = nz * osw * (t / 2 + 0.55);
+      if (top - head > 1.2) { const hb = segBox(ax + inX, az + inZ, bx + inX, bz + inZ, head + 0.1, head + 1.4, 1.0, M.steel); outline(hb); }
       shadow((ax + bx) / 2, (az + bz) / 2, i.len, t, Math.atan2(-i.uz, i.ux), 0.6);
     } else {
       const [j1x, j1z] = along(-0.14), [j2x, j2z] = along(i.len + 0.14);
@@ -1186,7 +1321,37 @@ function buildScene(THREE, plan, A) {
     const deck = cachedCanvas('deck', () => makeCanvas(64, 64, (g, w, h) => { g.fillStyle = '#a9afb3'; g.fillRect(0, 0, w, h); for (let x = 0; x < w; x += 16) { g.fillStyle = 'rgba(255,255,255,.28)'; g.fillRect(x, 0, 5, h); g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x + 9, 0, 3, h); } }));
     const dt = new THREE.CanvasTexture(deck); dt.wrapS = dt.wrapT = THREE.RepeatWrapping; dt.anisotropy = ANISO;
     ceiling.add(new THREE.Mesh(rectsGeometry(THREE, FPall.rects, A.shellTop, true, 2, 2, 0, 0), new THREE.MeshLambertMaterial({ map: dt, color: 0xe3e6e8 })));
+    // roof structure: open-web steel joists under the deck (top and bottom chords, webs as lines)
+    const RS = roofStructure(plan, A);
+    if (RS) {
+      const chord = new THREE.MeshLambertMaterial({ color: 0x6f777c }), wp = [];
+      for (const j of RS.joists) {
+        const yT = A.shellTop - 0.06, yB = A.shellTop - RS.depth + 0.06;
+        for (const y of [yT, yB]) { const m = new THREE.Mesh(new THREE.BoxGeometry(j.len, 0.12, 0.2), chord); m.position.set((j.x1 + j.x2) / 2, y, (j.z1 + j.z2) / 2); m.rotation.y = Math.atan2(-(j.z2 - j.z1), j.x2 - j.x1); ceiling.add(m); }
+        const n = Math.max(2, Math.round(j.len / (RS.depth))), ux = (j.x2 - j.x1) / n, uz = (j.z2 - j.z1) / n;
+        for (let k = 0; k < n; k++) { const top = k % 2 === 0; wp.push(j.x1 + ux * k, top ? yT : yB, j.z1 + uz * k, j.x1 + ux * (k + 1), top ? yB : yT, j.z1 + uz * (k + 1)); }
+      }
+      const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3));
+      ceiling.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x59636a })));
+    }
   }
+  // building columns: steel wide-flange (or concrete) from the floor to the roof structure, with a base plate
+  const colTop = A.shellTop || shellHeight(plan, null);
+  for (const c of plan.columns || []) {
+    const sz = c.size || 0.67, ht = c.h || colTop, conc = c.kind === 'concrete', g = new THREE.Group();
+    curRef = c.id ? { kind: 'column', id: c.id } : null;
+    if (conc) { g.add(new THREE.Mesh(new THREE.BoxGeometry(sz, ht, sz), shellMat('concrete', sz, ht, 0))); g.children[0].position.y = ht / 2; }
+    else {
+      const stl = new THREE.MeshPhongMaterial({ color: 0x8a9297, specular: 0x444444, shininess: 30 }), tf = Math.max(0.04, sz * 0.07);
+      for (const z of [-sz / 2 + tf / 2, sz / 2 - tf / 2]) { const f = new THREE.Mesh(new THREE.BoxGeometry(sz, ht, tf), stl); f.position.set(0, ht / 2, z); g.add(f); }
+      const wb = new THREE.Mesh(new THREE.BoxGeometry(tf * 0.7, ht, sz - 2 * tf), stl); wb.position.y = ht / 2; g.add(wb);
+      const bp = new THREE.Mesh(new THREE.BoxGeometry(sz + 0.5, 0.06, sz + 0.5), stl); bp.position.y = 0.03; g.add(bp);
+    }
+    g.position.set(c.x, 0, c.y); g.rotation.y = -(c.a || 0);
+    g.traverse(o => { if (o.isMesh) { outline(o); pick.push(o); if (c.id) o.userData.ref = { kind: 'column', id: c.id }; } });
+    root.add(g);
+  }
+  curRef = null;
   if (ownGrid) {
     const tw = 0.078 / 2, pos = [];
     for (const q of plan.ceilingGrid) {
@@ -1212,6 +1377,18 @@ function buildScene(THREE, plan, A) {
   const housingMat = new THREE.MeshPhongMaterial({ color: 0xc9ced1, specular: 0x666666, shininess: 40 });
   // house items: cabinets, appliances, plumbing fixtures
   for (const q of A.items || []) { const g = itemMesh(THREE, q.it, M); fixtures.add(g); g.traverse(o => { if (o.isMesh) { pick.push(o); if (q.it.id) o.userData.ref = { kind: 'item', id: q.it.id }; } }); }
+  // electrical devices: cover plates on the wall faces (panels and monitors as boxes)
+  const plateMat = new THREE.MeshPhongMaterial({ color: 0xf4f5f5, specular: 0x333333, shininess: 30 }), panelMat = new THREE.MeshPhongMaterial({ color: 0x9aa2a6, specular: 0x555555, shininess: 40 }), screenMat = new THREE.MeshPhongMaterial({ color: 0x1d2a30, emissive: 0x0b3a2c, shininess: 80 }), slotMat = new THREE.MeshBasicMaterial({ color: 0x2c3236 });
+  for (const dv of plan.devices || []) {
+    const D = DEVICES[dv.type]; if (!D) continue;
+    const dep = D.d || 0.03, g = new THREE.Group(), body = new THREE.Mesh(new THREE.BoxGeometry(dep, D.hh, D.w), dv.type === 'panel' ? panelMat : plateMat);
+    body.position.x = dep / 2; g.add(body);
+    if (dv.type === 'monitor') { const sc = new THREE.Mesh(new THREE.BoxGeometry(0.005, D.hh * 0.6, D.w * 0.7), screenMat); sc.position.x = dep + 0.003; g.add(sc); }
+    else if (dv.type !== 'panel' && dv.type !== 'jbox') { const sl = new THREE.Mesh(new THREE.BoxGeometry(0.004, D.hh * (dv.type === 'switch' ? 0.25 : 0.18), D.w * (dv.type === 'switch' ? 0.18 : 0.4)), slotMat); sl.position.x = dep + 0.002; if (dv.type !== 'switch') { sl.position.y = D.hh * 0.18; const s2 = sl.clone(); s2.position.y = -D.hh * 0.18; g.add(s2); } g.add(sl); }
+    g.position.set(dv.x, dv.h != null ? dv.h : D.h, dv.y); g.rotation.y = -(dv.a || 0);
+    g.traverse(o => { if (o.isMesh) { pick.push(o); if (dv.id) o.userData.ref = { kind: 'device', id: dv.id }; } });
+    fixtures.add(g);
+  }
   // A real fan filter unit model (plan.ffuModel: manufacturer sizes from a Revit family): the cabinet and blower
   // housing sit above the grid (seen in Dollhouse, where the ceiling is hidden); the perforated face shows from below.
   const FM = plan.ffuModel && Array.isArray(plan.ffuModel.sizes) && plan.ffuModel.sizes.length ? plan.ffuModel : null;
@@ -1298,6 +1475,41 @@ function buildAll(THREE, plan, M) {
   return out;
 }
 
+/* Pressure cascade in 3D: a flat arrow on the floor through each door with pressures set on both sides,
+   pointing the way the air goes, green when it's right and red when it's wrong or weak. */
+function pressureArrows(THREE, root, plan) {
+  if (!(plan.rooms || []).some(r => r.pressure != null && r.pressure !== '')) return;
+  let C; try { C = cleanroomCheck(plan); } catch (e) { return; }
+  const shape = new THREE.Shape(); shape.moveTo(-0.9, -0.16); shape.lineTo(0.25, -0.16); shape.lineTo(0.25, -0.42); shape.lineTo(0.95, 0); shape.lineTo(0.25, 0.42); shape.lineTo(0.25, 0.16); shape.lineTo(-0.9, 0.16); shape.closePath();
+  const geo = new THREE.ShapeGeometry(shape);
+  const good = new THREE.MeshBasicMaterial({ color: 0x3fbf6f, transparent: true, opacity: 0.85, depthWrite: false }), bad = new THREE.MeshBasicMaterial({ color: 0xe5533d, transparent: true, opacity: 0.85, depthWrite: false });
+  for (const d of C.doors) {
+    if (d.dp == null || Math.abs(d.dp) < 0.5) continue;
+    const sg = d.dp > 0 ? -1 : 1, m = new THREE.Mesh(geo, d.warn ? bad : good);
+    m.rotation.x = -Math.PI / 2; m.rotation.z = Math.atan2(-d.ny * sg, d.nx * sg);
+    m.position.set(d.mx, 0.06, d.my); m.renderOrder = 2; root.add(m);
+  }
+}
+/* Roof structure over building (shell) walls: open-web steel joists across the short way, 5′ on center,
+   24″ deep (30″ past a 50′ span), each running wall to wall inside the building. */
+function roofStructure(plan, A) {
+  A = A || analyze(plan); if (!(A.shellTop > 0)) return null;
+  const fp = footprint(A, true); if (!fp) return null;
+  const B = A.bounds, alongX = B.w <= B.d, sp = 5, step = 0.25, joists = [];
+  const scan = (fixed, lo, hi) => {
+    let st = null;
+    for (let v = lo; v <= hi + 1e-9; v += step) {
+      const inside = alongX ? fp.has(v, fixed) : fp.has(fixed, v);
+      if (inside && st === null) st = v;
+      if ((!inside || v + step > hi + 1e-9) && st !== null) { const e = inside ? v : v - step; if (e - st > 4) joists.push(alongX ? { x1: st, z1: fixed, x2: e, z2: fixed, len: e - st } : { x1: fixed, z1: st, x2: fixed, z2: e, len: e - st }); st = null; }
+    }
+  };
+  if (alongX) for (let z = B.minZ + sp / 2; z < B.maxZ; z += sp) scan(z, B.minX, B.maxX);
+  else for (let x = B.minX + sp / 2; x < B.maxX; x += sp) scan(x, B.minZ, B.maxZ);
+  if (!joists.length) return null;
+  const span = Math.max(...joists.map(j => j.len));
+  return { joists, depth: span > 50 ? 2.5 : 2, spacing: sp, span };
+}
 /* ---------- Mount ---------- */
 function mount(container, plan, opts) {
   opts = opts || {};
@@ -1310,11 +1522,14 @@ function mount(container, plan, opts) {
     <div class="p3v-top">
       <div class="p3v-panel p3v-card"><div class="p3v-title"></div><div class="p3v-meta"></div><div class="p3v-here"><b></b><span></span></div></div>
       <div class="p3v-right"><div class="p3v-panel p3v-modes" role="group" aria-label="View"><button data-m="walk">Walk</button><button data-m="doll">Dollhouse</button><button data-m="plenum" hidden title="Looks into the plenum: the grid ceiling stays, the top comes off">Plenum</button><button data-m="exterior" hidden title="The outside, with the roof on">Exterior</button><button data-m="plan">Plan</button></div>
-      <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button></div>
+      <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button>
+      <button class="p3v-panel p3v-cbtn" aria-pressed="false" hidden title="Click anything in the model to leave a comment on it">💬 Comment</button></div>
     </div>
     <div class="p3v-aim" aria-hidden="true"></div>
     <div class="p3v-bottom"><canvas class="p3v-mini p3v-panel" aria-label="Mini map. Click to jump there."></canvas><div class="p3v-chips"></div></div>
     <div class="p3v-hint"></div>
+    <div class="p3v-panel p3v-clist" hidden></div>
+    <form class="p3v-panel p3v-cform" hidden><b>Comment</b><textarea rows="3" placeholder="What should change here?" required></textarea><input placeholder="Your name" maxlength="60"><div><button type="submit">Save</button><button type="button" class="p3v-ccancel">Cancel</button></div></form>
     <div class="p3v-empty" hidden>Draw or import walls to see them in 3D.</div>`;
   const $ = (s) => container.querySelector(s);
   const canvas = $('.p3v-c'), labelsEl = $('.p3v-labels'), chipsEl = $('.p3v-chips'), mini = $('.p3v-mini'), hint = $('.p3v-hint');
@@ -1525,12 +1740,65 @@ function mount(container, plan, opts) {
     if (!click || tween || !A) return;
     if (isLocked()) { const r = canvas.getBoundingClientRect(); e = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; }
 
+    if (commentMode) { placeComment(e.clientX, e.clientY); return; }
     if (checkDoorClick(e.clientX, e.clientY)) return;
 
     const p = pick(e.clientX, e.clientY); if (!p) return;
     if (mode === 'walk') { const f = freeSpot(p.x, p.z); target = f; stuck = 0; showPulse(f.x, f.z); }
     else { const yaw = Math.atan2(-(p.x - camera.position.x), -(p.z - camera.position.z)); showPulse(p.x, p.z); goWalk(p.x, p.z, yaw); }
   }
+  // ---- Comments: a customer clicks anything in the model and leaves a note on it. The notes stay in this
+  // browser and go back to the designer as a small file ("Send comments"); the app reads that file in.
+  const cBtn = $('.p3v-cbtn'), cList = $('.p3v-clist'), cForm = $('.p3v-cform');
+  const pins = new THREE.Group(); scene.add(pins);
+  let commentMode = false, pendingAt = null, myComments = [];
+  const storeKey = () => 'p3v-comments:' + ((plan && (plan.name || '')) + ':' + ((plan && plan.walls) ? plan.walls.length : 0));
+  const loadMine = () => { if (!opts.comments) { myComments = []; return; } try { myComments = JSON.parse(localStorage.getItem(storeKey()) || '[]') || []; } catch (e) { myComments = []; } };
+  const saveMine = () => { try { localStorage.setItem(storeKey(), JSON.stringify(myComments)); } catch (e) { /* private window: kept for this visit only */ } };
+  const allComments = () => [...((plan && plan.comments) || []).map(c => ({ ...c, theirs: true })), ...myComments];
+  const pinTex = {};
+  function pinSprite(n, done) {
+    const k = n + (done ? 'd' : '');
+    if (!pinTex[k]) { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); g.fillStyle = done ? '#6fd08c' : '#f2c84b'; g.beginPath(); g.arc(32, 32, 28, 0, Math.PI * 2); g.fill(); g.lineWidth = 4; g.strokeStyle = '#1a1f22'; g.stroke(); g.fillStyle = '#1a1f22'; g.font = 'bold 30px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(n), 32, 34); pinTex[k] = new THREE.CanvasTexture(c); }
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: pinTex[k], depthTest: false })); sp.scale.set(0.9, 0.9, 1); sp.renderOrder = 10; return sp;
+  }
+  function drawPins() {
+    while (pins.children.length) pins.remove(pins.children[0]);
+    allComments().forEach((c, i) => { const sp = pinSprite(i + 1, c.done); sp.position.set(c.x, (c.h || 0) + 0.6, c.y); pins.add(sp); });
+    const L = allComments();
+    if (!opts.comments && !L.length) { cList.hidden = true; return; }
+    cList.hidden = !opts.comments && !L.length;
+    const esc2 = (t) => String(t || '').replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+    cList.innerHTML = `<b>Comments${L.length ? ' (' + L.length + ')' : ''}</b>` + (L.length ? '<ol>' + L.map((c, i) => `<li>${esc2(c.text)}<br><small>${esc2(c.by || '')}${c.by ? ' · ' : ''}${esc2((c.at || '').slice(0, 10))}${c.done ? ' · done' : ''}</small>${!c.theirs && opts.comments ? ` <button class="x" data-del="${esc2(c.id)}" title="Delete">✕</button>` : ''}</li>`).join('') + '</ol>' : '<br><small>Turn on 💬 Comment, then click anything in the model.</small>')
+      + (opts.comments && myComments.length ? '<button class="p3v-csend">Send comments</button>' : '');
+    cList.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { myComments = myComments.filter(c => c.id !== b.dataset.del); saveMine(); drawPins(); });
+    const sb = cList.querySelector('.p3v-csend'); if (sb) sb.onclick = sendComments;
+  }
+  function sendComments() {
+    const data = JSON.stringify({ kind: 'coll-plan3d-comments', project: plan && plan.name, sent: new Date().toISOString(), comments: myComments }, null, 1);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' })); a.download = ((plan && plan.name) || 'project') + ' comments.json';
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    cList.insertAdjacentHTML('beforeend', '<p><small>Saved as a file. Email or text that file back to your designer.</small></p>');
+  }
+  function placeComment(cx, cy) {
+    if (!built) return;
+    const r = canvas.getBoundingClientRect();
+    ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const hit = ray.intersectObjects([...(built.floors || [built.floor]), built.ground, ...built.pick], true)[0]; if (!hit) return;
+    let ref = null; for (let o = hit.object; o && !ref; o = o.parent) ref = o.userData && o.userData.ref;
+    pendingAt = { x: hit.point.x, y: hit.point.z, h: hit.point.y, ref };
+    cForm.hidden = false; const ta = cForm.querySelector('textarea'); ta.value = ''; try { cForm.querySelector('input').value = localStorage.getItem('p3v-name') || ''; } catch (e) { /* ok */ } ta.focus();
+  }
+  cForm.addEventListener('submit', (e) => {
+    e.preventDefault(); if (!pendingAt) return;
+    const text = cForm.querySelector('textarea').value.trim(), by = cForm.querySelector('input').value.trim(); if (!text) return;
+    try { if (by) localStorage.setItem('p3v-name', by); } catch (err) { /* ok */ }
+    myComments.push({ id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...pendingAt, text, by, at: new Date().toISOString() });
+    saveMine(); pendingAt = null; cForm.hidden = true; drawPins();
+  });
+  cForm.querySelector('.p3v-ccancel').onclick = () => { pendingAt = null; cForm.hidden = true; };
+  if (opts.comments) { cBtn.hidden = false; cBtn.onclick = (e) => { e.stopPropagation(); commentMode = !commentMode; cBtn.setAttribute('aria-pressed', commentMode); hint.textContent = commentMode ? 'Click anything to comment on it' : ''; hint.classList.toggle('gone', !commentMode); }; }
   canvas.addEventListener('pointerup', endPointer);
   canvas.addEventListener('pointercancel', endPointer);
   canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') ring.visible = false; });
@@ -1646,7 +1914,9 @@ function mount(container, plan, opts) {
     A = analyzeAll(p);
     if (built) { scene.remove(built.root); built.root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     built = buildAll(THREE, p, A);
+    pressureArrows(THREE, built.root, p);
     scene.add(built.root);
+    if (typeof drawPins === 'function' && cList) { loadMine(); drawPins(); }
     emptyEl.hidden = !A.empty;
     // the Plenum view only when there is a plenum
     const pb = modeBtns.find(b => b.dataset.m === 'plenum'); if (pb) pb.hidden = !(A.PL > 0);
@@ -1747,5 +2017,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);
