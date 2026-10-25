@@ -289,29 +289,57 @@ function toIfc(plan, opts) {
   S.ffuFace = S.face;
   const elPl = E(`IFCLOCALPLACEMENT(${stPl},${ax3})`);
   const contained = [];
+  // Geometry is written the way Revit's own IFC exporter writes it: every element gets its own placement at
+  // its lower corner, and its solids are measured from there (small local numbers), instead of every element
+  // sitting at the project origin with far-away coordinates. Revit's linker (which builds the colored,
+  // render-ready materials) draws and selects elements reliably only in this form.
+  // solid/disc/slab collect what to build; shape() writes them relative to the element's corner.
+  let O = [0, 0];
+  const L2 = (x, y) => E(`IFCCARTESIANPOINT((${num((x - O[0]) * MM)},${num(-(y - O[1]) * MM)}))`);
   // a solid: a plan outline (feet) pushed up from z0 to z1 (feet)
-  const solid = (pts, z0, z1, st) => {
-    const ring = pts.map(p => P2(p[0], p[1])); ring.push(ring[0]);
-    const prof = E(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${E(`IFCPOLYLINE((${ring.join(',')}))`)})`);
-    const pos = E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((0.,0.,${num(z0 * MM)}))`)},$,$)`);
-    const s = E(`IFCEXTRUDEDAREASOLID(${prof},${pos},${dirZ},${num(Math.max(1, (z1 - z0) * MM))})`);
-    if (st) E(`IFCSTYLEDITEM(${s},(${st}),$)`);
-    return s;
-  };
+  const solid = (pts, z0, z1, st) => ({ k: 'solid', pts, z0, z1, st });
   // a round solid (inlet ring): centre (feet), radius (feet), from z0 to z1
-  const disc = (cx, cy, r, z0, z1, st) => {
-    const prof = E(`IFCCIRCLEPROFILEDEF(.AREA.,$,${E(`IFCAXIS2PLACEMENT2D(${P2(cx, cy)},$)`)},${num(r * MM)})`);
-    const pos = E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((0.,0.,${num(z0 * MM)}))`)},$,$)`);
-    const s = E(`IFCEXTRUDEDAREASOLID(${prof},${pos},${dirZ},${num(Math.max(1, (z1 - z0) * MM))})`);
-    if (st) E(`IFCSTYLEDITEM(${s},(${st}),$)`);
-    return s;
+  const disc = (cx, cy, r, z0, z1, st) => ({ k: 'disc', cx, cy, r, z0, z1, st });
+  const zpos = (z0) => E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((0.,0.,${num(z0 * MM)}))`)},$,$)`);
+  const lring = (pts) => { const r = pts.map(p => L2(p[0], p[1])); r.push(r[0]); return E(`IFCPOLYLINE((${r.join(',')}))`); };
+  const build = (g) => {
+    let it;
+    if (g.k === 'solid') {
+      const prof = E(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${lring(g.pts)})`);
+      it = E(`IFCEXTRUDEDAREASOLID(${prof},${zpos(g.z0)},${dirZ},${num(Math.max(1, (g.z1 - g.z0) * MM))})`);
+    } else if (g.k === 'disc') {
+      const prof = E(`IFCCIRCLEPROFILEDEF(.AREA.,$,${E(`IFCAXIS2PLACEMENT2D(${L2(g.cx, g.cy)},$)`)},${num(g.r * MM)})`);
+      it = E(`IFCEXTRUDEDAREASOLID(${prof},${zpos(g.z0)},${dirZ},${num(Math.max(1, (g.z1 - g.z0) * MM))})`);
+    } else {
+      const ar = g.ar, prof = ar.holes.length
+        ? E(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,${lring(ar.outer)},(${ar.holes.map(lring).join(',')}))`)
+        : E(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${lring(ar.outer)})`);
+      it = E(`IFCEXTRUDEDAREASOLID(${prof},${zpos(g.z0)},${dirZ},${num(Math.max(1, (g.z1 - g.z0) * MM))})`);
+    }
+    if (g.st) E(`IFCSTYLEDITEM(${it},(${g.st}),$)`);
+    return it;
   };
-  const shape = (solids) => E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${E(`IFCSHAPEREPRESENTATION(${body},'Body','SweptSolid',(${solids.join(',')}))`)}))`);
+  let shapeAt = null; // the corner the last shape() was measured from, for put()
+  const shape = (solids) => {
+    let mx = Infinity, my = Infinity;
+    const see = (x, y) => { if (x < mx) mx = x; if (y < my) my = y; };
+    for (const g of solids) {
+      if (g.k === 'solid') g.pts.forEach(p => see(p[0], p[1]));
+      else if (g.k === 'disc') see(g.cx - g.r, g.cy - g.r);
+      else g.ar.outer.forEach(p => see(p[0], p[1]));
+    }
+    // corner in plan (feet); IFC y runs the other way, so the element's corner is its largest plan y
+    let Y = -Infinity; for (const g of solids) { if (g.k === 'solid') g.pts.forEach(p => { if (p[1] > Y) Y = p[1]; }); else if (g.k === 'disc') Y = Math.max(Y, g.cy + g.r); else g.ar.outer.forEach(p => { if (p[1] > Y) Y = p[1]; }); }
+    O = isFinite(mx) ? [mx, Y] : [0, 0];
+    const items = solids.map(build);
+    shapeAt = O; O = [0, 0];
+    return E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${E(`IFCSHAPEREPRESENTATION(${body},'Body','SweptSolid',(${items.join(',')}))`)}))`);
+  };
   const quad = (x1, y1, x2, y2, t) => { const L = Math.hypot(x2 - x1, y2 - y1) || 1, nx = -(y2 - y1) / L * t / 2, ny = (x2 - x1) / L * t / 2; return [[x1 + nx, y1 + ny], [x2 + nx, y2 + ny], [x2 - nx, y2 - ny], [x1 - nx, y1 - ny]]; };
   // a box along a line: from (x1, y1) to (x2, y2), t thick, z0 to z1 high
   const seg = (x1, y1, x2, y2, z0, z1, t, st) => solid(quad(x1, y1, x2, y2, t), z0, z1, st);
   const box = (x0, y0, x1, y1, z0, z1, st) => solid([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], z0, z1, st);
-  const put = (cls, name, objType, sh, tail, mat) => { const id = E(`${cls}('${guid()}',$,${stepStr(name)},$,${objType ? stepStr(objType) : '$'},${elPl},${sh},$${tail})`); contained.push(id); if (mat) (matOf[mat] = matOf[mat] || []).push(id); return id; };
+  const put = (cls, name, objType, sh, tail, mat) => { const at = shapeAt; shapeAt = null; const pl = at ? E(`IFCLOCALPLACEMENT(${stPl},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((${num(at[0] * MM)},${num(-at[1] * MM)},0.))`)},$,$)`)})`) : elPl; const id = E(`${cls}('${guid()}',$,${stepStr(name)},$,${objType ? stepStr(objType) : '$'},${pl},${sh},$${tail})`); contained.push(id); if (mat) (matOf[mat] = matOf[mat] || []).push(id); return id; };
   // Each building (the main plan, then each placed building, already moved into place) is written out in turn.
   const emit = (plan, onSlab) => {
   const A = V.analyze(plan), H = A.H, WH = A.WH || H;
@@ -442,16 +470,7 @@ function toIfc(plan, opts) {
     const B = A.bounds; areasAll.push({ outer: [[B.minX, B.minZ], [B.maxX, B.minZ], [B.maxX, B.maxZ], [B.minX, B.maxZ]], holes: [] });
   }
   if (!areas.length && A.hardAny) areas.push(...areasAll);
-  const ring = (pts) => { const r = pts.map(p => P2(p[0], p[1])); r.push(r[0]); return E(`IFCPOLYLINE((${r.join(',')}))`); };
-  const slab = (ar, z0, z1, st) => {
-    const prof = ar.holes.length
-      ? E(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,${ring(ar.outer)},(${ar.holes.map(ring).join(',')}))`)
-      : E(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${ring(ar.outer)})`);
-    const pos = E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((0.,0.,${num(z0 * MM)}))`)},$,$)`);
-    const sl = E(`IFCEXTRUDEDAREASOLID(${prof},${pos},${dirZ},${num((z1 - z0) * MM)})`);
-    E(`IFCSTYLEDITEM(${sl},(${st}),$)`);
-    return sl;
-  };
+  const slab = (ar, z0, z1, st) => ({ k: 'slab', ar, z0, z1, st });
   // the cleanroom floor (gray epoxy), its top at the floor level
   const fl = A.hardAny ? ['Cleanroom floor', 'Coll cleanroom floor, epoxy', S.floor] : A.house ? ['Floor', 'House floor, ' + ((V.FLOORS || {})[plan.floorType || 'lvp'] || 'plank'), S[plan.floorType || 'lvp'] || S.lvp] : ['Floor slab', 'Concrete floor slab', S.slab];
   // a building placed inside another sits on that building's slab: its floor is a thin epoxy topping
