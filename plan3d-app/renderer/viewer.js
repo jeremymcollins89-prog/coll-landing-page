@@ -134,6 +134,21 @@ function composeXform(P, C) {
 }
 const FACE = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
 /* A copy of a building's plan moved, turned and mirrored into place (inserts inside it are left out). */
+/* ---------- Electrical and utility devices on wall faces ----------
+   Each device: { id, type, x, y (plan feet, on the wall face), a (radians, the way it faces), h (feet,
+   center above the floor) }. w × hh is the cover plate (feet); ifc is how it goes to Revit. */
+const DEVICES = {
+  outlet: { label: 'Receptacle, duplex 20A', short: 'R', group: 'Power', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
+  gfci: { label: 'Receptacle, GFCI 20A', short: 'GFI', group: 'Power', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
+  dedicated: { label: 'Receptacle, dedicated (equipment)', short: 'DR', group: 'Power', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
+  r208: { label: 'Receptacle, 208V 30A', short: '208', group: 'Power', h: 1.5, w: 4.5 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
+  jbox: { label: 'Junction box (equipment hookup)', short: 'J', group: 'Power', h: 1.5, w: 4 / 12, hh: 4 / 12, ifc: ['IFCJUNCTIONBOX', '.POWER.'] },
+  switch: { label: 'Light switch', short: 'S', group: 'Controls', h: 4, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCSWITCHINGDEVICE', '.TOGGLESWITCH.'] },
+  ffuctl: { label: 'FFU speed controller', short: 'FC', group: 'Controls', h: 4.5, w: 4.5 / 12, hh: 4.5 / 12, ifc: ['IFCSWITCHINGDEVICE', '.SELECTORSWITCH.'] },
+  monitor: { label: 'Room pressure monitor', short: 'PM', group: 'Controls', h: 5, w: 6 / 12, hh: 4.5 / 12, ifc: ['IFCSENSOR', '.PRESSURESENSOR.'] },
+  data: { label: 'Data jack', short: 'D', group: 'Data', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.DATAOUTLET.'] },
+  panel: { label: 'Electrical panel', short: 'EP', group: 'Power', h: 5, w: 20 / 12, hh: 40 / 12, d: 4 / 12, ifc: ['IFCELECTRICDISTRIBUTIONBOARD', '.DISTRIBUTIONBOARD.'] }
+};
 function transformPlan(src, T, idp) {
   const P = JSON.parse(JSON.stringify(src)), X = (x, y) => [T.a * x + T.b * y + T.tx, T.c * x + T.d * y + T.ty];
   const flip = T.a * T.d - T.b * T.c < 0, turned = Math.abs(T.a) < 0.5, pre = idp ? idp + ':' : '';
@@ -147,6 +162,10 @@ function transformPlan(src, T, idp) {
     if (k.id) k.id = pre + k.id;
   }
   for (const r of P.rooms || []) { [r.x, r.y] = X(r.x, r.y); if (r.id) r.id = pre + r.id; }
+  // things facing a way (devices, house items) turn with the building
+  const turnA = (a) => { const cx = Math.cos(a || 0), sy = Math.sin(a || 0); return Math.atan2(T.c * cx + T.d * sy, T.a * cx + T.b * sy); };
+  for (const dv of P.devices || []) { [dv.x, dv.y] = X(dv.x, dv.y); dv.a = turnA(dv.a); if (dv.id) dv.id = pre + dv.id; }
+  for (const it of P.items || []) { [it.x, it.y] = X(it.x, it.y); it.a = turnA(it.a); if (it.id) it.id = pre + it.id; }
   for (const f of P.fixtures || []) { [f.x, f.y] = X(f.x, f.y); if (turned) { const w = f.w || 2, h = f.h || 4; f.w = h; f.h = w; } if (f.id) f.id = pre + f.id; }
   if (P.ceilGrid && isFinite(P.ceilGrid.ox)) { const [gx, gy] = X(P.ceilGrid.ox, P.ceilGrid.oy); P.ceilGrid = { ox: gx, oy: gy, swap: !!P.ceilGrid.swap !== turned }; }
   else if (turned) P.ceilGrid = null, P.ceilSwap = !P.ceilSwap;
@@ -174,8 +193,8 @@ function splitByCeiling(P) {
     if (G.comp[k] >= 0) return keyOfComp[G.comp[k]];
     return G.inside[k] && !G.wall[k] ? def : null;
   };
-  const groups = new Map([[def.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [] }, def)]]);
-  const grp = (k) => { if (!groups.has(k.key)) groups.set(k.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [] }, k)); return groups.get(k.key); };
+  const groups = new Map([[def.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [], devices: [], items: [] }, def)]]);
+  const grp = (k) => { if (!groups.has(k.key)) groups.set(k.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [], devices: [], items: [] }, k)); return groups.get(k.key); };
   const top = (k) => k.H + k.PL;
   const wallOf = new Map();
   for (const w of P.walls || []) {
@@ -198,12 +217,14 @@ function splitByCeiling(P) {
   for (const c of P.chases || []) grp(at((c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2) || def).chases.push(c);
   for (const r of rooms) grp(roomKey(P, r)).rooms.push(r);
   for (const f of P.fixtures || []) grp(at(f.x, f.y) || def).fixtures.push(f);
+  for (const dv of P.devices || []) { const back = at(dv.x + Math.cos(dv.a || 0) * 0.6, dv.y + Math.sin(dv.a || 0) * 0.6); grp(back || def).devices.push(dv); }
+  for (const it of P.items || []) grp(at(it.x, it.y) || def).items.push(it);
   // every area keeps the building's one ceiling grid, so tees line up across the areas
   const cg = P.ceilGrid && isFinite(P.ceilGrid.ox) ? P.ceilGrid : (() => { const g = ceilingGrid(P, A0); return { ox: g.ox, oy: g.oz, swap: g.swap }; })();
   const out = [];
   for (const g of groups.values()) {
     if (!g.walls.length && !g.rooms.length) continue;
-    const q = Object.assign({}, P, { inserts: undefined, walls: g.walls, openings: g.openings, chases: g.chases, rooms: g.rooms, fixtures: g.fixtures, ceiling: g.H, plenum: g.PL, ceilGrid: cg });
+    const q = Object.assign({}, P, { inserts: undefined, walls: g.walls, openings: g.openings, chases: g.chases, rooms: g.rooms, fixtures: g.fixtures, devices: g.devices, items: g.items, ceiling: g.H, plenum: g.PL, ceilGrid: cg });
     Object.defineProperty(q, '__ghost', { value: g.ghost, enumerable: false, configurable: true });
     out.push({ plan: q, H: g.H, PL: g.PL, def: g.key === def.key });
   }
@@ -234,7 +255,7 @@ function zones(plan, T, idp, out) {
 /* One flat plan with every building merged in (for 2D drawings: DWG/DXF and the plan sheet). */
 function flatten(plan) {
   const Z = zones(plan), F = Object.assign({}, Z[0].plan, { inserts: [] }); delete F.__sib;
-  for (const k of ['walls', 'openings', 'chases', 'rooms']) F[k] = [].concat(...Z.map(z => z.plan[k] || []));
+  for (const k of ['walls', 'openings', 'chases', 'rooms', 'devices', 'items']) F[k] = [].concat(...Z.map(z => z.plan[k] || []));
   // each building's own lights and FFUs, already laid out on its own grid
   F.fixtures = [].concat(...Z.map(z => ceilingFixtures(z.plan))); F.ceilingMode = 'manual'; F.fixturesFinal = true;
   return F;
@@ -557,6 +578,99 @@ function ceilingGrid(plan, A) {
   if (g && isFinite(g.ox) && isFinite(g.oy)) return { ox: g.ox, oz: g.oy, cw, cl, swap: sw };
   A = A || analyze(plan);
   return { ox: A.empty ? 0 : A.bounds.minX, oz: A.empty ? 0 : A.bounds.minZ, cw, cl, swap: sw };
+}
+/* Tee takeoff for a 2′ × 4′ lay-in grid over the cleanroom ceiling: main tees are the continuous runners
+   4′ apart (12′ pieces, spliced), 4′ cross tees span between them every 2′ (a cut bay at a wall still takes
+   a whole tee), a 2′ cross tee splits a cell for each 2 × 2 fixture, and hanger wires go every 4′ along the
+   mains plus four at each light and FFU. The ceiling track on the walls is the perimeter support. */
+function gridTakeoff(plan, A) {
+  A = A || analyze(plan);
+  const fp = footprint(A); if (!fp || !A.hardAny) return null;
+  const G = ceilingGrid(plan, A), B = A.bounds, step = Math.min(0.25, fp.cell / 2);
+  // mains run along the 2′ direction (lines 4′ apart); crosses run along the 4′ direction (lines 2′ apart)
+  const mainAlongX = G.cl === 4, runs = [];
+  const scan = (fixed, lo, hi, alongX) => {
+    let st = null;
+    for (let v = lo; v <= hi + 1e-9; v += step) {
+      const inside = alongX ? fp.has(v, fixed) : fp.has(fixed, v);
+      if (inside && st === null) st = v;
+      if ((!inside || v + step > hi + 1e-9) && st !== null) { const e = inside ? v : v - step; if (e - st > 0.3) runs.push({ fixed, a: st, b: e, alongX }); st = null; }
+    }
+  };
+  const first = (o, lo, sp) => o + Math.ceil((lo - o) / sp - 1e-9) * sp;
+  const mains = [], crosses = [];
+  if (mainAlongX) {
+    for (let z = first(G.oz, B.minZ, 4); z <= B.maxZ + 1e-9; z += 4) { runs.length = 0; scan(z, B.minX, B.maxX, true); mains.push(...runs); }
+    for (let x = first(G.ox, B.minX, 2); x <= B.maxX + 1e-9; x += 2) { runs.length = 0; scan(x, B.minZ, B.maxZ, false); crosses.push(...runs); }
+  } else {
+    for (let x = first(G.ox, B.minX, 4); x <= B.maxX + 1e-9; x += 4) { runs.length = 0; scan(x, B.minZ, B.maxZ, false); mains.push(...runs); }
+    for (let z = first(G.oz, B.minZ, 2); z <= B.maxZ + 1e-9; z += 2) { runs.length = 0; scan(z, B.minX, B.maxX, true); crosses.push(...runs); }
+  }
+  const mainFt = mains.reduce((t, r) => t + (r.b - r.a), 0);
+  // cross tees: one per 4′ bay between mains that the run passes through (cut bays included)
+  const mo = mainAlongX ? G.oz : G.ox;
+  let cross4 = 0;
+  for (const r of crosses) { const k0 = Math.floor((r.a - mo) / 4 + 1e-6), k1 = Math.ceil((r.b - mo) / 4 - 1e-6); for (let k = k0; k < k1; k++) { const a = Math.max(r.a, mo + k * 4), b = Math.min(r.b, mo + (k + 1) * 4); if (b - a > 0.3) cross4++; } }
+  const fx = ceilingFixtures(plan, A), cross2 = fx.filter(f => Math.max(f.w || 2, f.h || 4) <= 2.2).length;
+  const hangers = mains.reduce((t, r) => t + Math.ceil((r.b - r.a) / 4) + 1, 0) + fx.length * 4;
+  return { mainFt, mainPcs: Math.ceil(mainFt * 1.05 / 12), mainRuns: mains.length, cross4, cross2, hangers, fixtures: fx.length };
+}
+/* Cleanroom check: for every room label, its floor area and volume, the FFUs over it, their airflow, air
+   changes per hour and filter coverage, against its ISO class; and for every door or opening between two
+   rooms, which way the air goes (from higher to lower pressure) and whether that's from the cleaner side.
+   Targets are typical industry design ranges (minimums), not a certification. */
+const ISO_TARGETS = { 5: { ach: 240, cov: 35 }, 6: { ach: 150, cov: 25 }, 7: { ach: 60, cov: 15 }, 8: { ach: 20, cov: 5 }, 9: { ach: 10, cov: 0 } };
+function cleanroomCheck(plan) {
+  const Z = zones(plan), rooms = [], grids = [];
+  for (const z of Z) {
+    const A = analyze(z.plan); if (A.empty) continue;
+    const R = roomRegions(A, z.plan, true); if (!R.grid) continue;
+    grids.push({ R, z });
+    const FM = z.plan.ffuModel && Array.isArray(z.plan.ffuModel.sizes) && z.plan.ffuModel.sizes.length ? z.plan.ffuModel : null;
+    const fx = ceilingFixtures(z.plan, A), G = R.grid;
+    const compAt = (x, y) => { const i = Math.floor((x - G.x0) / G.cell), j = Math.floor((y - G.z0) / G.cell); return i < 0 || j < 0 || i >= G.nx || j >= G.nz ? -1 : G.comp[j * G.nx + i]; };
+    R.forEach((q, ci) => {
+      const r = q.room, area = q.area, vol = area * A.H;
+      let n = 0, cfm = 0, face = 0;
+      for (const f of fx) {
+        if (f.type !== 'ffu' || compAt(f.x, f.y) !== ci) continue;
+        n++;
+        const long = Math.max(f.w || 2, f.h || 4), short = Math.min(f.w || 2, f.h || 4);
+        const zz = FM ? (FM.sizes.find(s2 => s2.nominal === '2x' + Math.max(2, Math.min(4, Math.round(long)))) || FM.sizes[0]) : null;
+        const fa = Math.max(0.5, (long - 0.2) * (short - 0.2));
+        face += fa; cfm += zz && zz.cfm ? zz.cfm : fa * 90; // 90 fpm face velocity when the unit's airflow isn't known
+      }
+      const iso = r.iso ? +r.iso : null, T = iso ? ISO_TARGETS[iso] : null, achT = r.ach > 0 ? +r.ach : T ? T.ach : null;
+      const ach = vol > 0 ? cfm * 60 / vol : 0, cov = area > 0 ? face / area * 100 : 0;
+      const short = [];
+      if (achT && ach + 1e-6 < achT) short.push(`air changes ${Math.round(ach)}/hr, needs ${achT}`);
+      if (T && T.cov && cov + 1e-6 < T.cov) short.push(`filter coverage ${Math.round(cov)}%, needs ${T.cov}%`);
+      if (achT && vol > 0 && ach < achT) { const per = n ? cfm / n : (FM ? (FM.sizes[0].cfm || 650) : 630); short.push(`about ${Math.ceil((achT * vol / 60 - cfm) / per)} more FFU${Math.ceil((achT * vol / 60 - cfm) / per) === 1 ? '' : 's'}`); }
+      rooms.push({ room: r, zone: z, area, volume: vol, H: A.H, ffus: n, cfm, ach, coverage: cov, iso, achTarget: achT, covTarget: T ? T.cov : null, pressure: r.pressure != null && r.pressure !== '' ? +r.pressure : null, ok: !short.length, short });
+    });
+  }
+  // which room is at a point (any area), or null outside every labeled room
+  const roomAt = (x, y) => { for (const g of grids) { const G = g.R.grid, i = Math.floor((x - G.x0) / G.cell), j = Math.floor((y - G.z0) / G.cell); if (i < 0 || j < 0 || i >= G.nx || j >= G.nz) continue; const c = G.comp[j * G.nx + i]; if (c >= 0) return g.R[c].room; } return null; };
+  const byRoom = new Map(rooms.map(q => [q.room, q]));
+  const doors = [];
+  for (const z of Z) for (const o of z.plan.openings || []) {
+    if (o.type === 'window' || o.type === 'glass') continue;
+    const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1); if (L < 0.1) continue;
+    const nx = -(o.y2 - o.y1) / L, ny = (o.x2 - o.x1) / L, mx = (o.x1 + o.x2) / 2, my = (o.y1 + o.y2) / 2, off = (o.t || 0.3) / 2 + 1.2;
+    const a = roomAt(mx + nx * off, my + ny * off), b = roomAt(mx - nx * off, my - ny * off);
+    if (!a && !b) continue;
+    const qa = a ? byRoom.get(a) : null, qb = b ? byRoom.get(b) : null;
+    const pa = qa && qa.pressure != null ? qa.pressure : (a ? null : 0), pb = qb && qb.pressure != null ? qb.pressure : (b ? null : 0);
+    if (pa == null || pb == null) { doors.push({ o, a, b, mx, my, nx, ny, dp: null }); continue; }
+    const dp = pa - pb; // > 0: air flows from a's side to b's side (along -n)
+    const ia = qa && qa.iso ? qa.iso : 10, ib = qb && qb.iso ? qb.iso : 10;
+    let warn = null;
+    if (Math.abs(dp) < 0.5) warn = 'no pressure difference';
+    else if ((dp > 0 && ia > ib) || (dp < 0 && ib > ia)) warn = 'air flows from the less clean side into the cleaner room';
+    else if (Math.abs(dp) < 5) warn = 'less than 5 Pa difference';
+    doors.push({ o, a, b, mx, my, nx, ny, dp, warn });
+  }
+  return { rooms, doors, targets: ISO_TARGETS };
 }
 /* Grid steps for a fixture: its long side steps on 4′, its short side on 2′ (a 2 × 2 on 2′ both ways).
    On a turned grid the two axes trade places. */
@@ -1212,6 +1326,18 @@ function buildScene(THREE, plan, A) {
   const housingMat = new THREE.MeshPhongMaterial({ color: 0xc9ced1, specular: 0x666666, shininess: 40 });
   // house items: cabinets, appliances, plumbing fixtures
   for (const q of A.items || []) { const g = itemMesh(THREE, q.it, M); fixtures.add(g); g.traverse(o => { if (o.isMesh) { pick.push(o); if (q.it.id) o.userData.ref = { kind: 'item', id: q.it.id }; } }); }
+  // electrical devices: cover plates on the wall faces (panels and monitors as boxes)
+  const plateMat = new THREE.MeshPhongMaterial({ color: 0xf4f5f5, specular: 0x333333, shininess: 30 }), panelMat = new THREE.MeshPhongMaterial({ color: 0x9aa2a6, specular: 0x555555, shininess: 40 }), screenMat = new THREE.MeshPhongMaterial({ color: 0x1d2a30, emissive: 0x0b3a2c, shininess: 80 }), slotMat = new THREE.MeshBasicMaterial({ color: 0x2c3236 });
+  for (const dv of plan.devices || []) {
+    const D = DEVICES[dv.type]; if (!D) continue;
+    const dep = D.d || 0.03, g = new THREE.Group(), body = new THREE.Mesh(new THREE.BoxGeometry(dep, D.hh, D.w), dv.type === 'panel' ? panelMat : plateMat);
+    body.position.x = dep / 2; g.add(body);
+    if (dv.type === 'monitor') { const sc = new THREE.Mesh(new THREE.BoxGeometry(0.005, D.hh * 0.6, D.w * 0.7), screenMat); sc.position.x = dep + 0.003; g.add(sc); }
+    else if (dv.type !== 'panel' && dv.type !== 'jbox') { const sl = new THREE.Mesh(new THREE.BoxGeometry(0.004, D.hh * (dv.type === 'switch' ? 0.25 : 0.18), D.w * (dv.type === 'switch' ? 0.18 : 0.4)), slotMat); sl.position.x = dep + 0.002; if (dv.type !== 'switch') { sl.position.y = D.hh * 0.18; const s2 = sl.clone(); s2.position.y = -D.hh * 0.18; g.add(s2); } g.add(sl); }
+    g.position.set(dv.x, dv.h != null ? dv.h : D.h, dv.y); g.rotation.y = -(dv.a || 0);
+    g.traverse(o => { if (o.isMesh) { pick.push(o); if (dv.id) o.userData.ref = { kind: 'device', id: dv.id }; } });
+    fixtures.add(g);
+  }
   // A real fan filter unit model (plan.ffuModel: manufacturer sizes from a Revit family): the cabinet and blower
   // housing sit above the grid (seen in Dollhouse, where the ceiling is hidden); the perforated face shows from below.
   const FM = plan.ffuModel && Array.isArray(plan.ffuModel.sizes) && plan.ffuModel.sizes.length ? plan.ffuModel : null;
@@ -1298,6 +1424,21 @@ function buildAll(THREE, plan, M) {
   return out;
 }
 
+/* Pressure cascade in 3D: a flat arrow on the floor through each door with pressures set on both sides,
+   pointing the way the air goes, green when it's right and red when it's wrong or weak. */
+function pressureArrows(THREE, root, plan) {
+  if (!(plan.rooms || []).some(r => r.pressure != null && r.pressure !== '')) return;
+  let C; try { C = cleanroomCheck(plan); } catch (e) { return; }
+  const shape = new THREE.Shape(); shape.moveTo(-0.9, -0.16); shape.lineTo(0.25, -0.16); shape.lineTo(0.25, -0.42); shape.lineTo(0.95, 0); shape.lineTo(0.25, 0.42); shape.lineTo(0.25, 0.16); shape.lineTo(-0.9, 0.16); shape.closePath();
+  const geo = new THREE.ShapeGeometry(shape);
+  const good = new THREE.MeshBasicMaterial({ color: 0x3fbf6f, transparent: true, opacity: 0.85, depthWrite: false }), bad = new THREE.MeshBasicMaterial({ color: 0xe5533d, transparent: true, opacity: 0.85, depthWrite: false });
+  for (const d of C.doors) {
+    if (d.dp == null || Math.abs(d.dp) < 0.5) continue;
+    const sg = d.dp > 0 ? -1 : 1, m = new THREE.Mesh(geo, d.warn ? bad : good);
+    m.rotation.x = -Math.PI / 2; m.rotation.z = Math.atan2(-d.ny * sg, d.nx * sg);
+    m.position.set(d.mx, 0.06, d.my); m.renderOrder = 2; root.add(m);
+  }
+}
 /* ---------- Mount ---------- */
 function mount(container, plan, opts) {
   opts = opts || {};
@@ -1646,6 +1787,7 @@ function mount(container, plan, opts) {
     A = analyzeAll(p);
     if (built) { scene.remove(built.root); built.root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     built = buildAll(THREE, p, A);
+    pressureArrows(THREE, built.root, p);
     scene.add(built.root);
     emptyEl.hidden = !A.empty;
     // the Plenum view only when there is a plenum
@@ -1747,5 +1889,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);

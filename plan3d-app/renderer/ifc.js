@@ -287,6 +287,7 @@ function toIfc(plan, opts) {
   S.steel_frame = S.wood;
   const KIND_NAME = (k) => (V.WALL_KINDS && V.WALL_KINDS[k] ? V.WALL_KINDS[k].label : 'Building wall');
   S.ffuFace = S.face;
+  S.plate = style('Coll device cover plate, white', 0.96, 0.96, 0.96, 0, 0.2, 30);
   // the colors seen from above in the Plenum view: tile backs, LED housings, FFU inlet ring and pre-filter
   S.tileBack = style('Coll ceiling tile, back', 0.616, 0.604, 0.569, 0, 0.02, 4, 'MATT');
   S.housing = style('Coll LED housing, steel', 0.79, 0.81, 0.82, 0, 0.4, 40, 'METAL');
@@ -588,6 +589,14 @@ function toIfc(plan, opts) {
     }
     if (tees.length) put('IFCMEMBER', 'Ceiling grid', 'Coll ceiling T-grid, 15/16″', shape(tees), ',.MEMBER.', S.grid);
 
+    // electrical and utility devices on the wall faces
+    for (const dv of plan.devices || []) {
+      const D = V.DEVICES && V.DEVICES[dv.type]; if (!D) continue;
+      const a = dv.a || 0, nx = Math.cos(a), ny = Math.sin(a), tx = -ny, ty = nx, dep = D.d || 0.03, h = dv.h != null ? dv.h : D.h;
+      const pts = [[dv.x + tx * D.w / 2, dv.y + ty * D.w / 2], [dv.x - tx * D.w / 2, dv.y - ty * D.w / 2], [dv.x - tx * D.w / 2 + nx * dep, dv.y - ty * D.w / 2 + ny * dep], [dv.x + tx * D.w / 2 + nx * dep, dv.y + ty * D.w / 2 + ny * dep]];
+      const st = dv.type === 'panel' ? S.steel : S.plate;
+      put(D.ifc[0], D.label, 'Coll electrical, ' + V.fmtFt(h) + ' to center', shape([solid(pts, h - D.hh / 2, h + D.hh / 2, st)]), ',' + D.ifc[1], st);
+    }
     for (const f of V.ceilingFixtures(plan, A)) {
       const hw = (f.w || 1.9) / 2, hh = (f.h || 3.9) / 2, pts = [[f.x - hw, f.y - hh], [f.x + hw, f.y - hh], [f.x + hw, f.y + hh], [f.x - hw, f.y + hh]];
       const FM = plan.ffuModel && plan.ffuModel.sizes && plan.ffuModel.sizes.length ? plan.ffuModel : null;

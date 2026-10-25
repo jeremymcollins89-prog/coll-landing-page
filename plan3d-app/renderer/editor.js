@@ -91,16 +91,23 @@ class Editor {
   snapshot() { return JSON.stringify(this.plan); }
   commit(before) {
     this.hist.push(before); if (this.hist.length > 200) this.hist.shift(); this.fut = []; this.dirty = true;
-    this.emit('change'); this.render();
+    this._chk = undefined; this.emit('change'); this.render();
+  }
+  /* the cleanroom check (airflow per room, pressure across doors), worked out once per change */
+  check() {
+    const V2 = global.Plan3DViewer, P = this.plan;
+    if (this._chk !== undefined) return this._chk;
+    this._chk = V2 && V2.cleanroomCheck && (P.rooms || []).some(r => r.iso || (r.pressure != null && r.pressure !== '')) ? (() => { try { return V2.cleanroomCheck(P); } catch (e) { return null; } })() : null;
+    return this._chk;
   }
   edit(fn) { const b = this.snapshot(); fn(this.plan); this.commit(b); }
   undo() { if (!this.hist.length) return; this.fut.push(this.snapshot()); this.plan = JSON.parse(this.hist.pop()); this.afterRestore(); }
   redo() { if (!this.fut.length) return; this.hist.push(this.snapshot()); this.plan = JSON.parse(this.fut.pop()); this.afterRestore(); }
-  afterRestore() { this.dirty = true; this.loadBg(); if (this.sel && !this.find(this.sel)) this.sel = null; this.emit('select'); this.emit('change'); this.render(); }
+  afterRestore() { this._chk = undefined; this.dirty = true; this.loadBg(); if (this.sel && !this.find(this.sel)) this.sel = null; this.emit('select'); this.emit('change'); this.render(); }
   emit(ev, d) { const f = this.o['on' + ev[0].toUpperCase() + ev.slice(1)]; if (f) f(d); }
   find(sel) {
     if (!sel) return null;
-    const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items' }[sel.kind];
+    const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices' }[sel.kind];
     return list ? (this.plan[list] || []).find(x => x.id === sel.id) : (sel.kind === 'bg' ? this.plan.background : null);
   }
   selected() { return this.find(this.sel); }
@@ -250,8 +257,29 @@ class Editor {
     const g = this.snapIn / 12 || 1 / 48;
     return { type, w, d, x: Math.round(x / g) * g, y: Math.round(y / g) * g, a: (this.itemRot || 0) * Math.PI / 2, wall: false };
   }
+  /* where an electrical device goes: on the face of the nearest wall (within 2′), facing into the room */
+  devicePlace(x, y, type, keep) {
+    const V = global.Plan3DViewer, D = V && V.DEVICES[type]; if (!D) return null;
+    const hit = this.wallAt(x, y, 2 * this.view.s + 8); if (!hit || hit.p.len < 0.3) return null;
+    const W = hit.w, L = hit.p.len, ux = (W.x2 - W.x1) / L, uy = (W.y2 - W.y1) / L, nx = -uy, ny = ux;
+    const side = ((x - hit.p.x) * nx + (y - hit.p.y) * ny) >= 0 ? 1 : -1, g = 1 / 12;
+    let sAlong = Math.round(hit.p.tc * L / g) * g; sAlong = Math.max(D.w / 2, Math.min(L - D.w / 2, sAlong));
+    const off = (W.t || 0.25) / 2;
+    return { type, x: W.x1 + ux * sAlong + nx * side * off, y: W.y1 + uy * sAlong + ny * side * off, a: Math.atan2(ny * side, nx * side), h: keep && keep.h != null ? keep.h : D.h };
+  }
+  drawDevice(dv, ghost) {
+    const V = global.Plan3DViewer, D = V && V.DEVICES[dv.type]; if (!D) return;
+    const g = this.g, X = this.sx(dv.x), Y = this.sy(dv.y), ca = Math.cos(dv.a || 0), sa = Math.sin(dv.a || 0), r = Math.max(5, Math.min(9, this.view.s * 0.35));
+    const cx = X + ca * r * 1.1, cy = Y + sa * r * 1.1;
+    g.save(); g.lineWidth = 1.4; g.strokeStyle = ghost ? COL.draft : '#f2c84b'; g.fillStyle = ghost ? 'rgba(242,200,75,.25)' : '#2a3338';
+    g.beginPath(); g.moveTo(X, Y); g.lineTo(cx - ca * r, cy - sa * r); g.stroke();
+    g.beginPath(); if (dv.type === 'panel') g.rect(cx - r, cy - r * 0.7, r * 2, r * 1.4); else g.arc(cx, cy, r, 0, Math.PI * 2); g.fill(); g.stroke();
+    g.fillStyle = ghost ? COL.draft : '#f2c84b'; g.font = `600 ${D.short.length > 2 ? 7 : 9}px Consolas, monospace`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(D.short, cx, cy + 0.5);
+    g.restore();
+  }
   hitTest(x, y) {
     const P = this.plan, tol = 7 / this.view.s;
+    for (let i = (P.devices || []).length - 1; i >= 0; i--) { const dv = P.devices[i], r = Math.max(5, Math.min(9, this.view.s * 0.35)) / this.view.s; if (Math.hypot(x - (dv.x + Math.cos(dv.a || 0) * r * 1.1), y - (dv.y + Math.sin(dv.a || 0) * r * 1.1)) < r * 1.3) return { kind: 'device', id: dv.id }; }
     for (let i = P.openings.length - 1; i >= 0; i--) { const o = P.openings[i]; if (segProj(x, y, o.x1, o.y1, o.x2, o.y2).d < (o.t || 0.25) / 2 + tol) return { kind: 'opening', id: o.id }; }
     const V = global.Plan3DViewer;
     if (V && V.itemCorners) for (let i = (P.items || []).length - 1; i >= 0; i--) { const c = V.itemCorners(P.items[i]); if (inPoly(x, y, c)) return { kind: 'item', id: P.items[i].id }; }
@@ -333,6 +361,11 @@ class Editor {
       if (g && this.pieces.place(g)) { this.pieceGhost = this.pieces.ghostAt({ x: p.x, y: p.y }); this.render(); }
       return;
     }
+    if (T === 'elec') {
+      const q = this.devicePlace(p.x, p.y, this.deviceType || 'outlet'); if (!q) { this.status('Click on or next to a wall to put it there.'); return; }
+      const dv = { id: uid(), type: q.type, x: q.x, y: q.y, a: q.a, h: q.h };
+      this.edit(P => { (P.devices = P.devices || []).push(dv); }); return;
+    }
     if (T === 'item') {
       const q = this.itemPlace(p.x, p.y, this.itemType); if (!q) return;
       const it = { id: uid(), type: q.type, x: q.x, y: q.y, a: q.a, w: q.w, d: q.d };
@@ -394,6 +427,10 @@ class Editor {
         } else { const k = dx * ux + dy * uy; o.x1 = O.x1 + ux * k; o.y1 = O.y1 + uy * k; o.x2 = O.x2 + ux * k; o.y2 = O.y2 + uy * k; }
       } else if (D.sel.kind === 'chase') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
       else if (D.sel.kind === 'room') { o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy); }
+      else if (D.sel.kind === 'device') {
+        const q = this.devicePlace(O.x + (p.x - D.sx), O.y + (p.y - D.sy), o.type, o);
+        if (q) { o.x = q.x; o.y = q.y; o.a = q.a; }
+      }
       else if (D.sel.kind === 'item') {
         const q = this.itemPlace(O.x + (p.x - D.sx), O.y + (p.y - D.sy), o.type, o);
         if (q) { o.x = q.x; o.y = q.y; if (q.wall) o.a = q.a; }
@@ -416,6 +453,7 @@ class Editor {
       this.render(); this.emit('cursor', p); return;
     }
     // hover feedback
+    if (this.tool === 'elec') { const V = global.Plan3DViewer, q = this.devicePlace(p.x, p.y, this.deviceType || 'outlet'); this.status(q ? V.DEVICES[q.type].label + ' at ' + fmtIn(q.h) + ' to center. Click to place.' : 'Move onto a wall.'); }
     if (this.tool === 'item') { const q = this.itemPlace(p.x, p.y, this.itemType); this.status(q ? (global.Plan3DViewer.ITEMS[q.type].label + (q.wall ? ' — against the wall. Click to place.' : ' — R turns it. Click to place.')) : ''); }
     if (this.tool === 'select') this.hover = this.hitTest(p.x, p.y);
     this.render();
@@ -490,7 +528,7 @@ class Editor {
   deleteSel() {
     const s = this.sel; if (!s) return;
     if (s.kind === 'bg') { this.edit(P => { P.background = null; }); this.bgImg = null; }
-    else { const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items' }[s.kind]; this.edit(P => { P[list] = (P[list] || []).filter(x => x.id !== s.id); if (s.kind === 'wall') P.openings = P.openings.filter(o => o.unit !== s.id); }); }
+    else { const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices' }[s.kind]; this.edit(P => { P[list] = (P[list] || []).filter(x => x.id !== s.id); if (s.kind === 'wall') P.openings = P.openings.filter(o => o.unit !== s.id); }); }
     this.sel = null; this.emit('select'); this.render();
   }
 
@@ -609,13 +647,39 @@ class Editor {
     // house items (kitchen, bath, laundry)
     const V2 = global.Plan3DViewer;
     if (V2 && V2.itemCorners) for (const it of P.items || []) this.drawItem(it, false);
+    if (V2 && V2.DEVICES) for (const dv of P.devices || []) this.drawDevice(dv, false);
     // rooms
     for (const r of P.rooms) {
       g.font = '600 13px Bahnschrift, "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillStyle = COL.room; g.fillText(r.name || 'Room', this.sx(r.x), this.sy(r.y) - (r.dims ? 7 : 0));
       if (r.dims) { g.font = '11px Consolas, monospace'; g.fillStyle = COL.roomSub; g.fillText(r.dims, this.sx(r.x), this.sy(r.y) + 8); }
+      // cleanroom check: class, air changes and pressure under the name, green when it meets the class
+      const CK = this.check(), q = CK && CK.rooms.find(x => x.room === r);
+      let extra = 0;
+      if (q && (q.iso || q.pressure != null)) {
+        const bits = [];
+        if (q.iso) bits.push('ISO ' + q.iso, Math.round(q.ach) + ' ACH');
+        if (q.pressure != null) bits.push((q.pressure > 0 ? '+' : '') + q.pressure + ' Pa');
+        g.font = '600 11px Consolas, monospace'; g.fillStyle = !q.iso ? COL.roomSub : q.ok ? '#6fd08c' : '#ff7a6b';
+        g.fillText(bits.join(' · ') + (q.iso ? (q.ok ? '  ✓' : '  ✗') : ''), this.sx(r.x), this.sy(r.y) - (r.dims ? 21 : 14));
+        extra = 1;
+      }
       // a room with its own ceiling height says so
       if (V2 && V2.roomKey && (r.ceiling > 0 || (r.plenum != null && r.plenum !== ''))) { const k = V2.roomKey(P, r); g.font = '11px Consolas, monospace'; g.fillStyle = COL.roomSub; g.fillText('ceiling ' + V2.fmtFt(k.H) + (k.PL ? ' · plenum ' + V2.fmtFt(k.PL) : ''), this.sx(r.x), this.sy(r.y) + (r.dims ? 22 : 14)); }
+    }
+    // pressure: an arrow through each door the way the air goes (high to low), red when it's wrong or weak
+    const CK2 = this.check();
+    if (CK2) for (const d of CK2.doors) {
+      if (d.dp == null || Math.abs(d.dp) < 0.5) continue;
+      const sg = d.dp > 0 ? -1 : 1, L = 1.6, cx = this.sx(d.mx), cy = this.sy(d.my);
+      const ex = this.sx(d.mx + d.nx * sg * L), ey = this.sy(d.my + d.ny * sg * L), bx = this.sx(d.mx - d.nx * sg * L), by = this.sy(d.my - d.ny * sg * L);
+      const col = d.warn ? '#ff7a6b' : '#6fd08c';
+      g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(bx, by); g.lineTo(ex, ey); g.stroke();
+      const ang = Math.atan2(ey - by, ex - bx), hs = 8;
+      g.beginPath(); g.moveTo(ex, ey); g.lineTo(ex - hs * Math.cos(ang - 0.45), ey - hs * Math.sin(ang - 0.45)); g.lineTo(ex - hs * Math.cos(ang + 0.45), ey - hs * Math.sin(ang + 0.45)); g.closePath(); g.fill();
+      g.font = '600 10px Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(Math.round(Math.abs(d.dp) * 10) / 10 + ' Pa', cx + (ey - by) / Math.hypot(ex - bx, ey - by) * 14, cy - (ex - bx) / Math.hypot(ex - bx, ey - by) * 14);
     }
   }
 
@@ -681,6 +745,7 @@ class Editor {
       else if (sel.kind === 'opening') { quad(o.x1, o.y1, o.x2, o.y2, (o.t || 0.25) + 6 / s); g.stroke(); }
       else if (sel.kind === 'chase') { g.strokeRect(this.sx(Math.min(o.x0, o.x1)) - 2, this.sy(Math.min(o.y0, o.y1)) - 2, Math.abs(o.x1 - o.x0) * s + 4, Math.abs(o.y1 - o.y0) * s + 4); }
       else if (sel.kind === 'room') { g.strokeRect(this.sx(o.x) - 48, this.sy(o.y) - 14, 96, 28); }
+      else if (sel.kind === 'device') { const r = Math.max(5, Math.min(9, this.view.s * 0.35)); g.beginPath(); g.arc(this.sx(o.x) + Math.cos(o.a || 0) * r * 1.1, this.sy(o.y) + Math.sin(o.a || 0) * r * 1.1, r + 4, 0, Math.PI * 2); g.stroke(); }
       else if (sel.kind === 'item') { const c = global.Plan3DViewer.itemCorners(o); g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.stroke(); }
       else if (sel.kind === 'insert') { const b = this.insBox(o); g.strokeRect(this.sx(b.x0) - 6, this.sy(b.y0) - 6, (b.x1 - b.x0) * s + 12, (b.y1 - b.y0) * s + 12); }
     };
@@ -709,6 +774,7 @@ class Editor {
       const pv = this.openingPreview(C.x, C.y, this.tool);
       if (pv) { quad(pv.x1, pv.y1, pv.x2, pv.y2, (pv.t || 0.25) + 6 / s); g.fillStyle = 'rgba(242,200,75,.35)'; g.fill(); g.strokeStyle = COL.draft; g.lineWidth = 1.5; g.stroke(); dimFor(pv.x1, pv.y1, pv.x2, pv.y2, (pv.t || 0.25) + 0.6, COL.draft, true); }
     }
+    if (C && this.tool === 'elec' && global.Plan3DViewer) { const q = this.devicePlace(C.x, C.y, this.deviceType || 'outlet'); if (q) this.drawDevice(q, true); }
     if (C && this.tool === 'item' && global.Plan3DViewer) { const q = this.itemPlace(C.x, C.y, this.itemType); if (q) this.drawItem(q, true); }
     if (this.drag && this.drag.kind === 'chase') {
       const D = this.drag; g.fillStyle = 'rgba(242,200,75,.25)'; g.strokeStyle = COL.draft; g.lineWidth = 1.5;

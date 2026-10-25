@@ -313,9 +313,31 @@ function partsList(plan) {
     const area = fpr ? fpr.area : A.bounds.w * A.bounds.d, tiles = Math.max(0, Math.ceil(area / 8) - nLed - nFfu);
     add('Ceiling', 'Ceiling tile, 2×4 (approx.)', '2′ × 4′', tiles, 'ea', 62);
     if (A.PL > 0) add('Ceiling', 'Plenum lid (top of the cleanroom)', ftin(A.PL) + ' plenum above the grid, top at ' + ftin(A.WH), Math.ceil(area), 'sq ft', 67);
-    if (!(plan.ceilingGrid && plan.ceilingGrid.length)) add('Ceiling', 'Ceiling grid (area, approx.)', '', Math.ceil(area), 'sq ft', 63);
+    if (!(plan.ceilingGrid && plan.ceilingGrid.length)) {
+      add('Ceiling', 'Ceiling grid (area, approx.)', '', Math.ceil(area), 'sq ft', 63);
+      // tee takeoff from the grid as laid out
+      const T = V.gridTakeoff ? V.gridTakeoff(plan, A) : null;
+      if (T) {
+        if (T.mainPcs) add('Ceiling grid', 'Main tee, 15/16″, 12′ (runs spliced, +5%)', '12′', T.mainPcs, 'ea', 70);
+        if (T.cross4) add('Ceiling grid', 'Cross tee, 15/16″, 4′', '', T.cross4, 'ea', 71);
+        if (T.cross2) add('Ceiling grid', 'Cross tee, 15/16″, 2′ (at 2 × 2 fixtures)', '', T.cross2, 'ea', 72);
+        if (T.hangers) add('Ceiling grid', 'Hanger wire, 12 ga (every 4′ on mains + 4 per fixture)', '', T.hangers, 'ea', 73);
+      }
+    }
   }
 
+  // --- Electrical: devices as placed, and a branch-circuit estimate (20A, 120V) for the planner
+  const DV = V.DEVICES || {}, devs = (plan.devices || []).filter(d => DV[d.type]);
+  for (const d of devs) add('Electrical', DV[d.type].label, '', 1, 'ea', 90);
+  if (devs.length || nFfu || nLed) {
+    const recs = devs.filter(d => d.type === 'outlet' || d.type === 'gfci').length;
+    const ded = devs.filter(d => d.type === 'dedicated' || d.type === 'r208' || d.type === 'jbox').length;
+    const cFfu = nFfu ? Math.ceil(nFfu / 6) : 0, cLed = nLed ? Math.ceil(nLed / 24) : 0, cRec = recs ? Math.ceil(recs / 8) : 0;
+    if (cFfu) add('Electrical', 'Branch circuits for FFUs, 20A (est., 6 FFUs per circuit)', '', cFfu, 'ea', 95);
+    if (cLed) add('Electrical', 'Branch circuits for lights, 20A (est., 24 fixtures per circuit)', '', cLed, 'ea', 96);
+    if (cRec) add('Electrical', 'Branch circuits for receptacles, 20A (est., 8 per circuit)', '', cRec, 'ea', 97);
+    if (ded) add('Electrical', 'Dedicated circuits (equipment)', '', ded, 'ea', 98);
+  }
   if (A.frameAny) houseTakeoff(plan, A, add);
   return [...rows.values()].sort((a, b) => a.order - b.order || a.item.localeCompare(b.item) || a.size.localeCompare(b.size, undefined, { numeric: true }));
 }

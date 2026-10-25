@@ -15,7 +15,7 @@ const ed = new Editor($('#plan'), {
   onChange: () => { updateChrome(); queue3D(); if (builder && view === 'build') builder.refresh(); renderProps(); },
   onLive: () => queue3D(),
   onSelect: (d) => { renderProps(d); if (builder && view === 'build') builder.drawSel(); },
-  onTool: (t) => { $$('.tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; $('#itemPal').hidden = t !== 'item'; if (t === 'item') itemPalette(); if (t === 'piece') hideBanner(); toolHint(t); },
+  onTool: (t) => { $$('.tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; $('#itemPal').hidden = t !== 'item'; if (t === 'item') itemPalette(); $('#elecPal').hidden = t !== 'elec'; if (t === 'elec') elecPalette(); if (t === 'piece') hideBanner(); toolHint(t); },
   onStatus: (m) => msg(m || toolHintText(ed.tool)),
   onCursor: (p) => { $('#sXY').textContent = fmt(p.x) + ', ' + fmt(p.y); $('#sZoom').textContent = Math.round(ed.view.s) + ' px/ft'; },
   onCalibrate: (cal) => calibrateDialog(cal),
@@ -41,6 +41,7 @@ function pickMode(m) {
 }
 function msg(t) { $('#sMsg').textContent = t || 'Ready'; }
 const HINTS = {
+  elec: 'Pick a device above, then click on a wall: it goes on that face of the wall, facing the room you clicked in. Heights follow the usual mounting heights; change one in its properties.',
   select: 'Click to select. Drag to move. Drag a wall end to stretch it. Drag empty space to pan. Delete removes.',
   build: 'Build mode: pick a piece and click to place it.',
   wall: 'Click corners to draw walls. Type a length (e.g. 23\'8-3/4) and press Enter. Hold Alt for free angles. Esc to finish.',
@@ -61,6 +62,13 @@ function itemPalette() {
   if (!ed.itemType) ed.itemType = 'base';
   $('#itemPal').innerHTML = Object.entries(groups).map(([g, list]) => `<div class="grp"><h5>${esc(g)}</h5><div class="row">${list.map(([k, v]) => `<button data-it="${k}" class="${ed.itemType === k ? 'on' : ''}">${esc(v.label)}</button>`).join('')}</div></div>`).join('');
   $$('#itemPal button').forEach(b => b.onclick = () => { ed.itemType = b.dataset.it; itemPalette(); $('#plan').focus(); });
+}
+function elecPalette() {
+  const DV = Plan3DViewer.DEVICES, groups = {};
+  for (const [k, v] of Object.entries(DV)) (groups[v.group] = groups[v.group] || []).push([k, v]);
+  if (!ed.deviceType) ed.deviceType = 'outlet';
+  $('#elecPal').innerHTML = Object.entries(groups).map(([g, list]) => `<div class="grp"><h5>${esc(g)}</h5><div class="row">${list.map(([k, v]) => `<button data-dv="${k}" class="${ed.deviceType === k ? 'on' : ''}">${esc(v.label)}</button>`).join('')}</div></div>`).join('');
+  $$('#elecPal button').forEach(b => b.onclick = () => { ed.deviceType = b.dataset.dv; elecPalette(); $('#plan').focus(); });
 }
 function toolHintText(t) { return HINTS[t] || ''; }
 function toolHint(t) { msg(toolHintText(t)); }
@@ -131,7 +139,7 @@ $$('.tools button').forEach(b => b.addEventListener('click', () => { ed.setTool(
 $('#optOrtho').addEventListener('change', e => { ed.ortho = e.target.checked; });
 $('#optDims').addEventListener('change', e => { ed.showDims = e.target.checked; ed.render(); });
 
-const TOOL_KEYS = { v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', i: 'item' };
+const TOOL_KEYS = { v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', i: 'item', e: 'elec' };
 const HOUSE_ONLY = new Set(['item']), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase']);
 function inField(e) { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA'); }
 window.addEventListener('keydown', e => {
@@ -280,6 +288,20 @@ function renderProps(opt) {
     return;
   }
   if (s && o && s.kind === 'insert') { insertProps(box, o); return; }
+  if (s && o && s.kind === 'device') {
+    const DV = Plan3DViewer.DEVICES, D = DV[o.type] || { label: o.type, h: 1.5 };
+    h = `<div class="hd"><span class="kind">${esc(D.label)}</span><button class="btn small danger" id="pDel">Delete</button></div>
+      ${fld('Type', `<select id="pDvT">${Object.entries(DV).map(([k, v]) => `<option value="${k}" ${o.type === k ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select>`)}
+      ${fld('Height to center', txt('pDvH', fmtIn(o.h != null ? o.h : D.h)))}
+      <div class="row"><button class="btn small" id="pDvDup">Add another 6′ along</button></div>
+      <p class="note">Drag it along a wall; it stays on the wall face. It goes on the parts list under Electrical and into the Revit export.</p>`;
+    box.innerHTML = h;
+    $('#pDvT').onchange = e => ed.edit(() => { o.type = e.target.value; o.h = (DV[o.type] || D).h; });
+    bindLen('pDvH', 'in', v => ed.edit(() => { o.h = Math.max(0.25, Math.min(12, v)); }));
+    $('#pDvDup').onclick = () => { const c = Math.cos((o.a || 0) + Math.PI / 2), sn = Math.sin((o.a || 0) + Math.PI / 2); const q = ed.devicePlace(o.x + c * 6 - Math.cos(o.a || 0) * 0.3, o.y + sn * 6 - Math.sin(o.a || 0) * 0.3, o.type, o); if (!q) { msg('No wall 6′ along to put it on.'); return; } const n = { ...o, id: Plan3DEditor.uid(), x: q.x, y: q.y, a: q.a }; ed.edit(Pl => Pl.devices.push(n)); ed.sel = { kind: 'device', id: n.id }; ed.emit('select'); };
+    $('#pDel').onclick = () => ed.deleteSel();
+    return;
+  }
   if (s && o && s.kind === 'item') {
     const D = Plan3DViewer.ITEMS[o.type] || { label: o.type };
     h = `<div class="hd"><span class="kind">${esc(D.label)}</span><button class="btn small danger" id="pDel">Delete</button></div>
@@ -303,6 +325,7 @@ function renderProps(opt) {
       ${P.mode === 'house' ? fld('Floor', `<select id="pRFloor"><option value="">Same as the house (${esc(Plan3DViewer.FLOORS[P.floorType || 'lvp'])})</option>${Object.entries(Plan3DViewer.FLOORS).map(([k, l]) => `<option value="${k}" ${o.floor === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`) : ''}
       ${P.mode === 'house' ? '' : fld('Ceiling', txt('pRCeil', o.ceiling > 0 ? fmt(o.ceiling) : '', 'Same as the building (' + fmt(P.ceiling || 8) + ')')) + fld('Plenum above', txt('pRPlen', o.plenum != null && o.plenum !== '' ? fmt(+o.plenum) : '', 'Same as the building (' + fmt(+P.plenum || 0) + ')'))}
       ${P.mode === 'house' ? '' : `<p class="note" style="margin-top:-4px">Give a room its own ceiling height and plenum. Its walls run up to its top (${esc(fmt(Plan3DViewer.roomKey(P, o).H + Plan3DViewer.roomKey(P, o).PL))}); where it meets a lower room through an opening, transition panels fill the step. Leave blank to use the building's.</p>`}
+      ${P.mode === 'house' ? '' : roomCheckHtml(P, o)}
       <p class="note">Rooms show as jump buttons in the walkthrough. The size note is optional, e.g. 15′-5½″ × 29′-4⅞″.</p>`;
     box.innerHTML = h;
     const nm = $('#pName'); nm.onchange = () => ed.edit(() => { o.name = nm.value.trim() || 'Room'; });
@@ -310,6 +333,9 @@ function renderProps(opt) {
     if ($('#pRFloor')) $('#pRFloor').onchange = e => ed.edit(() => { if (e.target.value) o.floor = e.target.value; else delete o.floor; });
     const roomLen = (id, key, lo, hi) => { const el = $('#' + id); if (!el) return; const go = () => { const raw = el.value.trim(); if (!raw) { ed.edit(() => { delete o[key]; }); renderProps(); return; } const v = parseLen(raw, 'ft'); if (isFinite(v) && v >= 0) { ed.edit(() => { o[key] = Math.max(lo, Math.min(hi, v)); }); renderProps(); } else { el.style.borderColor = 'var(--warn)'; setTimeout(() => el.style.borderColor = '', 900); } }; el.addEventListener('change', go); el.addEventListener('keydown', e => { if (e.key === 'Enter') { go(); el.blur(); } }); };
     roomLen('pRCeil', 'ceiling', 6, 30); roomLen('pRPlen', 'plenum', 0, 20);
+    if ($('#pRIso')) $('#pRIso').onchange = e => { ed.edit(() => { if (e.target.value) o.iso = +e.target.value; else delete o.iso; }); renderProps(); };
+    const numIn = (id, key, lo, hi) => { const el = $('#' + id); if (!el) return; el.onchange = () => { const raw = el.value.trim(); if (!raw) { ed.edit(() => { delete o[key]; }); renderProps(); return; } const v = parseFloat(raw.replace(/[^\d.+-]/g, '')); if (isFinite(v)) { ed.edit(() => { o[key] = Math.max(lo, Math.min(hi, v)); }); renderProps(); } }; };
+    numIn('pRPa', 'pressure', -200, 200); numIn('pRAch', 'ach', 0, 1000);
     $('#pDel').onclick = () => ed.deleteSel();
     if (opt && opt.focusName) { nm.focus(); nm.select(); }
     return;
@@ -340,11 +366,13 @@ function renderProps(opt) {
       <span>${house ? 'Doors &amp; windows' : 'Doors &amp; glass'}</span><span>${P.openings.length}</span>
       ${house ? `<span>Items</span><span>${(P.items || []).length}</span>` : `<span>Air chases</span><span>${P.chases.length}</span>`}
       <span>Rooms</span><span>${P.rooms.length}</span>
+      ${(P.devices || []).length ? `<span>Electrical devices</span><span>${P.devices.length}</span>` : ''}
       ${(P.inserts || []).length ? `<span>Placed buildings</span><span>${P.inserts.length}</span>` : ''}
       ${hasGeo || (P.inserts || []).length ? (() => { const ft = Plan3DParts.projectParts(P).reduce((t, q) => t + q.floorFt, 0); return ft > 0 ? `<span>Floor track</span><span>${Math.ceil(ft)} lin ft <small>(${Plan3DParts.ftin(ft)})</small></span>` : ''; })() : ''}</div>
       ${hasGeo ? '<div class="row"><button class="btn small" id="pClearAuto">Clear all walls</button></div>' : ''}
     </div>
     ${house ? '' : ffuPanelHtml(P)}
+    ${house ? '' : checkGroupHtml(P)}
     ${fld('Project type', `<select id="pMode"><option value="cleanroom" ${house ? '' : 'selected'}>Cleanroom</option><option value="house" ${house ? 'selected' : ''}>House</option></select>`)}`;
   if (view === 'build') h = `<div class="hd"><span class="kind">Build</span></div>
     <p class="note">Pick a piece on the left and click to place it. Pieces snap to open ends, turn corners toward the mouse, and start T-joints off the middle of a wall.</p>` + partsHtml + h.replace('<div class="hd"><span class="kind">Plan</span></div>', '<div class="grp"><h3>Plan</h3>') + '</div>';
@@ -391,6 +419,35 @@ function renderProps(opt) {
     $('#pBgDetect').onclick = () => detectDialog();
     $('#pBgDel').onclick = () => { ed.sel = { kind: 'bg' }; ed.deleteSel(); };
   }
+}
+
+/* ---------- Cleanroom check (ISO class, air changes, filter coverage, pressure) ---------- */
+function roomCheckHtml(P, o) {
+  const C = (() => { try { return Plan3DViewer.cleanroomCheck(P); } catch (e) { return null; } })(), q = C && C.rooms.find(x => x.room === o);
+  let h = `<div class="grp"><h3>Cleanroom class and pressure</h3>
+    ${fld('ISO class', `<select id="pRIso"><option value="">Not set</option>${[5, 6, 7, 8, 9].map(k => `<option value="${k}" ${+o.iso === k ? 'selected' : ''}>ISO ${k}${k === 5 ? ' (Class 100)' : k === 6 ? ' (Class 1,000)' : k === 7 ? ' (Class 10,000)' : k === 8 ? ' (Class 100,000)' : ''}</option>`).join('')}</select>`)}
+    ${fld('Pressure', txt('pRPa', o.pressure != null && o.pressure !== '' ? String(o.pressure) : '', 'Pa, e.g. 15'))}
+    ${fld('Air changes target', txt('pRAch', o.ach > 0 ? String(o.ach) : '', q && q.iso ? 'ISO ' + q.iso + ' typical: ' + C.targets[q.iso].ach + '/hr' : 'per hour'))}`;
+  if (q) {
+    h += `<div class="stats">
+      <span>Floor area</span><span>${Math.round(q.area)} sq ft</span>
+      <span>Volume</span><span>${Math.round(q.volume).toLocaleString()} cu ft <small>(${esc(fmt(q.H))} ceiling)</small></span>
+      <span>FFUs over it</span><span>${q.ffus} · ${Math.round(q.cfm).toLocaleString()} CFM</span>
+      <span>Air changes</span><span${q.achTarget ? ` style="color:${q.ach >= q.achTarget ? '#6fd08c' : '#ff7a6b'}"` : ''}>${Math.round(q.ach)} /hr${q.achTarget ? ' <small>(needs ' + q.achTarget + ')</small>' : ''}</span>
+      <span>Filter coverage</span><span${q.covTarget ? ` style="color:${q.coverage >= q.covTarget ? '#6fd08c' : '#ff7a6b'}"` : ''}>${Math.round(q.coverage)}%${q.covTarget ? ' <small>(needs ' + q.covTarget + '%)</small>' : ''}</span></div>`;
+    if (q.iso) h += `<p class="note" style="color:${q.ok ? '#6fd08c' : '#ff7a6b'}">${q.ok ? 'Meets typical ISO ' + q.iso + ' design airflow.' : 'Short for ISO ' + q.iso + ': ' + esc(q.short.join('; ')) + '.'}</p>`;
+  } else h += `<p class="note">Put this label inside walls to see its airflow.</p>`;
+  h += `<p class="note">Pressure is relative to outside the cleanroom (0 Pa). On the plan, arrows at doors show which way air flows; red means it flows from the less clean side or the difference is under 5 Pa. Targets are typical design ranges, not a certification.</p></div>`;
+  return h;
+}
+function checkGroupHtml(P) {
+  if (!(P.rooms || []).some(r => r.iso || (r.pressure != null && r.pressure !== ''))) return `<div class="grp"><h3>Cleanroom check</h3><p class="note">Pick a room label and set its ISO class and pressure to check air changes, filter coverage and the pressure cascade.</p></div>`;
+  const C = (() => { try { return Plan3DViewer.cleanroomCheck(P); } catch (e) { return null; } })(); if (!C) return '';
+  const rows = C.rooms.filter(q => q.iso || q.pressure != null).map(q => `<div class="pl-row"><span>${esc(q.room.name || 'Room')}<small>${q.iso ? 'ISO ' + q.iso + ' · ' : ''}${Math.round(q.ach)} ACH${q.achTarget ? ' / ' + q.achTarget : ''} · ${Math.round(q.coverage)}% coverage${q.pressure != null ? ' · ' + (q.pressure > 0 ? '+' : '') + q.pressure + ' Pa' : ''}</small></span><b style="color:${!q.iso ? 'inherit' : q.ok ? '#6fd08c' : '#ff7a6b'}">${!q.iso ? '–' : q.ok ? '✓' : '✗'}</b></div>`).join('');
+  const nm = (r) => r ? esc(r.name || 'Room') : 'outside';
+  const dw = C.doors.filter(d => d.warn).map(d => `<div class="pl-row"><span>${nm(d.a)} ↔ ${nm(d.b)}<small>${esc(d.warn)}</small></span><b style="color:#ff7a6b">!</b></div>`).join('');
+  return `<div class="grp"><h3>Cleanroom check</h3><div class="pl">${rows}${dw ? '<div class="pl-cat">Doors</div>' + dw : ''}</div>
+    <p class="note">Air changes and filter coverage from the FFUs over each room, against typical ISO class design ranges. Pressure arrows on the plan show the cascade.</p></div>`;
 }
 
 /* ---------- Parts list ---------- */
