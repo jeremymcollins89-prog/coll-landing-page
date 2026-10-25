@@ -338,6 +338,10 @@ function toIfc(plan, opts) {
     }
     put('IFCWALL', p.sp ? 'S.P. panel wall' : 'Modular wall panel', 'Coll hardwall cleanroom wall', shape(parts), ',.STANDARD.', p.sp ? S.sp : S.white);
   }
+  // transition panels: the step above a lower building that carries on through a gap in this wall
+  for (const q of A.transitions || []) {
+    put('IFCWALL', 'Transition panel, ' + V.fmtFt(q.y0) + ' to ' + V.fmtFt(q.y1), 'Coll hardwall panels over a lower building', shape([seg(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, S.white), seg(q.x1, q.z1, q.x2, q.z2, q.y0, q.y0 + 0.17, q.t + 0.03, S.track)]), ',.STANDARD.', S.white);
+  }
   // posts: corners (4″ × 4″, L-shaped and flush) and free wall ends
   for (const c of A.corners) {
     const O = [c.x, c.z], Pt = (u, v, du, dv) => [O[0] + u[0] * du + v[0] * dv, O[1] + u[1] * du + v[1] * dv];

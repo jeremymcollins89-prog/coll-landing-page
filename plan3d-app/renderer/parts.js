@@ -180,6 +180,17 @@ function partsList(plan) {
     }
     hStuds += Math.max(0, n - 1);
   }
+  // Transition panels: fill the step above a lower building that carries on through a gap in this wall
+  for (const q of A.transitions || []) {
+    const cuts = [0]; for (let m = 4; m < q.len - 1e-6; m += 4) cuts.push(m); cuts.push(q.len);
+    let n = 0;
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const L = cuts[i + 1] - cuts[i]; if (L < 1 / 12) continue;
+      add('Wall panels', 'Transition panel (over lower building)', (Math.abs(L - 4) < 1 / 96 ? '48″' : inch(L)) + ' × ' + ftin(q.y1 - q.y0), 1, 'ea', 11); n++;
+    }
+    hStuds += Math.max(0, n - 1);
+    add('Wall panels', 'Track under transition panels (ceiling-type, at the lower top)', ftin(q.len), Math.ceil(q.len), 'lin ft', 16);
+  }
 
   // --- Joints: H-studs, corner posts, T-posts, end caps (from how wall ends meet).
   // Ends within a wall's thickness of each other are one joint, so walls that stop at a face
