@@ -343,7 +343,7 @@ function toIfc(plan, opts) {
     if (g.k === 'disc') { const c = []; for (let k = 0; k < 24; k++) { const a = k / 24 * Math.PI * 2; c.push([g.cx + Math.cos(a) * g.r, g.cy + Math.sin(a) * g.r]); } return mesh(c, [], g.z0, g.z1, g.st); }
     return mesh(g.ar.outer, g.ar.holes, g.z0, g.z1, g.st);
   };
-  let shapeAt = null; // the corner the last shape() was measured from, for put()
+  let shapeAt = null, shapeSt = null; // the corner the last shape() was measured from, for put()
   const shape = (solids) => {
     let mx = Infinity, my = Infinity;
     const see = (x, y) => { if (x < mx) mx = x; if (y < my) my = y; };
@@ -356,6 +356,7 @@ function toIfc(plan, opts) {
     let Y = -Infinity; for (const g of solids) { if (g.k === 'solid') g.pts.forEach(p => { if (p[1] > Y) Y = p[1]; }); else if (g.k === 'disc') Y = Math.max(Y, g.cy + g.r); else g.ar.outer.forEach(p => { if (p[1] > Y) Y = p[1]; }); }
     O = isFinite(mx) ? [mx, Y] : [0, 0];
     const items = solids.map(build).filter(Boolean);
+    shapeSt = new Set(solids.filter(Boolean).map(g => g.st).filter(Boolean));
     shapeAt = O; O = [0, 0];
     return E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${E(`IFCSHAPEREPRESENTATION(${body},'Body','Tessellation',(${items.join(',')}))`)}))`);
   };
@@ -363,7 +364,13 @@ function toIfc(plan, opts) {
   // a box along a line: from (x1, y1) to (x2, y2), t thick, z0 to z1 high
   const seg = (x1, y1, x2, y2, z0, z1, t, st) => solid(quad(x1, y1, x2, y2, t), z0, z1, st);
   const box = (x0, y0, x1, y1, z0, z1, st) => solid([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], z0, z1, st);
-  const put = (cls, name, objType, sh, tail, mat) => { const at = shapeAt; shapeAt = null; const pl = at ? E(`IFCLOCALPLACEMENT(${stPl},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((${num(at[0] * MM)},${num(-at[1] * MM)},0.))`)},$,$)`)})`) : elPl; const id = E(`${cls}('${guid()}',$,${stepStr(name)},$,${objType ? stepStr(objType) : '$'},${pl},${sh},$${tail})`); contained.push(id); if (mat) (matOf[mat] = matOf[mat] || []).push(id); return id; };
+  const put = (cls, name, objType, sh, tail, mat) => { const at = shapeAt; shapeAt = null; const pl = at ? E(`IFCLOCALPLACEMENT(${stPl},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT((${num(at[0] * MM)},${num(-at[1] * MM)},0.))`)},$,$)`)})`) : elPl; const id = E(`${cls}('${guid()}',$,${stepStr(name)},$,${objType ? stepStr(objType) : '$'},${pl},${sh},$${tail})`); contained.push(id);
+    // An element made of several finishes (a door: leaf, frame, glass, hardware; an FFU: housing and filter
+    // face) gets no single element material: Revit's IFC link paints the whole element in that material,
+    // so each part keeps its own color from its style instead.
+    const sts = shapeSt; shapeSt = null;
+    if (mat && !(sts && sts.size > 1)) (matOf[mat] = matOf[mat] || []).push(id);
+    return id; };
   // Each building (the main plan, then each placed building, already moved into place) is written out in turn.
   const emit = (plan, onSlab) => {
   const A = V.analyze(plan), H = A.H, WH = A.WH || H;
