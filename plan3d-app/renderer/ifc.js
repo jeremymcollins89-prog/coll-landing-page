@@ -612,7 +612,7 @@ function toIfc(plan, opts) {
   }
   };
   const ZS = V.zones ? V.zones(plan) : [{ plan, main: true }], hostSlab = ZS.length > 1 && (ZS[0].plan.walls || []).some(w => !V.isHard(w)); // inside a building (warehouse) with its own slab
-  for (const z of ZS) emit(z.plan, !z.main && hostSlab);
+  for (const z of ZS) emit(z.plan, !z.main && !(z.virtual && !z.of) && hostSlab);
   E(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid()}',$,$,$,(${contained.join(',')}),${storey})`);
   // named materials carrying each style, so Revit builds proper materials for rendering
   for (const [name, st] of styleMats) {

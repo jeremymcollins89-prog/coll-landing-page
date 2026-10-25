@@ -154,13 +154,72 @@ function transformPlan(src, T, idp) {
   if (P.ceilingImage) { const I = P.ceilingImage; [I.x, I.y] = X(I.x, I.y); I.rot = ((I.rot || 0) + (turned ? (T.c > 0 ? 90 : 270) : (T.a < 0 && T.d < 0 ? 180 : 0))) % 360; }
   return P;
 }
+/* One building with rooms at different ceiling heights: each room can carry its own ceiling and plenum
+   (room.ceiling / room.plenum, feet; unset = the building's). The building is split into one area per
+   height, each drawn, quoted and exported like its own building: a wall goes with the tallest room it
+   bounds, so a wall between a tall room and a low one runs up to the tall room's top. Where a low area
+   opens into a tall one, transition panels fill the step (as between placed buildings). */
+const roomKey = (P, r) => { const H = Math.max(6, r && r.ceiling > 0 ? r.ceiling : (P.ceiling || 8)), PL = Math.max(0, Math.min(20, r && r.plenum != null && r.plenum !== '' ? +r.plenum : (+P.plenum || 0))); return { H, PL, key: H.toFixed(3) + '|' + PL.toFixed(3) }; };
+function splitByCeiling(P) {
+  const rooms = P.rooms || [], def = roomKey(P, null);
+  if (!rooms.some(r => r && (r.ceiling > 0 || (r.plenum != null && r.plenum !== '')) && roomKey(P, r).key !== def.key)) return null;
+  const A0 = analyze(P); if (A0.empty) return null;
+  const R = roomRegions(A0, P, true), G = R.grid; if (!G) return null;
+  const keyOfComp = R.map(q => roomKey(P, q.room));
+  const fpAll = footprint(A0, true);
+  const at = (x, z) => {
+    const i = Math.floor((x - G.x0) / G.cell), j = Math.floor((z - G.z0) / G.cell);
+    if (i < 0 || j < 0 || i >= G.nx || j >= G.nz) return null;
+    const k = j * G.nx + i;
+    if (G.comp[k] >= 0) return keyOfComp[G.comp[k]];
+    return G.inside[k] && !G.wall[k] ? def : null;
+  };
+  const groups = new Map([[def.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [] }, def)]]);
+  const grp = (k) => { if (!groups.has(k.key)) groups.set(k.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [] }, k)); return groups.get(k.key); };
+  const top = (k) => k.H + k.PL;
+  const wallOf = new Map();
+  for (const w of P.walls || []) {
+    const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 0.01) continue;
+    const nx = -(w.y2 - w.y1) / L, nz = (w.x2 - w.x1) / L, t = w.t || 0.25, seen = new Map();
+    for (const f of [0.15, 0.5, 0.85]) for (const sd of [1, -1]) for (const off of [t / 2 + 0.4, t / 2 + 1.0]) {
+      const k = at(w.x1 + (w.x2 - w.x1) * f + nx * sd * off, w.y1 + (w.y2 - w.y1) * f + nz * sd * off);
+      if (k) { seen.set(k.key, k); break; }
+    }
+    const sides = [...seen.values()];
+    const own = sides.length ? sides.reduce((a, b) => (top(b) > top(a) + 1e-6 ? b : a)) : def;
+    grp(own).walls.push(w); wallOf.set(w, own.key);
+    for (const k of sides) if (k.key !== own.key) grp(k).ghost.push(w);
+  }
+  for (const o of P.openings || []) {
+    let best = null, bd = 1e9;
+    for (const w of P.walls || []) { const d = segDist((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, w.x1, w.y1, w.x2, w.y2); if (d < bd) { bd = d; best = w; } }
+    groups.get(best && wallOf.has(best) ? wallOf.get(best) : def.key).openings.push(o);
+  }
+  for (const c of P.chases || []) grp(at((c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2) || def).chases.push(c);
+  for (const r of rooms) grp(roomKey(P, r)).rooms.push(r);
+  for (const f of P.fixtures || []) grp(at(f.x, f.y) || def).fixtures.push(f);
+  // every area keeps the building's one ceiling grid, so tees line up across the areas
+  const cg = P.ceilGrid && isFinite(P.ceilGrid.ox) ? P.ceilGrid : (() => { const g = ceilingGrid(P, A0); return { ox: g.ox, oy: g.oz, swap: g.swap }; })();
+  const out = [];
+  for (const g of groups.values()) {
+    if (!g.walls.length && !g.rooms.length) continue;
+    const q = Object.assign({}, P, { inserts: undefined, walls: g.walls, openings: g.openings, chases: g.chases, rooms: g.rooms, fixtures: g.fixtures, ceiling: g.H, plenum: g.PL, ceilGrid: cg });
+    Object.defineProperty(q, '__ghost', { value: g.ghost, enumerable: false, configurable: true });
+    out.push({ plan: q, H: g.H, PL: g.PL, def: g.key === def.key });
+  }
+  out.sort((a, b) => (b.def ? 1 : 0) - (a.def ? 1 : 0));
+  return out.length > 1 ? out : null;
+}
 /* Every building in a plan, each in plan coordinates: the main plan first, then the placed buildings
    (and buildings placed inside those). Each zone is drawn, quoted and exported as its own building. */
 function zones(plan, T, idp, out) {
   out = out || [];
   T = T || { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
   const own = idp ? transformPlan(plan, T, idp) : Object.assign({}, plan, { inserts: undefined });
-  out.push({ id: idp || null, name: plan.name || (idp ? 'Building' : 'Main building'), plan: own, main: !idp });
+  const nm = plan.name || (idp ? 'Building' : 'Main building'), parts = splitByCeiling(own);
+  if (!parts) out.push({ id: idp || null, name: nm, plan: own, main: !idp });
+  // one building with several ceiling heights: one area per height, all part of this building
+  else parts.forEach((q, k) => out.push({ id: k ? (idp || '') + '#' + k : idp || null, name: nm, plan: q.plan, main: !idp && k === 0, area: k ? fmtFt(q.H) + ' ceiling' : null, virtual: k > 0, of: idp || null }));
   for (const ins of plan.inserts || []) {
     if (!ins || !ins.plan) continue;
     const C = composeXform(T, insertXform(ins)), sub = Object.assign({}, ins.plan, { name: ins.name || ins.plan.name });
@@ -258,7 +317,10 @@ function analyze(plan) {
   }
   // A wall end that meets another wall (a straight run drawn in pieces, or a tee) is a joint, not a free end:
   // it gets no end post, so runs don't sprout a post at every joint.
-  for (const e of ends) e.joined = !isHard(e.w) || walls.some(o => o !== e.w && segDist(e.x, e.z, o.x1, o.y1, o.x2, o.y2) < Math.max(e.t, o.t || 0.25) / 2 + 0.06);
+  // ghost: walls of the same building that belong to a taller ceiling area but bound this one (one building
+  // with several ceiling heights): they close this area's ceiling and joints, but are drawn by the taller area
+  const ghost = (plan.__ghost || []).filter(w => Math.hypot(w.x2 - w.x1, w.y2 - w.y1) > 0.01);
+  for (const e of ends) e.joined = !isHard(e.w) || walls.concat(ghost).some(o => o !== e.w && segDist(e.x, e.z, o.x1, o.y1, o.x2, o.y2) < Math.max(e.t, o.t || 0.25) / 2 + 0.06);
   const CORNER = 4 / 12, corners = [], nodes = [];
   for (const w of walls) for (const [x, y, st] of [[w.x1, w.y1, true], [w.x2, w.y2, false]]) {
     let n = nodes.find(n => Math.hypot(n.x - x, n.y - y) < 0.3);
@@ -335,7 +397,7 @@ function analyze(plan) {
       if (best && best.y1 - best.y0 > 0.05 && !transitions.some(q => Math.hypot((q.x1 + q.x2 - best.x1 - best.x2) / 2, (q.z1 + q.z2 - best.z1 - best.z2) / 2) < 0.5 && Math.abs(q.len - best.len) < 0.5)) transitions.push(best);
     }
   }
-  return { sib: plan.__sib || [], transitions, H, PL, WH, hardAny, frameAny, ceilAny: hardAny || frameAny, house: frameAny && !hardAny, items, shellTop, walls, pieces, ends, corners, opInfo, boxes, obs, empty, bounds: { minX, minZ, maxX, maxZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, w: maxX - minX, d: maxZ - minZ } };
+  return { sib: plan.__sib || [], ghost, transitions, H, PL, WH, hardAny, frameAny, ceilAny: hardAny || frameAny, house: frameAny && !hardAny, items, shellTop, walls, pieces, ends, corners, opInfo, boxes, obs, empty, bounds: { minX, minZ, maxX, maxZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, w: maxX - minX, d: maxZ - minZ } };
 }
 
 /* Return grille on an air chase: c.grW / c.grH (feet) and c.grSill (feet, floor to bottom of the grille),
@@ -377,6 +439,7 @@ function footprint(A, all) {
     }
   };
   for (const p of A.pieces) if (use(p.ceilw)) stamp(p.x1, p.z1, p.x2, p.z2, p.t);
+  for (const g of A.ghost || []) stamp(g.x1, g.y1, g.x2, g.y2, g.t || 0.25);
   for (const i of A.opInfo) if (use(i.ceilw)) stamp(i.o.x1, i.o.y1, i.o.x2, i.o.y2, i.t);
   for (const b of A.boxes) { stamp(b.x0, b.z0, b.x1, b.z0, 0.1); stamp(b.x1, b.z0, b.x1, b.z1, 0.1); stamp(b.x1, b.z1, b.x0, b.z1, 0.1); stamp(b.x0, b.z1, b.x0, b.z0, 0.1); }
   const segD = (px, pz, w) => { const dx = w.x2 - w.x1, dz = w.y2 - w.y1, L2 = dx * dx + dz * dz || 1e-9, u = Math.max(0, Math.min(1, ((px - w.x1) * dx + (pz - w.y1) * dz) / L2)); return Math.hypot(px - w.x1 - u * dx, pz - w.y1 - u * dz); };
@@ -575,9 +638,28 @@ function floorMat(THREE, kind) {
   return (FLOOR_TEX[kind] = { mat: new THREE.MeshLambertMaterial({ map: t }), su: draw[2], sv: draw[3] });
 }
 /* Rooms of a house: each room label's area, split by walls and openings (door cells count as walls here). */
-function roomRegions(A, plan) {
+function roomRegions(A, plan, closeGaps) {
   const fp = footprint(A, true); if (!fp || !fp.wall) return [];
-  const { nx, nz, inside, wall, cell, x0, z0 } = fp, comp = new Int32Array(nx * nz).fill(-1), out = [];
+  const { nx, nz, inside, cell, x0, z0 } = fp, comp = new Int32Array(nx * nz).fill(-1), out = [];
+  let wall = fp.wall;
+  if (closeGaps) {
+    // a gap of up to 12′ in a straight wall line (a hallway opening into a room) counts as the room's edge
+    wall = fp.wall.slice();
+    const line = (ax, az, bx, bz) => { const L = Math.hypot(bx - ax, bz - az), n = Math.max(2, Math.ceil(L / (cell / 2))); for (let q = 0; q <= n; q++) { const x = ax + (bx - ax) * q / n, z = az + (bz - az) * q / n, i = Math.floor((x - x0) / cell), j = Math.floor((z - z0) / cell); for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii >= 0 && jj >= 0 && ii < nx && jj < nz && Math.hypot(x0 + (ii + 0.5) * cell - x, z0 + (jj + 0.5) * cell - z) < cell * 0.75) wall[jj * nx + ii] = 1; } } };
+    const W = A.walls.filter(w => (isHard(w) || isFrame(w)) && Math.hypot(w.x2 - w.x1, w.y2 - w.y1) > 0.3);
+    for (let i = 0; i < W.length; i++) for (let j = i + 1; j < W.length; j++) {
+      const a = W[i], b = W[j], la = Math.hypot(a.x2 - a.x1, a.y2 - a.y1), ux = (a.x2 - a.x1) / la, uz = (a.y2 - a.y1) / la, lb = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
+      if (Math.abs(ux * (b.y2 - b.y1) / lb - uz * (b.x2 - b.x1) / lb) > 0.01 || Math.abs((b.x1 - a.x1) * -uz + (b.y1 - a.y1) * ux) > 0.1) continue;
+      let best = null, bd = 12;
+      for (const [ex, ez] of [[a.x1, a.y1], [a.x2, a.y2]]) for (const [fx, fz] of [[b.x1, b.y1], [b.x2, b.y2]]) {
+        const g = Math.hypot(fx - ex, fz - ez); if (g < 0.3 || g >= bd) continue;
+        const mx = (ex + fx) / 2, mz = (ez + fz) / 2;
+        if (segDist(mx, mz, a.x1, a.y1, a.x2, a.y2) < g / 2 - 0.05 || segDist(mx, mz, b.x1, b.y1, b.x2, b.y2) < g / 2 - 0.05) continue;
+        bd = g; best = [ex, ez, fx, fz];
+      }
+      if (best) line(...best);
+    }
+  }
   for (const room of plan.rooms || []) {
     const i0 = Math.floor((room.x - x0) / cell), j0 = Math.floor((room.y - z0) / cell);
     if (i0 < 0 || j0 < 0 || i0 >= nx || j0 >= nz) continue;
@@ -589,8 +671,9 @@ function roomRegions(A, plan) {
     const rows = new Map(); for (const k of cells) { const i = k % nx, j = (k - i) / nx; (rows.get(j) || rows.set(j, []).get(j)).push(i); }
     const rects = [];
     for (const [j, is] of rows) { is.sort((a, b) => a - b); let a = is[0], b = a; for (let q = 1; q <= is.length; q++) { if (q < is.length && is[q] === b + 1) { b = is[q]; continue; } rects.push([x0 + (a - 0.5) * cell, z0 + (j - 0.5) * cell, x0 + (b + 1.5) * cell, z0 + (j + 1.5) * cell]); if (q < is.length) a = b = is[q]; } }
-    out.push({ room, rects, area: cells.length * cell * cell });
+    out.push({ room, rects, area: cells.length * cell * cell, cells });
   }
+  out.grid = { comp, nx, nz, cell, x0, z0, inside, wall };
   return out;
 }
 /* A roof over the house as a height field: hip = Chebyshev distance to the eaves (gives hips and valleys on
@@ -1514,13 +1597,14 @@ function mount(container, plan, opts) {
   const allRooms = (p) => {
     if (!A || !A.zones || A.zones.length < 2) return p.rooms || [];
     // with several buildings, rooms in placed buildings are named "Building · Room"
-    return [].concat(...A.zones.map(q => (q.zone.plan.rooms || []).map(r => q.zone.main ? r : { ...r, name: (q.zone.name || 'Building') + ' · ' + (r.name || 'Room') })));
+    return [].concat(...A.zones.map(q => (q.zone.plan.rooms || []).map(r => q.zone.main || (q.zone.virtual && !q.zone.of) ? r : { ...r, name: (q.zone.name || 'Building') + ' · ' + (r.name || 'Room') })));
   };
   function buildHud(p) {
     const b = A.bounds;
     titleEl.textContent = p.name || 'Floor plan';
-    const nb = (A.zones || []).filter(q => !q.A.empty).length;
-    metaEl.textContent = A.empty ? 'No walls yet' : `${fmtFt(b.w)} × ${fmtFt(b.d)} · ` + (nb > 1 ? `${nb} buildings` : `${fmtFt(A.H)} ceiling`);
+    const live = (A.zones || []).filter(q => !q.A.empty), nb = live.filter(q => !q.zone.virtual).length;
+    const hs = [...new Set(live.map(q => fmtFt(q.A.H)))];
+    metaEl.textContent = A.empty ? 'No walls yet' : `${fmtFt(b.w)} × ${fmtFt(b.d)} · ` + (nb > 1 ? `${nb} buildings` : hs.length > 1 ? `${hs.join(' / ')} ceilings` : `${fmtFt(A.H)} ceiling`);
     rooms = allRooms(p).filter(r => r && isFinite(r.x) && isFinite(r.y)).map(r => ({ ...r }));
     outside = { id: '__out', name: 'Outside', dims: '', x: b.cx, y: b.minZ - 11 };
     chipsEl.innerHTML = ''; chipBtns = {};
@@ -1656,5 +1740,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);
