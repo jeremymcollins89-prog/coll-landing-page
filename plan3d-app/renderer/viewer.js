@@ -929,7 +929,7 @@ function buildScene(THREE, plan, A) {
     const face = new THREE.MeshPhongMaterial({ map: tex, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 });
     const m = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); outline(m); pick.push(m);
     // closure channel along the bottom edge, ceiling track for each side's ceiling
-    segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.04, q.y0 + 0.13, q.t + 0.03, M.track);
+    segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
     if (H - q.y0 > 0.25) segBox(q.x1, q.z1, q.x2, q.z2, H - 0.17, H, q.t + 0.03, M.track);
   }
   for (const c of A.corners) {
