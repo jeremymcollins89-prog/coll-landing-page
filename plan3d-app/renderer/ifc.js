@@ -392,7 +392,7 @@ function toIfc(plan, opts) {
   }
   // transition panels: the step above a lower building that carries on through a gap in this wall
   for (const q of A.transitions || []) {
-    put('IFCWALL', 'Transition panel, ' + V.fmtFt(q.y0) + ' to ' + V.fmtFt(q.y1), 'Coll hardwall panels over a lower building', shape([seg(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, S.white), seg(q.x1, q.z1, q.x2, q.z2, q.y0, q.y0 + 0.17, q.t + 0.03, S.track)]), ',.STANDARD.', S.white);
+    put('IFCWALL', 'Transition panel, ' + V.fmtFt(q.y0) + ' to ' + V.fmtFt(q.y1), 'Coll hardwall bulkhead over an opening into a lower ceiling area', shape([seg(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, S.white), seg(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, S.white), ...(H - q.y0 > 0.25 ? [seg(q.x1, q.z1, q.x2, q.z2, H - 0.17, H, q.t + 0.03, S.track)] : [])]), ',.STANDARD.', S.white);
   }
   // posts: corners (4″ × 4″, L-shaped and flush) and free wall ends
   for (const c of A.corners) {
