@@ -287,6 +287,8 @@ function toIfc(plan, opts) {
   S.steel_frame = S.wood;
   const KIND_NAME = (k) => (V.WALL_KINDS && V.WALL_KINDS[k] ? V.WALL_KINDS[k].label : 'Building wall');
   S.ffuFace = S.face;
+  S.ohd = style('Coll overhead door, steel sections', 0.85, 0.87, 0.88, 0, 0.3, 30, 'METAL');
+  S.struct = style('Coll structural steel, gray primer', 0.54, 0.57, 0.59, 0, 0.25, 20, 'METAL');
   S.plate = style('Coll device cover plate, white', 0.96, 0.96, 0.96, 0, 0.2, 30);
   // the colors seen from above in the Plenum view: tile backs, LED housings, FFU inlet ring and pre-filter
   S.tileBack = style('Coll ceiling tile, back', 0.616, 0.604, 0.569, 0, 0.02, 4, 'MATT');
@@ -469,6 +471,12 @@ function toIfc(plan, opts) {
         seg(ax, ay, bx, by, sill, sill + 0.12, t + 0.06, S.frame), seg(ax, ay, bx, by, head - 0.12, head, t + 0.06, S.frame),
         seg(ax, ay, p1x, p1y, sill, head, t + 0.06, S.frame), seg(p2x, p2y, bx, by, sill, head, t + 0.06, S.frame)]),
         `,${num((head - sill) * MM)},${num(i.len * MM)},.WINDOW.,.SINGLE_PANEL.,$`, S.glass);
+    } else if (o.type === 'overhead') {
+      // overhead sectional door: the closed curtain, steel jamb guards, the coil/track housing inside
+      const [j1x, j1y] = along(-0.33), [j2x, j2y] = along(i.len + 0.33), sw = o.swing === -1 ? -1 : 1, inO = sw * (t / 2 + 0.55);
+      const [h1x, h1y] = along(0, inO), [h2x, h2y] = along(i.len, inO);
+      const parts = [seg(ax, ay, bx, by, 0, head, 0.14, S.ohd), seg(j1x, j1y, ax, ay, 0, head, t + 0.1, S.steel), seg(bx, by, j2x, j2y, 0, head, t + 0.1, S.steel), ...(top - head > 1.2 ? [seg(h1x, h1y, h2x, h2y, head + 0.1, head + 1.4, 1.0, S.steel)] : [])];
+      put('IFCDOOR', 'Overhead door ' + V.fmtFt(i.len) + ' × ' + V.fmtFt(head), 'Overhead sectional door', shape(parts), `,${num(head * MM)},${num(i.len * MM)},.DOOR.,.ROLLINGUP.,$`, S.ohd);
     } else if (o.type === 'pass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill)), D = Math.max(t + 0.1, o.depth || 2), ph = head - sill;
       if (sill > 0.02) put('IFCWALL', i.hard ? 'Sill panel' : KIND_NAME(i.kind) + ', under opening', wName, shape([seg(ax, ay, bx, by, 0, sill, t, ws), ...(i.hard ? trim(ax, ay, bx, by, t, false) : [])]), ',.STANDARD.', ws);
@@ -557,6 +565,18 @@ function toIfc(plan, opts) {
       /toilet|tub|shower|vanity|sinkbase/.test(it.type) ? `,.${it.type === 'toilet' ? 'TOILETPAN' : it.type === 'tub' ? 'BATH' : it.type === 'shower' ? 'SHOWER' : 'WASHHANDBASIN'}.` : /range|fridge|dishwasher|washer|dryer/.test(it.type) ? `,.${it.type === 'range' ? 'ELECTRICCOOKER' : it.type === 'fridge' ? 'REFRIGERATOR' : it.type === 'dishwasher' ? 'DISHWASHER' : it.type === 'washer' ? 'WASHINGMACHINE' : 'TUMBLEDRYER'}.` : '', st);
   }
   if (A.shellTop > 0 && opts.ceiling !== false) areasAll.forEach((ar, idx) => put('IFCSLAB', areasAll.length > 1 ? `Roof deck ${idx + 1}` : 'Roof deck', 'Metal roof deck', shape([slab(ar, A.shellTop, A.shellTop + 0.25, S.deck)]), ',.ROOF.', S.deck));
+  // roof structure: open-web steel joists under the deck
+  const RS = V.roofStructure ? V.roofStructure(plan, A) : null;
+  if (RS && opts.ceiling !== false) for (const j of RS.joists) {
+    const yT = A.shellTop, yB = A.shellTop - RS.depth;
+    put('IFCBEAM', 'Steel joist ' + Math.round(RS.depth * 12) + 'K, ' + V.fmtFt(j.len), 'Open-web steel joist', shape([seg(j.x1, j.z1, j.x2, j.z2, yT - 0.12, yT, 0.2, S.struct), seg(j.x1, j.z1, j.x2, j.z2, yB, yB + 0.12, 0.2, S.struct), seg(j.x1, j.z1, j.x2, j.z2, yB + 0.12, yT - 0.12, 0.03, S.struct)]), ',.JOIST.', S.struct);
+  }
+  // building columns
+  const colTop = A.shellTop || V.shellHeight(plan, null);
+  for (const c of plan.columns || []) {
+    const sz = c.size || 0.67, ht = c.h || colTop, r = sz / 2, conc = c.kind === 'concrete';
+    put('IFCCOLUMN', (conc ? 'Concrete column ' : 'Steel column ') + Math.round(sz * 12) + '″', conc ? 'Concrete column' : 'Steel wide-flange column', shape([box(c.x - r, c.y - r, c.x + r, c.y + r, 0, ht, conc ? S.concrete : S.struct)]), ',.COLUMN.', conc ? S.concrete : S.struct);
+  }
   if (!A.empty && opts.ceiling !== false) {
     // One ceiling per connected area, traced around the room footprint, so Revit shows no seams where
     // smaller pieces would meet.

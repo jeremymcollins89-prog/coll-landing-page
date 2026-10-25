@@ -126,6 +126,7 @@ function houseTakeoff(plan, A, add) {
     else if (o.type === 'door') add('Doors & windows', ext ? 'Exterior door, prehung' : 'Interior door, prehung', inch(W) + ' × ' + inch(o.head || 6.67), 1, 'ea', 116);
     else if (o.type === 'door2') add('Doors & windows', ext ? 'Exterior double door, prehung' : 'Interior double door', inch(W) + ' × ' + inch(o.head || 6.67), 1, 'ea', 117);
     else if (o.type === 'open') add('Doors & windows', 'Cased opening', inch(W) + ' × ' + inch(o.head || 6.67), 1, 'ea', 118);
+    else if (o.type === 'overhead') add('Doors & windows', 'Garage door, sectional (with opener)', ftin(W) + ' × ' + ftin(o.head || 7), 1, 'ea', 119);
   }
   if (baseFt > 0) add('Trim', 'Baseboard', '', Math.ceil(baseFt * 1.1), 'lin ft', 120);
   if (casingFt > 0) add('Trim', 'Door and window casing', '', Math.ceil(casingFt * 1.1), 'lin ft', 121);
@@ -240,6 +241,7 @@ function partsList(plan) {
     else if (o.type === 'glass') add('Doors & glass', 'Glass, 1/4″', inch(W) + ' × ' + inch((o.head || 7) - (o.sill == null ? 3 : o.sill)), 1, 'ea', 32);
     else if (o.type === 'pass') add('Doors & glass', 'Pass-thru, stainless', inch(W) + ' W × ' + inch((o.head || 5) - (o.sill == null ? 3 : o.sill)) + ' H × ' + inch(o.depth || 2) + ' D', 1, 'ea', 33);
     else if (o.type === 'open') add('Doors & glass', 'Cased opening frame', inch(W) + ' × ' + ftin(o.head || 7), 1, 'ea', 34);
+    else if (o.type === 'overhead') add('Doors & glass', 'Overhead door, sectional steel (with tracks, opener)', ftin(W) + ' × ' + ftin(o.head || 12), 1, 'ea', 35);
   }
 
   // --- Air chases
@@ -326,6 +328,15 @@ function partsList(plan) {
     }
   }
 
+  // --- Building structure: columns, roof joists, roof deck
+  for (const c of plan.columns || []) add('Structure', c.kind === 'concrete' ? 'Concrete column' : 'Steel column, wide flange, with base plate', Math.round((c.size || 0.67) * 12) + '″ × ' + ftin(c.h || A.shellTop || V.shellHeight(plan, null)), 1, 'ea', 6);
+  const RS = V.roofStructure ? V.roofStructure(plan, A) : null;
+  if (RS) {
+    const byLen = new Map(); for (const j of RS.joists) { const L = Math.ceil(j.len); byLen.set(L, (byLen.get(L) || 0) + 1); }
+    for (const [L, n] of byLen) add('Structure', 'Open-web steel joist, ' + Math.round(RS.depth * 12) + 'K (' + RS.spacing + '′ on center)', L + '′ long', n, 'ea', 7);
+    const fpa = V.footprint ? V.footprint(A, true) : null;
+    if (fpa) add('Structure', 'Metal roof deck, 1½″', '', Math.ceil(fpa.area * 1.05), 'sq ft', 8);
+  }
   // --- Electrical: devices as placed, and a branch-circuit estimate (20A, 120V) for the planner
   const DV = V.DEVICES || {}, devs = (plan.devices || []).filter(d => DV[d.type]);
   for (const d of devs) add('Electrical', DV[d.type].label, '', 1, 'ea', 90);

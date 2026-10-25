@@ -47,10 +47,10 @@ function segProj(px, py, x1, y1, x2, y2) {
   return { d: Math.hypot(px - x, py - y), t, tc, x, y, len: Math.sqrt(l2) };
 }
 
-const DEFAULT_W = { door: 3, door2: 6, glass: 4, open: 3, pass: 2, window: 3 };
+const DEFAULT_W = { door: 3, door2: 6, glass: 4, open: 3, pass: 2, window: 3, overhead: 12 };
 // houses: 2′-8″ doors, 5′ pairs, 3′ windows, 6′-8″ heads
-const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2 };
-const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass']);
+const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2, overhead: 16 };
+const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass', 'overhead']);
 const COL = {
   bg: '#1a2024', gridMinor: 'rgba(255,255,255,.035)', gridMajor: 'rgba(255,255,255,.08)', axis: 'rgba(255,255,255,.14)',
   wall: '#e9eef0', wallLine: '#8e9aa1', sp: '#f2d06b', chase: '#59666d', chaseLine: '#b7c2c7', grille: '#9fdbe8',
@@ -107,7 +107,7 @@ class Editor {
   emit(ev, d) { const f = this.o['on' + ev[0].toUpperCase() + ev.slice(1)]; if (f) f(d); }
   find(sel) {
     if (!sel) return null;
-    const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices' }[sel.kind];
+    const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns' }[sel.kind];
     return list ? (this.plan[list] || []).find(x => x.id === sel.id) : (sel.kind === 'bg' ? this.plan.background : null);
   }
   selected() { return this.find(this.sel); }
@@ -279,6 +279,7 @@ class Editor {
   }
   hitTest(x, y) {
     const P = this.plan, tol = 7 / this.view.s;
+    for (let i = (P.columns || []).length - 1; i >= 0; i--) { const c = P.columns[i], r = (c.size || 0.67) / 2 + tol; if (Math.abs(x - c.x) < r && Math.abs(y - c.y) < r) return { kind: 'column', id: c.id }; }
     for (let i = (P.devices || []).length - 1; i >= 0; i--) { const dv = P.devices[i], r = Math.max(5, Math.min(9, this.view.s * 0.35)) / this.view.s; if (Math.hypot(x - (dv.x + Math.cos(dv.a || 0) * r * 1.1), y - (dv.y + Math.sin(dv.a || 0) * r * 1.1)) < r * 1.3) return { kind: 'device', id: dv.id }; }
     for (let i = P.openings.length - 1; i >= 0; i--) { const o = P.openings[i]; if (segProj(x, y, o.x1, o.y1, o.x2, o.y2).d < (o.t || 0.25) / 2 + tol) return { kind: 'opening', id: o.id }; }
     const V = global.Plan3DViewer;
@@ -352,6 +353,7 @@ class Editor {
       else if (this.house && (T === 'door' || T === 'door2' || T === 'open')) o.head = 6 + 8 / 12;
       else if (T === 'glass') { o.sill = 3; o.head = 7; }
       else if (T === 'pass') { o.sill = 3; o.head = 5; o.depth = 2; }
+      else if (T === 'overhead') { const W = pv.wall, V = global.Plan3DViewer, wh = W && V ? (V.isHard(W) ? (this.plan.ceiling || 8) : V.isFrame(W) ? (W.h || this.plan.ceiling || 8) : V.shellHeight(this.plan, W)) : 16; o.head = Math.max(7, Math.min(14, wh - 2)); }
       else o.head = 7;
       this.edit(P => P.openings.push(o)); return;
     }
@@ -360,6 +362,10 @@ class Editor {
       const g = this.pieces.ghostAt({ x: p.x, y: p.y });
       if (g && this.pieces.place(g)) { this.pieceGhost = this.pieces.ghostAt({ x: p.x, y: p.y }); this.render(); }
       return;
+    }
+    if (T === 'column') {
+      const g = this.snapIn / 12 || 1 / 12, c = { id: uid(), x: Math.round(p.x / g) * g, y: Math.round(p.y / g) * g, size: this.columnSize || 0.67, kind: this.columnKind || 'steel' };
+      this.edit(P => { (P.columns = P.columns || []).push(c); }); return;
     }
     if (T === 'elec') {
       const q = this.devicePlace(p.x, p.y, this.deviceType || 'outlet'); if (!q) { this.status('Click on or next to a wall to put it there.'); return; }
@@ -427,6 +433,7 @@ class Editor {
         } else { const k = dx * ux + dy * uy; o.x1 = O.x1 + ux * k; o.y1 = O.y1 + uy * k; o.x2 = O.x2 + ux * k; o.y2 = O.y2 + uy * k; }
       } else if (D.sel.kind === 'chase') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
       else if (D.sel.kind === 'room') { o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy); }
+      else if (D.sel.kind === 'column') { const g = this.snapIn / 12 || 1 / 12; o.x = Math.round((O.x + (p.x - D.sx)) / g) * g; o.y = Math.round((O.y + (p.y - D.sy)) / g) * g; }
       else if (D.sel.kind === 'device') {
         const q = this.devicePlace(O.x + (p.x - D.sx), O.y + (p.y - D.sy), o.type, o);
         if (q) { o.x = q.x; o.y = q.y; o.a = q.a; }
@@ -528,7 +535,7 @@ class Editor {
   deleteSel() {
     const s = this.sel; if (!s) return;
     if (s.kind === 'bg') { this.edit(P => { P.background = null; }); this.bgImg = null; }
-    else { const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices' }[s.kind]; this.edit(P => { P[list] = (P[list] || []).filter(x => x.id !== s.id); if (s.kind === 'wall') P.openings = P.openings.filter(o => o.unit !== s.id); }); }
+    else { const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns' }[s.kind]; this.edit(P => { P[list] = (P[list] || []).filter(x => x.id !== s.id); if (s.kind === 'wall') P.openings = P.openings.filter(o => o.unit !== s.id); }); }
     this.sel = null; this.emit('select'); this.render();
   }
 
@@ -622,6 +629,12 @@ class Editor {
       } else if (o.type === 'glass') {
         g.strokeStyle = COL.glass; g.lineWidth = 1.5;
         for (const k of [-0.25, 0.25]) { g.beginPath(); g.moveTo(this.sx(o.x1 + nx * t * k), this.sy(o.y1 + ny * t * k)); g.lineTo(this.sx(o.x2 + nx * t * k), this.sy(o.y2 + ny * t * k)); g.stroke(); }
+      } else if (o.type === 'overhead') {
+        // overhead door: the curtain line and the dashed outline of the door when it's up, inside
+        g.strokeStyle = '#c9d2d6'; g.lineWidth = 2; g.beginPath(); g.moveTo(this.sx(o.x1), this.sy(o.y1)); g.lineTo(this.sx(o.x2), this.sy(o.y2)); g.stroke();
+        const dd = Math.min(len, (o.head || 12)) * 0.9, sd = sw;
+        g.setLineDash([6, 4]); g.lineWidth = 1; g.strokeStyle = COL.wallLine; g.beginPath();
+        g.moveTo(this.sx(o.x1 + nx * sd * t / 2), this.sy(o.y1 + ny * sd * t / 2)); g.lineTo(this.sx(o.x1 + nx * sd * (t / 2 + dd)), this.sy(o.y1 + ny * sd * (t / 2 + dd))); g.lineTo(this.sx(o.x2 + nx * sd * (t / 2 + dd)), this.sy(o.y2 + ny * sd * (t / 2 + dd))); g.lineTo(this.sx(o.x2 + nx * sd * t / 2), this.sy(o.y2 + ny * sd * t / 2)); g.stroke(); g.setLineDash([]);
       } else if (o.type === 'pass') {
         // stainless box through the wall, drawn at its full depth with an X
         const d = Math.max(t, o.depth || 2);
@@ -647,7 +660,11 @@ class Editor {
     // house items (kitchen, bath, laundry)
     const V2 = global.Plan3DViewer;
     if (V2 && V2.itemCorners) for (const it of P.items || []) this.drawItem(it, false);
+    // building columns: a filled square with its cross
+    for (const c of P.columns || []) { const r = (c.size || 0.67) / 2, X0 = this.sx(c.x - r), Y0 = this.sy(c.y - r), W = 2 * r * this.view.s; g.save(); g.fillStyle = c.kind === 'concrete' ? '#8d8a84' : '#6f777c'; g.strokeStyle = '#e8edef'; g.lineWidth = 1.2; g.fillRect(X0, Y0, W, W); g.strokeRect(X0, Y0, W, W); g.beginPath(); g.moveTo(X0, Y0); g.lineTo(X0 + W, Y0 + W); g.moveTo(X0 + W, Y0); g.lineTo(X0, Y0 + W); g.stroke(); g.restore(); }
     if (V2 && V2.DEVICES) for (const dv of P.devices || []) this.drawDevice(dv, false);
+    // customer comments: numbered pins where they were left
+    (P.comments || []).forEach((c, i) => { const X = this.sx(c.x), Y = this.sy(c.y); g.save(); g.fillStyle = c.done ? '#6fd08c' : '#f2c84b'; g.strokeStyle = '#1a1f22'; g.lineWidth = 2; g.beginPath(); g.arc(X, Y - 12, 9, 0, Math.PI * 2); g.moveTo(X - 4, Y - 5); g.lineTo(X, Y); g.lineTo(X + 4, Y - 5); g.fill(); g.stroke(); g.fillStyle = '#1a1f22'; g.font = 'bold 10px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i + 1), X, Y - 11.5); g.restore(); });
     // rooms
     for (const r of P.rooms) {
       g.font = '600 13px Bahnschrift, "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -745,6 +762,7 @@ class Editor {
       else if (sel.kind === 'opening') { quad(o.x1, o.y1, o.x2, o.y2, (o.t || 0.25) + 6 / s); g.stroke(); }
       else if (sel.kind === 'chase') { g.strokeRect(this.sx(Math.min(o.x0, o.x1)) - 2, this.sy(Math.min(o.y0, o.y1)) - 2, Math.abs(o.x1 - o.x0) * s + 4, Math.abs(o.y1 - o.y0) * s + 4); }
       else if (sel.kind === 'room') { g.strokeRect(this.sx(o.x) - 48, this.sy(o.y) - 14, 96, 28); }
+      else if (sel.kind === 'column') { const r = (o.size || 0.67) / 2; g.strokeRect(this.sx(o.x - r) - 4, this.sy(o.y - r) - 4, 2 * r * s + 8, 2 * r * s + 8); }
       else if (sel.kind === 'device') { const r = Math.max(5, Math.min(9, this.view.s * 0.35)); g.beginPath(); g.arc(this.sx(o.x) + Math.cos(o.a || 0) * r * 1.1, this.sy(o.y) + Math.sin(o.a || 0) * r * 1.1, r + 4, 0, Math.PI * 2); g.stroke(); }
       else if (sel.kind === 'item') { const c = global.Plan3DViewer.itemCorners(o); g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.stroke(); }
       else if (sel.kind === 'insert') { const b = this.insBox(o); g.strokeRect(this.sx(b.x0) - 6, this.sy(b.y0) - 6, (b.x1 - b.x0) * s + 12, (b.y1 - b.y0) * s + 12); }
