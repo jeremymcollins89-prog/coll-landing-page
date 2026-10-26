@@ -176,7 +176,7 @@ function wallsFromDxf(data, o) {
   const S2 = joinCollinear(S, 1.5 / 12);
   if (o.mode === 'single') walls = S2.map(s => ({ ...s, t: o.tFt }));
   else walls = pairLines(S2, o.minT, o.maxT, o.minLen);
-  walls = joinWalls(walls, 2.5 / 12);
+  walls = joinWalls(mergeLayered(joinWalls(walls, 2.5 / 12)), 2.5 / 12);
   snapJunctions(walls, Math.max(0.6, o.maxT * 2.5));
   return finish(walls, o.minLen);
 }
@@ -351,7 +351,7 @@ function wallsFromImage(img, bg, o) {
    walls that stands free of them, a cleanroom inside a warehouse. Openings close their gaps for this.
    Returns a Set of wall ids. mode: 'auto' | 'all' (every outside wall) | 'none'. */
 function buildingWalls(walls, openings, mode) {
-  const out = new Set(); if (mode === 'none' || !walls.length) return out;
+  const out = new Set(); out.strays = new Set(); if (!walls.length) return out;
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
   for (const w of walls) { x0 = Math.min(x0, w.x1, w.x2); x1 = Math.max(x1, w.x1, w.x2); y0 = Math.min(y0, w.y1, w.y2); y1 = Math.max(y1, w.y1, w.y2); }
   const c = 0.5, gx = x0 - 3, gy = y0 - 3, nx = Math.ceil((x1 - x0 + 6) / c), ny = Math.ceil((y1 - y0 + 6) / c);
@@ -373,16 +373,20 @@ function buildingWalls(walls, openings, mode) {
   for (let i = 0; i < nx; i++) { push(i); push((ny - 1) * nx + i); } for (let j = 0; j < ny; j++) { push(j * nx); push(j * nx + nx - 1); }
   while (st.length) { const k = st.pop(), i = k % nx, j = (k - i) / nx; if (i > 0) push(k - 1); if (i < nx - 1) push(k + 1); if (j > 0) push(k - nx); if (j < ny - 1) push(k + nx); }
   const isOut = (x, y) => { const i = Math.floor((x - gx) / c), j = Math.floor((y - gy) / c); return i < 0 || j < 0 || i >= nx || j >= ny || outside[j * nx + i]; };
+  const both = walls.map(w => { const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = -(w.y2 - w.y1) / L, uy = (w.x2 - w.x1) / L, off = (w.t || 0.25) / 2 + 0.9; let n = 0; for (const f of [0.25, 0.5, 0.75]) { const mx = w.x1 + (w.x2 - w.x1) * f, my = w.y1 + (w.y2 - w.y1) * f; if (isOut(mx + ux * off, my + uy * off) && isOut(mx - ux * off, my - uy * off)) n++; } return n >= 2; });
   const ext = walls.map(w => { const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = -(w.y2 - w.y1) / L, uy = (w.x2 - w.x1) / L, off = (w.t || 0.25) / 2 + 0.9; let n = 0; for (const f of [0.25, 0.5, 0.75]) { const mx = w.x1 + (w.x2 - w.x1) * f, my = w.y1 + (w.y2 - w.y1) * f; if (isOut(mx + ux * off, my + uy * off) || isOut(mx - ux * off, my - uy * off)) n++; } return n >= 2; });
   // groups of walls that touch (within 1′)
   const near = (a, b) => { const d = (px, py, w) => { const L2 = (w.x2 - w.x1) ** 2 + (w.y2 - w.y1) ** 2 || 1; let t = ((px - w.x1) * (w.x2 - w.x1) + (py - w.y1) * (w.y2 - w.y1)) / L2; t = Math.max(0, Math.min(1, t)); return Math.hypot(px - w.x1 - t * (w.x2 - w.x1), py - w.y1 - t * (w.y2 - w.y1)); }; return Math.min(d(a.x1, a.y1, b), d(a.x2, a.y2, b), d(b.x1, b.y1, a), d(b.x2, b.y2, a)) < 1 + ((a.t || 0.25) + (b.t || 0.25)) / 2; };
   const par = walls.map((_, i) => i), find = (i) => (par[i] === i ? i : (par[i] = find(par[i]))), join = (a, b) => { par[find(a)] = find(b); };
+  // strays: a lone wall standing outside everything (a curb, a sign, a bench drawn on a wall layer)
+  out.strays = new Set(walls.filter((w, i) => both[i] && !walls.some((o, j) => j !== i && near(w, o))).map(w => w.id));
   for (let i = 0; i < walls.length; i++) for (let j = i + 1; j < walls.length; j++) if (near(walls[i], walls[j])) join(i, j);
   // a door or window joins the wall pieces on either side of it
   for (const o of openings || []) { const ow = { x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2, t: o.t }; let first = -1; walls.forEach((w, i) => { if (near(w, ow)) { if (first < 0) first = i; else join(first, i); } }); }
   const groups = new Map(); walls.forEach((w, i) => { const r = find(i); (groups.get(r) || groups.set(r, []).get(r)).push(i); });
+  if (mode === 'none') return out;
   for (const g of groups.values()) {
-    const E = g.filter(i => ext[i]); if (!E.length) continue;
+    const E = g.filter(i => ext[i] && !out.strays.has(walls[i].id)); if (!E.length) continue;
     if (mode === 'all') { E.forEach(i => out.add(walls[i].id)); continue; }
     // inside walls that don't touch the outside walls, grouped; a free-standing set of 6+ walls is a room inside
     const I = g.filter(i => !ext[i] && !E.some(e => near(walls[i], walls[e])));
@@ -395,7 +399,42 @@ function buildingWalls(walls, openings, mode) {
     const inner = [...groups.values()].some(h => h !== g && h.length >= 4 && h.every(i => { const w = walls[i]; return Math.min(w.x1, w.x2) > ex0 && Math.max(w.x1, w.x2) < ex1 && Math.min(w.y1, w.y2) > ey0 && Math.max(w.y1, w.y2) < ey1; }));
     if (freeRoom || inner) E.forEach(i => out.add(walls[i].id));
   }
+  // a lone wall just outside the building's outside walls (a curb or a sign drawn on a wall layer) is a stray too
+  if (out.size) {
+    // the building's outline from its long outside walls; short walls standing beyond it don't belong
+    const lenOf = (w) => Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+    let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9; for (const w of walls) if (out.has(w.id) && lenOf(w) >= 15) { bx0 = Math.min(bx0, w.x1, w.x2); bx1 = Math.max(bx1, w.x1, w.x2); by0 = Math.min(by0, w.y1, w.y2); by1 = Math.max(by1, w.y1, w.y2); }
+    if (bx0 < bx1) walls.forEach((w) => { if (lenOf(w) >= 15) return; const mx = (w.x1 + w.x2) / 2, my = (w.y1 + w.y2) / 2; if (mx < bx0 - 0.25 || mx > bx1 + 0.25 || my < by0 - 0.25 || my > by1 + 0.25) { out.strays.add(w.id); out.delete(w.id); } });
+  }
   return out;
 }
-global.Plan3DImport = { buildingWalls, joinCollinear, pairLines, snapJunctions, wallsFromDxf, openingsFromDxf, dxfOpeningBlocks, dxfFrame, dxfSize, wallsFromImage, UNIT_FT, UNIT_NAMES };
+/* A thick wall drawn with its layers (core, finish faces) as several parallel line pairs comes in as two or
+   three thin walls side by side; they become one wall the full thickness. */
+function mergeLayered(walls) {
+  let changed = true, W = walls.slice();
+  const info = (w) => { const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1; let ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L; if (ux < -1e-9 || (Math.abs(ux) < 1e-9 && uy < 0)) { ux = -ux; uy = -uy; } const a = w.x1 * ux + w.y1 * uy, b = w.x2 * ux + w.y2 * uy; return { L, ux, uy, c: -uy * w.x1 + ux * w.y1, a: Math.min(a, b), b: Math.max(a, b), t: w.t || 0.25 }; };
+  while (changed) {
+    changed = false;
+    outer: for (let i = 0; i < W.length; i++) for (let j = i + 1; j < W.length; j++) {
+      const A = info(W[i]), B = info(W[j]);
+      if (Math.abs(A.ux * B.uy - A.uy * B.ux) > 0.01) continue;
+      const dc = Math.abs(A.c - B.c); if (dc < 0.02 || dc > (A.t + B.t) / 2 + 1.5 / 12) continue;
+      const ov = Math.min(A.b, B.b) - Math.max(A.a, B.a); if (ov < 0.8 * Math.min(A.b - A.a, B.b - B.a)) continue;
+      const lo = Math.min(A.c - A.t / 2, B.c - B.t / 2), hi = Math.max(A.c + A.t / 2, B.c + B.t / 2), c = (lo + hi) / 2, a = Math.min(A.a, B.a), b = Math.max(A.b, B.b);
+      const m = { ...W[i], x1: A.ux * a - A.uy * c, y1: A.uy * a + A.ux * c, x2: A.ux * b - A.uy * c, y2: A.uy * b + A.ux * c, t: hi - lo };
+      W.splice(j, 1); W[i] = m; changed = true; break outer;
+    }
+  }
+  return W;
+}
+/* Separate drawings on one sheet (a second copy of a plan off to the side, stray symbols): groups of walls
+   more than gapFt from each other, largest (by total wall length) first. */
+function wallClusters(walls, gapFt) {
+  const n = walls.length, par = walls.map((_, i) => i), find = (i) => (par[i] === i ? i : (par[i] = find(par[i])));
+  const box = walls.map(w => [Math.min(w.x1, w.x2) - gapFt / 2, Math.min(w.y1, w.y2) - gapFt / 2, Math.max(w.x1, w.x2) + gapFt / 2, Math.max(w.y1, w.y2) + gapFt / 2]);
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const a = box[i], b = box[j]; if (a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]) par[find(i)] = find(j); }
+  const g = new Map(); walls.forEach((w, i) => { const r = find(i); (g.get(r) || g.set(r, []).get(r)).push(w); });
+  return [...g.values()].map(ws => ({ walls: ws, len: ws.reduce((t, w) => t + Math.hypot(w.x2 - w.x1, w.y2 - w.y1), 0) })).sort((a, b) => b.len - a.len);
+}
+global.Plan3DImport = { mergeLayered, wallClusters, buildingWalls, joinCollinear, pairLines, snapJunctions, wallsFromDxf, openingsFromDxf, dxfOpeningBlocks, dxfFrame, dxfSize, wallsFromImage, UNIT_FT, UNIT_NAMES };
 })(window);

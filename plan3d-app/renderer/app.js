@@ -951,8 +951,8 @@ function dxfDialog(data, preset) {
   const opTypes = {};
   const names = Object.keys(data.layers).sort((a, b) => data.layers[b] - data.layers[a]);
   if (!names.length) { dialogOpen({ title: 'Nothing to import', body: '<p>This drawing has no lines or polylines Coll Plan3D can read. If the walls are inside blocks or xrefs, explode or bind them in AutoCAD and save as DXF again.</p>', buttons: [{ label: 'OK', primary: true, ret: null }] }); return; }
-  const wallish = names.filter(n => /wall|partition|panel|a-wall|^wa/i.test(n));
-  const notWall = /title|dim|text|anno|defpoints|border|logo|watermark|hatch|furn|grid|tag|note|symbol|xref|viewport|^0$/i;
+  const wallish = names.filter(n => /wall|partition|panel|a-wall|^wa/i.test(n) && !/detl|detail|path|walk|egress|patt/i.test(n));
+  const notWall = /title|dim|text|anno|defpoints|border|logo|watermark|hatch|furn|grid|tag|note|symbol|xref|viewport|detl|detail|path|walk|egress|patt|^0$/i;
   const pre = new Set(preset.layers ? names.filter(n => preset.layers.includes(n)) : wallish.length ? wallish : names.filter(n => !notWall.test(n)).length ? names.filter(n => !notWall.test(n)) : names);
   const iu = data.insunits;
   const unitOpts = [[1, 'Inches'], [2, 'Feet'], [4, 'Millimeters'], [5, 'Centimeters'], [6, 'Meters']];
@@ -966,6 +966,7 @@ function dxfDialog(data, preset) {
       ${fld('Drawing units', `<select id="dxU">${unitOpts.map(([v, l]) => `<option value="${v}" ${v === defUnit ? 'selected' : ''}>${l}${v === iu ? ' (from file)' : ''}</option>`).join('')}</select>`)}
       ${fld('Walls drawn as', `<select id="dxM"><option value="double">Two parallel lines</option><option value="single">Single centerline</option></select>`)}
       ${fld('Wall thickness', '<input type="text" id="dxT" value="2&quot; to 8&quot;">')}
+      ${fld('Separate drawings', `<select id="dxC"><option value="main">Only the main building (skip copies and loose bits off to the side)</option><option value="all">Everything on the sheet</option></select>`)}
       ${fld('Outside walls', `<select id="dxB"><option value="auto">Building walls when a cleanroom stands inside them (warehouse)</option><option value="all">Always building walls</option><option value="none">Cleanroom hardwall</option></select>`)}
       ${fld('Building walls are', `<select id="dxBK"><option value="auto">Metal panel up to 6″, concrete if thicker</option><option value="metal">Metal panel</option><option value="concrete">Concrete</option><option value="cmu">Concrete block</option><option value="stud">Steel stud and drywall</option></select>`)}
       <p class="sizeline" id="dxSize"></p>
@@ -988,8 +989,14 @@ function dxfDialog(data, preset) {
     }
   }).then(o => {
     if (!o) return;
-    const walls = IMP.wallsFromDxf(data, o);
-    const ops = walls.length ? IMP.openingsFromDxf(data, walls, o, opTypes) : { openings: [], found: {} };
+    let walls = IMP.wallsFromDxf(data, o), skipped = 0;
+    // a second copy of the plan or loose bits elsewhere on the sheet: keep the main building
+    if (o.clusters === 'main' && IMP.wallClusters && walls.length) { const C = IMP.wallClusters(walls, 30); if (C.length > 1) { skipped = walls.length - C[0].walls.length; walls = C[0].walls; } }
+    const ops0 = walls.length ? IMP.openingsFromDxf(data, walls, o, opTypes) : { openings: [], found: {} };
+    // lone walls standing outside the building (a curb, a sign, a bench on a wall layer) are left out
+    const pre = IMP.buildingWalls ? IMP.buildingWalls(walls, ops0.openings, o.bldMode === 'none' ? 'auto' : o.bldMode) : null;
+    if (pre && pre.strays.size) { skipped += pre.strays.size; walls = walls.filter(w => !pre.strays.has(w.id)); }
+    const ops = pre && pre.strays.size ? IMP.openingsFromDxf(data, walls, o, opTypes) : ops0;
     // a warehouse drawn around the cleanroom: its outside walls become building walls (taller, with a roof)
     const bld = IMP.buildingWalls ? IMP.buildingWalls(walls, ops.openings, o.bldMode) : new Set();
     for (const w of walls) if (bld.has(w.id)) w.kind = o.bldKind === 'auto' ? (w.t <= 0.5 + 1e-6 ? 'metal' : 'concrete') : o.bldKind;
@@ -1001,7 +1008,8 @@ function dxfDialog(data, preset) {
     if (f.glass) parts.push(f.glass + ' window' + (f.glass > 1 ? 's' : '')); if (f.pass) parts.push(f.pass + ' pass-thru' + (f.pass > 1 ? 's' : ''));
     const opsText = parts.length ? ' and ' + parts.join(', ') : '. No door or window symbols were found; add them with the Door, Pair and Glass tools';
     const bldText = bld.size ? ` The ${bld.size} outside walls are the building (${Plan3DViewer.WALL_KINDS[walls.find(w => bld.has(w.id)).kind].short.toLowerCase()}); pick one to change it.` : '';
-    if (walls.length) showBanner(`Imported ${walls.length} walls${opsText}.${bldText} Check them, then add chases and rooms.`, [{ label: 'View in 3D', primary: true, fn: () => { hideBanner(); setView('split'); } }]);
+    const skipText = skipped ? ` Left out ${skipped} wall${skipped === 1 ? '' : 's'} away from the main building (a copy off to the side, loose bits); import again with “Everything on the sheet” to keep them.` : '';
+    if (walls.length) showBanner(`Imported ${walls.length} walls${opsText}.${bldText}${skipText} Check them, then add chases and rooms.`, [{ label: 'View in 3D', primary: true, fn: () => { hideBanner(); setView('split'); } }]);
     else showBanner('No walls were found with these settings. Try "Single centerline", a wider thickness range, or other layers.', [{ label: 'Try again', primary: true, fn: () => dxfDialog(data, preset) }]);
   });
   function readDx() {
@@ -1009,7 +1017,7 @@ function dxfDialog(data, preset) {
     const unitFt = IMP.UNIT_FT[+$('#dxU').value] || 1 / 12, mode = $('#dxM').value;
     const tv = $('#dxT').value.split(/to|-|–/i).map(s => parseLen(s.trim(), 'in')).filter(v => v > 0);
     const minT = tv.length > 1 ? Math.min(...tv) : (tv[0] || 0.25) * 0.6, maxT = tv.length > 1 ? Math.max(...tv) : (tv[0] || 0.25) * 1.5;
-    return { layers, unitFt, mode, minT, maxT, tFt: tv[0] || 0.25, minLen: 0.75, keepOrigin: !!preset.keepOrigin, bldMode: ($('#dxB') || {}).value || 'auto', bldKind: ($('#dxBK') || {}).value || 'auto' };
+    return { layers, unitFt, mode, minT, maxT, tFt: tv[0] || 0.25, minLen: 0.75, keepOrigin: !!preset.keepOrigin, bldMode: ($('#dxB') || {}).value || 'auto', bldKind: ($('#dxBK') || {}).value || 'auto', clusters: ($('#dxC') || {}).value || 'main' };
   }
 }
 
