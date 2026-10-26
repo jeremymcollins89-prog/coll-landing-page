@@ -13,12 +13,14 @@
     <button id="bImport" class="btn primary" title="Import a DWG, DXF, Revit IFC or plan image (Ctrl+I)">Import plan…</button>
     <button id="bCeiling" class="btn" data-only="cleanroom" title="Add a ceiling drawing (DWG, DXF or picture) on top of the room">Add ceiling</button>
     <div class="dd">
-      <button id="bBld" class="btn" aria-haspopup="menu" aria-expanded="false" title="Save this building to your library, or place a saved building (a cleanroom inside a warehouse, say)">Buildings <span class="caret" aria-hidden="true">▾</span></button>
+      <button id="bBld" class="btn" aria-haspopup="menu" aria-expanded="false" title="Your library: save buildings, groups of pieces and ceilings, and place them in any project">Library <span class="caret" aria-hidden="true">▾</span></button>
       <div class="menu" id="bldMenu" role="menu" hidden>
-        <button role="menuitem" id="bBldInsert"><span>Insert a saved building… <small>place it in this plan</small></span><kbd></kbd></button>
-        <button role="menuitem" id="bBldFile"><span>Insert from a project file… <small>any saved .plan3d</small></span><kbd></kbd></button>
+        <button role="menuitem" id="bBldInsert"><span>Insert from the library… <small>buildings, groups of pieces, ceilings</small></span><kbd></kbd></button>
+        <button role="menuitem" id="bBldFile"><span>Insert a building from a project file… <small>any saved .plan3d</small></span><kbd></kbd></button>
         <div class="msep"></div>
-        <button role="menuitem" id="bBldSave"><span>Save this building to the library… <small>reuse it in other projects</small></span><kbd></kbd></button>
+        <button role="menuitem" id="bBldSave"><span>Save this building… <small>the whole plan</small></span><kbd></kbd></button>
+        <button role="menuitem" id="bLibGroup"><span>Save selected pieces as a group… <small>Shift-drag a box around them first</small></span><kbd></kbd></button>
+        <button role="menuitem" id="bLibCeil"><span>Save this ceiling… <small>grid, FFUs and lights</small></span><kbd></kbd></button>
       </div>
     </div>
     <button id="bOpen" class="btn" title="Open a saved project (Ctrl+O)">Open</button>

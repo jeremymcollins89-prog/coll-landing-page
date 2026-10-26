@@ -247,6 +247,71 @@ function openingsFromDxf(data, walls, o, types) {
   }
   return { openings: out, found, names };
 }
+/* Door swings drawn as plain arcs on the sheet instead of door blocks: the arc's centre is the hinge at the
+   end of a wall, and across the gap is the next wall on the same line. The gap gets a wall piece with a door
+   in it; two swings meeting in one gap make a pair. have: openings already found (from door blocks). */
+function arcDoors(data, walls, o, have) {
+  const F = dxfFrame(data, o), k = F.k, gaps = new Map(), addW = [], addO = [], found = { door: 0, door2: 0 };
+  const ends = [];
+  for (const w of walls) {
+    const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 0.3) continue;
+    const ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L;
+    ends.push({ w, x: w.x2, y: w.y2, ux, uy }, { w, x: w.x1, y: w.y1, ux: -ux, uy: -uy });
+  }
+  for (const a of data.arcs || []) {
+    if (/dim|anno|text|grid|detl|detail|ffu|light/i.test(a.layer)) continue;
+    let sw = a.a1 - a.a0; while (sw <= 0) sw += Math.PI * 2;
+    const R = a.r * k; if (R < 1.4 || R > 5 || sw < 1.25 || sw > 1.9) continue;
+    const H = F.P(a.x, a.y), am = a.a0 + sw / 2, M = F.P(a.x + a.r * Math.cos(am), a.y + a.r * Math.sin(am));
+    const P0 = F.P(a.x + a.r * Math.cos(a.a0), a.y + a.r * Math.sin(a.a0)), P1 = F.P(a.x + a.r * Math.cos(a.a1), a.y + a.r * Math.sin(a.a1));
+    // the wall line runs along the closed leaf: from the hinge to whichever arc end lines up with a wall
+    let best = null;
+    for (const C of [P0, P1]) {
+      const ux = (C[0] - H[0]) / R, uy = (C[1] - H[1]) / R;
+      // wall ends sitting on that line: the nearest one behind the hinge (up to 5′ back, door frames and filler
+      // pieces are often on their own layers) and the nearest one past the leaf (up to 2½′ on)
+      let back = null, fwd = null;
+      for (const e of ends) {
+        const dx = e.x - H[0], dy = e.y - H[1], s = dx * ux + dy * uy, lat = Math.abs(-dx * uy + dy * ux);
+        const par = Math.abs(ux * e.uy - uy * e.ux) < 0.03;
+        if (lat > (par ? 0.35 : 0.35 + (e.w.t || 0.25) / 2)) continue;
+        // a wall on the line must point away from the gap; a cross wall just ends on the line
+        if (s <= 0.3 && s >= -5 && (!par || e.ux * ux + e.uy * uy > 0.9) && (!back || s > back.s)) back = { e, s };
+        if (s >= R - 0.4 && s <= R + 2.5 && (!par || e.ux * ux + e.uy * uy < -0.9) && (!fwd || s < fwd.s)) fwd = { e, s };
+      }
+      if (!back || !fwd) continue;
+      const sc = -back.s + (fwd.s - R);
+      if (!best || sc < best.sc) best = { ux, uy, back, fwd, sc };
+    }
+    if (!best) continue;
+    const { ux, uy, back, fwd } = best;
+    const S = [H[0] + ux * back.s, H[1] + uy * back.s], len = fwd.s - back.s;
+    const key = S[0].toFixed(1) + ',' + S[1].toFixed(1) + '|' + (H[0] + ux * fwd.s).toFixed(1) + ',' + (H[1] + uy * fwd.s).toFixed(1);
+    const key2 = (H[0] + ux * fwd.s).toFixed(1) + ',' + (H[1] + uy * fwd.s).toFixed(1) + '|' + S[0].toFixed(1) + ',' + S[1].toFixed(1);
+    const n = [-uy, ux], side = ((M[0] - H[0]) * n[0] + (M[1] - H[1]) * n[1]) >= 0 ? 1 : -1;
+    const g = gaps.get(key) || gaps.get(key2) || { S, ux, uy, len, t: back.e.w.t || fwd.e.w.t || 0.25, leaves: [] };
+    gaps.set(gaps.has(key2) ? key2 : key, g);
+    // positions along this gap's own direction
+    const at = (P) => (P[0] - g.S[0]) * g.ux + (P[1] - g.S[1]) * g.uy;
+    const hA = at(H), cA = hA + (ux * g.ux + uy * g.uy) * R;
+    // swing: which side of the gap's line the door opens to
+    const gn = [-g.uy, g.ux], gside = ((M[0] - H[0]) * gn[0] + (M[1] - H[1]) * gn[1]) >= 0 ? 1 : -1;
+    if (!g.leaves.some(x => Math.abs(x.hA - hA) < 0.1)) g.leaves.push({ hA, lo: Math.max(0, Math.min(hA, cA)), hi: Math.min(g.len, Math.max(hA, cA)), side: gside });
+  }
+  for (const g of gaps.values()) {
+    const { S, ux, uy, len } = g, mx = S[0] + ux * len / 2, my = S[1] + uy * len / 2;
+    if ((have || []).some(op => Math.hypot((op.x1 + op.x2) / 2 - mx, (op.y1 + op.y2) / 2 - my) < Math.max(1, len / 2))) continue;
+    addW.push({ id: uid(), x1: q(S[0]), y1: q(S[1]), x2: q(S[0] + ux * len), y2: q(S[1] + uy * len), t: Math.min(g.t, 0.67) });
+    const pair = g.leaves.length > 1, L0 = g.leaves[0];
+    const s1 = Math.min(...g.leaves.map(x => x.lo)), s2 = Math.max(...g.leaves.map(x => x.hi));
+    let p1 = [S[0] + ux * s1, S[1] + uy * s1], p2 = [S[0] + ux * s2, S[1] + uy * s2], swing = L0.side;
+    // a single door lists its hinge end first
+    if (!pair && Math.abs(L0.hA - s2) < Math.abs(L0.hA - s1)) { const t = p1; p1 = p2; p2 = t; swing = -swing; }
+    const op = { id: uid(), type: pair ? 'door2' : 'door', x1: q(p1[0]), y1: q(p1[1]), x2: q(p2[0]), y2: q(p2[1]), t: Math.min(g.t, 0.67), swing, head: 7, from: 'door swing' };
+    addO.push(op); found[op.type]++;
+  }
+  return { walls: addW, openings: addO, found };
+}
 /* The block names in a drawing that look like doors / windows / pass-thrus, with counts, for the import dialog. */
 function dxfOpeningBlocks(data, unitFt) {
   const m = new Map();
@@ -436,5 +501,5 @@ function wallClusters(walls, gapFt) {
   const g = new Map(); walls.forEach((w, i) => { const r = find(i); (g.get(r) || g.set(r, []).get(r)).push(w); });
   return [...g.values()].map(ws => ({ walls: ws, len: ws.reduce((t, w) => t + Math.hypot(w.x2 - w.x1, w.y2 - w.y1), 0) })).sort((a, b) => b.len - a.len);
 }
-global.Plan3DImport = { mergeLayered, wallClusters, buildingWalls, joinCollinear, pairLines, snapJunctions, wallsFromDxf, openingsFromDxf, dxfOpeningBlocks, dxfFrame, dxfSize, wallsFromImage, UNIT_FT, UNIT_NAMES };
+global.Plan3DImport = { arcDoors, mergeLayered, wallClusters, buildingWalls, joinCollinear, pairLines, snapJunctions, wallsFromDxf, openingsFromDxf, dxfOpeningBlocks, dxfFrame, dxfSize, wallsFromImage, UNIT_FT, UNIT_NAMES };
 })(window);
