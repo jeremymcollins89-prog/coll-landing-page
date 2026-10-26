@@ -232,3 +232,8 @@ body[data-mode="house"] .modechip { background: rgba(127,211,227,.16); color: #9
 .updbtn { margin-left: auto; white-space: nowrap; }
 .updbtn[disabled] { opacity: .75; cursor: default; background: transparent; color: var(--muted); border-color: var(--line); }
 .updbtn + .views { margin-left: 12px; }
+
+.ce-pad { display: grid; justify-items: center; gap: 2px; }
+.ce-pad > div { display: flex; gap: 26px; }
+.ce-pad .btn { min-width: 30px; padding: 3px 0; }
+#cePrev:focus { outline: 2px solid #f2c84b; outline-offset: 2px; }
