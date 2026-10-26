@@ -653,11 +653,57 @@ function ceilingApplied(what) {
   toast(what + ' Walk view shows it overhead; Dollhouse hides the ceiling.');
 }
 
+/* Ceiling position: arrows move it left / right / up / down by the step; drag it in the preview; it snaps to
+   the step, and to the walls when a grid line or its edge comes near a wall face. */
 function nudgeFields() {
-  return `<div class="row" style="gap:12px;align-items:center">${fld('Turn', `<select id="ceRot"><option value="0">As drawn</option><option value="90">90° right</option><option value="180">180°</option><option value="270">90° left</option></select>`)}
-    ${fld('Move right', '<input type="text" id="ceDx" value="0" style="width:90px">')}${fld('Move down', '<input type="text" id="ceDy" value="0" style="width:90px">')}</div>`;
+  return `<div class="row ce-nudge" style="gap:12px;align-items:flex-end;flex-wrap:wrap">
+    ${fld('Turn', `<select id="ceRot"><option value="0">As drawn</option><option value="90">90° right</option><option value="180">180°</option><option value="270">90° left</option></select>`)}
+    <div class="ce-pad" aria-label="Move the ceiling"><button type="button" class="btn small" data-mv="0,-1" title="Up">↑</button><div><button type="button" class="btn small" data-mv="-1,0" title="Left">←</button><button type="button" class="btn small" data-mv="1,0" title="Right">→</button></div><button type="button" class="btn small" data-mv="0,1" title="Down">↓</button></div>
+    ${fld('Step', `<select id="ceStep"><option value="0.0833333">1″</option><option value="0.5">6″</option><option value="1" selected>1′</option><option value="2">2′ (half a tile)</option><option value="4">4′ (a tile)</option></select>`)}
+    ${fld('Right (−left)', '<input type="text" id="ceDx" value="0" style="width:90px">')}${fld('Down (−up)', '<input type="text" id="ceDy" value="0" style="width:90px">')}
+    <label class="chk"><input type="checkbox" id="ceSnapW" checked> Snap to walls</label></div>
+    <p class="note" style="margin-top:4px">Drag the ceiling in the preview, use the arrows (or the arrow keys while the preview has focus), or type a distance; a minus sign goes left or up.</p>`;
 }
-const readNudge = () => ({ rot: +$('#ceRot').value, dx: parseLen($('#ceDx').value || '0', 'ft') || 0, dy: parseLen($('#ceDy').value || '0', 'ft') || 0 });
+// a distance that may start with a minus sign: -3'-6" is 3½′ the other way
+const signedLen = (v) => { v = String(v || '').trim(); if (!v) return 0; const neg = /^[-−]/.test(v); const n = parseLen(v.replace(/^[-−]\s*/, ''), 'ft'); return isFinite(n) ? (neg ? -n : n) : 0; };
+const readNudge = () => ({ rot: +$('#ceRot').value, dx: signedLen($('#ceDx').value), dy: signedLen($('#ceDy').value) });
+const fmtSigned = (v) => (v < -1e-9 ? '-' : '') + fmt(Math.abs(v));
+/* Hook up the arrows, typing and dragging. lines(): the ceiling's current grid lines [[x1,y1,x2,y2]] in plan
+   feet (for snapping); onChange(): redraw with the new numbers. */
+function bindNudge(onChange, lines) {
+  const cv = $('#cePrev'), set = (dx, dy) => { $('#ceDx').value = fmtSigned(dx); $('#ceDy').value = fmtSigned(dy); onChange(); };
+  const step = () => +$('#ceStep').value || 1;
+  $$('.ce-pad [data-mv]').forEach(b => b.onclick = () => { const [sx, sy] = b.dataset.mv.split(',').map(Number), n = readNudge(); set(n.dx + sx * step(), n.dy + sy * step()); });
+  $('#ceRot').onchange = onChange; $('#ceDx').onchange = onChange; $('#ceDy').onchange = onChange;
+  $('#ceDx').oninput = onChange; $('#ceDy').oninput = onChange;
+  // wall faces running straight up/down (x) and across (y) on the plan
+  const A = Plan3DViewer.analyze(ed.plan), faceX = [], faceY = [];
+  for (const p of A.pieces) { if (Math.abs(p.x1 - p.x2) < 0.01) faceX.push(p.x1 - p.t / 2, p.x1 + p.t / 2); else if (Math.abs(p.z1 - p.z2) < 0.01) faceY.push(p.z1 - p.t / 2, p.z1 + p.t / 2); }
+  const B = A.bounds, pad = 18, scale = () => Math.min((cv.width - pad * 2) / (B.w + 2), (cv.height - pad * 2) / (B.d + 2)) * (cv.getBoundingClientRect().width / cv.width);
+  const snapAxis = (want, cur, coords, faces, tol) => {
+    // coords are the ceiling's line positions at offset cur; find a shift near want that puts one on a face
+    let best = null;
+    for (const c of coords) for (const f of faces) { const d = f - c + cur; if (Math.abs(d - want) <= tol && (!best || Math.abs(d - want) < Math.abs(best - want))) best = d; }
+    return best;
+  };
+  const snapTo = (dx, dy) => {
+    const n = readNudge(), st = step(), r = (v) => Math.round(v / st) * st;
+    let ox = r(dx), oy = r(dy);
+    if ($('#ceSnapW').checked) {
+      const L = lines(), xs = [], ys = [], tol = Math.max(0.25, 10 / scale());
+      for (const q of L) { if (Math.abs(q[0] - q[2]) < 0.02) xs.push(q[0]); if (Math.abs(q[1] - q[3]) < 0.02) ys.push(q[1]); }
+      const sx = snapAxis(dx, n.dx, [...new Set(xs.map(v => +v.toFixed(3)))], faceX, tol), sy = snapAxis(dy, n.dy, [...new Set(ys.map(v => +v.toFixed(3)))], faceY, tol);
+      if (sx != null) ox = sx; if (sy != null) oy = sy;
+    }
+    return [ox, oy];
+  };
+  let drag = null;
+  cv.style.cursor = 'grab'; cv.tabIndex = 0;
+  cv.onpointerdown = (e) => { const n = readNudge(); drag = { x: e.clientX, y: e.clientY, dx: n.dx, dy: n.dy }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; cv.focus(); };
+  cv.onpointermove = (e) => { if (!drag) return; const k = scale(); const [ox, oy] = snapTo(drag.dx + (e.clientX - drag.x) / k, drag.dy + (e.clientY - drag.y) / k); set(ox, oy); };
+  cv.onpointerup = cv.onpointercancel = () => { drag = null; cv.style.cursor = 'grab'; };
+  cv.onkeydown = (e) => { const m = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key]; if (!m) return; e.preventDefault(); const n = readNudge(), st = e.shiftKey ? 4 : step(); set(n.dx + m[0] * st, n.dy + m[1] * st); };
+}
 
 function cadCeilingDialog(data) {
   const C = Plan3DCeiling, iu = data.insunits;
@@ -697,8 +743,8 @@ function cadCeilingDialog(data) {
         $('#ceSum').textContent = `${placed.grid.length} grid lines · ${nL} lights · ${nF} FFUs` + (placed.ref ? ` · lined-up outline ${fmt(placed.ref.w)} × ${fmt(placed.ref.h)}, room ${fmt(B.w)} × ${fmt(B.d)}` : '') + (placed.outside ? ` · ${placed.outside} outside the room left off` : '');
       };
       $('#ceU').onchange = () => { drawGroups(); upd(); };
-      $('#ceGrid').addEventListener('change', upd); $('#ceRef').onchange = upd; $('#ceRot').onchange = upd;
-      $('#ceDx').oninput = upd; $('#ceDy').oninput = upd;
+      $('#ceGrid').addEventListener('change', upd); $('#ceRef').onchange = upd;
+      bindNudge(upd, () => (placed && placed.grid) || []);
       drawGroups(); upd();
     }
   }).then(ok => {
@@ -722,7 +768,7 @@ function imageCeilingDialog(r) {
       ${nudgeFields()}
       <label class="chk"><input type="checkbox" id="ceHide" checked> Hide the automatic lights and FFUs (the picture shows them)</label>`,
     buttons: [{ label: 'Cancel', ret: null }, { label: 'Add to the 3D model', primary: true, value: () => ({ hide: $('#ceHide').checked }) }],
-    onOpen: () => { $('#ceRot').onchange = upd; $('#ceDx').oninput = upd; $('#ceDy').oninput = upd; if (img.complete) upd(); }
+    onOpen: () => { bindNudge(upd, () => { const I = placed && placed.image; if (!I) return []; const q = (I.rot || 0) % 180 ? [I.h, I.w] : [I.w, I.h]; const x0 = I.x - q[0] / 2, x1 = I.x + q[0] / 2, y0 = I.y - q[1] / 2, y1 = I.y + q[1] / 2; return [[x0, y0, x0, y1], [x1, y0, x1, y1], [x0, y0, x1, y0], [x0, y1, x1, y1]]; }); if (img.complete) upd(); }
   }).then(o => {
     if (!o || !placed) return;
     ed.edit(P => { P.ceilingImage = placed.image; P.ceilingSource = r.name; delete P.ceilingGrid; if (o.hide) { P.ceilingMode = 'manual'; P.fixtures = []; } });
@@ -742,7 +788,7 @@ function moveCeilingDialog() {
     wide: true, title: 'Move or turn the ceiling',
     body: `<canvas id="cePrev" width="620" height="330" style="width:100%;border-radius:8px;display:block"></canvas>${nudgeFields()}`,
     buttons: [{ label: 'Cancel', ret: null }, { label: 'Apply', primary: true, value: () => readNudge() }],
-    onOpen: () => { $('#ceRot').onchange = draw; $('#ceDx').oninput = draw; $('#ceDy').oninput = draw; draw(); }
+    onOpen: () => { bindNudge(draw, () => { const n = readNudge(), Q = clonePlan(); C.shiftCeiling(Q, n.dx, n.dy, n.rot); return Q.ceilingGrid || []; }); draw(); }
   }).then(n => {
     if (!n || (!n.dx && !n.dy && !n.rot)) return;
     ed.edit(P => C.shiftCeiling(P, n.dx, n.dy, n.rot));
