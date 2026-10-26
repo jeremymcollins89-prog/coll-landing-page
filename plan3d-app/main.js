@@ -141,7 +141,7 @@ function flattenDxf(dxf) {
   const rects = [], labels = [];
   // Every block placed in the drawing (doors, windows, pass-thrus …): where it is, which way it faces,
   // and its own outline and arcs in block units, so the importer can recognise doors and their swing.
-  const blocksPlaced = [], localCache = {};
+  const blocksPlaced = [], localCache = {}, arcsLoose = [];
   function blockLocal(bl) {
     if (localCache[bl.name]) return localCache[bl.name];
     const bx = (bl.position && bl.position.x) || 0, by = (bl.position && bl.position.y) || 0;
@@ -182,6 +182,10 @@ function flattenDxf(dxf) {
           const t = e.text.replace(/\\[A-Za-z][^;]*;/g, '').replace(/[{}]/g, '').trim();
           const p = e.startPoint || e.position;
           if (t && t.length <= 16 && p && labels.length < 20000) { const q = T(p); labels.push({ x: q[0], y: q[1], text: t, layer }); }
+        } else if (e.type === 'ARC' && depth === 0 && e.center && e.radius > 0 && arcsLoose.length < 20000) {
+          // door swings drawn straight on the sheet (not as a door block)
+          const c = T(e.center), a0 = e.startAngle || 0, a1 = e.endAngle != null ? e.endAngle : a0;
+          arcsLoose.push({ x: c[0], y: c[1], r: e.radius, a0, a1, layer });
         } else if (e.type === 'LINE' && e.vertices && e.vertices.length >= 2) {
           const a = T(e.vertices[0]), b = T(e.vertices[1]);
           add(a[0], a[1], b[0], b[1], layer);
@@ -228,7 +232,7 @@ function flattenDxf(dxf) {
   }
   walk(dxf.entities, (x, y) => [x, y], 0, null);
   const insunits = (dxf.header && dxf.header.$INSUNITS) || 0;
-  return { segs, layers, insunits, texts, rects, labels, blocks: blocksPlaced };
+  return { segs, layers, insunits, texts, rects, labels, blocks: blocksPlaced, arcs: arcsLoose };
 }
 
 function findOdaConverter() {

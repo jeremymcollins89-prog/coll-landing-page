@@ -51,6 +51,7 @@ const DEFAULT_W = { door: 3, door2: 6, glass: 4, open: 3, pass: 2, window: 3, ov
 // houses: 2′-8″ doors, 5′ pairs, 3′ windows, 6′-8″ heads
 const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2, overhead: 16 };
 const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass', 'overhead']);
+const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns' };
 const COL = {
   bg: '#1a2024', gridMinor: 'rgba(255,255,255,.035)', gridMajor: 'rgba(255,255,255,.08)', axis: 'rgba(255,255,255,.14)',
   wall: '#e9eef0', wallLine: '#8e9aa1', sp: '#f2d06b', chase: '#59666d', chaseLine: '#b7c2c7', grille: '#9fdbe8',
@@ -103,7 +104,7 @@ class Editor {
   edit(fn) { const b = this.snapshot(); fn(this.plan); this.commit(b); }
   undo() { if (!this.hist.length) return; this.fut.push(this.snapshot()); this.plan = JSON.parse(this.hist.pop()); this.afterRestore(); }
   redo() { if (!this.fut.length) return; this.hist.push(this.snapshot()); this.plan = JSON.parse(this.fut.pop()); this.afterRestore(); }
-  afterRestore() { this._chk = undefined; this.dirty = true; this.loadBg(); if (this.sel && !this.find(this.sel)) this.sel = null; this.emit('select'); this.emit('change'); this.render(); }
+  afterRestore() { this._chk = undefined; this.dirty = true; this.loadBg(); if (this.sel && !this.find(this.sel)) this.sel = null; if (this.multi) { this.multi = this.multi.filter(r => this.find(r)); if (this.multi.length < 2) this.multi = null; } this.emit('select'); this.emit('change'); this.render(); }
   emit(ev, d) { const f = this.o['on' + ev[0].toUpperCase() + ev.slice(1)]; if (f) f(d); }
   find(sel) {
     if (!sel) return null;
@@ -111,6 +112,55 @@ class Editor {
     return list ? (this.plan[list] || []).find(x => x.id === sel.id) : (sel.kind === 'bg' ? this.plan.background : null);
   }
   selected() { return this.find(this.sel); }
+
+  /* ---------- several things at once: box select, Shift+click, groups ---------- */
+  // every piece in the plan as a selection ref
+  allRefs() {
+    const out = [];
+    for (const [kind, list] of Object.entries(LISTS)) if (kind !== 'insert' && kind !== 'fixture') for (const o of this.plan[list] || []) out.push({ kind, id: o.id });
+    for (const o of this.plan.inserts || []) out.push({ kind: 'insert', id: o.id });
+    return out;
+  }
+  // the points that place a piece (for box select and moving)
+  refPts(r) {
+    const o = this.find(r); if (!o) return [];
+    if (r.kind === 'wall' || r.kind === 'opening') return [[o.x1, o.y1], [o.x2, o.y2]];
+    if (r.kind === 'chase') return [[o.x0, o.y0], [o.x1, o.y1]];
+    if (r.kind === 'insert') { const b = this.insBox(o); return [[b.x0, b.y0], [b.x1, b.y1]]; }
+    return [[o.x, o.y]];
+  }
+  // a piece moved by (dx, dy) from its original copy O
+  shiftRef(kind, o, O, dx, dy) {
+    if (kind === 'wall' || kind === 'opening') { o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy; }
+    else if (kind === 'chase') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
+    else { o.x = O.x + dx; o.y = O.y + dy; }
+  }
+  isMulti(r) { return !!(this.multi && r && this.multi.some(m => m.kind === r.kind && m.id === r.id)); }
+  setMulti(list) {
+    const seen = new Set(), L = (list || []).filter(r => { const k = r.kind + ':' + r.id; if (seen.has(k) || !this.find(r)) return false; seen.add(k); return true; });
+    if (L.length > 1) { this.multi = L; this.sel = null; } else { this.multi = null; this.sel = L[0] || null; }
+    this.emit('select'); this.render();
+  }
+  // everything grouped with r (Ctrl+G), or just r
+  groupOf(r) {
+    const o = this.find(r); if (!o || !o.gid) return [r];
+    return this.allRefs().filter(q => { const x = this.find(q); return x && x.gid === o.gid; });
+  }
+  // the doors and windows sitting in a set of walls go with them
+  withOpenings(refs) {
+    const ws = refs.filter(r => r.kind === 'wall').map(r => this.find(r)).filter(Boolean), out = refs.slice();
+    for (const op of this.plan.openings) {
+      if (refs.some(r => r.kind === 'opening' && r.id === op.id)) continue;
+      if (ws.some(w => op.unit === w.id || (segProj(op.x1, op.y1, w.x1, w.y1, w.x2, w.y2).d < (w.t || 0.25) && segProj(op.x2, op.y2, w.x1, w.y1, w.x2, w.y2).d < (w.t || 0.25)))) out.push({ kind: 'opening', id: op.id });
+    }
+    return out;
+  }
+  groupSel(on) {
+    const refs = this.multi || (this.sel ? [this.sel] : []); if (!refs.length) return;
+    const gid = on ? uid() : null;
+    this.edit(() => { for (const r of refs) { const o = this.find(r); if (!o) continue; if (gid) o.gid = gid; else delete o.gid; } });
+    this.emit('select'); this.render();
+  }
 
   /* ---------- view ---------- */
   resize() {
@@ -154,7 +204,7 @@ class Editor {
   /* ---------- tools ---------- */
   setTool(t) {
     this.tool = t; this.draft = null; this.cal = null; this.meas = null; this.typed = ''; this.drag = null;
-    if (t !== 'select') this.sel = null;
+    if (t !== 'select') { this.sel = null; this.multi = null; }
     this.emit('select'); this.emit('tool', t); this.render();
   }
   status(msg) { this.emit('status', msg); }
@@ -326,6 +376,22 @@ class Editor {
         }
       }
       const hit = this.hitTest(p.x, p.y);
+      // Shift: add to or take out of the selection; Shift-drag on empty space draws a box around things
+      if (e.shiftKey) {
+        if (!hit) { this.drag = { kind: 'box', x0: p.x, y0: p.y, x1: p.x, y1: p.y, add: true }; this.c.setPointerCapture(e.pointerId); return; }
+        const cur = this.multi ? this.multi.slice() : (this.sel ? [this.sel] : []), grp = this.groupOf(hit);
+        const inIt = cur.some(m => m.kind === hit.kind && m.id === hit.id);
+        this.setMulti(inIt ? cur.filter(m => !grp.some(g => g.kind === m.kind && g.id === m.id)) : cur.concat(grp)); return;
+      }
+      // several things selected (or a group): dragging one of them moves them all
+      const grp = hit && !this.isMulti(hit) ? this.groupOf(hit) : null;
+      if (hit && (this.isMulti(hit) || (grp && grp.length > 1))) {
+        if (!this.isMulti(hit)) this.setMulti(grp);
+        const refs = this.withOpenings(this.multi);
+        this.drag = { kind: 'gmove', sx: p.x, sy: p.y, before: this.snapshot(), moved: false, items: refs.map(r => { const o = this.find(r); return o && { r, o, O: JSON.parse(JSON.stringify(o)) }; }).filter(Boolean) };
+        this.c.setPointerCapture(e.pointerId); this.render(); return;
+      }
+      this.multi = null;
       this.sel = hit; this.emit('select');
       if (hit) {
         const obj = this.find(hit);
@@ -420,6 +486,19 @@ class Editor {
       D.linked.forEach(l => { if (l.end === 1) { l.w.x1 = s.x; l.w.y1 = s.y; } else { l.w.x2 = s.x; l.w.y2 = s.y; } });
       this.emit('live'); this.render(); return;
     }
+    if (D && D.kind === 'box') { D.x1 = p.x; D.y1 = p.y; this.render(); return; }
+    if (D && D.kind === 'gmove') {
+      let dx = p.x - D.sx, dy = p.y - D.sy;
+      if (!D.moved && Math.hypot(dx, dy) * this.view.s < 4) return;
+      D.moved = true;
+      // catch on a wall end: the nearest moved wall end to any other wall end, within 10 px
+      const moving = new Set(D.items.filter(it => it.r.kind === 'wall').map(it => it.o)), tol = 10 / this.view.s; let best = null, bd = tol;
+      if (!e.altKey) for (const it of D.items) if (it.r.kind === 'wall') for (const [ex, ey] of [[it.O.x1 + dx, it.O.y1 + dy], [it.O.x2 + dx, it.O.y2 + dy]]) for (const w of this.plan.walls) { if (moving.has(w)) continue; for (const [px, py] of [[w.x1, w.y1], [w.x2, w.y2]]) { const d = Math.hypot(px - ex, py - ey); if (d < bd) { bd = d; best = [px - ex, py - ey]; } } }
+      if (best) { dx += best[0]; dy += best[1]; } else { const g = this.snapIn / 12 || 1 / 48; dx = Math.round(dx / g) * g; dy = Math.round(dy / g) * g; }
+      for (const it of D.items) this.shiftRef(it.r.kind, it.o, it.O, dx, dy);
+      this.status('Moving ' + this.multi.length + ' pieces: ' + fmt(Math.hypot(dx, dy)) + (best ? ' · caught on a wall end' : ''));
+      this.emit('live'); this.render(); return;
+    }
     if (D && D.kind === 'move') {
       let dx = p.x - D.sx, dy = p.y - D.sy;
       if (!D.moved && Math.hypot(dx, dy) * this.view.s < 4) return;
@@ -494,6 +573,17 @@ class Editor {
     const D = this.drag; this.drag = null;
     try { this.c.releasePointerCapture(e.pointerId); } catch (err) { /* not captured */ }
     if (!D) return;
+    if (D.kind === 'box') {
+      const x0 = Math.min(D.x0, D.x1), x1 = Math.max(D.x0, D.x1), y0 = Math.min(D.y0, D.y1), y1 = Math.max(D.y0, D.y1);
+      if (x1 - x0 > 1e-6 && y1 - y0 > 1e-6) {
+        const inside = this.allRefs().filter(r => { const P = this.refPts(r); return P.length && P.every(([x, y]) => x >= x0 && x <= x1 && y >= y0 && y <= y1); });
+        const cur = D.add ? (this.multi ? this.multi.slice() : (this.sel ? [this.sel] : [])) : [];
+        this.setMulti(cur.concat(inside));
+        if (this.multi) this.status(this.multi.length + ' pieces selected. Drag one to move them all; Delete removes them; Ctrl+G groups them.');
+      }
+      this.render(); return;
+    }
+    if (D.kind === 'gmove') { if (D.moved) { this.commit(D.before); this.emit('select'); } this.status(''); this.render(); return; }
     if (D.kind === 'end') { this.commit(D.before); this.emit('select'); }
     else if (D.kind === 'move') { if (D.moved) { this.commit(D.before); this.emit('select'); } }
     else if (D.kind === 'run') {
@@ -557,12 +647,18 @@ class Editor {
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.tool === 'item') { this.itemRot = ((this.itemRot || 0) + 1) % 4; this.render(); return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'item') { const o = this.selected(); if (o) this.edit(() => { o.a = (o.a || 0) + Math.PI / 2 * (e.shiftKey ? -1 : 1); }); return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'insert') { const o = this.selected(); if (o) this.edit(() => { o.rot = (((o.rot || 0) + (e.shiftKey ? 3 : 1)) % 4); }); return true; }
+    if (k === 'Escape' && this.multi) { this.multi = null; this.emit('select'); this.render(); return true; }
     if (k === 'Escape' && this.meas) { this.meas = null; this.status(''); this.render(); return true; }
     if (k === 'Escape') { if (this.draft) this.endChain(); else if (this.cal) { this.cal = null; this.render(); } else if (this.tool !== 'select') this.setTool('select'); else { this.sel = null; this.emit('select'); this.render(); } return true; }
-    if ((k === 'Delete' || k === 'Backspace') && this.sel) { this.deleteSel(); return true; }
+    if ((k === 'Delete' || k === 'Backspace') && (this.sel || this.multi)) { this.deleteSel(); return true; }
     return false;
   }
   deleteSel() {
+    if (this.multi) {
+      const M = this.withOpenings(this.multi);
+      this.edit(P => { for (const r of M) { const L = LISTS[r.kind]; if (L) P[L] = (P[L] || []).filter(x => x.id !== r.id); } const gone = new Set(M.filter(r => r.kind === 'wall').map(r => r.id)); P.openings = P.openings.filter(o => !gone.has(o.unit)); });
+      this.multi = null; this.emit('select'); this.render(); return;
+    }
     const s = this.sel; if (!s) return;
     if (s.kind === 'bg') { this.edit(P => { P.background = null; }); this.bgImg = null; }
     else { const list = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns' }[s.kind]; this.edit(P => { P[list] = (P[list] || []).filter(x => x.id !== s.id); if (s.kind === 'wall') P.openings = P.openings.filter(o => o.unit !== s.id); }); }
@@ -797,7 +893,9 @@ class Editor {
       else if (sel.kind === 'item') { const c = global.Plan3DViewer.itemCorners(o); g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.stroke(); }
       else if (sel.kind === 'insert') { const b = this.insBox(o); g.strokeRect(this.sx(b.x0) - 6, this.sy(b.y0) - 6, (b.x1 - b.x0) * s + 12, (b.y1 - b.y0) * s + 12); }
     };
-    if (this.hover && this.tool === 'select' && !(this.sel && this.sel.id === this.hover.id)) outlineSel(this.hover, COL.hover, 1.5);
+    if (this.hover && this.tool === 'select' && !(this.sel && this.sel.id === this.hover.id) && !this.isMulti(this.hover)) outlineSel(this.hover, COL.hover, 1.5);
+    if (this.multi) for (const r of this.multi) outlineSel(r, COL.sel, 2);
+    if (this.drag && this.drag.kind === 'box') { const D = this.drag; g.save(); g.setLineDash([5, 4]); g.strokeStyle = COL.snap; g.fillStyle = 'rgba(127,211,227,.08)'; g.lineWidth = 1; const X = this.sx(Math.min(D.x0, D.x1)), Y = this.sy(Math.min(D.y0, D.y1)), W = Math.abs(D.x1 - D.x0) * s, H = Math.abs(D.y1 - D.y0) * s; g.fillRect(X, Y, W, H); g.strokeRect(X, Y, W, H); g.restore(); }
     if (this.sel) {
       outlineSel(this.sel, COL.sel, 2);
       const o = this.selected();
