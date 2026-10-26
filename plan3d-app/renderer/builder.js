@@ -6,7 +6,7 @@
    Plan units are feet; plan (x, y) = 3D (x, z). Coll Business Solutions LLC */
 (function (global) {
 'use strict';
-const { fmtIn, parseLen, uid } = global.Plan3DEditor;
+const { fmt, fmtIn, parseLen, uid } = global.Plan3DEditor;
 const V = global.Plan3DViewer;
 
 const IN = 1 / 12;
@@ -24,6 +24,7 @@ const PIECES = {
 const NUM_KEYS = { 1: 'panel', 2: 'sp', 3: 'glass', 4: 'door', 5: 'door2', 6: 'pass', 7: 'chase', 8: 'led', 9: 'ffu' };
 const ICONS = {
   select: '<path d="M5 3l14 8-6 1.6L10 19z"/>',
+  measure: '<path d="M3 15L15 3l6 6L9 21z" fill="none"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2" fill="none"/>',
   panel: '<rect x="6" y="3" width="12" height="18" fill="none"/><path d="M12 3v18" fill="none" stroke-dasharray="2 2"/>',
   sp: '<rect x="6" y="3" width="12" height="18"/>',
   glass: '<rect x="6" y="3" width="12" height="18" fill="none"/><rect x="8.5" y="7" width="7" height="8" fill="none"/>',
@@ -35,13 +36,14 @@ const ICONS = {
   ffu: '<rect x="8" y="3" width="8" height="18" fill="none"/><path d="M10 6h1M13 6h1M10 9h1M13 9h1M10 12h1M13 12h1M10 15h1M13 15h1" fill="none"/>'
 };
 const HINT = {
-  select: 'Click a piece to select it. Delete removes it.',
-  wall: 'Click to place. Pieces snap to open ends and turn the corner toward the mouse. Click beside the middle of a wall to start a T. R turns a free piece.',
+  select: 'Click a piece to select it. Drag a wall or panel to move it; its ends catch on nearby walls. Delete removes it.',
+  measure: 'Click two points to measure along the floor. Snaps to wall ends and wall faces. Hold Shift to measure to a surface (heights). Click again to start a new one. Esc clears.',
+  wall: 'Click to place, or drag to lay a whole run of panels. Pieces snap to open ends and turn the corner toward the mouse. Click beside the middle of a wall to start a T. R turns a free piece.',
   unit: 'Click a panel to swap this piece in, or click an open end to add it to the run.',
   chase: 'Click to place. Chases sit flush against the nearest wall face. R turns it.',
   fixture: 'Click a ceiling grid cell to place. Click the same kind again to remove it.'
 };
-const hintFor = (t) => t === 'select' ? HINT.select : PIECES[t].group === 'wall' ? (PIECES[t].op && !PIECES[t].widths ? HINT.unit : HINT.wall) : HINT[PIECES[t].group];
+const hintFor = (t) => t === 'select' || t === 'measure' ? HINT[t] : PIECES[t].group === 'wall' ? (PIECES[t].op && !PIECES[t].widths ? HINT.unit : HINT.wall) : HINT[PIECES[t].group];
 
 /* ================= PieceLogic ================= */
 class PieceLogic {
@@ -57,7 +59,7 @@ class PieceLogic {
   }
   pieceLen(t) { const P = PIECES[t]; return P.widths ? this.width : P.w; }
   wallT() { return this.ed.plan.wallT || 0.25; }
-  group() { return this.tool === 'select' ? 'select' : PIECES[this.tool].group; }
+  group() { return this.tool === 'select' || this.tool === 'measure' ? this.tool : PIECES[this.tool].group; }
 
   // Wall pieces: open end → T off a wall → free on a 1″ grid
   snapWall(P, L) {
@@ -163,9 +165,84 @@ class PieceLogic {
     return { x0, x1: x0 + W0, y0, y1: y0 + D0, grille: '', mode: 'free' };
   }
   fixtureCell(P) {
-    const G = V.ceilingGrid(this.ed.plan, this.A), ox = G.ox, oy = G.oz;
-    const x0 = ox + Math.floor((P.x - ox) / 2) * 2, y0 = oy + Math.floor((P.y - oy) / 4) * 4;
-    return { x: x0 + 1, y: y0 + 2, mode: 'cell' };
+    // the cell under the pointer, on the ceiling's own grid (an imported drawing's, or the 2′ × 4′ one):
+    // a 2 × 4 fixture fills it, or two cells of a 2 × 2 grid
+    const G = V.ceilingGrid(this.ed.plan, this.A), w = G.swap ? 4 : 2, h = G.swap ? 2 : 4;
+    const c = V.snapFixture({ x: P.x, y: P.y, w, h }, G);
+    return { x: c.x, y: c.y, w, h, mode: 'cell' };
+  }
+  /* Drag out a run of panels: starts where a click would put the first one (an open end, a T off a wall, or
+     free), then follows the pointer, a whole panel at a time, square to the start. */
+  runAt(S, P) {
+    const W = this.pieceLen(this.tool);
+    let ux, uy;
+    if (S.mode === 'free') {
+      const dx = P.x - S.x1, dy = P.y - S.y1;
+      if (Math.hypot(dx, dy) < W * 0.4) { const L0 = Math.hypot(S.x2 - S.x1, S.y2 - S.y1) || 1; ux = (S.x2 - S.x1) / L0; uy = (S.y2 - S.y1) / L0; }
+      else if (Math.abs(dx) >= Math.abs(dy)) { ux = Math.sign(dx); uy = 0; } else { ux = 0; uy = Math.sign(dy); }
+    } else { const L0 = Math.hypot(S.x2 - S.x1, S.y2 - S.y1) || 1; ux = (S.x2 - S.x1) / L0; uy = (S.y2 - S.y1) / L0; }
+    const along = (P.x - S.x1) * ux + (P.y - S.y1) * uy, n = Math.max(1, Math.min(60, Math.round(along / W)));
+    const run = { tool: this.tool, mode: S.mode === 'free' ? 'run' : S.mode, x1: S.x1, y1: S.y1, x2: S.x1 + ux * W * n, y2: S.y1 + uy * W * n, n, w: W, pieces: [] };
+    for (let i = 0; i < n; i++) run.pieces.push({ x1: S.x1 + ux * W * i, y1: S.y1 + uy * W * i, x2: S.x1 + ux * W * (i + 1), y2: S.y1 + uy * W * (i + 1) });
+    run.bad = this.blocked(run);
+    return run;
+  }
+  placeRun(R) {
+    if (R.bad) { if (this.onFlash) this.onFlash('That run crosses another wall.'); return false; }
+    if (R.n === 1) return this.place({ ...R.pieces[0], tool: R.tool, mode: R.mode });
+    const T = this.wallT(), P0 = PIECES[R.tool];
+    this.ed.edit(Pl => {
+      for (const s of R.pieces) {
+        const w = { id: uid(), x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2, t: T, sp: R.tool === 'sp', piece: R.tool };
+        Pl.walls.push(w); if (P0.op === 'glass') Pl.openings.push(this.makeOpening('glass', w, T, w.id));
+      }
+    });
+    return true;
+  }
+  /* Drag a wall or panel to a new spot: its ends catch on any wall end within a foot, otherwise it moves
+     on a 1″ grid. Doors and windows in it go with it. */
+  moveTarget(id, dx, dy) {
+    const walls = this.ed.plan.walls, w = walls.find(x => x.id === id); if (!w) return null;
+    const g = 1 / 12, ends = [[w.x1 + dx, w.y1 + dy], [w.x2 + dx, w.y2 + dy]];
+    let best = null, bd = 1.0;
+    for (const o of walls) {
+      if (o === w) continue;
+      for (const [px, py] of [[o.x1, o.y1], [o.x2, o.y2]]) for (const [ex, ey] of ends) { const d = Math.hypot(px - ex, py - ey); if (d < bd) { bd = d; best = [px - ex, py - ey]; } }
+    }
+    if (best) { dx += best[0]; dy += best[1]; } else { dx = Math.round((w.x1 + dx) / g) * g - w.x1; dy = Math.round((w.y1 + dy) / g) * g - w.y1; }
+    const s = { x1: w.x1 + dx, y1: w.y1 + dy, x2: w.x2 + dx, y2: w.y2 + dy };
+    const saved = this.ed.plan.walls; this.ed.plan.walls = walls.filter(x => x !== w);
+    const bad = this.blocked(s); this.ed.plan.walls = saved;
+    return { ...s, dx, dy, snapped: !!best, bad, id };
+  }
+  applyMove(M) {
+    if (!M || M.bad || (Math.abs(M.dx) < 1e-6 && Math.abs(M.dy) < 1e-6)) return false;
+    this.ed.edit(Pl => {
+      const w = Pl.walls.find(x => x.id === M.id); if (!w) return;
+      const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, T = (w.t || 0.25);
+      const on = (x, y) => { const s = (x - w.x1) * ux + (y - w.y1) * uy, d = Math.abs((x - w.x1) * (-uy) + (y - w.y1) * ux); return d < T && s > -0.05 && s < L + 0.05; };
+      for (const o of Pl.openings) if (o.unit === w.id || (on(o.x1, o.y1) && on(o.x2, o.y2))) { o.x1 += M.dx; o.y1 += M.dy; o.x2 += M.dx; o.y2 += M.dy; }
+      w.x1 = M.x1; w.y1 = M.y1; w.x2 = M.x2; w.y2 = M.y2;
+    });
+    return true;
+  }
+  /* Tape measure: a point snapped to a wall end, else onto a wall's line, else the 1″ grid */
+  measurePt(P, tol) {
+    tol = tol || 0.6;
+    let best = null, bd = tol;
+    for (const w of this.ed.plan.walls) for (const [x, y] of [[w.x1, w.y1], [w.x2, w.y2]]) { const d = Math.hypot(P.x - x, P.y - y); if (d < bd) { bd = d; best = { x, y, kind: 'end' }; } }
+    if (best) return best;
+    bd = tol * 0.6;
+    for (const w of this.ed.plan.walls) {
+      const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 0.05) continue;
+      const ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, s = (P.x - w.x1) * ux + (P.y - w.y1) * uy;
+      if (s < 0 || s > L) continue;
+      const n = (P.x - w.x1) * (-uy) + (P.y - w.y1) * ux, T = (w.t || 0.25) / 2;
+      // the nearer face of the wall, so measuring between walls gives the clear distance
+      for (const f of [T, -T]) { const d = Math.abs(n - f); if (d < bd) { bd = d; const g = 1 / 12, ss = Math.round(s / g) * g; best = { x: w.x1 + ux * ss - uy * f, y: w.y1 + uy * ss + ux * f, kind: 'face' }; } }
+    }
+    if (best) return best;
+    const g = 1 / 12; return { x: Math.round(P.x / g) * g, y: Math.round(P.y / g) * g, kind: 'grid' };
   }
   // Near a wall end that nothing else connects to (an open end of a run)
   nearEnd(P) {
@@ -244,7 +321,7 @@ class PieceLogic {
       else if (!(Array.isArray(Pl.ceilingGrid) && Pl.ceilingGrid.length)) { const G = V.ceilingGrid(Pl); Pl.fixtures = Pl.fixtures.map(f => V.snapFixture(f, G)); }
       const hit = Pl.fixtures.find(f => Math.abs(f.x - I.x) < 0.5 && Math.abs(f.y - I.y) < 1);
       Pl.fixtures = Pl.fixtures.filter(f => f !== hit);
-      if (!hit || hit.type !== tool) Pl.fixtures.push({ id: uid(), type: tool, x: I.x, y: I.y });
+      if (!hit || hit.type !== tool) Pl.fixtures.push({ id: uid(), type: tool, x: I.x, y: I.y, ...(I.w ? { w: I.w, h: I.h } : {}) });
     });
     return true;
   }
@@ -255,10 +332,10 @@ class Palette {
   // logic: a PieceLogic; opts: { select: bool, ceilToggle: bool, layout: 'column'|'row', onTool(t), onCeil(bool) }
   constructor(el, logic, opts) {
     this.el = el; this.L = logic; this.o = opts || {};
-    const btn = (t, label, key) => `<button type="button" class="bd-tool" data-t="${t}" title="${PIECES[t] ? PIECES[t].label : 'Select'} (${key})"><svg viewBox="0 0 24 24">${ICONS[t]}</svg><span>${label}</span><kbd>${key}</kbd></button>`;
+    const btn = (t, label, key) => `<button type="button" class="bd-tool" data-t="${t}" title="${PIECES[t] ? PIECES[t].label : t === 'measure' ? 'Measure' : 'Select'} (${key})"><svg viewBox="0 0 24 24">${ICONS[t]}</svg><span>${label}</span><kbd>${key}</kbd></button>`;
     el.classList.add('bd-pal'); if (this.o.layout === 'row') el.classList.add('row');
     el.innerHTML = `
-      ${this.o.select ? `<div class="bd-sec">Tool</div><div class="bd-grid">${btn('select', 'Select', 'V')}</div>` : ''}
+      ${this.o.select ? `<div class="bd-sec">Tool</div><div class="bd-grid">${btn('select', 'Select', 'V')}${btn('measure', 'Measure', 'M')}</div>` : ''}
       <div class="bd-blk"><div class="bd-sec">Walls</div>
       <div class="bd-grid">${btn('panel', 'Panel', '1')}${btn('sp', 'S.P.', '2')}${btn('glass', 'Glass', '3')}</div></div>
       <div class="bd-blk"><div class="bd-sec">Doors &amp; pass-thrus</div>
@@ -292,7 +369,7 @@ class Palette {
   sync() {
     const t = this.L.tool, P = PIECES[t];
     this.el.querySelectorAll('.bd-tool').forEach(b => b.classList.toggle('on', b.dataset.t === t));
-    this.el.querySelector('[data-k=widths]').hidden = !!(P && !P.widths && this.o.layout !== 'row') || t === 'select';
+    this.el.querySelector('[data-k=widths]').hidden = !!(P && !P.widths && this.o.layout !== 'row') || t === 'select' || t === 'measure';
     this.el.querySelector('[data-k=chase]').hidden = t !== 'chase';
     if (this.o.layout === 'row' && t === 'chase') this.el.querySelector('[data-k=widths]').hidden = true;
     this.el.querySelectorAll('[data-w]').forEach(b => b.classList.toggle('on', Math.abs(+b.dataset.w * IN - this.L.width) < 1e-6));
@@ -305,8 +382,8 @@ class Builder {
     this.host = host; this.ed = ed; this.o = opts || {};
     this.L = new PieceLogic(ed); this.L.onFlash = (m) => this.flash(m);
     this.showCeil = true; this.ghostInfo = null;
-    host.innerHTML = `<canvas class="bd-c" tabindex="0" aria-label="3D build area"></canvas><div class="bd-palwrap"></div><div class="bd-hint"></div><div class="bd-tag" hidden></div>`;
-    this.canvas = host.querySelector('.bd-c'); this.hintEl = host.querySelector('.bd-hint'); this.tagEl = host.querySelector('.bd-tag');
+    host.innerHTML = `<canvas class="bd-c" tabindex="0" aria-label="3D build area"></canvas><div class="bd-palwrap"></div><div class="bd-hint"></div><div class="bd-tag" hidden></div><div class="bd-tag bd-meas" hidden></div>`;
+    this.canvas = host.querySelector('.bd-c'); this.hintEl = host.querySelector('.bd-hint'); this.tagEl = host.querySelector('.bd-tag'); this.measEl = host.querySelector('.bd-meas');
     this.pal = new Palette(host.querySelector('.bd-palwrap'), this.L, {
       select: true, ceilToggle: true,
       onTool: (t) => this.setTool(t, true),
@@ -321,7 +398,8 @@ class Builder {
     this.L.tool = t; if (!fromPal) this.pal.sync();
     this.ghostInfo = null; if (this.ghost) this.ghost.visible = false; this.tagEl.hidden = true;
     if (t !== 'select') { this.ed.sel = null; this.ed.emit('select'); this.drawSel(); }
-    this.hintEl.textContent = hintFor(t) + (t === 'select' ? ' Drag to orbit, right-drag to pan, wheel to zoom.' : '');
+    if (t !== 'measure') this.clearMeasure();
+    this.hintEl.textContent = hintFor(t) + (t === 'select' || t === 'measure' ? ' Drag empty space to orbit, right-drag to pan, wheel zooms toward the mouse, double-click to fly there.' : PIECES[t] && PIECES[t].widths ? ' Alt-drag or middle-drag to orbit.' : '');
     this.canvas.focus();
   }
   three() {
@@ -337,7 +415,16 @@ class Builder {
     const grid = new T.GridHelper(400, 100, 0x3a454b, 0x2b3439); grid.position.y = -0.01; sc.add(grid);
     this.controls = new T.OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true; this.controls.dampingFactor = 0.1; this.controls.maxPolarAngle = 1.5; this.controls.minDistance = 4; this.controls.maxDistance = 500;
-    this.controls.mouseButtons = { LEFT: T.MOUSE.ROTATE, MIDDLE: T.MOUSE.DOLLY, RIGHT: T.MOUSE.PAN };
+    this.controls.mouseButtons = { LEFT: T.MOUSE.ROTATE, MIDDLE: T.MOUSE.ROTATE, RIGHT: T.MOUSE.PAN };
+    V.smartZoom(T, this.camera, this.controls, this.canvas, {
+      objects: () => { const o = []; if (this.built) this.built.root.traverseVisible(m => { if (m.isMesh) o.push(m); }); return o; },
+      canFly: () => this.tool === 'select' || this.tool === 'measure'
+    });
+    // panel seams along a dragged-out run, and the tape measure
+    this.seams = new T.LineSegments(new T.BufferGeometry(), new T.LineBasicMaterial({ color: 0x8a6d12 })); this.seams.visible = false; this.seams.renderOrder = 6; sc.add(this.seams);
+    const mm = new T.LineBasicMaterial({ color: 0x4fd1e8, depthTest: false });
+    this.measLine = new T.Line(new T.BufferGeometry(), mm); this.measLine.renderOrder = 9; this.measLine.visible = false; sc.add(this.measLine);
+    this.measDots = [0, 1].map(() => { const d = new T.Mesh(new T.SphereGeometry(0.12, 12, 8), new T.MeshBasicMaterial({ color: 0x4fd1e8, depthTest: false })); d.renderOrder = 9; d.visible = false; sc.add(d); return d; });
     this.ghostMat = new T.MeshBasicMaterial({ color: 0xf2c84b, transparent: true, opacity: 0.42, depthWrite: false });
     this.ghost = new T.Mesh(new T.BoxGeometry(1, 1, 1), this.ghostMat); this.ghost.visible = false; this.ghost.renderOrder = 5; sc.add(this.ghost);
     this.ghostEdges = new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(1, 1, 1)), new T.LineBasicMaterial({ color: 0xf2c84b })); this.ghost.add(this.ghostEdges);
@@ -345,12 +432,35 @@ class Builder {
     this.ray = new T.Raycaster(); this.ndc = new T.Vector2();
     const c = this.canvas; let down = null;
     c.addEventListener('contextmenu', e => e.preventDefault());
-    c.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, b: e.button }; c.focus(); });
-    c.addEventListener('pointermove', e => { if (!e.buttons) this.hover(e); });
-    c.addEventListener('pointerup', e => { if (down && down.b === 0 && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5) this.click(e); down = null; });
+    // seen before the orbit controls: a left drag with a panel lays a run; in Select, dragging a wall moves it.
+    // Alt-drag or middle-drag still orbits.
+    c.addEventListener('pointerdown', e => {
+      down = { x: e.clientX, y: e.clientY, b: e.button }; c.focus(); this.drag = null;
+      if (e.button !== 0 || e.altKey) return;
+      const P0 = PIECES[this.tool];
+      if (P0 && P0.widths) {
+        const P = this.planeHit(e, 0); if (!P) return;
+        const g = this.L.ghostAt(P); if (!g || g.mode === 'replace') return;
+        this.drag = { kind: 'run', S: g };
+      } else if (this.tool === 'select') {
+        const ref = this.pickRef(e); if (!ref || ref.kind !== 'wall') return;
+        const P = this.planeHit(e, 0); if (!P) return;
+        this.drag = { kind: 'move', id: ref.id, P0: P };
+        this.ed.sel = { kind: 'wall', id: ref.id }; this.ed.emit('select'); this.drawSel();
+      } else return;
+      this.controls.enabled = false; try { c.setPointerCapture(e.pointerId); } catch (err) { /* fine */ }
+    }, true);
+    c.addEventListener('pointermove', e => { if (this.drag) this.dragMove(e); else if (!e.buttons) this.hover(e); });
+    c.addEventListener('pointerup', e => {
+      const D = this.drag, moved = down && Math.hypot(e.clientX - down.x, e.clientY - down.y) >= 5;
+      this.drag = null; this.controls.enabled = true; this.seams.visible = false;
+      if (D && moved && D.info) { if (D.kind === 'run' ? this.L.placeRun(D.info) : this.L.applyMove(D.info)) this.ghost.visible = false; this.tagEl.hidden = true; }
+      else if (down && down.b === 0 && !moved) this.click(e);
+      down = null;
+    });
     c.addEventListener('pointerleave', () => { this.ghost.visible = false; this.tagEl.hidden = true; });
     this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(this.host);
-    const loop = () => { this.raf = requestAnimationFrame(loop); if (!this.host.offsetParent) return; this.controls.update(); this.renderer.render(this.scene, this.camera); };
+    const loop = () => { this.raf = requestAnimationFrame(loop); if (!this.host.offsetParent) return; this.controls.update(); this.renderer.render(this.scene, this.camera); this.placeMeasLabel(); };
     loop();
   }
   resize() {
@@ -409,8 +519,76 @@ class Builder {
     this.built.root.traverse(o => { if (o.isMesh && o.userData.ref && o.userData.ref.kind === s.kind && o.userData.ref.id === s.id) { box.expandByObject(o); any = true; } });
     if (any) { this.selHelper.box.copy(box.expandByScalar(0.05)); this.selHelper.visible = true; } else this.selHelper.visible = false;
   }
+  /* a run of panels being dragged out, or a wall being dragged to a new spot */
+  dragMove(e) {
+    const D = this.drag, P = this.planeHit(e, 0); if (!P) return;
+    let info, label;
+    if (D.kind === 'run') {
+      info = this.L.runAt(D.S, P);
+      label = info.n > 1 ? `${info.n} × ${PIECES[info.tool].label} ${fmtIn(info.w)} = ${fmt(info.w * info.n)}` : this.L.label({ ...info.pieces[0], tool: info.tool, mode: info.mode });
+    } else {
+      info = this.L.moveTarget(D.id, P.x - D.P0.x, P.y - D.P0.y); if (!info) return;
+      label = info.bad ? 'Overlaps another wall' : 'Moved ' + fmt(Math.hypot(info.dx, info.dy)) + (info.snapped ? ' · caught on a wall end' : '');
+    }
+    D.info = info;
+    const T = global.THREE, H = this.A.H, g = this.ghost, len = Math.hypot(info.x2 - info.x1, info.y2 - info.y1), t = this.L.wallT() + 0.08;
+    g.scale.set(Math.max(len, 0.05), H, t); g.position.set((info.x1 + info.x2) / 2, H / 2, (info.y1 + info.y2) / 2);
+    g.rotation.set(0, Math.atan2(-(info.y2 - info.y1), info.x2 - info.x1), 0);
+    const col = info.bad ? 0xff6a4d : 0xf2c84b; this.ghostMat.color.set(col); this.ghostEdges.material.color.set(col); g.visible = true;
+    const sp = [];
+    if (D.kind === 'run') for (const s of info.pieces.slice(1)) sp.push(s.x1, 0.02, s.y1, s.x1, H, s.y1);
+    this.seams.geometry.dispose(); this.seams.geometry = new T.BufferGeometry(); this.seams.geometry.setAttribute('position', new T.Float32BufferAttribute(sp, 3)); this.seams.visible = sp.length > 0;
+    const r = this.host.getBoundingClientRect();
+    this.tagEl.textContent = label; this.tagEl.hidden = false;
+    this.tagEl.style.transform = `translate(${e.clientX - r.left + 16}px, ${e.clientY - r.top + 14}px)`;
+  }
+  /* ---- tape measure ---- */
+  measurePick(e) {
+    // on the floor, like a plan dimension; hold Shift to measure to the surface under the mouse (heights)
+    let p = null;
+    if (e.shiftKey) {
+      const objs = []; this.built.root.traverseVisible(o => { if (o.isMesh) objs.push(o); });
+      const hit = this.rayAt(e).intersectObjects(objs, false)[0];
+      if (hit) p = { x: hit.point.x, y: hit.point.z, h: hit.point.y };
+    }
+    if (!p) { const q = this.planeHit(e, 0); if (!q) return null; p = { x: q.x, y: q.y, h: 0 }; }
+    const s = this.L.measurePt(p, 0.6);
+    p.x = s.x; p.y = s.y; p.kind = s.kind; p.h = p.h < 0.08 ? 0 : Math.round(p.h * 12) / 12;
+    return p;
+  }
+  drawMeasure(a, b) {
+    const T = global.THREE;
+    this.measLine.geometry.dispose(); this.measLine.geometry = new T.BufferGeometry().setFromPoints([new T.Vector3(a.x, a.h + 0.03, a.y), new T.Vector3(b.x, b.h + 0.03, b.y)]);
+    this.measLine.visible = true;
+    [a, b].forEach((p, i) => { this.measDots[i].position.set(p.x, p.h + 0.03, p.y); this.measDots[i].visible = true; });
+    const run = Math.hypot(b.x - a.x, b.y - a.y), rise = Math.abs(b.h - a.h), tot = Math.hypot(run, rise);
+    const dx = Math.abs(b.x - a.x), dy = Math.abs(b.y - a.y);
+    let txt = fmt(tot);
+    if (rise > 0.04 && run > 0.04) txt += `  (across ${fmt(run)}, up ${fmt(rise)})`;
+    else if (dx > 0.5 && dy > 0.5) txt += `  (${fmt(dx)} × ${fmt(dy)})`;
+    this.measEl.textContent = txt; this.measEl.hidden = false; this.measMid = new T.Vector3((a.x + b.x) / 2, (a.h + b.h) / 2 + 0.03, (a.y + b.y) / 2);
+  }
+  placeMeasLabel() {
+    if (!this.measMid || this.measEl.hidden) return;
+    const v = this.measMid.clone().project(this.camera), w = this.host.clientWidth, h = this.host.clientHeight;
+    if (v.z > 1) { this.measEl.style.visibility = 'hidden'; return; }
+    this.measEl.style.visibility = '';
+    this.measEl.style.transform = `translate(${(v.x + 1) / 2 * w + 10}px, ${(1 - v.y) / 2 * h - 28}px)`;
+  }
+  clearMeasure() {
+    this.meas = null; this.measMid = null;
+    if (this.measLine) { this.measLine.visible = false; this.measDots.forEach(d => { d.visible = false; }); this.measEl.hidden = true; }
+  }
   hover(e) {
     this._lastMove = { clientX: e.clientX, clientY: e.clientY };
+    if (this.tool === 'measure') {
+      this.ghost.visible = false;
+      const p = this.measurePick(e), r = this.host.getBoundingClientRect();
+      if (p && this.meas && !this.meas.b) this.drawMeasure(this.meas.a, p);
+      this.tagEl.textContent = !p ? '' : p.kind === 'end' ? 'Wall end' : p.kind === 'face' ? 'Wall face' : this.meas && !this.meas.b ? 'Click the other end' : 'Click to start measuring';
+      this.tagEl.hidden = !p; this.tagEl.style.transform = `translate(${e.clientX - r.left + 16}px, ${e.clientY - r.top + 14}px)`;
+      return;
+    }
     if (this.tool === 'select') { this.ghost.visible = false; return; }
     const P0 = PIECES[this.tool], H = this.A.H;
     const P = this.planeHit(e, P0.group === 'fixture' ? H : 0); if (!P) { this.ghost.visible = false; return; }
@@ -425,7 +603,7 @@ class Builder {
       g.scale.set(info.x1 - info.x0, H, info.y1 - info.y0); g.rotation.set(0, 0, 0);
       g.position.set((info.x0 + info.x1) / 2, H / 2, (info.y0 + info.y1) / 2);
     } else {
-      g.scale.set(1.9, 0.12, 3.9); g.rotation.set(0, 0, 0); g.position.set(info.x, H - 0.06, info.y);
+      g.scale.set((info.w || 2) - 0.1, 0.12, (info.h || 4) - 0.1); g.rotation.set(0, 0, 0); g.position.set(info.x, H - 0.06, info.y);
     }
     const col = info.bad ? 0xff6a4d : 0xf2c84b; this.ghostMat.color.set(col); this.ghostEdges.material.color.set(col);
     g.visible = true; this.ghostInfo = info;
@@ -434,6 +612,12 @@ class Builder {
     this.tagEl.style.transform = `translate(${e.clientX - r.left + 16}px, ${e.clientY - r.top + 14}px)`;
   }
   click(e) {
+    if (this.tool === 'measure') {
+      const p = this.measurePick(e); if (!p) return;
+      if (!this.meas || this.meas.b) { this.clearMeasure(); this.meas = { a: p }; this.drawMeasure(p, p); }
+      else { this.meas.b = p; this.drawMeasure(this.meas.a, p); }
+      return;
+    }
     if (this.tool === 'select') {
       const ref = this.pickRef(e);
       this.ed.sel = ref ? { kind: ref.kind, id: ref.id } : null; this.ed.emit('select'); this.drawSel(); return;
@@ -445,6 +629,8 @@ class Builder {
   key(e) {
     const k = e.key.toLowerCase();
     if (k === 'r' && !e.ctrlKey) { this.L.rot = (this.L.rot + 1) % 4; if (this._lastMove) this.hover(this._lastMove); return true; }
+    if (k === 'escape' && this.meas) { this.clearMeasure(); return true; }
+    if (k === 'm' && !e.ctrlKey) { this.setTool('measure'); return true; }
     if (k === 'escape') { if (this.tool !== 'select') this.setTool('select'); else { this.ed.sel = null; this.ed.emit('select'); this.drawSel(); } return true; }
     if ((k === 'delete' || k === 'backspace') && this.ed.sel) { this.ed.deleteSel(); this.drawSel(); return true; }
     if (k === 'v' && !e.ctrlKey) { this.setTool('select'); return true; }

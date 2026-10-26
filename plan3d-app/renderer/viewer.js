@@ -582,13 +582,144 @@ function rectsGeometry(THREE, rects, y, down, su, sv, ox, oz, swapUV) {
 /* The 2′ × 4′ lay-in ceiling grid: 2′ across (x), 4′ along (z, plan y), starting at plan.ceilGrid when the
    project has one (saved the first time fixtures are placed, so later wall edits don't slide the grid under
    them), otherwise at the walls' outside corner. Main / cross tee takeoffs will build on this. */
+/* The grid in an imported ceiling drawing: line spacing each way and where the lines fall, so fixtures
+   placed by hand land in its cells. */
+const LINE_GRID = new WeakMap();
+function gridFromLines(L) {
+  if (LINE_GRID.has(L)) return LINE_GRID.get(L);
+  const xs = [], ys = [];
+  for (const q of L) { if (Math.abs(q[0] - q[2]) < 0.02 && Math.abs(q[1] - q[3]) > 1) xs.push((q[0] + q[2]) / 2); else if (Math.abs(q[1] - q[3]) < 0.02 && Math.abs(q[0] - q[2]) > 1) ys.push((q[1] + q[3]) / 2); }
+  const axis = (v) => {
+    const u = [...new Set(v.map(a => Math.round(a * 48) / 48))].sort((a, b) => a - b); if (u.length < 2) return null;
+    const cnt = new Map(); for (let i = 1; i < u.length; i++) { const d = Math.round((u[i] - u[i - 1]) * 48) / 48; if (d >= 1.4 && d <= 5) cnt.set(d, (cnt.get(d) || 0) + 1); }
+    if (!cnt.size) return null;
+    const sp = [...cnt.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    // the origin most lines agree with
+    const ph = new Map(); for (const a of u) { const k = Math.round((((a % sp) + sp) % sp) * 48) / 48; ph.set(k, (ph.get(k) || 0) + 1); }
+    return { sp, o: [...ph.entries()].sort((a, b) => b[1] - a[1])[0][0] };
+  };
+  const X = axis(xs), Y = axis(ys);
+  const r = X && Y ? { ox: X.o, oz: Y.o, cw: X.sp, cl: Y.sp, swap: X.sp > Y.sp + 0.1, fromLines: true } : null;
+  LINE_GRID.set(L, r); return r;
+}
+/* Zoom for the orbit views: the wheel zooms toward whatever is under the mouse (not the middle of the
+   screen), in steps that scale with distance, so a far corner comes up in a few turns and a close-up
+   still gets fine steps. Double-click flies the view to the spot clicked. Touchpad pinch works too. */
+function smartZoom(THREE, camera, controls, canvas, opts) {
+  opts = opts || {};
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), minD = opts.minDist || 1.2, maxD = opts.maxDist || 700;
+  controls.enableZoom = false; controls.minDistance = Math.min(controls.minDistance, 0.3);
+  if (controls.maxDistance < maxD) controls.maxDistance = maxD;
+  const pointAt = (e) => {
+    const r = canvas.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const objs = opts.objects ? opts.objects() : [];
+    const hit = objs.length ? ray.intersectObjects(objs, false)[0] : null;
+    if (hit) return hit.point.clone();
+    const p = new THREE.Vector3();
+    if (ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), p) && p.distanceTo(camera.position) < 900) return p;
+    return ray.ray.at(camera.position.distanceTo(controls.target), p);
+  };
+  const active = () => controls.enabled && (!opts.active || opts.active());
+  canvas.addEventListener('wheel', (e) => {
+    if (!active()) return;
+    e.preventDefault(); fly = null;
+    const P = pointAt(e), d = camera.position.distanceTo(P), td = camera.position.distanceTo(controls.target);
+    // ctrl+wheel is what a touchpad pinch sends: bigger steps per event
+    let f = Math.exp(Math.max(-0.5, Math.min(0.5, e.deltaY * (e.ctrlKey ? 0.012 : 0.0016))));
+    if (f < 1 && d * f < minD) f = Math.min(1, minD / Math.max(d, 1e-6));
+    if (f > 1 && td * f > maxD) f = Math.max(1, maxD / td);
+    if (Math.abs(f - 1) < 1e-4) return;
+    camera.position.sub(P).multiplyScalar(f).add(P);
+    controls.target.sub(P).multiplyScalar(f).add(P);
+    controls.update();
+  }, { passive: false });
+  let fly = null;
+  const step = () => {
+    if (!fly) return;
+    const k = Math.min(1, (performance.now() - fly.t0) / 450), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    camera.position.lerpVectors(fly.fc, fly.toC, e); controls.target.lerpVectors(fly.ft, fly.toT, e); controls.update();
+    if (k < 1) requestAnimationFrame(step); else fly = null;
+  };
+  canvas.addEventListener('dblclick', (e) => {
+    if (!active() || (opts.canFly && !opts.canFly())) return;
+    const P = pointAt(e), dir = camera.position.clone().sub(controls.target);
+    const dist = Math.max(minD * 5, Math.min(dir.length(), camera.position.distanceTo(P) * 0.45));
+    fly = { t0: performance.now(), fc: camera.position.clone(), ft: controls.target.clone(), toT: P, toC: P.clone().add(dir.setLength(dist)) };
+    requestAnimationFrame(step);
+  });
+  return { pointAt };
+}
 function ceilingGrid(plan, A) {
+  // a ceiling drawn in: its own grid
+  if (plan && Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length) { const lg = gridFromLines(plan.ceilingGrid); if (lg) return lg; }
   const g = plan && plan.ceilGrid;
   // swap: the building was turned a quarter turn, so the 4′ side runs across (x) instead of along (z)
   const sw = g && isFinite(g.ox) ? !!g.swap : !!(plan && plan.ceilSwap), cw = sw ? 4 : 2, cl = sw ? 2 : 4;
   if (g && isFinite(g.ox) && isFinite(g.oy)) return { ox: g.ox, oz: g.oy, cw, cl, swap: sw };
   A = A || analyze(plan);
   return { ox: A.empty ? 0 : A.bounds.minX, oz: A.empty ? 0 : A.bounds.minZ, cw, cl, swap: sw };
+}
+/* Every T-grid line over the cleanroom ceiling. With an imported ceiling drawing: the drawing's own lines,
+   plus the same grid (its spacing and line positions) carried on over any part of the ceiling the drawing
+   didn't reach, so a drawing that covers half the room still gives a full ceiling. */
+const CEIL_LINES = new WeakMap();
+function ceilingLines(plan, A) {
+  const own = Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length ? plan.ceilingGrid : null;
+  A = A || analyze(plan);
+  const memo = CEIL_LINES.get(A); if (memo && memo.src === own) return memo.lines;
+  const FP = footprint(A), out = own ? own.slice() : [];
+  const save = (l) => { CEIL_LINES.set(A, { src: own, lines: l }); return l; };
+  if (!FP || A.house) return save(out);
+  const G = own ? gridFromLines(own) : ceilingGrid(plan, A);
+  if (!G) return save(out);
+  const B = A.bounds, cw = G.cw, cl = G.cl, eps = 0.06;
+  // the drawing's lines by position, to tell which cell edges it already draws
+  const vx = new Map(), hz = new Map(), key = (v) => Math.round(v * 8);
+  for (const q of own || []) {
+    if (Math.abs(q[0] - q[2]) < 0.02) { const k = key((q[0] + q[2]) / 2); (vx.get(k) || vx.set(k, []).get(k)).push([Math.min(q[1], q[3]), Math.max(q[1], q[3])]); }
+    else if (Math.abs(q[1] - q[3]) < 0.02) { const k = key((q[1] + q[3]) / 2); (hz.get(k) || hz.set(k, []).get(k)).push([Math.min(q[0], q[2]), Math.max(q[0], q[2])]); }
+  }
+  const hit = (M, at, v) => { for (const d of [-1, 0, 1]) for (const r of M.get(key(at) + d) || []) if (v > r[0] - eps && v < r[1] + eps) return true; return false; };
+  const vDrawn = (x, zm) => hit(vx, x, zm), hDrawn = (z, xm) => hit(hz, z, xm);
+  const i0 = Math.floor((B.minX - G.ox) / cw) - 1, i1 = Math.ceil((B.maxX - G.ox) / cw) + 1;
+  const j0 = Math.floor((B.minZ - G.oz) / cl) - 1, j1 = Math.ceil((B.maxZ - G.oz) / cl) + 1;
+  const X = (i) => G.ox + i * cw, Z = (j) => G.oz + j * cl;
+  // a cell the drawing already covers: at least three of its four sides drawn
+  const covered = (i, j) => {
+    if (!own) return false;
+    const xm = X(i) + cw / 2, zm = Z(j) + cl / 2;
+    return (vDrawn(X(i), zm) + vDrawn(X(i + 1), zm) + hDrawn(Z(j), xm) + hDrawn(Z(j + 1), xm)) >= 3;
+  };
+  const inCell = (i, j) => { const s = [[.5, .5], [.1, .1], [.9, .1], [.1, .9], [.9, .9], [.5, .1], [.5, .9], [.1, .5], [.9, .5]]; return s.some(([a, b]) => FP.has(X(i) + a * cw, Z(j) + b * cl)); };
+  const step = Math.min(0.25, FP.cell / 2);
+  // one edge, clipped to where there is ceiling under it
+  const edge = (x1, z1, x2, z2) => {
+    const L = Math.hypot(x2 - x1, z2 - z1), n = Math.max(1, Math.round(L / step)); let st = null;
+    for (let k = 0; k <= n; k++) {
+      const t = k / n, x = x1 + (x2 - x1) * t, z = z1 + (z2 - z1) * t, ins = FP.has(x, z);
+      if (ins && st === null) st = t;
+      if ((!ins || k === n) && st !== null) { const e = ins ? t : (k - 1) / n; if ((e - st) * L > 0.3) out.push([x1 + (x2 - x1) * st, z1 + (z2 - z1) * st, x1 + (x2 - x1) * e, z1 + (z2 - z1) * e]); st = null; }
+    }
+  };
+  // the drawing's own lines, trimmed to the ceiling (a drawing bigger than the room, or set off to one side,
+  // doesn't hang past the walls)
+  out.length = 0;
+  for (const q of own || []) edge(q[0], q[1], q[2], q[3]);
+  const need = new Set();
+  for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) if (inCell(i, j) && !covered(i, j)) need.add(i + ',' + j);
+  const done = new Set();
+  for (const c of need) {
+    const [i, j] = c.split(',').map(Number);
+    const sides = [['v', i, j, X(i), Z(j), X(i), Z(j + 1)], ['v', i + 1, j, X(i + 1), Z(j), X(i + 1), Z(j + 1)], ['h', i, j, X(i), Z(j), X(i + 1), Z(j)], ['h', i, j + 1, X(i), Z(j + 1), X(i + 1), Z(j + 1)]];
+    for (const [t, a, b, x1, z1, x2, z2] of sides) {
+      const k = t + a + ',' + b; if (done.has(k)) continue; done.add(k);
+      if (t === 'v' ? vDrawn(x1, (z1 + z2) / 2) : hDrawn(z1, (x1 + x2) / 2)) continue;
+      edge(x1, z1, x2, z2);
+    }
+  }
+  return save(out);
 }
 /* Tee takeoff for a 2′ × 4′ lay-in grid over the cleanroom ceiling: main tees are the continuous runners
    4′ apart (12′ pieces, spliced), 4′ cross tees span between them every 2′ (a cut bay at a wall still takes
@@ -694,7 +825,8 @@ function fixtureSteps(w, h, G) {
    its cell. Fixtures from an imported ceiling drawing follow that drawing's own grid instead. */
 function snapFixture(f, G) {
   const w = f.w || (G.swap ? 4 : 2), h = f.h || (G.swap ? 2 : 4);
-  const [sx, sz] = fixtureSteps(w, h, G);
+  // an imported grid: step by its own line spacing (2 × 2, 2 × 4, or whatever it was drawn at)
+  const [sx, sz] = G.fromLines ? [G.cw, G.cl] : fixtureSteps(w, h, G);
   const fw = Math.max(sx, Math.round(w / sx) * sx), fh = Math.max(sz, Math.round(h / sz) * sz);
   const x0 = G.ox + Math.round((f.x - fw / 2 - G.ox) / sx) * sx, z0 = G.oz + Math.round((f.y - fh / 2 - G.oz) / sz) * sz;
   return { ...f, x: x0 + fw / 2, y: z0 + fh / 2 };
@@ -1285,7 +1417,7 @@ function buildScene(THREE, plan, A) {
     ceiling.add(new THREE.Mesh(rectsGeometry(THREE, FP.rects, H + 0.004, false, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, sw), new THREE.MeshLambertMaterial({ map: tt, color: 0xd8d8d8 })));
     // the tees: thin webs standing up along every grid line, only over the ceiling
     const lines = [];
-    if (ownGrid) for (const q of plan.ceilingGrid) lines.push(q);
+    if (ownGrid) for (const q of ceilingLines(plan, A)) lines.push(q);
     else {
       const step = FP.cell / 2, runs = (fixed, lo, hi, isX) => {
         let st = null;
@@ -1354,7 +1486,7 @@ function buildScene(THREE, plan, A) {
   curRef = null;
   if (ownGrid) {
     const tw = 0.078 / 2, pos = [];
-    for (const q of plan.ceilingGrid) {
+    for (const q of ceilingLines(plan, A)) {
       const L = Math.hypot(q[2] - q[0], q[3] - q[1]); if (!(L > 0.01)) continue;
       const nx = -(q[3] - q[1]) / L * tw, nz = (q[2] - q[0]) / L * tw, y = H - 0.012;
       const a = [q[0] + nx, y, q[1] + nz], b = [q[2] + nx, y, q[3] + nz], c = [q[2] - nx, y, q[3] - nz], d = [q[0] - nx, y, q[1] - nz];
@@ -1553,6 +1685,7 @@ function mount(container, plan, opts) {
   const controls = new THREE.OrbitControls(camera, canvas);
   controls.enableDamping = true; controls.dampingFactor = 0.09; controls.maxPolarAngle = 1.42;
   controls.minDistance = 8; controls.maxDistance = 400; controls.enabled = false;
+  smartZoom(THREE, camera, controls, canvas, { objects: () => { const o = []; if (built) built.root.traverseVisible(m => { if (m.isMesh) o.push(m); }); return o; }, active: () => mode !== 'walk' && !tween });
 
   const EYE = 5.3, R = 0.55;
   const st = { x: 0, z: 0, yaw: 0, pitch: -0.04 };
@@ -1802,7 +1935,7 @@ function mount(container, plan, opts) {
   canvas.addEventListener('pointerup', endPointer);
   canvas.addEventListener('pointercancel', endPointer);
   canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') ring.visible = false; });
-  canvas.addEventListener('wheel', e => { if (mode !== 'walk') return; e.preventDefault(); fov = Math.max(35, Math.min(85, fov + e.deltaY * 0.03)); camera.fov = fov; camera.updateProjectionMatrix(); }, { passive: false });
+  canvas.addEventListener('wheel', e => { if (mode !== 'walk') return; e.preventDefault(); fov = Math.max(12, Math.min(85, fov + e.deltaY * 0.03 * (fov / 60))); camera.fov = fov; camera.updateProjectionMatrix(); }, { passive: false });
   const keys = new Set();
   const MOVE_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'q', 'e', 'shift'];
   const typing = (t) => t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName || ''));
@@ -2017,5 +2150,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);
