@@ -312,6 +312,93 @@ function arcDoors(data, walls, o, have) {
   }
   return { walls: addW, openings: addO, found };
 }
+/* Other drawings on the sheet that aren't walls: a ceiling grid (a field of long straight lines at an even
+   2′ / 4′ spacing) and steel beams (three or more long parallel lines, evenly spaced 3′–16′ apart), on layers
+   that aren't the wall layers. Plan feet, same frame as the walls. Returns { grids: [{lines, box}], beams: [] } */
+const RX_EXTRA_SKIP = /dim|anno|text|hatch|patt|detl|detail|door|glaz|stud|title|iden|tag|symb|furn|equip|spcq|genm|sanr|ffu|hepa|light|elev|sect|xref|defpoints|viewport|border|logo|rail|stair/i;
+function sheetExtras(data, o) {
+  const F = dxfFrame(data, o), segs = [];
+  for (const q of data.segs) {
+    if (o.layers.has(q[4]) || RX_EXTRA_SKIP.test(q[4])) continue;
+    const a = F.P(q[0], q[1]), b = F.P(q[2], q[3]), L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 1) continue;
+    const ax = Math.abs(a[0] - b[0]) < 0.02 ? 'v' : Math.abs(a[1] - b[1]) < 0.02 ? 'h' : null; if (!ax) continue;
+    segs.push({ a, b, L, ax, layer: q[4], x0: Math.min(a[0], b[0]), x1: Math.max(a[0], b[0]), y0: Math.min(a[1], b[1]), y1: Math.max(a[1], b[1]) });
+  }
+  // groups of lines near each other
+  const clusters = (S, pad) => {
+    const par = S.map((_, i) => i), find = (i) => (par[i] === i ? i : (par[i] = find(par[i])));
+    // bucket by a coarse cell so this stays quick on a big sheet
+    const cell = 40, buckets = new Map();
+    S.forEach((g, i) => { for (let X = Math.floor((g.x0 - pad) / cell); X <= Math.floor((g.x1 + pad) / cell); X++) for (let Y = Math.floor((g.y0 - pad) / cell); Y <= Math.floor((g.y1 + pad) / cell); Y++) { const k = X + ',' + Y; (buckets.get(k) || buckets.set(k, []).get(k)).push(i); } });
+    for (const L of buckets.values()) for (let a = 0; a < L.length; a++) for (let b = a + 1; b < L.length; b++) {
+      const i = L[a], j = L[b], p = S[i], q = S[j]; if (find(i) === find(j)) continue;
+      if (p.x0 - pad <= q.x1 && q.x0 - pad <= p.x1 && p.y0 - pad <= q.y1 && q.y0 - pad <= p.y1) par[find(i)] = find(j);
+    }
+    const m = new Map(); S.forEach((g, i) => { const r = find(i); (m.get(r) || m.set(r, []).get(r)).push(g); }); return [...m.values()];
+  };
+  // most common spacing between distinct line positions, and how many gaps are whole multiples of it
+  const spacing = (pos) => {
+    const u = [...new Set(pos.map(v => Math.round(v * 48) / 48))].sort((x, y) => x - y); if (u.length < 5) return null;
+    const cnt = new Map(); for (let i = 1; i < u.length; i++) { const d = Math.round((u[i] - u[i - 1]) * 24) / 24; if (d >= 1.4 && d <= 5.1) cnt.set(d, (cnt.get(d) || 0) + 1); }
+    if (!cnt.size) return null;
+    const sp = [...cnt.entries()].sort((x, y) => y[1] - x[1])[0][0];
+    let ok = 0; for (let i = 1; i < u.length; i++) { const r = (u[i] - u[i - 1]) / sp; if (Math.abs(r - Math.round(r)) < 0.06 && Math.round(r) <= 3) ok++; }
+    return ok / (u.length - 1) >= 0.6 ? sp : null;
+  };
+  const grids = [], used = new Set();
+  for (const C of clusters(segs.filter(g => g.L >= 4), 2.5)) {
+    const V = C.filter(g => g.ax === 'v'), H = C.filter(g => g.ax === 'h');
+    if (V.length < 5 || H.length < 5) continue;
+    if (!spacing(V.map(g => g.a[0])) || !spacing(H.map(g => g.a[1]))) continue;
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; C.forEach(g => { x0 = Math.min(x0, g.x0); x1 = Math.max(x1, g.x1); y0 = Math.min(y0, g.y0); y1 = Math.max(y1, g.y1); used.add(g); });
+    grids.push({ lines: C.map(g => [g.a[0], g.a[1], g.b[0], g.b[1]]), box: { x0, y0, x1, y1 } });
+  }
+  grids.sort((p, q) => q.lines.length - p.lines.length);
+  // beams: long lines, side by side, evenly spaced
+  const beams = [];
+  const long = segs.filter(g => !used.has(g) && g.L >= 20 && !/grid|axis/i.test(g.layer));
+  for (const ax of ['v', 'h']) {
+    for (const C of clusters(long.filter(g => g.ax === ax), 16)) {
+      const off = (g) => ax === 'v' ? g.a[0] : g.a[1];
+      const S2 = C.slice().sort((p, q) => off(p) - off(q));
+      // a beam drawn as its two flange lines (closer than 1′): one beam down the middle
+      const one = [];
+      for (const g of S2) { const last = one[one.length - 1]; if (last && off(g) - last.o < 1 && Math.abs(g.L - last.g.L) < 2) { last.o = (last.o + off(g)) / 2; last.n++; } else one.push({ g, o: off(g), n: 1 }); }
+      if (one.length < 3) continue;
+      const gaps = one.slice(1).map((x, i) => x.o - one[i].o).sort((p, q) => p - q), med = gaps[gaps.length >> 1];
+      if (med < 3 || med > 16) continue;
+      for (const x of one) {
+        const g = x.g, lo = ax === 'v' ? g.y0 : g.x0, hi = ax === 'v' ? g.y1 : g.x1;
+        beams.push(ax === 'v' ? { x1: x.o, y1: lo, x2: x.o, y2: hi } : { x1: lo, y1: x.o, x2: hi, y2: x.o });
+      }
+    }
+  }
+  return { grids, beams };
+}
+/* Where a drawing of lines (a ceiling grid) sits on the walls: try lining its corners up with wall ends and
+   keep the shift that puts the most line ends against a wall. prefer(box): a bonus for a spot (inside the
+   building, say). Returns { dx, dy, score: share of line ends on a wall }. */
+function alignToWalls(lines, walls, prefer) {
+  const cell = 0.5, hit = new Set(), key = (x, y) => Math.floor(x / cell) + ',' + Math.floor(y / cell);
+  for (const w of walls) {
+    const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), r = (w.t || 0.25) / 2 + 0.6, n = Math.max(1, Math.ceil(L / (cell / 2)));
+    for (let i = 0; i <= n; i++) { const x = w.x1 + (w.x2 - w.x1) * i / n, y = w.y1 + (w.y2 - w.y1) * i / n; for (let a = -r; a <= r + 1e-9; a += cell / 2) for (let b = -r; b <= r + 1e-9; b += cell / 2) hit.add(key(x + a, y + b)); }
+  }
+  let pts = []; for (const q of lines) pts.push([q[0], q[1]], [q[2], q[3]]);
+  if (pts.length > 500) { const st = Math.ceil(pts.length / 500); pts = pts.filter((_, i) => i % st === 0); }
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const q of lines) { x0 = Math.min(x0, q[0], q[2]); x1 = Math.max(x1, q[0], q[2]); y0 = Math.min(y0, q[1], q[3]); y1 = Math.max(y1, q[1], q[3]); }
+  const corners = [[x0, y0], [x1, y0], [x0, y1], [x1, y1]], tried = new Set();
+  let best = { dx: 0, dy: 0, score: -1, raw: -1 };
+  for (const w of walls) for (const [ex, ey] of [[w.x1, w.y1], [w.x2, w.y2]]) for (const [cx, cy] of corners) for (const sx of [-1, 0, 1]) for (const sy of [-1, 0, 1]) {
+    // the drawing's corner is at the inside face of the corner wall: try a half-thickness either way
+    const h = (w.t || 0.25) / 2, dx = ex - cx + sx * h, dy = ey - cy + sy * h, k = Math.round(dx * 8) + ',' + Math.round(dy * 8);
+    if (tried.has(k)) continue; tried.add(k);
+    let n = 0; for (const [px, py] of pts) if (hit.has(key(px + dx, py + dy))) n++;
+    const raw = n / pts.length, sc = raw + (prefer && prefer(x0 + dx, y0 + dy, x1 + dx, y1 + dy) ? 0.04 : 0);
+    if (sc > best.score) best = { dx, dy, score: sc, raw };
+  }
+  return { dx: best.dx, dy: best.dy, score: best.raw };
+}
 /* The block names in a drawing that look like doors / windows / pass-thrus, with counts, for the import dialog. */
 function dxfOpeningBlocks(data, unitFt) {
   const m = new Map();
@@ -501,5 +588,5 @@ function wallClusters(walls, gapFt) {
   const g = new Map(); walls.forEach((w, i) => { const r = find(i); (g.get(r) || g.set(r, []).get(r)).push(w); });
   return [...g.values()].map(ws => ({ walls: ws, len: ws.reduce((t, w) => t + Math.hypot(w.x2 - w.x1, w.y2 - w.y1), 0) })).sort((a, b) => b.len - a.len);
 }
-global.Plan3DImport = { arcDoors, mergeLayered, wallClusters, buildingWalls, joinCollinear, pairLines, snapJunctions, wallsFromDxf, openingsFromDxf, dxfOpeningBlocks, dxfFrame, dxfSize, wallsFromImage, UNIT_FT, UNIT_NAMES };
+global.Plan3DImport = { sheetExtras, alignToWalls, arcDoors, mergeLayered, wallClusters, buildingWalls, joinCollinear, pairLines, snapJunctions, wallsFromDxf, openingsFromDxf, dxfOpeningBlocks, dxfFrame, dxfSize, wallsFromImage, UNIT_FT, UNIT_NAMES };
 })(window);

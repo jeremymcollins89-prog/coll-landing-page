@@ -330,6 +330,11 @@ function partsList(plan) {
 
   // --- Building structure: columns, roof joists, roof deck
   for (const c of plan.columns || []) add('Structure', c.kind === 'concrete' ? 'Concrete column' : 'Steel column, wide flange, with base plate', Math.round((c.size || 0.67) * 12) + '″ × ' + ftin(c.h || A.shellTop || V.shellHeight(plan, null)), 1, 'ea', 6);
+  // steel beams by size: count, total length, weight
+  if ((plan.beams || []).length && V.BEAMS) {
+    const by = new Map(); for (const b of plan.beams) { const k = b.size && V.BEAMS[b.size] ? b.size : 'W12x26', L = Math.hypot(b.x2 - b.x1, b.y2 - b.y1), e = by.get(k) || { n: 0, L: 0 }; e.n++; e.L += L; by.set(k, e); }
+    for (const [k, e] of by) add('Structure', 'Steel beam (I-beam) ' + k.replace('x', '×') + ', ' + e.n + ' piece' + (e.n > 1 ? 's' : '') + ', about ' + Math.round(e.L * V.BEAMS[k].lb).toLocaleString() + ' lb', '', Math.ceil(e.L), 'lin ft', 6.5);
+  }
   const RS = V.roofStructure ? V.roofStructure(plan, A) : null;
   if (RS) {
     const byLen = new Map(); for (const j of RS.joists) { const L = Math.ceil(j.len); byLen.set(L, (byLen.get(L) || 0) + 1); }

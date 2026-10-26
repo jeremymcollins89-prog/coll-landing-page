@@ -577,6 +577,12 @@ function toIfc(plan, opts) {
     const sz = c.size || 0.67, ht = c.h || colTop, r = sz / 2, conc = c.kind === 'concrete';
     put('IFCCOLUMN', (conc ? 'Concrete column ' : 'Steel column ') + Math.round(sz * 12) + '″', conc ? 'Concrete column' : 'Steel wide-flange column', shape([box(c.x - r, c.y - r, c.x + r, c.y + r, 0, ht, conc ? S.concrete : S.struct)]), ',.COLUMN.', conc ? S.concrete : S.struct);
   }
+  // steel beams (I-beams): flanges and web along the beam
+  for (const bm of plan.beams || []) {
+    const L = Math.hypot(bm.x2 - bm.x1, bm.y2 - bm.y1); if (L < 0.2 || !V.beamSize) continue;
+    const Z = V.beamSize(bm), d = Z.d / 12, bf = Z.bf / 12, tf = Math.max(0.025, Z.tf / 12), tw = Math.max(0.02, Z.tw / 12), y0 = V.beamBottom(plan, A, bm), nm = (bm.size || 'W12x26').replace('x', '×');
+    put('IFCBEAM', 'Steel beam ' + nm + ', ' + V.fmtFt(L), 'Steel wide-flange beam (I-beam)', shape([seg(bm.x1, bm.y1, bm.x2, bm.y2, y0, y0 + tf, bf, S.struct), seg(bm.x1, bm.y1, bm.x2, bm.y2, y0 + d - tf, y0 + d, bf, S.struct), seg(bm.x1, bm.y1, bm.x2, bm.y2, y0 + tf, y0 + d - tf, tw, S.struct)]), ',.BEAM.', S.struct);
+  }
   if (!A.empty && opts.ceiling !== false) {
     // One ceiling per connected area, traced around the room footprint, so Revit shows no seams where
     // smaller pieces would meet.
