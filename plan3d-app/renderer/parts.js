@@ -307,8 +307,8 @@ function partsList(plan) {
   if (ffuN && ffuLb) add('Ceiling', 'FFU weight on the grid, total', '', Math.round(ffuLb), 'lb', 65);
   if (ffuN && ffuCfm) add('Ceiling', 'FFU airflow, total at max', '', Math.round(ffuCfm), 'CFM', 66);
   if (plan.ceilingGrid && plan.ceilingGrid.length) {
-    let gl = 0; for (const q of plan.ceilingGrid) gl += Math.hypot(q[2] - q[0], q[3] - q[1]);
-    add('Ceiling', 'T-grid, from ceiling drawing', '', Math.ceil(gl), 'lin ft', 64);
+    let gl = 0; for (const q of (V.ceilingLines ? V.ceilingLines(plan, A) : plan.ceilingGrid)) gl += Math.hypot(q[2] - q[0], q[3] - q[1]);
+    add('Ceiling', 'T-grid, from ceiling drawing (carried over the whole ceiling)', '', Math.ceil(gl), 'lin ft', 64);
   }
   if (!A.empty && A.hardAny) {
     const fpr = V.footprint ? V.footprint(A) : null;

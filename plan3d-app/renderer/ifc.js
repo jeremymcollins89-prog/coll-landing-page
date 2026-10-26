@@ -593,7 +593,7 @@ function toIfc(plan, opts) {
     // each tee: the 15/16″ face below the tiles and its web standing up 1½″ into the plenum
     const tees = [], TW = 15 / 16 / 12, tee = (x1, y1, x2, y2) => [seg(x1, y1, x2, y2, H - 0.035, H, TW, S.grid), seg(x1, y1, x2, y2, H + 0.052, H + 0.17, 0.028, S.grid)];
     if (Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length) {
-      for (const q of plan.ceilingGrid) tees.push(...tee(q[0], q[1], q[2], q[3]));
+      for (const q of (V.ceilingLines ? V.ceilingLines(plan, A) : plan.ceilingGrid)) tees.push(...tee(q[0], q[1], q[2], q[3]));
     } else if (footprint && A.hardAny) {
       const G = V.ceilingGrid(plan, A), B = A.bounds, step = footprint.cell / 2;
       const runs = (fixed, lo, hi, isX) => {

@@ -111,6 +111,7 @@ main[data-view="build"] .tools { display: none; }
 .bd-hint { position: absolute; left: 232px; right: 12px; bottom: 12px; background: rgba(23,29,32,.94); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12.5px; color: var(--muted); z-index: 3; }
 .bd-hint.warn { color: var(--warn); border-color: var(--warn); }
 .bd-tag { position: absolute; left: 0; top: 0; pointer-events: none; background: rgba(23,29,32,.94); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 3px 8px; font: 12px var(--mono); white-space: nowrap; z-index: 4; }
+.bd-meas { border-color: #4fd1e8; color: #4fd1e8; font-weight: 600; z-index: 5; }
 
 /* ---------- Parts list ---------- */
 .pl { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 7px; background: var(--ink); max-height: 360px; overflow-y: auto; }

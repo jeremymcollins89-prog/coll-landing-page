@@ -54,9 +54,10 @@ const HINTS = {
   pass: 'Click on a wall to place a 24″ × 24″ stainless pass-thru.',
   chase: 'Drag a rectangle to place a full-height air chase.',
   room: 'Click inside a room to label it.',
+  measure: 'Click two points to measure between them. Snaps to wall ends and lines up with them; Alt for any angle. Esc clears.',
   calibrate: 'Click both ends of a dimension you know, like the 40′ overall.',
   item: 'Pick an item above, then click near a wall: it backs up against the wall. R turns it. Island goes anywhere.',
-  piece: 'Pick a piece above and click to place it. Pieces snap to open ends and turn the corner toward the mouse. R turns a free piece. Right-drag pans.'
+  piece: 'Pick a piece above and click to place it, or drag to lay a whole run of panels. Drag a placed panel with Select to move it; its ends catch on nearby walls. Pieces snap to open ends and turn the corner toward the mouse. R turns a free piece. Right-drag pans.'
 };
 function itemPalette() {
   const IT = Plan3DViewer.ITEMS, groups = {};
@@ -98,6 +99,7 @@ function updateChrome() {
   $('#modeChip').textContent = house ? 'House' : 'Cleanroom';
   $('#docName').textContent = (P.name || 'Untitled plan') + (ed.dirty ? ' •' : '');
   document.title = (P.name || 'Untitled plan') + ' — Coll Plan3D';
+  const cb = $('#bCeiling'); if (cb) cb.textContent = (P.ceilingSource || (P.ceilingMode === 'manual' && (P.fixtures || []).length)) ? 'Edit ceiling' : 'Add ceiling';
   const empty = !P.walls.length && !P.chases.length && !P.background && !(P.inserts || []).length;
   $('#welcome').hidden = !empty;
   if (empty) { $('#wPick').hidden = modePicked; $('#wNext').hidden = !modePicked; welcomeText(); }
@@ -141,7 +143,7 @@ $$('.tools button').forEach(b => b.addEventListener('click', () => { ed.setTool(
 $('#optOrtho').addEventListener('change', e => { ed.ortho = e.target.checked; });
 $('#optDims').addEventListener('change', e => { ed.showDims = e.target.checked; ed.render(); });
 
-const TOOL_KEYS = { v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', i: 'item', e: 'elec', h: 'overhead', u: 'column' };
+const TOOL_KEYS = { v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', i: 'item', e: 'elec', h: 'overhead', u: 'column' };
 const HOUSE_ONLY = new Set(['item']), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase', 'column']);
 function inField(e) { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA'); }
 window.addEventListener('keydown', e => {
@@ -631,13 +633,24 @@ async function openCadProject(r) {
 async function ceilingMenu() {
   if (!ed.plan.walls.length) { toast('Add or import the floor plan first, then add the ceiling on top of it.'); return; }
   const P = ed.plan;
-  if (P.ceilingSource) {
+  if (P.ceilingSource || (P.ceilingMode === 'manual' && (P.fixtures || []).length)) {
+    const nF = (P.fixtures || []).filter(f => f.type === 'ffu').length, nL = (P.fixtures || []).length - nF;
     const a = await dialogOpen({
-      title: 'Ceiling', body: `<p>The ceiling on this plan came from <b>${esc(P.ceilingSource)}</b>.</p>`,
-      buttons: [{ label: 'Remove it', danger: true, ret: 'remove' }, { label: 'Move or turn', ret: 'move' }, { label: 'Use another drawing', primary: true, ret: 'new' }]
+      title: 'Edit ceiling',
+      body: `<p>${P.ceilingSource ? `The ceiling came from <b>${esc(P.ceilingSource)}</b>. ` : ''}It has ${nF} FFU${nF === 1 ? '' : 's'} and ${nL} light${nL === 1 ? '' : 's'}.</p>
+        <ul class="help"><li><b>Place or remove FFUs and lights</b> opens Build with the FFU piece picked: click a cell to add one, click one to take it out.</li>
+        <li><b>Snap them to the grid</b> fits every FFU and light into whole cells of the ceiling grid.</li>
+        <li><b>Move or turn</b> slides the whole ceiling (grid and fixtures) left, right, up or down.</li></ul>`,
+      buttons: [{ label: 'Remove it', danger: true, ret: 'remove' }, { label: 'Use another drawing', ret: 'new' }, { label: 'Move or turn', ret: 'move' }, { label: 'Snap them to the grid', ret: 'snap' }, { label: 'Place or remove FFUs and lights', primary: true, ret: 'place' }]
     });
-    if (a === 'remove') { ed.edit(Q => Plan3DCeiling.removeCeiling(Q)); toast('Ceiling removed. The automatic light layout is back.'); return; }
+    if (a === 'remove') { ed.edit(Q => Plan3DCeiling.removeCeiling(Q)); updateChrome(); toast('Ceiling removed. The automatic light layout is back.'); return; }
     if (a === 'move') { moveCeilingDialog(); return; }
+    if (a === 'snap') {
+      const G = Plan3DViewer.ceilingGrid(P); let moved = 0;
+      ed.edit(Q => { Q.fixtures = (Q.fixtures || []).map(f => { const w = f.w || (G.swap ? 4 : 2), h = f.h || (G.swap ? 2 : 4), n = Plan3DViewer.snapFixture({ ...f, w, h }, G); if (Math.hypot(n.x - f.x, n.y - f.y) > 0.01) moved++; return { ...f, x: n.x, y: n.y, w, h }; }); });
+      toast(moved ? `Moved ${moved} fixture${moved === 1 ? '' : 's'} into the grid cells.` : 'Everything already sits in the grid.'); return;
+    }
+    if (a === 'place') { setView('build'); if (builder) builder.setTool('ffu'); toast('Click a ceiling cell to add an FFU; click one to take it out. Pick LED light in the pieces for lights.'); return; }
     if (a !== 'new') return;
   }
   const r = await api.openFile('ceiling');

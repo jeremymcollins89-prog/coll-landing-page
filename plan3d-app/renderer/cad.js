@@ -162,7 +162,7 @@ function toDxf(plan, opts) {
       pline('A-CLNG-FIXT', [[f.x - hw, f.y - hh], [f.x + hw, f.y - hh], [f.x + hw, f.y + hh], [f.x - hw, f.y + hh]], true);
       text('A-CLNG-FIXT', f.x, f.y, f.type === 'ffu' ? 'FFU' : 'LED', 0.3, hh >= hw ? 90 : 0);
     }
-    for (const q of plan.ceilingGrid || []) line('A-CLNG-GRID', q[0], q[1], q[2], q[3]);
+    for (const q of (plan.ceilingGrid && plan.ceilingGrid.length && V.ceilingLines ? V.ceilingLines(plan, A) : plan.ceilingGrid || [])) line('A-CLNG-GRID', q[0], q[1], q[2], q[3]);
   }
 
   // ---- dimension strings (same layout as the plan sheet)

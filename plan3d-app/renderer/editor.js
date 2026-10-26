@@ -153,7 +153,7 @@ class Editor {
 
   /* ---------- tools ---------- */
   setTool(t) {
-    this.tool = t; this.draft = null; this.cal = null; this.typed = ''; this.drag = null;
+    this.tool = t; this.draft = null; this.cal = null; this.meas = null; this.typed = ''; this.drag = null;
     if (t !== 'select') this.sel = null;
     this.emit('select'); this.emit('tool', t); this.render();
   }
@@ -359,9 +359,18 @@ class Editor {
     }
     if (T === 'piece') {
       if (!this.pieces || this.pieces.tool === 'select') return;
-      const g = this.pieces.ghostAt({ x: p.x, y: p.y });
-      if (g && this.pieces.place(g)) { this.pieceGhost = this.pieces.ghostAt({ x: p.x, y: p.y }); this.render(); }
+      const g = this.pieces.ghostAt({ x: p.x, y: p.y }); if (!g) return;
+      const PC = global.Plan3DBuilder && global.Plan3DBuilder.PIECES[this.pieces.tool];
+      // a panel: drag to lay a whole run of them (a plain click still places one)
+      if (PC && PC.widths && g.mode !== 'replace') { this.drag = { kind: 'run', S: g, px: p.px, py: p.py }; this.c.setPointerCapture(e.pointerId); return; }
+      if (this.pieces.place(g)) { this.pieceGhost = this.pieces.ghostAt({ x: p.x, y: p.y }); this.render(); }
       return;
+    }
+    if (T === 'measure') {
+      const s = this.snap(p.x, p.y, this.meas && !this.meas.p2 ? this.meas.p1 : null, { free: e.altKey });
+      if (!this.meas || this.meas.p2) { this.meas = { p1: { x: s.x, y: s.y } }; this.status('Click the other end. Alt for any angle.'); }
+      else { this.meas.p2 = { x: s.x, y: s.y }; const d = Math.hypot(this.meas.p2.x - this.meas.p1.x, this.meas.p2.y - this.meas.p1.y); this.status('Measured ' + fmt(d) + '. Click to start another, Esc to clear.'); }
+      this.render(); return;
     }
     if (T === 'column') {
       const g = this.snapIn / 12 || 1 / 12, c = { id: uid(), x: Math.round(p.x / g) * g, y: Math.round(p.y / g) * g, size: this.columnSize || 0.67, kind: this.columnKind || 'steel' };
@@ -417,7 +426,16 @@ class Editor {
       D.moved = true;
       const g = this.snapIn / 12 || 1 / 48; dx = Math.round(dx / g) * g; dy = Math.round(dy / g) * g;
       const o = D.obj, O = D.orig;
-      if (D.sel.kind === 'wall') {
+      if (D.sel.kind === 'wall' && o.piece) {
+        // a snap-together panel moves on its own; its ends catch on other walls' ends
+        const tol = 12 / this.view.s; let best = null, bd = tol;
+        const rx = p.x - D.sx, ry = p.y - D.sy;
+        for (const w of this.plan.walls) { if (w === o) continue; for (const [px, py] of [[w.x1, w.y1], [w.x2, w.y2]]) for (const [ex, ey] of [[O.x1 + rx, O.y1 + ry], [O.x2 + rx, O.y2 + ry]]) { const d = Math.hypot(px - ex, py - ey); if (d < bd) { bd = d; best = [px - ex + rx, py - ey + ry]; } } }
+        if (best) { dx = best[0]; dy = best[1]; }
+        o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy;
+        D.ops.forEach(k => { k.o.x1 = k.x1 + dx; k.o.y1 = k.y1 + dy; k.o.x2 = k.x2 + dx; k.o.y2 = k.y2 + dy; });
+        this.snapPt = best ? { x: o.x1, y: o.y1 } : null;
+      } else if (D.sel.kind === 'wall') {
         o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy;
         D.l1.forEach(l => { if (l.end === 1) { l.w.x1 = o.x1; l.w.y1 = o.y1; } else { l.w.x2 = o.x1; l.w.y2 = o.y1; } });
         D.l2.forEach(l => { if (l.end === 1) { l.w.x1 = o.x2; l.w.y1 = o.y2; } else { l.w.x2 = o.x2; l.w.y2 = o.y2; } });
@@ -454,6 +472,12 @@ class Editor {
       this.emit('live'); this.render(); return;
     }
     if (D && D.kind === 'chase') { const s = this.snap(p.x, p.y, null); D.x1 = s.x; D.y1 = s.y; this.render(); return; }
+    if (D && D.kind === 'run') {
+      if (!D.moved && Math.hypot(p.px - D.px, p.py - D.py) < 5) return;
+      D.moved = true; D.run = this.pieces.runAt(D.S, { x: p.x, y: p.y }); this.pieceGhost = D.run;
+      const R = D.run; this.status(R.n > 1 ? R.n + ' panels, ' + fmt(R.w * R.n) + ' — let go to place them' : this.pieces.label({ ...R.pieces[0], tool: R.tool, mode: R.mode }));
+      this.render(); return;
+    }
     if (this.tool === 'piece' && this.pieces && this.pieces.tool !== 'select') {
       this.pieceGhost = this.pieces.ghostAt({ x: p.x, y: p.y });
       this.status(this.pieceGhost ? this.pieces.label(this.pieceGhost) : '');
@@ -472,6 +496,11 @@ class Editor {
     if (!D) return;
     if (D.kind === 'end') { this.commit(D.before); this.emit('select'); }
     else if (D.kind === 'move') { if (D.moved) { this.commit(D.before); this.emit('select'); } }
+    else if (D.kind === 'run') {
+      const P = this.cursor || { x: D.S.x1, y: D.S.y1 };
+      if (D.moved && D.run) this.pieces.placeRun(D.run); else this.pieces.place(D.S);
+      this.pieceGhost = this.pieces.ghostAt({ x: P.x, y: P.y }); this.render();
+    }
     else if (D.kind === 'chase') {
       const x0 = Math.min(D.x0, D.x1), x1 = Math.max(D.x0, D.x1), y0 = Math.min(D.y0, D.y1), y1 = Math.max(D.y0, D.y1);
       if (x1 - x0 > 0.3 && y1 - y0 > 0.3) {
@@ -528,6 +557,7 @@ class Editor {
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.tool === 'item') { this.itemRot = ((this.itemRot || 0) + 1) % 4; this.render(); return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'item') { const o = this.selected(); if (o) this.edit(() => { o.a = (o.a || 0) + Math.PI / 2 * (e.shiftKey ? -1 : 1); }); return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'insert') { const o = this.selected(); if (o) this.edit(() => { o.rot = (((o.rot || 0) + (e.shiftKey ? 3 : 1)) % 4); }); return true; }
+    if (k === 'Escape' && this.meas) { this.meas = null; this.status(''); this.render(); return true; }
     if (k === 'Escape') { if (this.draft) this.endChain(); else if (this.cal) { this.cal = null; this.render(); } else if (this.tool !== 'select') this.setTool('select'); else { this.sel = null; this.emit('select'); this.render(); } return true; }
     if ((k === 'Delete' || k === 'Backspace') && this.sel) { this.deleteSel(); return true; }
     return false;
@@ -819,12 +849,13 @@ class Editor {
       const bad = PG.bad, fill = bad ? 'rgba(255,106,77,.35)' : 'rgba(242,200,75,.35)', line = bad ? '#ff6a4d' : COL.draft;
       g.fillStyle = fill; g.strokeStyle = line; g.lineWidth = 1.5;
       if (PG.x0 != null) { const X = this.sx(PG.x0), Y = this.sy(PG.y0), W = (PG.x1 - PG.x0) * s, H = (PG.y1 - PG.y0) * s; g.fillRect(X, Y, W, H); g.strokeRect(X, Y, W, H); }
-      else if (PG.mode === 'cell') { g.fillRect(this.sx(PG.x - 0.95), this.sy(PG.y - 1.95), 1.9 * s, 3.9 * s); g.strokeRect(this.sx(PG.x - 0.95), this.sy(PG.y - 1.95), 1.9 * s, 3.9 * s); }
+      else if (PG.mode === 'cell') { const fw = (PG.w || 2) - 0.1, fh = (PG.h || 4) - 0.1; g.fillRect(this.sx(PG.x - fw / 2), this.sy(PG.y - fh / 2), fw * s, fh * s); g.strokeRect(this.sx(PG.x - fw / 2), this.sy(PG.y - fh / 2), fw * s, fh * s); }
       else {
         const t = (this.plan.wallT || 0.25) + (PG.mode === 'replace' ? 0.5 : 0.04);
         quad(PG.x1, PG.y1, PG.x2, PG.y2, t); g.fill(); g.stroke();
         dimFor(PG.x1, PG.y1, PG.x2, PG.y2, t, line, true);
         g.fillStyle = line; g.beginPath(); g.arc(this.sx(PG.x1), this.sy(PG.y1), 3.5, 0, Math.PI * 2); g.fill();
+        if (PG.pieces && PG.n > 1) { const L = Math.hypot(PG.x2 - PG.x1, PG.y2 - PG.y1) || 1, nx = -(PG.y2 - PG.y1) / L * t * 0.8, ny = (PG.x2 - PG.x1) / L * t * 0.8; g.beginPath(); for (const q of PG.pieces.slice(1)) { g.moveTo(this.sx(q.x1 - nx), this.sy(q.y1 - ny)); g.lineTo(this.sx(q.x1 + nx), this.sy(q.y1 + ny)); } g.stroke(); }
       }
     }
     if (this.tool === 'calibrate') {
@@ -834,6 +865,22 @@ class Editor {
         g.strokeStyle = COL.cal; g.lineWidth = 2; g.beginPath(); g.moveTo(this.sx(c1.x), this.sy(c1.y)); g.lineTo(this.sx(c2.x), this.sy(c2.y)); g.stroke();
         for (const p of [c1, c2]) { g.beginPath(); g.arc(this.sx(p.x), this.sy(p.y), 5, 0, Math.PI * 2); g.stroke(); }
       } else if (C) this.crosshair(this.snap(C.x, C.y, null));
+    }
+    if (this.tool === 'measure') {
+      const m1 = this.meas && this.meas.p1;
+      const m2 = this.meas && (this.meas.p2 || (C && this.snap(C.x, C.y, m1, {})));
+      if (m1 && m2) {
+        const X1 = this.sx(m1.x), Y1 = this.sy(m1.y), X2 = this.sx(m2.x), Y2 = this.sy(m2.y), L = Math.hypot(X2 - X1, Y2 - Y1) || 1, nx = -(Y2 - Y1) / L * 6, ny = (X2 - X1) / L * 6;
+        g.save(); g.strokeStyle = COL.snap; g.lineWidth = 1.6;
+        g.beginPath(); g.moveTo(X1, Y1); g.lineTo(X2, Y2); g.moveTo(X1 - nx, Y1 - ny); g.lineTo(X1 + nx, Y1 + ny); g.moveTo(X2 - nx, Y2 - ny); g.lineTo(X2 + nx, Y2 + ny); g.stroke();
+        const d = Math.hypot(m2.x - m1.x, m2.y - m1.y), dx = Math.abs(m2.x - m1.x), dy = Math.abs(m2.y - m1.y);
+        const txt = fmt(d) + (dx > 0.5 && dy > 0.5 ? `  (${fmt(dx)} × ${fmt(dy)})` : '');
+        g.font = '600 12px Consolas, monospace'; const tw = g.measureText(txt).width, mx = (X1 + X2) / 2 + nx * 2.2, my = (Y1 + Y2) / 2 + ny * 2.2;
+        g.fillStyle = 'rgba(23,29,32,.92)'; g.fillRect(mx - tw / 2 - 5, my - 9, tw + 10, 18);
+        g.fillStyle = COL.snap; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, mx, my);
+        g.restore();
+      }
+      if (C && !(this.meas && this.meas.p2)) this.crosshair(this.snap(C.x, C.y, m1 || null));
     }
     if (this.typed) {
       g.font = '600 13px Consolas, monospace'; g.fillStyle = COL.draft; g.textAlign = 'left'; g.textBaseline = 'top';
