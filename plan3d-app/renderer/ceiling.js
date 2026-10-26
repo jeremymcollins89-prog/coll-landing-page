@@ -48,7 +48,8 @@ function fixtureGroups(data, unitFt) {
     let g = groups.get(key);
     if (!g) {
       const txt = (r.name || '') + ' ' + r.layer;
-      const type = tagType || (RX_FFU.test(txt) ? 'ffu' : RX_LED.test(txt) ? 'led' : 'ignore');
+      // plumbing fixtures (sinks, toilets, showers) are 'fixtures' too, but not ceiling ones
+      const type = /sanr|plumb|toilet|sink|shwr|shower|lav|urinal|\btlt\b|pfix|drain/i.test(txt) ? 'ignore' : tagType || (RX_FFU.test(txt) ? 'ffu' : RX_LED.test(txt) ? 'led' : 'ignore');
       g = { key, layer: r.layer, name: r.name || '', w: round(lo, 0.5), h: round(hi, 0.5), tag: tagType ? tag : '', count: 0, type, items: [] };
       groups.set(key, g);
     }

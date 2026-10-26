@@ -54,6 +54,7 @@ const HINTS = {
   pass: 'Click on a wall to place a 24″ × 24″ stainless pass-thru.',
   chase: 'Drag a rectangle to place a full-height air chase.',
   room: 'Click inside a room to label it.',
+  beam: 'Click both ends of a steel beam (I-beam). It sits on top of the cleanroom when it is over one, otherwise up under the roof; pick it to change its size or height.',
   measure: 'Click two points to measure between them. Snaps to wall ends and lines up with them; Alt for any angle. Esc clears.',
   calibrate: 'Click both ends of a dimension you know, like the 40′ overall.',
   item: 'Pick an item above, then click near a wall: it backs up against the wall. R turns it. Island goes anywhere.',
@@ -143,7 +144,7 @@ $$('.tools button').forEach(b => b.addEventListener('click', () => { ed.setTool(
 $('#optOrtho').addEventListener('change', e => { ed.ortho = e.target.checked; });
 $('#optDims').addEventListener('change', e => { ed.showDims = e.target.checked; ed.render(); });
 
-const TOOL_KEYS = { v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', i: 'item', e: 'elec', h: 'overhead', u: 'column' };
+const TOOL_KEYS = { v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', b: 'beam', i: 'item', e: 'elec', h: 'overhead', u: 'column' };
 const HOUSE_ONLY = new Set(['item']), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase', 'column']);
 function inField(e) { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA'); }
 window.addEventListener('keydown', e => {
@@ -188,11 +189,11 @@ function renderProps(opt) {
   const box = $('#props'), P = ed.plan, s = ed.sel, o = ed.selected();
   let h = '';
   if (ed.multi && ed.multi.length > 1) {
-    const M = ed.multi, cnt = {}, NAMES = { wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building' };
+    const M = ed.multi, cnt = {}, NAMES = { wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', fixture: 'FFUs and lights' };
     M.forEach(r => { cnt[r.kind] = (cnt[r.kind] || 0) + 1; });
     const grouped = M.every(r => { const x = ed.find(r); return x && x.gid && x.gid === ed.find(M[0]).gid; });
     box.innerHTML = `<div class="hd"><span class="kind">${M.length} pieces selected${grouped ? ' (a group)' : ''}</span><button class="btn small danger" id="mDel">Delete</button></div>
-      <div class="grp"><div class="stats">${Object.entries(cnt).map(([k, n]) => `<span>${esc(NAMES[k] || k)}${n > 1 ? (k === 'opening' ? '' : 's') : ''}</span><span>${n}</span>`).join('')}</div></div>
+      <div class="grp"><div class="stats">${Object.entries(cnt).map(([k, n]) => `<span>${esc(NAMES[k] || k)}${n > 1 && k !== 'opening' && k !== 'fixture' ? 's' : ''}</span><span>${n}</span>`).join('')}</div></div>
       <div class="row">${grouped ? '<button class="btn small" id="mUngroup">Ungroup</button>' : '<button class="btn small" id="mGroup">Group them</button>'}<button class="btn small" id="mCopy">Copy</button></div>
       <div class="row"><button class="btn small primary" id="mSave">Save to the library…</button></div>
       <p class="note">Drag any of them to move them all; their walls catch on nearby wall ends (hold Alt to move freely). Shift+click adds or takes out one piece; Shift-drag a box adds more. A group stays together: clicking one piece picks up the whole group. Ctrl+G groups, Ctrl+Shift+G ungroups, Ctrl+C / Ctrl+V copy and paste.</p>`;
@@ -314,6 +315,22 @@ function renderProps(opt) {
     return;
   }
   if (s && o && s.kind === 'insert') { insertProps(box, o); return; }
+  if (s && o && s.kind === 'beam') {
+    const BM = Plan3DViewer.BEAMS, len = Math.hypot(o.x2 - o.x1, o.y2 - o.y1), auto = Plan3DViewer.beamBottom(ed.plan, null, { ...o, bot: 0 });
+    h = `<div class="hd"><span class="kind">Steel beam</span><button class="btn small danger" id="pDel">Delete</button></div>
+      ${fld('Size', `<select id="pBmS">${Object.keys(BM).map(k => `<option value="${k}" ${(o.size || 'W12x26') === k ? 'selected' : ''}>${k.replace('x', ' × ')} (${BM[k].d.toFixed(1)}″ deep)</option>`).join('')}</select>`)}
+      ${fld('Length', txt('pBmL', fmt(len)))}
+      ${fld('Bottom of beam at', txt('pBmB', o.bot ? fmt(o.bot) : '', 'Auto (' + fmt(auto) + ')'))}
+      <div class="row"><button class="btn small" id="pBmDup">Add another 8′ over</button></div>
+      <p class="note">Auto puts it on top of the cleanroom when it's over one, otherwise up under the roof. Beams go on the parts list (length and weight) and into the Revit export. Drag to move; Shift-drag a box to move a set of them.</p>`;
+    box.innerHTML = h;
+    $('#pBmS').onchange = e => ed.edit(() => { o.size = e.target.value; ed.beamSize = o.size; });
+    bindLen('pBmL', 'ft', v => ed.edit(() => { const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1, ux = (o.x2 - o.x1) / L, uy = (o.y2 - o.y1) / L; o.x2 = o.x1 + ux * Math.max(0.5, v); o.y2 = o.y1 + uy * Math.max(0.5, v); }));
+    const bb = $('#pBmB'); bb.onchange = () => { const raw = bb.value.trim(); if (!raw) { ed.edit(() => { delete o.bot; }); renderProps(); return; } const v = parseLen(raw, 'ft'); if (isFinite(v) && v > 0) ed.edit(() => { o.bot = Math.min(80, v); }); };
+    $('#pBmDup').onclick = () => { const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1, nx = -(o.y2 - o.y1) / L * 8, ny = (o.x2 - o.x1) / L * 8, n = { ...o, id: Plan3DEditor.uid(), x1: o.x1 + nx, y1: o.y1 + ny, x2: o.x2 + nx, y2: o.y2 + ny }; delete n.gid; ed.edit(Pl => Pl.beams.push(n)); ed.sel = { kind: 'beam', id: n.id }; ed.emit('select'); };
+    $('#pDel').onclick = () => ed.deleteSel();
+    return;
+  }
   if (s && o && s.kind === 'column') {
     h = `<div class="hd"><span class="kind">Column</span><button class="btn small danger" id="pDel">Delete</button></div>
       ${fld('Type', `<select id="pColK"><option value="steel" ${o.kind !== 'concrete' ? 'selected' : ''}>Steel, wide flange</option><option value="concrete" ${o.kind === 'concrete' ? 'selected' : ''}>Concrete</option></select>`)}
@@ -1026,6 +1043,64 @@ function detectDialog() {
 }
 
 /* ---------- DXF import ---------- */
+/* The rest of the sheet: a ceiling grid, FFU / light layouts and steel beams drawn off to the side. The grid
+   is slid onto the walls where its ends land on walls best (inside the building, if there's one); beams are
+   centred on the same spot; FFU layouts can't be matched to a room, so each comes in as a group just below
+   the cleanroom, ready to drag into its room (they land in the grid's cells). */
+function sheetExtrasToPlan(data, o, walls, bld, p) {
+  const ex = IMP.sheetExtras(data, o), F = IMP.dxfFrame(data, o), k = o.unitFt, said = [];
+  let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9; walls.forEach(w => { if (bld && bld.has && bld.has(w.id)) { bx0 = Math.min(bx0, w.x1, w.x2); bx1 = Math.max(bx1, w.x1, w.x2); by0 = Math.min(by0, w.y1, w.y2); by1 = Math.max(by1, w.y1, w.y2); } });
+  const inBld = bx0 < bx1 ? (a, b, c, d) => a >= bx0 - 1 && c <= bx1 + 1 && b >= by0 - 1 && d <= by1 + 1 : null;
+  let target = null, dx = 0, dy = 0;
+  const g = ex.grids[0];
+  if (g) {
+    const al = IMP.alignToWalls(g.lines, walls, inBld);
+    if (al.score >= 0.35) { dx = al.dx; dy = al.dy; target = { x0: g.box.x0 + dx, y0: g.box.y0 + dy, x1: g.box.x1 + dx, y1: g.box.y1 + dy }; }
+    p.ceilingGrid = g.lines.map(q => [q[0] + dx, q[1] + dy, q[2] + dx, q[3] + dy]);
+    p.ceilingMode = 'manual'; p.ceilingSource = data.name; p.fixtures = p.fixtures || [];
+    said.push(target ? 'The ceiling grid is laid on the cleanroom' : 'The ceiling grid couldn\'t be matched to the walls; use Edit ceiling → Move or turn to line it up');
+  }
+  if (ex.beams.length) {
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; ex.beams.forEach(b => { x0 = Math.min(x0, b.x1, b.x2); x1 = Math.max(x1, b.x1, b.x2); y0 = Math.min(y0, b.y1, b.y2); y1 = Math.max(y1, b.y1, b.y2); });
+    let mx = 0, my = 0;
+    const fits = target && Math.abs((x1 - x0) - (target.x1 - target.x0)) < Math.max(6, 0.15 * (target.x1 - target.x0)) && Math.abs((y1 - y0) - (target.y1 - target.y0)) < Math.max(6, 0.15 * (target.y1 - target.y0));
+    if (fits) { mx = (target.x0 + target.x1) / 2 - (x0 + x1) / 2; my = (target.y0 + target.y1) / 2 - (y0 + y1) / 2; }
+    else { const al = IMP.alignToWalls(ex.beams.map(b => [b.x1, b.y1, b.x2, b.y2]), walls, inBld); if (al.score >= 0.5) { mx = al.dx; my = al.dy; } }
+    const q = (v) => Math.round(v * 48) / 48;
+    p.beams = ex.beams.map(b => ({ id: Plan3DEditor.uid(), x1: q(b.x1 + mx), y1: q(b.y1 + my), x2: q(b.x2 + mx), y2: q(b.y2 + my), size: 'W12x26' }));
+    said.push(`${ex.beams.length} steel beam${ex.beams.length > 1 ? 's' : ''} ${fits || mx || my ? 'over the cleanroom' : 'where they are on the sheet'} (W12×26; pick one to change the size or height)`);
+  }
+  // FFUs and lights
+  const C = window.Plan3DCeiling;
+  if (C) {
+    const groups = C.fixtureGroups(data, k).filter(gr => gr.type !== 'ignore' && !o.layers.has(gr.layer));
+    const fx = [];
+    for (const gr of groups) for (const r of gr.items) { const [x, y] = F.P(r.cx, r.cy); if (fx.some(f => Math.abs(f.x - x) < 0.3 && Math.abs(f.y - y) < 0.3)) continue; fx.push({ type: gr.type, x, y, w: r.w * k, h: r.h * k }); }
+    if (fx.length) {
+      // layouts: fixtures within 6′ of each other
+      const par = fx.map((_, i) => i), find = (i) => (par[i] === i ? i : (par[i] = find(par[i])));
+      for (let i = 0; i < fx.length; i++) for (let j = i + 1; j < fx.length; j++) if (Math.abs(fx[i].x - fx[j].x) < (fx[i].w + fx[j].w) / 2 + 6 && Math.abs(fx[i].y - fx[j].y) < (fx[i].h + fx[j].h) / 2 + 6) par[find(i)] = find(j);
+      const lay = new Map(); fx.forEach((f, i) => { const r = find(i); (lay.get(r) || lay.set(r, []).get(r)).push(f); });
+      const L = [...lay.values()];
+      // drawn over the cleanroom already (on a ceiling drawing laid on the plan)? keep them; otherwise line the layouts up below it
+      const over = (f) => target && f.x > target.x0 && f.x < target.x1 && f.y > target.y0 && f.y < target.y1;
+      // below the cleanroom, and outside the building if the cleanroom is in one
+      const inside = target && bx0 < bx1 && target.x0 >= bx0 - 1 && target.x1 <= bx1 + 1 && target.y0 >= by0 - 1 && target.y1 <= by1 + 1;
+      let cx = target ? target.x0 : null; const cy = target ? (inside ? by1 : target.y1) + 4 : null;
+      if (p.ceilingMode !== 'manual') { p.fixtures = []; p.ceilingMode = 'manual'; }
+      for (const lay1 of L) {
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9; lay1.forEach(f => { x0 = Math.min(x0, f.x - f.w / 2); x1 = Math.max(x1, f.x + f.w / 2); y0 = Math.min(y0, f.y - f.h / 2); });
+        let mx = 0, my = 0;
+        if (target && !lay1.every(over)) { mx = cx - x0; my = cy - y0; cx += (x1 - x0) + 4; }
+        const gid = Plan3DEditor.uid();
+        for (const f of lay1) p.fixtures.push({ id: Plan3DEditor.uid(), type: f.type, x: f.x + mx, y: f.y + my, w: f.w, h: f.h, gid });
+      }
+      const nF = fx.filter(f => f.type === 'ffu').length, nL = fx.length - nF;
+      said.push(`${[nF ? nF + ' FFU' + (nF > 1 ? 's' : '') : '', nL ? nL + ' light' + (nL > 1 ? 's' : '') : ''].filter(Boolean).join(' and ')} in ${L.length} layout${L.length > 1 ? 's' : ''}${target ? ' set out just below the building: drag each into its room on the Plan (it lands in the grid)' : ''}`);
+    }
+  }
+  return said.length ? { text: 'Also from the sheet: ' + said.join('; ') + '.' } : null;
+}
 function dxfDialog(data, preset) {
   preset = preset || {};
   const opTypes = {};
@@ -1047,6 +1122,7 @@ function dxfDialog(data, preset) {
       ${fld('Walls drawn as', `<select id="dxM"><option value="double">Two parallel lines</option><option value="single">Single centerline</option></select>`)}
       ${fld('Wall thickness', '<input type="text" id="dxT" value="2&quot; to 8&quot;">')}
       ${fld('Separate drawings', `<select id="dxC"><option value="all">Everything on the sheet</option><option value="main">Only the main building (skip copies and loose bits off to the side)</option></select>`)}
+      ${fld('Also bring in', `<label class="chk"><input type="checkbox" id="dxX" checked> Ceiling grid, FFUs and lights, and steel beams drawn on the sheet, lined up on the cleanroom</label>`)}
       ${fld('Outside walls', `<select id="dxB"><option value="auto">Building walls when a cleanroom stands inside them (warehouse)</option><option value="all">Always building walls</option><option value="none">Cleanroom hardwall</option></select>`)}
       ${fld('Building walls are', `<select id="dxBK"><option value="auto">Metal panel up to 6″, concrete if thicker</option><option value="metal">Metal panel</option><option value="concrete">Concrete</option><option value="cmu">Concrete block</option><option value="stud">Steel stud and drywall</option></select>`)}
       <p class="sizeline" id="dxSize"></p>
@@ -1093,15 +1169,17 @@ function dxfDialog(data, preset) {
     const bld = IMP.buildingWalls ? eachDrawing(walls, ops.openings, o.bldMode) : new Set();
     for (const w of walls) if (bld.has(w.id)) w.kind = o.bldKind === 'auto' ? (w.t <= 0.5 + 1e-6 ? 'metal' : 'concrete') : o.bldKind;
     const p = Editor.blank(); p.name = data.name; p.walls = walls; p.openings = ops.openings; p.wallT = o.mode === 'single' ? o.tFt : 0.25;
+    const extra = o.extras && walls.length ? sheetExtrasToPlan(data, o, walls, bld, p) : null;
     if (walls.length) { const t = walls.map(w => w.t).sort((a, b) => a - b); p.wallT = t[t.length >> 1]; }
     projectPath = null; ed.setPlan(p); ed.dirty = true; updateChrome();
     const f = ops.found, parts = [];
     if (f.door) parts.push(f.door + ' door' + (f.door > 1 ? 's' : '')); if (f.door2) parts.push(f.door2 + ' pair' + (f.door2 > 1 ? 's' : '') + ' of doors');
     if (f.glass) parts.push(f.glass + ' window' + (f.glass > 1 ? 's' : '')); if (f.pass) parts.push(f.pass + ' pass-thru' + (f.pass > 1 ? 's' : ''));
+    const exText = extra && extra.text ? ' ' + extra.text : '';
     const opsText = parts.length ? ' and ' + parts.join(', ') : '. No door or window symbols were found; add them with the Door, Pair and Glass tools';
     const bldText = bld.size ? ` The ${bld.size} outside walls are the building (${Plan3DViewer.WALL_KINDS[walls.find(w => bld.has(w.id)).kind].short.toLowerCase()}); pick one to change it.` : '';
     const skipText = !skipped ? '' : o.clusters === 'all' ? ` Left out ${skipped} loose wall bit${skipped === 1 ? '' : 's'} standing on ${skipped === 1 ? 'its' : 'their'} own (a curb or a sign on a wall layer).` : ` Left out ${skipped} wall${skipped === 1 ? '' : 's'} away from the main building (a copy off to the side, loose bits); import again with “Separate drawings: Everything on the sheet” to keep them.`;
-    if (walls.length) showBanner(`Imported ${walls.length} walls${opsText}.${bldText}${skipText} Check them, then add chases and rooms.`, [{ label: 'View in 3D', primary: true, fn: () => { hideBanner(); setView('split'); } }]);
+    if (walls.length) showBanner(`Imported ${walls.length} walls${opsText}.${bldText}${skipText}${exText} Check them, then add chases and rooms.`, [{ label: 'View in 3D', primary: true, fn: () => { hideBanner(); setView('split'); } }]);
     else showBanner('No walls were found with these settings. Try "Single centerline", a wider thickness range, or other layers.', [{ label: 'Try again', primary: true, fn: () => dxfDialog(data, preset) }]);
   });
   function readDx() {
@@ -1109,7 +1187,7 @@ function dxfDialog(data, preset) {
     const unitFt = IMP.UNIT_FT[+$('#dxU').value] || 1 / 12, mode = $('#dxM').value;
     const tv = $('#dxT').value.split(/to|-|–/i).map(s => parseLen(s.trim(), 'in')).filter(v => v > 0);
     const minT = tv.length > 1 ? Math.min(...tv) : (tv[0] || 0.25) * 0.6, maxT = tv.length > 1 ? Math.max(...tv) : (tv[0] || 0.25) * 1.5;
-    return { layers, unitFt, mode, minT, maxT, tFt: tv[0] || 0.25, minLen: 0.75, keepOrigin: !!preset.keepOrigin, bldMode: ($('#dxB') || {}).value || 'auto', bldKind: ($('#dxBK') || {}).value || 'auto', clusters: ($('#dxC') || {}).value || 'all' };
+    return { layers, unitFt, mode, minT, maxT, tFt: tv[0] || 0.25, minLen: 0.75, keepOrigin: !!preset.keepOrigin, bldMode: ($('#dxB') || {}).value || 'auto', bldKind: ($('#dxBK') || {}).value || 'auto', clusters: ($('#dxC') || {}).value || 'all', extras: !$('#dxX') || $('#dxX').checked };
   }
 }
 
@@ -1193,10 +1271,10 @@ async function insertBuildingDialog() { return libraryDialog('building'); }
    A group is any set of pieces (walls, doors, chases, devices, items …) saved together and placed as a
    group you can drag; a ceiling is a ceiling drawing's grid and fixtures, laid on a plan from its corner. */
 const LIB_TYPES = { building: 'Buildings', group: 'Groups of pieces', ceiling: 'Ceilings' };
-const PIECE_LISTS = ['walls', 'openings', 'chases', 'rooms', 'devices', 'items', 'columns'];
+const PIECE_LISTS = ['walls', 'openings', 'chases', 'rooms', 'devices', 'items', 'columns', 'beams', 'fixtures'];
 // the selected pieces (with the doors in their walls), copied and centred on 0,0
 function collectPieces(refs) {
-  const R2 = ed.withOpenings(refs), out = {}, LIST = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', device: 'devices', item: 'items', column: 'columns' };
+  const R2 = ed.withOpenings(refs), out = {}, LIST = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', device: 'devices', item: 'items', column: 'columns', beam: 'beams', fixture: 'fixtures' };
   PIECE_LISTS.forEach(k => { out[k] = []; });
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
   for (const r of R2) { const L = LIST[r.kind], o = ed.find(r); if (!L || !o) continue; out[L].push(JSON.parse(JSON.stringify(o))); for (const [x, y] of ed.refPts(r)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } }
@@ -1210,8 +1288,10 @@ function collectPieces(refs) {
 // put a copy of saved pieces in the plan around (x, y); new ids; selected (and grouped, if asked) afterwards
 function pastePieces(data, x, y, group) {
   const g = 1 / 12; x = Math.round(x / g) * g; y = Math.round(y / g) * g;
-  const ids = new Map(), gid = group ? Plan3DEditor.uid() : null, refs = [], KIND = { walls: 'wall', openings: 'opening', chases: 'chase', rooms: 'room', devices: 'device', items: 'item', columns: 'column' };
+  const ids = new Map(), gid = group ? Plan3DEditor.uid() : null, refs = [], KIND = { walls: 'wall', openings: 'opening', chases: 'chase', rooms: 'room', devices: 'device', items: 'item', columns: 'column', beams: 'beam', fixtures: 'fixture' };
   ed.edit(P => {
+    // FFUs and lights join a drawn ceiling: an automatic one becomes hand-placed first
+    if ((data.fixtures || []).length && P.ceilingMode !== 'manual') { P.fixtures = Plan3DViewer.ceilingFixtures(P).map(f => ({ id: Plan3DEditor.uid(), type: f.type, x: f.x, y: f.y })); P.ceilingMode = 'manual'; }
     for (const k of PIECE_LISTS) for (const src of data[k] || []) {
       const o = JSON.parse(JSON.stringify(src)), nid = Plan3DEditor.uid(); ids.set(o.id, nid); o.id = nid;
       if ('x0' in o && 'x1' in o) { o.x0 += x; o.x1 += x; o.y0 += y; o.y1 += y; } else if ('x2' in o) { o.x1 += x; o.x2 += x; o.y1 += y; o.y2 += y; } else { o.x += x; o.y += y; }

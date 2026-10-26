@@ -172,6 +172,7 @@ function transformPlan(src, T, idp) {
   const turnA = (a) => { const cx = Math.cos(a || 0), sy = Math.sin(a || 0); return Math.atan2(T.c * cx + T.d * sy, T.a * cx + T.b * sy); };
   for (const dv of P.devices || []) { [dv.x, dv.y] = X(dv.x, dv.y); dv.a = turnA(dv.a); if (dv.id) dv.id = pre + dv.id; }
   for (const c of P.columns || []) { [c.x, c.y] = X(c.x, c.y); if (c.id) c.id = pre + c.id; }
+  for (const b of P.beams || []) { [b.x1, b.y1] = X(b.x1, b.y1); [b.x2, b.y2] = X(b.x2, b.y2); if (b.id) b.id = pre + b.id; }
   for (const it of P.items || []) { [it.x, it.y] = X(it.x, it.y); it.a = turnA(it.a); if (it.id) it.id = pre + it.id; }
   for (const f of P.fixtures || []) { [f.x, f.y] = X(f.x, f.y); if (turned) { const w = f.w || 2, h = f.h || 4; f.w = h; f.h = w; } if (f.id) f.id = pre + f.id; }
   if (P.ceilGrid && isFinite(P.ceilGrid.ox)) { const [gx, gy] = X(P.ceilGrid.ox, P.ceilGrid.oy); P.ceilGrid = { ox: gx, oy: gy, swap: !!P.ceilGrid.swap !== turned }; }
@@ -200,8 +201,8 @@ function splitByCeiling(P) {
     if (G.comp[k] >= 0) return keyOfComp[G.comp[k]];
     return G.inside[k] && !G.wall[k] ? def : null;
   };
-  const groups = new Map([[def.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [], devices: [], items: [], columns: [] }, def)]]);
-  const grp = (k) => { if (!groups.has(k.key)) groups.set(k.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [], devices: [], items: [], columns: [] }, k)); return groups.get(k.key); };
+  const groups = new Map([[def.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [], devices: [], items: [], columns: [], beams: [] }, def)]]);
+  const grp = (k) => { if (!groups.has(k.key)) groups.set(k.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [], devices: [], items: [], columns: [], beams: [] }, k)); return groups.get(k.key); };
   const top = (k) => k.H + k.PL;
   const wallOf = new Map();
   for (const w of P.walls || []) {
@@ -227,12 +228,13 @@ function splitByCeiling(P) {
   for (const dv of P.devices || []) { const back = at(dv.x + Math.cos(dv.a || 0) * 0.6, dv.y + Math.sin(dv.a || 0) * 0.6); grp(back || def).devices.push(dv); }
   for (const it of P.items || []) grp(at(it.x, it.y) || def).items.push(it);
   for (const c of P.columns || []) groups.get(def.key).columns.push(c);
+  for (const b of P.beams || []) groups.get(def.key).beams.push(b);
   // every area keeps the building's one ceiling grid, so tees line up across the areas
   const cg = P.ceilGrid && isFinite(P.ceilGrid.ox) ? P.ceilGrid : (() => { const g = ceilingGrid(P, A0); return { ox: g.ox, oy: g.oz, swap: g.swap }; })();
   const out = [];
   for (const g of groups.values()) {
     if (!g.walls.length && !g.rooms.length) continue;
-    const q = Object.assign({}, P, { inserts: undefined, walls: g.walls, openings: g.openings, chases: g.chases, rooms: g.rooms, fixtures: g.fixtures, devices: g.devices, items: g.items, columns: g.columns, ceiling: g.H, plenum: g.PL, ceilGrid: cg });
+    const q = Object.assign({}, P, { inserts: undefined, walls: g.walls, openings: g.openings, chases: g.chases, rooms: g.rooms, fixtures: g.fixtures, devices: g.devices, items: g.items, columns: g.columns, beams: g.beams, ceiling: g.H, plenum: g.PL, ceilGrid: cg });
     Object.defineProperty(q, '__ghost', { value: g.ghost, enumerable: false, configurable: true });
     out.push({ plan: q, H: g.H, PL: g.PL, def: g.key === def.key });
   }
@@ -263,7 +265,7 @@ function zones(plan, T, idp, out) {
 /* One flat plan with every building merged in (for 2D drawings: DWG/DXF and the plan sheet). */
 function flatten(plan) {
   const Z = zones(plan), F = Object.assign({}, Z[0].plan, { inserts: [] }); delete F.__sib;
-  for (const k of ['walls', 'openings', 'chases', 'rooms', 'devices', 'items', 'columns']) F[k] = [].concat(...Z.map(z => z.plan[k] || []));
+  for (const k of ['walls', 'openings', 'chases', 'rooms', 'devices', 'items', 'columns', 'beams']) F[k] = [].concat(...Z.map(z => z.plan[k] || []));
   // each building's own lights and FFUs, already laid out on its own grid
   F.fixtures = [].concat(...Z.map(z => ceilingFixtures(z.plan))); F.ceilingMode = 'manual'; F.fixturesFinal = true;
   return F;
@@ -601,6 +603,24 @@ function gridFromLines(L) {
   const X = axis(xs), Y = axis(ys);
   const r = X && Y ? { ox: X.o, oz: Y.o, cw: X.sp, cl: Y.sp, swap: X.sp > Y.sp + 0.1, fromLines: true } : null;
   LINE_GRID.set(L, r); return r;
+}
+/* Steel beams (I-beams, wide flange) laid on the plan: { id, x1, y1, x2, y2, size, bot }. size is a W shape;
+   bot is the height of the beam's underside (unset: on top of the cleanroom when it's over one, otherwise up
+   under the roof deck). */
+const BEAMS = {
+  W8x18: { d: 8.14, bf: 5.25, tf: 0.33, tw: 0.23, lb: 18 }, W10x22: { d: 10.17, bf: 5.75, tf: 0.36, tw: 0.24, lb: 22 },
+  W12x26: { d: 12.22, bf: 6.49, tf: 0.38, tw: 0.23, lb: 26 }, W14x30: { d: 13.84, bf: 6.73, tf: 0.39, tw: 0.27, lb: 30 },
+  W16x31: { d: 15.88, bf: 5.53, tf: 0.44, tw: 0.28, lb: 31 }, W18x35: { d: 17.7, bf: 6.0, tf: 0.43, tw: 0.3, lb: 35 },
+  W21x44: { d: 20.66, bf: 6.5, tf: 0.45, tw: 0.35, lb: 44 }, W24x55: { d: 23.57, bf: 7.0, tf: 0.51, tw: 0.4, lb: 55 }
+};
+const beamSize = (b) => BEAMS[b && b.size] || BEAMS.W12x26;
+function beamBottom(plan, A, b) {
+  if (b.bot > 0) return +b.bot;
+  A = A || analyze(plan);
+  const fp = footprint(A), mx = (b.x1 + b.x2) / 2, my = (b.y1 + b.y2) / 2, d = beamSize(b).d / 12;
+  const over = fp && [0.25, 0.5, 0.75].some(f => fp.has(b.x1 + (b.x2 - b.x1) * f, b.y1 + (b.y2 - b.y1) * f));
+  if (over || !A.shellTop) return (A.WH || (plan.ceiling || 8)) + (A.PL > 0 ? 0.17 : 0.05);
+  return Math.max(1, A.shellTop - d - 0.05);
 }
 /* Zoom for the orbit views: the wheel zooms toward whatever is under the mouse (not the middle of the
    screen), in steps that scale with distance, so a far corner comes up in a few turns and a close-up
@@ -1483,6 +1503,17 @@ function buildScene(THREE, plan, A) {
     g.traverse(o => { if (o.isMesh) { outline(o); pick.push(o); if (c.id) o.userData.ref = { kind: 'column', id: c.id }; } });
     root.add(g);
   }
+  // steel beams: top and bottom flanges and the web, along the beam
+  for (const b of plan.beams || []) {
+    const L = Math.hypot(b.x2 - b.x1, b.y2 - b.y1); if (L < 0.2) continue;
+    const S = beamSize(b), d = S.d / 12, bf = S.bf / 12, tf = Math.max(0.025, S.tf / 12), tw = Math.max(0.02, S.tw / 12), y0 = beamBottom(plan, A, b);
+    const stl = new THREE.MeshPhongMaterial({ color: 0x7d868b, specular: 0x444444, shininess: 30 }), g = new THREE.Group();
+    for (const y of [tf / 2, d - tf / 2]) { const f = new THREE.Mesh(new THREE.BoxGeometry(L, tf, bf), stl); f.position.y = y; g.add(f); }
+    const wb = new THREE.Mesh(new THREE.BoxGeometry(L, d - 2 * tf, tw), stl); wb.position.y = d / 2; g.add(wb);
+    g.position.set((b.x1 + b.x2) / 2, y0, (b.y1 + b.y2) / 2); g.rotation.y = -Math.atan2(b.y2 - b.y1, b.x2 - b.x1);
+    g.traverse(o => { if (o.isMesh) { outline(o); pick.push(o); if (b.id) o.userData.ref = { kind: 'beam', id: b.id }; } });
+    root.add(g);
+  }
   curRef = null;
   if (ownGrid) {
     const tw = 0.078 / 2, pos = [];
@@ -2150,5 +2181,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { BEAMS, beamSize, beamBottom, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);
