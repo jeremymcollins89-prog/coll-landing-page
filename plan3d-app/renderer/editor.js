@@ -51,7 +51,7 @@ const DEFAULT_W = { door: 3, door2: 6, glass: 4, open: 3, pass: 2, window: 3, ov
 // houses: 2′-8″ doors, 5′ pairs, 3′ windows, 6′-8″ heads
 const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2, overhead: 16 };
 const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass', 'overhead']);
-const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas' };
+const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas', gzone: 'gridZones' };
 const COL = {
   bg: '#1a2024', gridMinor: 'rgba(255,255,255,.035)', gridMajor: 'rgba(255,255,255,.08)', axis: 'rgba(255,255,255,.14)',
   wall: '#e9eef0', wallLine: '#8e9aa1', sp: '#f2d06b', chase: '#59666d', chaseLine: '#b7c2c7', grille: '#9fdbe8',
@@ -92,7 +92,7 @@ class Editor {
   snapshot() { return JSON.stringify(this.plan); }
   commit(before) {
     this.hist.push(before); if (this.hist.length > 200) this.hist.shift(); this.fut = []; this.dirty = true;
-    this._chk = undefined; this._seats = null; this._lights = null; this.emit('change'); this.render();
+    this._chk = undefined; this._seats = null; this._lights = null; this._gridKey = null; this.emit('change'); this.render();
   }
   /* the cleanroom check (airflow per room, pressure across doors), worked out once per change */
   check() {
@@ -101,11 +101,33 @@ class Editor {
     this._chk = V2 && V2.cleanroomCheck && (P.rooms || []).some(r => r.iso || (r.pressure != null && r.pressure !== '')) ? (() => { try { return V2.cleanroomCheck(P); } catch (e) { return null; } })() : null;
     return this._chk;
   }
+  /* the Grid tool's click: take the generated ceiling off the closed-off space under the point (its FFUs and
+     lights go too), or put ceiling back on a space that has none. Generate ceiling remembers both. */
+  toggleCeilingAt(x, y) {
+    const V = global.Plan3DViewer, P = this.plan;
+    if (!(Array.isArray(P.ceilRects) && P.ceilRects.length)) { this.status('Generate the ceiling first (Generate ceiling at the top), then click spaces to take it off or put it back.'); return; }
+    const sp = V.ceilingSpaceAt(P, x, y); if (!sp) { this.status('No closed-off space there.'); return; }
+    const inR = (rs, px, py) => rs.some(r => px >= r[0] && px <= r[2] && py >= r[1] && py <= r[3]);
+    const over = (a, b) => Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])) * Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+    const has = P.ceilRects.reduce((t, r) => t + sp.rects.reduce((u, q) => u + over(r, q), 0), 0) > Math.min(4, sp.area * 0.3);
+    this.edit(Q => {
+      const pt = { x: +x.toFixed(2), y: +y.toFixed(2) };
+      if (has) {
+        Q.ceilRects = V.rectsMinus(Q.ceilRects, sp.rects);
+        Q.fixtures = (Q.fixtures || []).filter(f => !inR(sp.rects, f.x, f.y));
+        Q.ceilForce = (Q.ceilForce || []).filter(q => !inR(sp.rects, q.x, q.y)); (Q.ceilSkip = Q.ceilSkip || []).push(pt);
+      } else {
+        Q.ceilRects = Q.ceilRects.concat(sp.rects);
+        Q.ceilSkip = (Q.ceilSkip || []).filter(q => !inR(sp.rects, q.x, q.y)); (Q.ceilForce = Q.ceilForce || []).push(pt);
+      }
+    });
+    this.status(has ? 'Ceiling taken off ' + (sp.room ? sp.room.name || 'this room' : 'this space') + ' (with its FFUs and lights). Click again to put it back.' : 'Ceiling put on ' + (sp.room ? sp.room.name || 'this room' : 'this space') + '. Generate ceiling again to fill it with FFUs and lights, or place them.');
+  }
   /* turn an FFU or light a quarter turn in the grid: a 2 × 4 laid across the grid takes half of two cells side by
      side, and the T-grid and tiles around it are worked out from that */
   turnFixture(o) {
     const V2 = global.Plan3DViewer; if (!V2) return;
-    const G = V2.ceilingGrid(this.plan), w = o.w || (G.swap ? 4 : 2), h = o.h || (G.swap ? 2 : 4);
+    const G = V2.gridAt ? V2.gridAt(this.plan, o.x, o.y) : V2.ceilingGrid(this.plan), w = o.w || (G.swap ? 4 : 2), h = o.h || (G.swap ? 2 : 4);
     if (Math.abs(w - h) < 0.1) { this.status('A square fixture looks the same turned.'); return; }
     this.edit(() => { const q = V2.snapFixture({ x: o.x, y: o.y, w: h, h: w }, G); o.w = h; o.h = w; o.x = q.x; o.y = q.y; });
     const turned = V2.fixtureTurned ? V2.fixtureTurned(o, G) : false;
@@ -152,14 +174,14 @@ class Editor {
   refPts(r) {
     const o = this.find(r); if (!o) return [];
     if (r.kind === 'wall' || r.kind === 'opening' || r.kind === 'beam') return [[o.x1, o.y1], [o.x2, o.y2]];
-    if (r.kind === 'chase' || r.kind === 'carea') return [[o.x0, o.y0], [o.x1, o.y1]];
+    if (r.kind === 'chase' || r.kind === 'carea' || r.kind === 'gzone') return [[o.x0, o.y0], [o.x1, o.y1]];
     if (r.kind === 'insert') { const b = this.insBox(o); return [[b.x0, b.y0], [b.x1, b.y1]]; }
     return [[o.x, o.y]];
   }
   // a piece moved by (dx, dy) from its original copy O
   shiftRef(kind, o, O, dx, dy) {
     if (kind === 'wall' || kind === 'opening' || kind === 'beam') { o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy; }
-    else if (kind === 'chase' || kind === 'carea') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
+    else if (kind === 'chase' || kind === 'carea' || kind === 'gzone') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; if (kind === 'gzone') { if (isFinite(O.ox)) o.ox = O.ox + dx; if (isFinite(O.oy)) o.oy = O.oy + dy; } }
     else { o.x = O.x + dx; o.y = O.y + dy; }
   }
   isMulti(r) { return !!(this.multi && r && this.multi.some(m => m.kind === r.kind && m.id === r.id)); }
@@ -365,6 +387,12 @@ class Editor {
     if (V && V.itemCorners) for (let i = (P.items || []).length - 1; i >= 0; i--) { const c = V.itemCorners(P.items[i]); if (inPoly(x, y, c)) return { kind: 'item', id: P.items[i].id }; }
     for (let i = P.rooms.length - 1; i >= 0; i--) { const r = P.rooms[i]; if (Math.abs(x - r.x) < 50 / this.view.s && Math.abs(y - r.y) < 14 / this.view.s) return { kind: 'room', id: r.id }; }
     for (let i = P.chases.length - 1; i >= 0; i--) { const k = P.chases[i]; if (x >= Math.min(k.x0, k.x1) - tol && x <= Math.max(k.x0, k.x1) + tol && y >= Math.min(k.y0, k.y1) - tol && y <= Math.max(k.y0, k.y1) + tol) return { kind: 'chase', id: k.id }; }
+    for (let i = (P.gridZones || []).length - 1; i >= 0; i--) {
+      const k = P.gridZones[i], x0 = Math.min(k.x0, k.x1), x1 = Math.max(k.x0, k.x1), y0 = Math.min(k.y0, k.y1), y1 = Math.max(k.y0, k.y1);
+      const onLabel = x <= x1 && x >= x1 - 80 / this.view.s && y >= y0 && y <= y0 + 18 / this.view.s;
+      const onEdge = x >= x0 - tol && x <= x1 + tol && y >= y0 - tol && y <= y1 + tol && !(x > x0 + tol && x < x1 - tol && y > y0 + tol && y < y1 - tol);
+      if (onLabel || onEdge) return { kind: 'gzone', id: k.id };
+    }
     for (let i = (P.ceilAreas || []).length - 1; i >= 0; i--) {
       const k = P.ceilAreas[i], x0 = Math.min(k.x0, k.x1), x1 = Math.max(k.x0, k.x1), y0 = Math.min(k.y0, k.y1), y1 = Math.max(k.y0, k.y1);
       const onLabel = x >= x0 && x <= x0 + 90 / this.view.s && y >= y0 && y <= y0 + 18 / this.view.s;
@@ -503,6 +531,10 @@ class Editor {
       const it = { id: uid(), type: q.type, x: q.x, y: q.y, a: q.a, w: q.w, d: q.d };
       this.edit(P => { (P.items = P.items || []).push(it); }); return;
     }
+    if (T === 'grid') {
+      const s = this.snap(p.x, p.y, null);
+      this.drag = { kind: 'gzone', x0: s.x, y0: s.y, x1: s.x, y1: s.y, px: p.x, py: p.y }; this.c.setPointerCapture(e.pointerId); return;
+    }
     if (T === 'carea') {
       const s = this.snap(p.x, p.y, null);
       this.drag = { kind: 'carea', x0: s.x, y0: s.y, x1: s.x, y1: s.y }; this.c.setPointerCapture(e.pointerId); return;
@@ -553,12 +585,12 @@ class Editor {
       if (best) { dx += best[0]; dy += best[1]; } else { const g = this.snapIn / 12 || 1 / 48; dx = Math.round(dx / g) * g; dy = Math.round(dy / g) * g; }
       // FFUs and lights moving together land in the ceiling grid's cells
       const fx = D.items.find(it => it.r.kind === 'fixture');
-      if (fx && !best && global.Plan3DViewer) { const V = global.Plan3DViewer, q = V.snapFixture({ x: fx.O.x + dx, y: fx.O.y + dy, w: fx.O.w || 2, h: fx.O.h || 4 }, V.ceilingGrid(this.plan)); dx = q.x - fx.O.x; dy = q.y - fx.O.y; }
+      if (fx && !best && global.Plan3DViewer) { const V = global.Plan3DViewer, q = V.snapFixture({ x: fx.O.x + dx, y: fx.O.y + dy, w: fx.O.w || 2, h: fx.O.h || 4 }, V.gridAt(this.plan, fx.O.x + dx, fx.O.y + dy)); dx = q.x - fx.O.x; dy = q.y - fx.O.y; }
       for (const it of D.items) this.shiftRef(it.r.kind, it.o, it.O, dx, dy);
       // and each one sits in a cell of its own (a layout drawn a hair off the grid still lands cleanly)
       if (fx && !best && global.Plan3DViewer) {
-        const V = global.Plan3DViewer, G = V.ceilingGrid(this.plan), taken = new Set();
-        for (const it of D.items) if (it.r.kind === 'fixture') { const q = V.snapFixture({ x: it.o.x, y: it.o.y, w: it.o.w || 2, h: it.o.h || 4 }, G), k = Math.round(q.x * 4) + ',' + Math.round(q.y * 4); if (!taken.has(k)) { taken.add(k); it.o.x = q.x; it.o.y = q.y; } }
+        const V = global.Plan3DViewer, taken = new Set();
+        for (const it of D.items) if (it.r.kind === 'fixture') { const q = V.snapFixture({ x: it.o.x, y: it.o.y, w: it.o.w || 2, h: it.o.h || 4 }, V.gridAt(this.plan, it.o.x, it.o.y)), k = Math.round(q.x * 4) + ',' + Math.round(q.y * 4); if (!taken.has(k)) { taken.add(k); it.o.x = q.x; it.o.y = q.y; } }
       }
       this.status('Moving ' + this.multi.length + ' pieces: ' + fmt(Math.hypot(dx, dy)) + (best ? ' · caught on a wall end' : ''));
       this.emit('live'); this.render(); return;
@@ -593,7 +625,8 @@ class Editor {
           o.x1 = w.x1 + wx * (s - len / 2); o.y1 = w.y1 + wy * (s - len / 2); o.x2 = w.x1 + wx * (s + len / 2); o.y2 = w.y1 + wy * (s + len / 2); o.t = w.t;
         } else { const k = dx * ux + dy * uy; o.x1 = O.x1 + ux * k; o.y1 = O.y1 + uy * k; o.x2 = O.x2 + ux * k; o.y2 = O.y2 + uy * k; }
       } else if (D.sel.kind === 'beam') { o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy; }
-      else if (D.sel.kind === 'fixture') { const V = global.Plan3DViewer, G = V.ceilingGrid(this.plan), q = V.snapFixture({ x: O.x + (p.x - D.sx), y: O.y + (p.y - D.sy), w: O.w || 2, h: O.h || 4 }, G); o.x = q.x; o.y = q.y; }
+      else if (D.sel.kind === 'fixture') { const V = global.Plan3DViewer, G = V.gridAt(this.plan, O.x + (p.x - D.sx), O.y + (p.y - D.sy)), q = V.snapFixture({ x: O.x + (p.x - D.sx), y: O.y + (p.y - D.sy), w: O.w || 2, h: O.h || 4 }, G); o.x = q.x; o.y = q.y; }
+      else if (D.sel.kind === 'gzone') { this.shiftRef('gzone', o, O, dx, dy); }
       else if (D.sel.kind === 'chase' || D.sel.kind === 'carea') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
       else if (D.sel.kind === 'room') { o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy); }
       else if (D.sel.kind === 'column') { const g = this.snapIn / 12 || 1 / 12; o.x = Math.round((O.x + (p.x - D.sx)) / g) * g; o.y = Math.round((O.y + (p.y - D.sy)) / g) * g; }
@@ -616,7 +649,7 @@ class Editor {
       }
       this.emit('live'); this.render(); return;
     }
-    if (D && (D.kind === 'chase' || D.kind === 'carea')) { const s = this.snap(p.x, p.y, null); D.x1 = s.x; D.y1 = s.y; this.render(); return; }
+    if (D && (D.kind === 'chase' || D.kind === 'carea' || D.kind === 'gzone')) { const s = this.snap(p.x, p.y, null); D.x1 = s.x; D.y1 = s.y; this.render(); return; }
     if (D && D.kind === 'run') {
       if (!D.moved && Math.hypot(p.px - D.px, p.py - D.py) < 5) return;
       D.moved = true; D.run = this.pieces.runAt(D.S, { x: p.x, y: p.y }); this.pieceGhost = D.run;
@@ -663,6 +696,18 @@ class Editor {
       const P = this.cursor || { x: D.S.x1, y: D.S.y1 };
       if (D.moved && D.run) this.pieces.placeRun(D.run); else this.pieces.place(D.S);
       this.pieceGhost = this.pieces.ghostAt({ x: P.x, y: P.y }); this.render();
+    }
+    else if (D.kind === 'gzone') {
+      const x0 = Math.min(D.x0, D.x1), x1 = Math.max(D.x0, D.x1), y0 = Math.min(D.y0, D.y1), y1 = Math.max(D.y0, D.y1);
+      if (x1 - x0 < 1 && y1 - y0 < 1) { this.toggleCeilingAt(D.px, D.py); this.render(); return; }
+      if (x1 - x0 > 2 && y1 - y0 > 2) {
+        const V = global.Plan3DViewer, G = V.ceilingGrid(this.plan);
+        // a new section starts turned a quarter turn from the main grid, its lines from its own corner
+        const k = { id: uid(), x0, y0, x1, y1, swap: !G.swap };
+        this.edit(Q => (Q.gridZones = Q.gridZones || []).push(k)); this.sel = { kind: 'gzone', id: k.id }; this.emit('select');
+        this.status('Grid section placed, turned a quarter turn. Change its direction or where its lines start on the right.');
+      }
+      this.render();
     }
     else if (D.kind === 'carea') {
       const x0 = Math.min(D.x0, D.x1), x1 = Math.max(D.x0, D.x1), y0 = Math.min(D.y0, D.y1), y1 = Math.max(D.y0, D.y1);
@@ -909,13 +954,18 @@ class Editor {
     if (this.tool === 'beam' && this.beamA && this.cursor) { const q = this.snap(this.cursor.x, this.cursor.y, this.beamA, {}); g.save(); g.strokeStyle = COL.draft; g.setLineDash([7, 4]); g.lineWidth = 1.5; g.beginPath(); g.moveTo(this.sx(this.beamA.x), this.sy(this.beamA.y)); g.lineTo(this.sx(q.x), this.sy(q.y)); g.stroke(); g.restore(); this.status('Beam ' + fmt(Math.hypot(q.x - this.beamA.x, q.y - this.beamA.y)) + ' — click the other end.'); }
     // a generated ceiling: its T-grid, drawn over the rooms it was laid out in
     if (Array.isArray(P.ceilRects) && P.ceilRects.length && this.showCeil !== false && V2 && V2.ceilingGrid) {
-      const G = V2.ceilingGrid(P);
+      const key = JSON.stringify([P.ceilRects.length, P.ceilRects[0], P.gridZones || [], P.ceilGrid || null, P.walls.length]);
+      if (this._gridKey !== key) { try { this._gridLines = V2.generatedGridLines(P) || []; } catch (e) { this._gridLines = []; } this._gridKey = key; }
       g.save(); g.strokeStyle = 'rgba(127,211,227,.32)'; g.lineWidth = 1; g.beginPath();
-      for (const [x0, z0, x1, z1] of P.ceilRects) {
-        for (let x = G.ox + Math.ceil((x0 - G.ox) / G.cw - 1e-6) * G.cw; x <= x1 + 1e-6; x += G.cw) { g.moveTo(this.sx(x), this.sy(z0)); g.lineTo(this.sx(x), this.sy(z1)); }
-        for (let z = G.oz + Math.ceil((z0 - G.oz) / G.cl - 1e-6) * G.cl; z <= z1 + 1e-6; z += G.cl) { g.moveTo(this.sx(x0), this.sy(z)); g.lineTo(this.sx(x1), this.sy(z)); }
-      }
+      for (const q of this._gridLines) { g.moveTo(this.sx(q[0]), this.sy(q[1])); g.lineTo(this.sx(q[2]), this.sy(q[3])); }
       g.stroke(); g.restore();
+    }
+    // grid sections: an amber outline with which way their tiles run
+    for (const k of (Array.isArray(P.ceilRects) && P.ceilRects.length ? P.gridZones || [] : [])) {
+      const X = this.sx(Math.min(k.x0, k.x1)), Y = this.sy(Math.min(k.y0, k.y1)), W = Math.abs(k.x1 - k.x0) * s, H = Math.abs(k.y1 - k.y0) * s;
+      g.save(); g.strokeStyle = 'rgba(242,200,75,.85)'; g.lineWidth = 1.4; g.setLineDash([6, 4]); g.strokeRect(X, Y, W, H); g.setLineDash([]);
+      g.font = '600 11px Consolas, monospace'; g.fillStyle = '#f2c84b'; g.textAlign = 'right'; g.textBaseline = 'top';
+      g.fillText('GRID ' + (k.swap ? '4′ ↔' : '4′ ↕'), X + W - 5, Y + 4); g.restore();
     }
     // FFUs and lights from a drawn ceiling (drag them; they land in the grid's cells)
     if (P.ceilingMode === 'manual' && this.showCeil !== false && !(this.tool === 'piece' && this.pieces && (this.pieces.tool === 'led' || this.pieces.tool === 'ffu'))) {
@@ -1052,7 +1102,7 @@ class Editor {
       g.strokeStyle = color; g.lineWidth = width;
       if (sel.kind === 'wall') { quad(o.x1, o.y1, o.x2, o.y2, Math.max(o.t || 0.25, 1.5 / s) + 4 / s); g.stroke(); }
       else if (sel.kind === 'opening') { quad(o.x1, o.y1, o.x2, o.y2, (o.t || 0.25) + 6 / s); g.stroke(); }
-      else if (sel.kind === 'chase' || sel.kind === 'carea') { g.strokeRect(this.sx(Math.min(o.x0, o.x1)) - 2, this.sy(Math.min(o.y0, o.y1)) - 2, Math.abs(o.x1 - o.x0) * s + 4, Math.abs(o.y1 - o.y0) * s + 4); }
+      else if (sel.kind === 'chase' || sel.kind === 'carea' || sel.kind === 'gzone') { g.strokeRect(this.sx(Math.min(o.x0, o.x1)) - 2, this.sy(Math.min(o.y0, o.y1)) - 2, Math.abs(o.x1 - o.x0) * s + 4, Math.abs(o.y1 - o.y0) * s + 4); }
       else if (sel.kind === 'room') { g.strokeRect(this.sx(o.x) - 48, this.sy(o.y) - 14, 96, 28); }
       else if (sel.kind === 'column') { const r = (o.size || 0.67) / 2; g.strokeRect(this.sx(o.x - r) - 4, this.sy(o.y - r) - 4, 2 * r * s + 8, 2 * r * s + 8); }
       else if (sel.kind === 'device') { const r = Math.max(5, Math.min(9, this.view.s * 0.35)); g.beginPath(); g.arc(this.sx(o.x) + Math.cos(o.a || 0) * r * 1.1, this.sy(o.y) + Math.sin(o.a || 0) * r * 1.1, r + 4, 0, Math.PI * 2); g.stroke(); }
@@ -1090,7 +1140,7 @@ class Editor {
     }
     if (C && this.tool === 'elec' && global.Plan3DViewer) { const q = this.devicePlace(C.x, C.y, this.deviceType || 'outlet'); if (q) this.drawDevice(q, true); }
     if (C && this.tool === 'item' && global.Plan3DViewer) { const q = this.itemPlace(C.x, C.y, this.itemType); if (q) this.drawItem(q, true); }
-    if (this.drag && (this.drag.kind === 'chase' || this.drag.kind === 'carea')) {
+    if (this.drag && (this.drag.kind === 'chase' || this.drag.kind === 'carea' || this.drag.kind === 'gzone')) {
       const D = this.drag; g.fillStyle = 'rgba(242,200,75,.25)'; g.strokeStyle = COL.draft; g.lineWidth = 1.5;
       const X = this.sx(Math.min(D.x0, D.x1)), Y = this.sy(Math.min(D.y0, D.y1)), W = Math.abs(D.x1 - D.x0) * s, H = Math.abs(D.y1 - D.y0) * s;
       g.fillRect(X, Y, W, H); g.strokeRect(X, Y, W, H);

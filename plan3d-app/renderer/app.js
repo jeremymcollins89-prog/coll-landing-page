@@ -53,6 +53,7 @@ const HINTS = {
   open: 'Click on a wall to place a cased opening (no door).',
   pass: 'Click on a wall to place a 24″ × 24″ stainless pass-thru.',
   chase: 'Drag a rectangle to place a full-height air chase.',
+  grid: 'Grid tool. Click a room or aisle to take its generated ceiling off (FFUs and lights too), or put it back. Drag a rectangle to make a grid section you can turn or shift.',
   carea: 'Drag a rectangle inside a room to give that part of it its own ceiling height. Bulkhead panels fill the step where it meets the rest of the ceiling.',
   room: 'Click inside a room to label it.',
   beam: 'Click both ends of a steel beam (I-beam). Over the cleanroom it spans wall to wall in the plenum, its top level with the top of the walls; otherwise it goes up under the roof. Pick it to change its size or height.',
@@ -149,8 +150,8 @@ $$('.tools button').forEach(b => b.addEventListener('click', () => { ed.setTool(
 $('#optOrtho').addEventListener('change', e => { ed.ortho = e.target.checked; });
 $('#optDims').addEventListener('change', e => { ed.showDims = e.target.checked; ed.render(); });
 
-const TOOL_KEYS = { v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', b: 'beam', i: 'item', e: 'elec', h: 'overhead', u: 'column', a: 'carea' };
-const HOUSE_ONLY = new Set(['item']), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase', 'column', 'carea']);
+const TOOL_KEYS = { v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', b: 'beam', i: 'item', e: 'elec', h: 'overhead', u: 'column', a: 'carea', t: 'grid' };
+const HOUSE_ONLY = new Set(['item']), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase', 'column', 'carea', 'grid']);
 function inField(e) { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA'); }
 window.addEventListener('keydown', e => {
   if ($('#dlg').open || inField(e)) return;
@@ -199,7 +200,7 @@ function renderProps(opt) {
   const box = $('#props'), P = ed.plan, s = ed.sel, o = ed.selected();
   let h = '';
   if (ed.multi && ed.multi.length > 1) {
-    const M = ed.multi, cnt = {}, NAMES = { wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', fixture: 'FFUs and lights' };
+    const M = ed.multi, cnt = {}, NAMES = { wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', gzone: 'grid section', fixture: 'FFUs and lights' };
     M.forEach(r => { cnt[r.kind] = (cnt[r.kind] || 0) + 1; });
     const grouped = M.every(r => { const x = ed.find(r); return x && x.gid && x.gid === ed.find(M[0]).gid; });
     box.innerHTML = `<div class="hd"><span class="kind">${M.length} pieces selected${grouped ? ' (a group)' : ''}</span><button class="btn small danger" id="mDel">Delete</button></div>
@@ -336,6 +337,29 @@ function renderProps(opt) {
         toast(`Grille ${fmtIn(G.w)} × ${fmtIn(G.h)}${G.damper ? ' with damper' : ''} set on ${n} chase${n === 1 ? '' : 's'}. Grilles wider than a chase face are trimmed to fit.`);
       };
     }
+    $('#pDel').onclick = () => ed.deleteSel();
+    return;
+  }
+  if (s && o && s.kind === 'gzone') {
+    const V = Plan3DViewer, G0 = V.ceilingGrid(P), Z = V.zoneGrid(o), b = { x0: Math.min(o.x0, o.x1), x1: Math.max(o.x0, o.x1), y0: Math.min(o.y0, o.y1), y1: Math.max(o.y0, o.y1) };
+    h = `<div class="hd"><span class="kind">Grid section</span><button class="btn small danger" id="pDel">Delete</button></div>
+      ${fld('Tiles run', `<select id="pGzS"><option value="0" ${!o.swap ? 'selected' : ''}>4′ side up and down the plan</option><option value="1" ${o.swap ? 'selected' : ''}>4′ side across the plan</option></select>`)}
+      ${fld('Lines start at', `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">${txt('pGzX', fmt(Z.ox), 'x')}${txt('pGzY', fmt(Z.oz), 'y')}</div>`)}
+      <div class="row"><button class="btn small" id="pGzL">← 1″</button><button class="btn small" id="pGzR">1″ →</button><button class="btn small" id="pGzU">↑ 1″</button><button class="btn small" id="pGzD">1″ ↓</button><button class="btn small" id="pGzL6">← 6″</button><button class="btn small" id="pGzR6">6″ →</button><button class="btn small" id="pGzU6">↑ 6″</button><button class="btn small" id="pGzD6">6″ ↓</button></div>
+      <div class="row"><button class="btn small" id="pGzC">Start at this section's corner</button><button class="btn small" id="pGzM">Line up with the main grid</button><button class="btn small" id="pGzCt">Centre in the section</button></div>
+      <div class="row"><button class="btn small" id="pGzF">Fit the FFUs and lights into it</button></div>
+      ${fld('Size', `<span class="mono">${esc(fmt(b.x1 - b.x0))} × ${esc(fmt(b.y1 - b.y0))}</span>`)}
+      <p class="note">This part of the ceiling gets its own grid: turned, or shifted so its lines meet a wall or another grid where you want. The 3D view, plenum tees, plan and parts list follow it. Drag its outline or label to move it (its lines move with it).</p>`;
+    box.innerHTML = h;
+    const set = (fn) => ed.edit(() => { fn(); });
+    $('#pGzS').onchange = e => set(() => { o.swap = e.target.value === '1'; });
+    bindLen('pGzX', 'ft', v => set(() => { o.ox = v; })); bindLen('pGzY', 'ft', v => set(() => { o.oy = v; }));
+    const nudge = (dx, dy) => set(() => { o.ox = +(Z.ox + dx).toFixed(4); o.oy = +(Z.oz + dy).toFixed(4); });
+    for (const [id, dx, dy] of [['pGzL', -1 / 12, 0], ['pGzR', 1 / 12, 0], ['pGzU', 0, -1 / 12], ['pGzD', 0, 1 / 12], ['pGzL6', -0.5, 0], ['pGzR6', 0.5, 0], ['pGzU6', 0, -0.5], ['pGzD6', 0, 0.5]]) $('#' + id).onclick = () => nudge(dx, dy);
+    $('#pGzC').onclick = () => set(() => { delete o.ox; delete o.oy; });
+    $('#pGzM').onclick = () => set(() => { o.ox = G0.ox; o.oy = G0.oz; });
+    $('#pGzCt').onclick = () => set(() => { o.ox = +((b.x0 + b.x1) / 2).toFixed(4); o.oy = +((b.y0 + b.y1) / 2).toFixed(4); });
+    $('#pGzF').onclick = () => { let n = 0; ed.edit(Q => { for (const f of Q.fixtures || []) { if (f.x < b.x0 || f.x > b.x1 || f.y < b.y0 || f.y > b.y1) continue; const G = V.zoneGrid(o), long = Math.max(f.w || 2, f.h || 4), short = Math.min(f.w || 2, f.h || 4), w = G.cw > G.cl ? long : short, hh = G.cw > G.cl ? short : long, q = V.snapFixture({ ...f, w, h: hh }, G); f.w = w; f.h = hh; f.x = q.x; f.y = q.y; n++; } }); toast(n ? `Fitted ${n} FFU${n === 1 ? '' : 's'} and lights into this section's grid.` : 'No FFUs or lights in this section.'); };
     $('#pDel').onclick = () => ed.deleteSel();
     return;
   }
@@ -737,7 +761,7 @@ async function generateCeilingDialog() {
       ${fld('Class for rooms without one', `<select id="gcIso">${[5, 6, 7, 8, 9].map(n => `<option value="${n}" ${n === 7 ? 'selected' : ''}>ISO ${n} (${Plan3DViewer.ISO_TARGETS[n].ach} air changes, ${Plan3DViewer.ISO_TARGETS[n].cov}% FFU coverage)</option>`).join('')}</select>`)}
       ${fld('Lights', `<select id="gcLt"><option value="48">Bright: one per 48 sq ft</option><option value="64" selected>Standard: one per 64 sq ft</option><option value="80">One per 80 sq ft</option><option value="100">Low: one per 100 sq ft</option></select>`)}
       ${fld('Grid', `<select id="gcSw"><option value="0" ${!G0.swap ? 'selected' : ''}>4′ side of the tiles runs up and down the plan</option><option value="1" ${G0.swap ? 'selected' : ''}>4′ side of the tiles runs across the plan</option></select>`)}
-      <p class="note">FFU airflow: ${FM ? esc(FM.name) + ', ' + ((FM.sizes.find(q => q.nominal === '2x4') || FM.sizes[0]).cfm || '?') + ' CFM per 2×4 (pick another model in the Plan panel)' : 'no FFU model picked, so 720 CFM per 2×4 (90 fpm); pick a model in the Plan panel for its real airflow'}. A room's own class (set on its room label) wins over the one above. A room label's <b>Generated ceiling</b> setting can also give a room a ceiling no matter what, lights but no FFUs, or no ceiling. Gaps of up to 20′ between cleanroom wall ends count as closed.</p>
+      <p class="note">FFU airflow: ${FM ? esc(FM.name) + ', ' + ((FM.sizes.find(q => q.nominal === '2x4') || FM.sizes[0]).cfm || '?') + ' CFM per 2×4 (pick another model in the Plan panel)' : 'no FFU model picked, so 720 CFM per 2×4 (90 fpm); pick a model in the Plan panel for its real airflow'}. A room's own class (set on its room label) wins over the one above. A room label's <b>Generated ceiling</b> setting can also give a room a ceiling no matter what, lights but no FFUs, or no ceiling. Gaps of up to 20′ between cleanroom wall ends count as closed. Afterwards, the <b>Grid</b> tool (T) takes ceiling off a space or puts it back with a click, and makes grid sections you can turn or shift; generating again keeps those choices.</p>
       ${has ? `<p class="note" style="color:var(--warn)">This replaces the current ceiling${P.ceilingSource ? ' from ' + esc(P.ceilingSource) : ''} (${nF0} FFUs, ${nL0} lights). Ctrl+Z puts it back.</p>` : ''}`,
     buttons: [{ label: 'Cancel', ret: null }, { label: 'Generate', primary: true, value: () => ({ iso: +$('#gcIso').value, sqftPerLight: +$('#gcLt').value, swap: $('#gcSw').value === '1' }) }]
   });
@@ -776,8 +800,8 @@ async function ceilingMenu() {
     if (a === 'remove') { ed.edit(Q => Plan3DCeiling.removeCeiling(Q)); updateChrome(); toast('Ceiling removed. The automatic light layout is back.'); return; }
     if (a === 'move') { moveCeilingDialog(); return; }
     if (a === 'snap') {
-      const G = Plan3DViewer.ceilingGrid(P); let moved = 0;
-      ed.edit(Q => { Q.fixtures = (Q.fixtures || []).map(f => { const w = f.w || (G.swap ? 4 : 2), h = f.h || (G.swap ? 2 : 4), n = Plan3DViewer.snapFixture({ ...f, w, h }, G); if (Math.hypot(n.x - f.x, n.y - f.y) > 0.01) moved++; return { ...f, x: n.x, y: n.y, w, h }; }); });
+      let moved = 0;
+      ed.edit(Q => { Q.fixtures = (Q.fixtures || []).map(f => { const G = Plan3DViewer.gridAt(Q, f.x, f.y), w = f.w || (G.swap ? 4 : 2), h = f.h || (G.swap ? 2 : 4), n = Plan3DViewer.snapFixture({ ...f, w, h }, G); if (Math.hypot(n.x - f.x, n.y - f.y) > 0.01) moved++; return { ...f, x: n.x, y: n.y, w, h }; }); });
       toast(moved ? `Moved ${moved} fixture${moved === 1 ? '' : 's'} into the grid cells.` : 'Everything already sits in the grid.'); return;
     }
     if (a === 'place') { setView('build'); if (builder) builder.setTool('ffu'); toast('Click a ceiling cell to add an FFU; click one to take it out. Pick LED light in the pieces for lights.'); return; }
