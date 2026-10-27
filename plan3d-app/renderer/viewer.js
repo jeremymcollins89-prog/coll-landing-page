@@ -2398,7 +2398,16 @@ function buildScene(THREE, plan, A) {
     const m = segBox(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, [M.edge, M.edge, M.edge, M.edge, face, face]);
     outline(m); pick.push(m);
     segBox(p.x1, p.z1, p.x2, p.z2, 0, 0.333, p.t + 0.022, M.base);
-    if (p.h > H + 0.05) segBox(p.x1, p.z1, p.x2, p.z2, H - 0.17, H, p.t + 0.03, M.track);
+    // the ceiling track: on the side with the ceiling (the room side), not across the outside face, which is one
+    // smooth panel up to the top
+    if (p.h > H + 0.05) {
+      const L0 = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, nx = -(p.z2 - p.z1) / L0, nz = (p.x2 - p.x1) / L0, mx = (p.x1 + p.x2) / 2, mz = (p.z1 + p.z2) / 2;
+      const FPw = footprint(A), side = (sd) => { for (const t of [0.5, 0.2, 0.8]) { const x = p.x1 + (p.x2 - p.x1) * t + nx * sd * (p.t / 2 + 0.4), z = p.z1 + (p.z2 - p.z1) * t + nz * sd * (p.t / 2 + 0.4); if (inCeiling(plan, FPw, x, z)) return true; } return false; };
+      for (const sd of [1, -1]) if (side(sd)) { const o = sd * (p.t / 2 + 0.012); segBox(p.x1 + nx * o, p.z1 + nz * o, p.x2 + nx * o, p.z2 + nz * o, H - 0.17, H, 0.024, M.track); }
+    }
+    // panels come up to 12′ tall in one piece; a taller wall is a 12′ panel with a second one stacked on it,
+    // joined with a horizontal H-channel
+    for (let y = 12; y < p.h - 0.1; y += 12) segBox(p.x1, p.z1, p.x2, p.z2, y - 0.06, y + 0.06, p.t + 0.02, M.white);
     // a section that stops short of (or runs past) the top of the cleanroom gets a cap along its top
     if (Math.abs(p.h - WH) > 0.02) segBox(p.x1, p.z1, p.x2, p.z2, p.h - 0.03, p.h + 0.04, p.t + 0.03, M.white);
     shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));

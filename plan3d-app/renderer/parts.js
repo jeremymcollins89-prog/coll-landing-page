@@ -174,11 +174,15 @@ function partsList(plan) {
   // panels and posts run the full wall height: up through the plenum when there is one
   const WH = A.WH || H, hgt = ' × ' + ftin(WH);
 
-  // --- Panels
+  // --- Panels: one piece up to 12′ tall; a taller wall is a 12′ panel with another stacked on it (and a
+  // horizontal H-channel along the joint)
+  const panelRows = (ht) => { const r = []; let left = ht; while (left > 12 + 1 / 96) { r.push(12); left -= 12; } r.push(left); return r; };
+  let hJoint = 0;
   for (const w of walls) {
     if (!w.piece) continue;
-    const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
-    add('Wall panels', PIECE_NAMES[w.piece] || 'Wall panel', inch(L) + hgt, 1, 'ea', 10);
+    const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), R = panelRows(WH);
+    for (const ht of R) add('Wall panels', (PIECE_NAMES[w.piece] || 'Wall panel') + (R.length > 1 ? (ht === R[R.length - 1] ? ' (upper, stacked)' : ' (lower)') : ''), inch(L) + ' × ' + ftin(ht), 1, 'ea', 10);
+    hJoint += (R.length - 1) * L;
   }
   let hStuds = 0, tranTrack = 0;
   // Walls drawn as long runs: panels fall on a 48″ module from the wall's start (as on the plan sheet);
@@ -191,7 +195,8 @@ function partsList(plan) {
     let n = 0;
     for (let i = 0; i + 1 < cuts.length; i++) {
       const L = cuts[i + 1] - cuts[i]; if (L < 1 / 12) continue;
-      add('Wall panels', p.sp ? 'S.P. panel' : 'Wall panel', (Math.abs(L - 4) < 1 / 96 ? '48″' : inch(L)) + ' × ' + ftin(p.h || WH), 1, 'ea', 10); n++;
+      const R = panelRows(p.h || WH); hJoint += (R.length - 1) * L;
+      R.forEach((ht, k) => add('Wall panels', (p.sp ? 'S.P. panel' : 'Wall panel') + (R.length > 1 ? (k === R.length - 1 ? ' (upper, stacked)' : ' (lower)') : ''), (Math.abs(L - 4) < 1 / 96 ? '48″' : inch(L)) + ' × ' + ftin(ht), 1, 'ea', 10)); n++;
     }
     hStuds += Math.max(0, n - 1);
   }
@@ -285,6 +290,7 @@ function partsList(plan) {
 
   // --- Hardwall floor track and trim (linear feet; base and ceiling track on both faces)
   const floorFt = floorTrackFt(plan, A);
+  if (hJoint > 0.1) add('Wall panels', 'Horizontal H-channel (joint between stacked panels, walls over 12′)', '', Math.ceil(hJoint), 'lin ft', 14.5);
   if (floorFt) add('Wall panels', 'Floor track, hardwall (under all wall panels)', ftin(floorFt) + ' total', Math.ceil(floorFt), 'lin ft', 15);
   let baseFt = 0, trackFt = 0;
   for (const p of A.pieces) if (p.hard !== false) { baseFt += p.len * 2; trackFt += p.len * 2; }
