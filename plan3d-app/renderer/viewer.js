@@ -978,39 +978,70 @@ function generateCeiling(plan, opts) {
   const FM = plan.ffuModel && Array.isArray(plan.ffuModel.sizes) && plan.ffuModel.sizes.length ? plan.ffuModel : null;
   const z24 = FM ? (FM.sizes.find(q => q.nominal === '2x4') || FM.sizes[0]) : null, cfm = z24 && z24.cfm > 0 ? z24.cfm : 8 * 90;
   // every space inside the cleanroom walls: labelled rooms, then any unlabelled space. Found on the whole plan
-  // (all its walls at once); each room's ceiling height comes from its label.
+  // (all its walls at once); each room's ceiling height comes from its label. Gaps of up to 20′ between
+  // cleanroom wall ends (a wall missing from an imported drawing) count as closed here, so a room isn't lost
+  // to the warehouse through them. A room label can say what its ceiling gets: room.ceil = 'always' (a ceiling
+  // even if it isn't walled in by hardwall), 'lights' (grid and lights, no FFUs) or 'none' (no ceiling).
   const spaces = [];
   {
     const P = plan, A = analyze(P); if (A.empty || !A.hardAny) return null;
-    const fp = footprint(A); if (!fp) return null;
     const R = roomRegions(A, P, true), G = R.grid; if (!G) return null;
-    const comp = G.comp.slice(); let id = R.length;
-    // a labelled room counts when it's inside the cleanroom walls (not a warehouse label)
-    const inHard = (cells) => { let n = 0; for (const k of cells) { const i = k % G.nx, j = (k - i) / G.nx; if (fp.has(G.x0 + (i + 0.5) * G.cell, G.z0 + (j + 0.5) * G.cell)) n++; } return n > cells.length * 0.6; };
-    // how much of a space's edge is cleanroom hardwall (doors and glass in hardwall count), not the building's
-    // shell: a warehouse aisle is edged by the shell and the cleanroom's outside, a cleanroom room by hardwall
+    const N = G.wall.length, wall = G.wall.slice();
+    const stampLine = (ax, az, bx, bz) => { const L = Math.hypot(bx - ax, bz - az), n = Math.max(2, Math.ceil(L / (G.cell / 2))); for (let q = 0; q <= n; q++) { const x = ax + (bx - ax) * q / n, z = az + (bz - az) * q / n, i = Math.floor((x - G.x0) / G.cell), j = Math.floor((z - G.z0) / G.cell); for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii >= 0 && jj >= 0 && ii < G.nx && jj < G.nz) wall[jj * G.nx + ii] = 1; } } };
+    // cleanroom wall ends that don't meet another wall or a door
+    const HW = A.walls.filter(w => isHard(w) && Math.hypot(w.x2 - w.x1, w.y2 - w.y1) > 0.3), ends = [];
+    for (const w of HW) for (const [x, z] of [[w.x1, w.y1], [w.x2, w.y2]]) {
+      if (A.walls.some(o => o !== w && segDist(x, z, o.x1, o.y1, o.x2, o.y2) < Math.max(w.t || 0.25, o.t || 0.25) * 0.8 + 0.1)) continue;
+      if (A.opInfo.some(i => Math.min(Math.hypot(i.o.x1 - x, i.o.y1 - z), Math.hypot(i.o.x2 - x, i.o.y2 - z)) < 0.4)) continue;
+      ends.push({ x, z, w });
+    }
+    const crossesWall = (a, b) => A.walls.some(w => {
+      if (w === a.w || w === b.w) return false;
+      const d1x = b.x - a.x, d1z = b.z - a.z, d2x = w.x2 - w.x1, d2z = w.y2 - w.y1, den = d1x * d2z - d1z * d2x; if (Math.abs(den) < 1e-9) return false;
+      const s1 = ((w.x1 - a.x) * d2z - (w.y1 - a.z) * d2x) / den, s2 = ((w.x1 - a.x) * d1z - (w.y1 - a.z) * d1x) / den;
+      return s1 > 0.02 && s1 < 0.98 && s2 > 0 && s2 < 1;
+    });
+    const virt = [], done = new Set();
+    ends.forEach((e, ia) => {
+      let best = -1, bd = 20;
+      ends.forEach((f, ib) => { if (ib === ia || f.w === e.w) return; const d = Math.hypot(f.x - e.x, f.z - e.z); if (d > 0.3 && d < bd && !crossesWall(e, f)) { bd = d; best = ib; } });
+      if (best < 0) return; const key = Math.min(ia, best) + '-' + Math.max(ia, best); if (done.has(key)) return; done.add(key);
+      stampLine(e.x, e.z, ends[best].x, ends[best].z); virt.push({ x1: e.x, z1: e.z, x2: ends[best].x, z2: ends[best].z, r: G.cell * 2, hard: true });
+    });
+    // how much of a space's edge is cleanroom hardwall (doors and glass in hardwall, and the closed gaps, count),
+    // not the building's shell: a warehouse aisle is edged by the shell and the cleanroom's outside
     const edges = A.pieces.map(p => ({ x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, r: (p.t || 0.25) / 2 + G.cell * 2, hard: p.hard !== false }))
-      .concat(A.opInfo.map(i => ({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, r: (i.t || 0.25) / 2 + G.cell * 2, hard: i.hard !== false })));
+      .concat(A.opInfo.map(i => ({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, r: (i.t || 0.25) / 2 + G.cell * 2, hard: i.hard !== false })), virt);
     const hardShare = (cells) => {
       let h = 0, n = 0;
       for (const k of cells) {
         const i = k % G.nx, j = (k - i) / G.nx;
-        if (![k - 1, k + 1, k - G.nx, k + G.nx].some(q => q < 0 || q >= G.wall.length || G.wall[q] || !G.inside[q])) continue;
+        if (![k - 1, k + 1, k - G.nx, k + G.nx].some(q => q < 0 || q >= N || wall[q] || !G.inside[q])) continue;
         const x = G.x0 + (i + 0.5) * G.cell, z = G.z0 + (j + 0.5) * G.cell;
         let best = null, bd = 1e9; for (const e of edges) { const d = segDist(x, z, e.x1, e.z1, e.x2, e.z2) - e.r; if (d < bd) { bd = d; best = e; } }
         if (best && bd < G.cell * 2) { n++; if (best.hard) h++; }
       }
       return n ? h / n : 0;
     };
-    R.forEach((r, i) => { if (inHard(r.cells) && hardShare(r.cells) >= 0.5) spaces.push({ P, A, G, comp, id: i, room: r.room, cells: r.cells }); });
-    for (let k = 0; k < comp.length; k++) {
-      if (comp[k] >= 0 || !G.inside[k] || G.wall[k]) continue;
-      const i = k % G.nx, j = (k - i) / G.nx; if (!fp.has(G.x0 + (i + 0.5) * G.cell, G.z0 + (j + 0.5) * G.cell)) continue;
-      const st = [k], cells = []; comp[k] = id;
-      while (st.length) { const u = st.pop(), a = u % G.nx; cells.push(u); for (const v of [a > 0 ? u - 1 : -1, a < G.nx - 1 ? u + 1 : -1, u - G.nx, u + G.nx]) if (v >= 0 && v < comp.length && comp[v] < 0 && G.inside[v] && !G.wall[v]) { comp[v] = id; st.push(v); } }
-      // an unlabelled space has to be walled in by hardwall all round (a warehouse aisle isn't)
-      if (cells.length * G.cell * G.cell >= 16 && hardShare(cells) >= 0.85) spaces.push({ P, A, G, comp, id, room: null, cells });
-      id++;
+    // the spaces, labelled rooms first so they carry their names
+    const comp = new Int32Array(N).fill(-1); let id = 0;
+    const fill = (k0) => { const st = [k0], cells = []; comp[k0] = id; while (st.length) { const u = st.pop(), a = u % G.nx; cells.push(u); for (const v of [a > 0 ? u - 1 : -1, a < G.nx - 1 ? u + 1 : -1, u - G.nx, u + G.nx]) if (v >= 0 && v < N && comp[v] < 0 && G.inside[v] && !wall[v]) { comp[v] = id; st.push(v); } } return cells; };
+    const at = (x, z) => { const i = Math.floor((x - G.x0) / G.cell), j = Math.floor((z - G.z0) / G.cell); return i < 0 || j < 0 || i >= G.nx || j >= G.nz ? -1 : j * G.nx + i; };
+    const found = [];
+    for (const room of P.rooms || []) {
+      let k = at(room.x, room.y); if (k < 0) continue;
+      if (wall[k] || !G.inside[k]) { const nb = [k - 1, k + 1, k - G.nx, k + G.nx, k - G.nx - 1, k - G.nx + 1, k + G.nx - 1, k + G.nx + 1].find(q => q >= 0 && q < N && !wall[q] && G.inside[q]); if (nb == null) continue; k = nb; }
+      if (comp[k] >= 0) { const f = found.find(q => q.id === comp[k]); if (f && !f.room) f.room = room; continue; }
+      found.push({ id, room, cells: fill(k) }); id++;
+    }
+    for (let k = 0; k < N; k++) { if (comp[k] >= 0 || !G.inside[k] || wall[k]) continue; found.push({ id, room: null, cells: fill(k) }); id++; }
+    for (const f of found) {
+      const mode = f.room && f.room.ceil ? f.room.ceil : 'auto';
+      if (mode === 'none' || f.cells.length * G.cell * G.cell < 16) continue;
+      const share = hardShare(f.cells);
+      // a labelled room needs half its edge to be hardwall, an unlabelled space nearly all of it
+      if (mode !== 'always' && share < (f.room ? 0.5 : 0.85)) continue;
+      spaces.push({ P, A, G, comp, id: f.id, room: f.room, cells: f.cells, lightsOnly: mode === 'lights' });
     }
   }
   if (!spaces.length) return null;
@@ -1044,14 +1075,14 @@ function generateCeiling(plan, opts) {
     const iso = sp.room && sp.room.iso ? +sp.room.iso : (opts.iso ? +opts.iso : 7), T = ISO_TARGETS[iso] || ISO_TARGETS[7];
     const ach = sp.room && sp.room.ach > 0 ? +sp.room.ach : T.ach;
     const need = Math.max(Math.ceil(ach * area * H / 60 / cfm), Math.ceil(T.cov / 100 * area / (cw * cl)), area > 30 && T.cov > 0 ? 1 : 0);
-    const nF = Math.min(need, cells.length);
+    const nF = sp.lightsOnly ? 0 : Math.min(need, cells.length);
     const pickF = spread(cells, nF);
     const rest = cells.filter((c, i) => !pickF.includes(i));
     const nL = Math.min(rest.length, Math.max(area > 20 ? 1 : 0, Math.round(area / (opts.sqftPerLight > 0 ? opts.sqftPerLight : 64))));
     const pickL = spread(rest, nL);
     for (const i of pickF) { const c = cells[i]; taken.add(c.key); out.push({ id: uid(), type: 'ffu', x: c.x, y: c.y, w: cw, h: cl }); }
     for (const i of pickL) { const c = rest[i]; taken.add(c.key); out.push({ id: uid(), type: 'led', x: c.x, y: c.y, w: cw, h: cl }); }
-    rooms.push({ name: sp.room ? (sp.room.name || 'Room') : 'Unlabelled space', area, iso, ach, ffu: nF, led: pickL.length, need, cells: cells.length, cfm: nF * cfm, achGot: area * H > 0 ? nF * cfm * 60 / (area * H) : 0 });
+    rooms.push({ name: sp.room ? (sp.room.name || 'Room') : 'Unlabelled space', area, iso, ach, ffu: nF, led: pickL.length, need: sp.lightsOnly ? 0 : need, lightsOnly: !!sp.lightsOnly, cells: cells.length, cfm: nF * cfm, achGot: area * H > 0 ? nF * cfm * 60 / (area * H) : 0 });
   }
   const ceilRects = [];
   for (const sp of spaces) {
