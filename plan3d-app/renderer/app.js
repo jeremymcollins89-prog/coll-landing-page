@@ -54,7 +54,7 @@ const HINTS = {
   pass: 'Click on a wall to place a 24″ × 24″ stainless pass-thru.',
   chase: 'Drag a rectangle to place a full-height air chase.',
   grid: 'Grid tool. Pick what a click or drag does in the bar at the top: Rooms (click a room to put its ceiling on or take it off), Add area or Cut out (drag a box), Centre grid (click a room), Grid section (drag a box for a part on its own grid). The arrows slide the whole grid, FFUs and lights with it.',
-  carea: 'Drag a rectangle inside a room to give that part of it its own ceiling height. Bulkhead panels fill the step where it meets the rest of the ceiling.',
+  carea: 'Drag a rectangle over part of a room to give it its own ceiling height. Bulkhead panels fill the step where it meets the rest of the ceiling. To make that part of the room taller (walls and top too), tick Raise the walls in its panel. A whole room: set Ceiling on its room label.',
   room: 'Click inside a room to label it.',
   beam: 'Click both ends of a steel beam (I-beam). Over the cleanroom it spans wall to wall in the plenum, its top level with the top of the walls; otherwise it goes up under the roof. Pick it to change its size or height.',
   measure: 'Click two points to measure between them. Snaps to wall ends and lines up with them; Alt for any angle. Esc clears.',
@@ -379,10 +379,12 @@ function renderProps(opt) {
     const K = Plan3DViewer.roomKey(P, null), top = K.H + K.PL, w = Math.abs(o.x1 - o.x0), d = Math.abs(o.y1 - o.y0);
     h = `<div class="hd"><span class="kind">Ceiling area</span><button class="btn small danger" id="pDel">Delete</button></div>
       ${fld('Ceiling', txt('pCaH', fmt(+o.ceiling || K.H)))}
+      ${fld('Walls', `<label class="chk"><input type="checkbox" id="pCaR" ${o.raise ? 'checked' : ''}> Raise the walls and the top with it (a taller section)</label>`)}
       ${fld('Size', `<span class="mono">${esc(fmt(Math.max(w, d)))} × ${esc(fmt(Math.min(w, d)))}</span>`)}
-      <p class="note">This part of the room gets its own ceiling, raised or dropped. Where its edge crosses open ceiling, bulkhead panels fill the step (on the parts list with their H-studs and closure channel); along walls the ceiling track follows it. It stays at least 3″ under the top of the walls (${esc(fmt(top))}); to go higher, raise the plenum or the walls. Drag its outline or label to move it.</p>`;
+      <p class="note">This part of the room gets its own ceiling, raised or dropped. Where its edge crosses open ceiling, bulkhead panels fill the step (on the parts list with their H-studs and closure channel); along walls the ceiling track follows it. ${o.raise ? `The walls in and around it go up to its ceiling plus the plenum (${esc(fmt((+o.ceiling || K.H) + K.PL))}), and the top steps up over it with panels closing the step.` : `It stays at least 3″ under the top of the walls (${esc(fmt(top))}); tick <b>Raise the walls</b> to make this part of the room taller.`} Drag its outline or label to move it.</p>`;
     box.innerHTML = h;
     bindLen('pCaH', 'ft', v => ed.edit(() => { o.ceiling = Math.max(6, Math.min(40, v)); }));
+    $('#pCaR').onchange = (e) => { ed.edit(() => { if (e.target.checked) o.raise = true; else delete o.raise; }); renderProps(); };
     $('#pDel').onclick = () => ed.deleteSel();
     return;
   }
@@ -782,13 +784,14 @@ async function generateCeilingDialog() {
   if (!opts) return;
   const R = Plan3DViewer.generateCeiling(P, opts);
   if (!R || !R.rooms.length) { await dialogOpen({ title: 'No closed-in rooms found', body: '<p>Generate ceiling only puts grid where the cleanroom walls close a room in, so it never runs out into the warehouse. None of the rooms here are closed in: a wall is missing or stops short somewhere (gaps up to 10′ are closed for it).</p><p>Pick the <b>Grid</b> tool (T), choose <b>Add area</b> and drag a box over each room, then Generate ceiling again to fill them with FFUs and lights. Or close the gaps in the walls.</p>', buttons: [{ label: 'Use the Grid tool', primary: true, ret: 'grid' }, { label: 'Close', ret: null }] }).then(a => { if (a === 'grid') { setView(view === '3d' || view === 'build' ? 'split' : view); ed.setTool('grid'); ed.gridMode = 'add'; gridPalette(); } }); return; }
-  ed.edit(Q => { Q.ceilGrid = R.ceilGrid; Q.fixtures = R.keep ? (Q.fixtures || []).concat(R.fixtures) : R.fixtures; Q.ceilRects = R.ceilRects; Q.ceilingMode = 'manual'; Q.ceilingSource = 'Generated'; delete Q.ceilingGrid; delete Q.ceilingImage; delete Q.fixturesFinal; });
+  ed.edit(Q => { Q.ceilGrid = R.ceilGrid; if (R.keep && R.snapped && R.snapped.length) { const m = new Map(R.snapped.map(q => [q.id, q])); for (const f of Q.fixtures || []) { const q = m.get(f.id); if (q) { f.x = q.x; f.y = q.y; } } } Q.fixtures = R.keep ? (Q.fixtures || []).concat(R.fixtures) : R.fixtures; Q.ceilRects = R.ceilRects; Q.ceilingMode = 'manual'; Q.ceilingSource = 'Generated'; delete Q.ceilingGrid; delete Q.ceilingImage; delete Q.fixturesFinal; });
   updateChrome(); renderProps();
   const short = R.rooms.filter(r => r.ffu < r.need);
   await dialogOpen({
     title: 'Ceiling generated',
     wide: true,
     body: `<p>${R.keep ? `Ceiling laid around your ${R.rooms.reduce((t, r) => t + r.ffu, 0)} FFUs${R.fixtures.length ? `, with ${R.fixtures.length} new light${R.fixtures.length === 1 ? '' : 's'} in the free cells` : ''}, in ${R.rooms.length} room${R.rooms.length === 1 ? '' : 's'}.` : `${R.fixtures.filter(f => f.type === 'ffu').length} FFUs and ${R.fixtures.filter(f => f.type !== 'ffu').length} lights in ${R.rooms.length} room${R.rooms.length === 1 ? '' : 's'}.`}</p>
+      ${R.snapped && R.snapped.length ? `<p class="note">${R.snapped.length} of your FFUs/lights sat a little off the grid (up to 6″) and were set into their cells.</p>` : ''}
       ${R.bare ? `<p class="note" style="color:var(--warn)">${R.bare} of your FFUs/lights have no ceiling over them: they're in a space the walls don't close in. Close the room's walls, or use the Grid tool's Add area to box the room in.</p>` : ''}
       ${R.open ? `<p class="note" style="color:var(--warn)">${R.open} room${R.open === 1 ? ' is' : 's are'} not closed in by walls, so ${R.open === 1 ? 'it' : 'they'} got no grid. Box ${R.open === 1 ? 'it' : 'them'} in with the Grid tool's Add area.</p>` : ''}
       ${R.offices ? `<p class="note">${R.offices} room${R.offices === 1 ? '' : 's'} built onto the building's walls (offices, restrooms) got no ceiling. Click one with the Grid tool (Rooms) if it should have one.</p>` : ''}
