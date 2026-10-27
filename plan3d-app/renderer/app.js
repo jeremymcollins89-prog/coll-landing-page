@@ -1242,7 +1242,18 @@ async function importDeck() {
     <div class="row" style="gap:10px;flex-wrap:wrap">${placed.map((p, i) => `<label class="chk" style="display:flex;flex-direction:column;align-items:center;gap:4px">${thumb(p)}<span><input type="checkbox" data-dk="${i}" ${(placed.length === 1 || i === big) ? 'checked' : ''}> Piece ${i + 1} · ${Math.round(p.a)} sq ft${onPlan(p) ? '' : ' · off the plan'}</span></label>`).join('')}</div>`,
     buttons: [{ label: 'Cancel', ret: null }, { label: 'Use the ticked pieces', primary: true, value: () => ({ pick: $$('[data-dk]').filter(c => c.checked).map(c => +c.dataset.dk), join: $('#dkJoin').checked }) }] });
   if (!pick || !pick.pick.length) return;
-  const out = pick.join ? joinDeckPieces(pick.pick.map(i => placed[i])) : pick.pick.map(i => placed[i]);
+  let out = pick.join ? joinDeckPieces(pick.pick.map(i => placed[i])) : pick.pick.map(i => placed[i]);
+  // pieces of one lid that nearly meet (each lined up on the walls on its own, a few inches out) are butted
+  // together: the smaller one moves to meet the bigger one, so there's no gap or overlap at the joint
+  out = out.map(p => ({ ...p }));
+  const bb = (p) => { let a = 1e9, b = 1e9, c = -1e9, d = -1e9; p.outer.forEach(q => { a = Math.min(a, q[0]); c = Math.max(c, q[0]); b = Math.min(b, q[1]); d = Math.max(d, q[1]); }); return [a, b, c, d]; };
+  const mv = (p, dx, dy) => { const f = (q) => [q[0] + dx, q[1] + dy]; p.outer = p.outer.map(f); if (p.raw) p.raw = p.raw.map(f); p.holes = p.holes.map(h => h.map(f)); };
+  const bySize = out.slice().sort((p, q) => q.a - p.a);
+  for (let i = 1; i < bySize.length; i++) for (let j = 0; j < i; j++) {
+    const S = bySize[i], B = bySize[j], s = bb(S), b = bb(B), ovY = Math.min(s[3], b[3]) - Math.max(s[1], b[1]), ovX = Math.min(s[2], b[2]) - Math.max(s[0], b[0]);
+    if (ovY > 1) { if (Math.abs(s[0] - b[2]) < 0.6) mv(S, b[2] - s[0], 0); else if (Math.abs(s[2] - b[0]) < 0.6) mv(S, b[0] - s[2], 0); }
+    else if (ovX > 1) { if (Math.abs(s[1] - b[3]) < 0.6) mv(S, 0, b[3] - s[1]); else if (Math.abs(s[3] - b[1]) < 0.6) mv(S, 0, b[1] - s[3]); }
+  }
   ed.edit(Q => { Q.deckPieces = out.map(p => ({ id: Plan3DEditor.uid(), outer: p.outer, holes: p.holes })); Q.deckSource = r.name; });
   const off = out.filter(p => !onPlan(p)).length;
   if (view === '3d' || view === 'build') setView('split');
