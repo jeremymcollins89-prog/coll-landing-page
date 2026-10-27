@@ -291,7 +291,16 @@ function partsList(plan) {
   for (const i of A.opInfo) {
     const o = i.o, W = i.len;
     if (i.frame) continue; // house doors and windows are counted with the house
-    if (o.type === 'door') add('Doors & glass', 'Door, single (3070)', inch(W) + ' × ' + ftin(o.head || 7), 1, 'ea', 30);
+    const DS = V.doorSpec ? V.doorSpec(o, W) : null;
+    if (DS) {
+      // standard cleanroom door (built like the door drawings): leaves, vision lites, levers, frame
+      const lw = inch(DS.leafW);
+      add('Doors & glass', DS.n === 2 ? 'Door, pair (standard): two ' + lw + ' × 84″ leaves, 7½″ meeting strip' : 'Door, single (standard): ' + lw + ' × 84″ leaf', inch(W) + ' frame opening × 86″ head', 1, 'ea', DS.n === 2 ? 31 : 30);
+      add('Doors & glass', 'Vision lite in door, 24″ × 34″ glass (26″ × 36″ frame)', '', DS.n, 'ea', 32.5);
+      add('Doors & glass', 'Lever lockset', '38″ to center', DS.n, 'ea', 32.6);
+      add('Doors & glass', 'Door closer', '', DS.n, 'ea', 32.7);
+    }
+    else if (o.type === 'door') add('Doors & glass', 'Door, single (3070)', inch(W) + ' × ' + ftin(o.head || 7), 1, 'ea', 30);
     else if (o.type === 'door2') add('Doors & glass', 'Door, pair (6070)', inch(W) + ' × ' + ftin(o.head || 7), 1, 'ea', 31);
     else if (o.type === 'glass') add('Doors & glass', 'Glass, 1/4″', inch(W) + ' × ' + inch((o.head || 7) - (o.sill == null ? 3 : o.sill)), 1, 'ea', 32);
     else if (o.type === 'pass') add('Doors & glass', 'Pass-thru, stainless', inch(W) + ' W × ' + inch((o.head || 5) - (o.sill == null ? 3 : o.sill)) + ' H × ' + inch(o.depth || 2) + ' D', 1, 'ea', 33);

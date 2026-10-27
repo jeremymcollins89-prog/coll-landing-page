@@ -1268,7 +1268,13 @@ class Editor {
           let da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
           g.save(); g.setLineDash([3, 3]); g.beginPath(); g.arc(this.sx(bx), this.sy(by), w * s, a0, a0 + da, da < 0); g.stroke(); g.restore();
         };
-        if (o.type === 'door') leaf(o.x1, o.y1, 1, len); else { leaf(o.x1, o.y1, 1, len / 2); leaf(o.x2, o.y2, -1, len / 2); }
+        const DS = global.Plan3DViewer && global.Plan3DViewer.doorSpec ? global.Plan3DViewer.doorSpec(o, len) : null;
+        if (DS) {
+          // standard door: the frame (jambs and the meeting strip of a pair) drawn solid, the leaves inside it
+          g.save(); g.fillStyle = COL.door; const box = (a, b) => { const q = [[o.x1 + ux * a + nx * t / 2, o.y1 + uy * a + ny * t / 2], [o.x1 + ux * b + nx * t / 2, o.y1 + uy * b + ny * t / 2], [o.x1 + ux * b - nx * t / 2, o.y1 + uy * b - ny * t / 2], [o.x1 + ux * a - nx * t / 2, o.y1 + uy * a - ny * t / 2]]; g.beginPath(); q.forEach((p, k) => k ? g.lineTo(this.sx(p[0]), this.sy(p[1])) : g.moveTo(this.sx(p[0]), this.sy(p[1]))); g.closePath(); g.globalAlpha = 0.55; g.fill(); g.globalAlpha = 1; g.stroke(); };
+          box(0, DS.jamb); box(len - DS.jamb, len); if (DS.mull) box(len / 2 - DS.mull / 2, len / 2 + DS.mull / 2); g.restore();
+          leaf(o.x1 + ux * DS.jamb, o.y1 + uy * DS.jamb, 1, DS.leafW); if (DS.n === 2) leaf(o.x2 - ux * DS.jamb, o.y2 - uy * DS.jamb, -1, DS.leafW);
+        } else if (o.type === 'door') leaf(o.x1, o.y1, 1, len); else { leaf(o.x1, o.y1, 1, len / 2); leaf(o.x2, o.y2, -1, len / 2); }
       } else {
         g.strokeStyle = COL.door; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(this.sx(o.x1), this.sy(o.y1)); g.lineTo(this.sx(o.x2), this.sy(o.y2)); g.stroke(); g.setLineDash([]);
       }
