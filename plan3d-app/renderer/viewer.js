@@ -399,7 +399,7 @@ function analyze(plan) {
     for (const w of walls) { const d = segDist((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, w.x1, w.y1, w.x2, w.y2); if (d < best) { best = d; host = w; } }
     if (best > 1.5) host = null;
     if (!t) t = host && host.t ? host.t : 0.25;
-    const hard = isHard(host), frame = isFrame(host), i = { o, len, ux: dx / len, uz: dz / len, t, hard, frame, ceilw: hard || frame, kind: hard ? 'hardwall' : host.kind, wallH: hard ? sectionTop(host, ((o.x1 + o.x2) / 2 - host.x1) * (host.x2 - host.x1) / (Math.hypot(host.x2 - host.x1, host.y2 - host.y1) || 1) + ((o.y1 + o.y2) / 2 - host.y1) * (host.y2 - host.y1) / (Math.hypot(host.x2 - host.x1, host.y2 - host.y1) || 1), WH) : frame ? Math.max(6, host.h || H) : shellHeight(plan, host) };
+    const hard = isHard(host), frame = isFrame(host), i = { o, len, ux: dx / len, uz: dz / len, t, hard, frame, ceilw: hard || frame, kind: hard ? 'hardwall' : host.kind, wallH: hard ? (host ? sectionTop(host, ((o.x1 + o.x2) / 2 - host.x1) * (host.x2 - host.x1) / (Math.hypot(host.x2 - host.x1, host.y2 - host.y1) || 1) + ((o.y1 + o.y2) / 2 - host.y1) * (host.y2 - host.y1) / (Math.hypot(host.x2 - host.x1, host.y2 - host.y1) || 1), WH) : WH) : frame ? Math.max(6, host.h || H) : shellHeight(plan, host) };
     i.leaves = leavesFor(i);
     opInfo.push(i);
   }
@@ -1871,7 +1871,8 @@ function buildScene(THREE, plan, A) {
     const fw = Math.max(0.3, (f.w || 2) - 0.12), fd = Math.max(0.3, (f.h || 4) - 0.12), hh = f.type === 'ffu' ? 0.9 : 0.28;
     const hs = new THREE.Mesh(new THREE.BoxGeometry(fw, hh, fd), f.type === 'ffu' ? M.white : housingMat); hs.position.set(f.x, fh + 0.005 + hh / 2, f.y); outline(hs); fixtures.add(hs);
   }
-  root.add(airflowArrows(THREE, plan, A));
+  // the extras never stop the model from showing
+  try { root.add(airflowArrows(THREE, plan, A)); } catch (e) { console.error(e); }
   return { root, pick, floor, floors: [floor], ground, ceiling, lid, roof, ceilPlane: ceil || new THREE.Object3D(), fixtures, doors, doorObs };
 }
 
@@ -2547,10 +2548,9 @@ function mount(container, plan, opts) {
     A = analyzeAll(p);
     if (built) { scene.remove(built.root); built.root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     built = buildAll(THREE, p, A);
-    pressureArrows(THREE, built.root, p);
-    floorFlow(THREE, built.root, p);
+    for (const extra of [() => pressureArrows(THREE, built.root, p), () => floorFlow(THREE, built.root, p)]) { try { extra(); } catch (e) { console.error(e); } }
     scene.add(built.root);
-    refreshAir(); applySwitches();
+    try { refreshAir(); applySwitches(); } catch (e) { console.error(e); }
     if (typeof drawPins === 'function' && cList) { loadMine(); drawPins(); }
     emptyEl.hidden = !A.empty;
     // the Plenum view only when there is a plenum

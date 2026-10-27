@@ -580,8 +580,10 @@ function bindComments(P) {
 function partsGroup() {
   if (!ed.plan.walls.length && !ed.plan.chases.length && !(ed.plan.inserts || []).length) return '';
   // one list, a section per building (the main plan, then each placed building)
-  let body = '';
-  for (const sec of Plan3DParts.projectParts(ed.plan)) {
+  let body = '', secs = [];
+  // a parts list that can't be worked out never stops the plan from opening
+  try { secs = Plan3DParts.projectParts(ed.plan); } catch (e) { console.error(e); return '<div class="grp"><h3>Parts list</h3><p class="note">The parts list couldn\'t be worked out for this plan. The rest of the app works; please send this plan to Coll Business Solutions.</p></div>'; }
+  for (const sec of secs) {
     if (sec.title) body += `<div class="pl-sec">${esc(sec.title)}</div>`;
     let cat = '';
     for (const r of sec.rows) {
