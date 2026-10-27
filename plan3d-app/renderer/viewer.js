@@ -3408,8 +3408,11 @@ function airflowArrows(THREE, plan, A) {
     const w = +gr.w || 20 / 12, h = +gr.h || 20 / 12, sill = gr.sill == null ? 0.5 : +gr.sill, a = gr.a || 0, c = Math.cos(a), sn = Math.sin(a), nx = -sn, nz = c, y = sill + h / 2;
     const n = Math.max(1, Math.round(w / 1.5)), len = 2, t = (gr.t || 0.25) / 2;
     for (const sd of gr.side === 0 ? [1, -1] : [gr.side || 1]) for (let i = 0; i < n; i++) {
-      const o = (i - (n - 1) / 2) * Math.min(1.5, w / n), px = gr.x + c * o + nx * sd * (t + len + 0.05), pz = gr.y + sn * o + nz * sd * (t + len + 0.05);
-      arrow(px, y, pz, [-nx * sd, 0, -nz * sd], len, 0.11, ret);
+      const o = (i - (n - 1) / 2) * Math.min(1.5, w / n);
+      // air out of the grille (a plenum grille feeding the plenum from the wall) starts at the face and points away;
+      // a return grille draws air in from the room
+      if (gr.flow === 'out' || (gr.flow == null && gr.plenum)) arrow(gr.x + c * o + nx * sd * (t + 0.05), y, gr.y + sn * o + nz * sd * (t + 0.05), [nx * sd, 0, nz * sd], len, 0.11, ret);
+      else arrow(gr.x + c * o + nx * sd * (t + len + 0.05), y, gr.y + sn * o + nz * sd * (t + len + 0.05), [-nx * sd, 0, -nz * sd], len, 0.11, ret);
     }
   }
   // into each return grille, low on the chase face

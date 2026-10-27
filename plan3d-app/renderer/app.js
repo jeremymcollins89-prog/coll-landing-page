@@ -467,12 +467,13 @@ function renderProps(opt) {
   }
   if (s && o && s.kind === 'grille') {
     const Wi = Math.round(o.w * 12), Hi = Math.round(o.h * 12), key = Wi === 20 && Hi === 20 ? '20' : Wi === 36 && Hi === 36 ? '36' : 'c';
-    box.innerHTML = `<div class="hd"><span class="kind">Return grille</span><button class="btn small danger" id="pDel">Delete</button></div>
+    box.innerHTML = `<div class="hd"><span class="kind">${o.plenum ? 'Plenum grille' : 'Return grille'}</span><button class="btn small danger" id="pDel">Delete</button></div>
       ${fld('Size', `<select id="pGS"><option value="20" ${key === '20' ? 'selected' : ''}>20″ × 20″</option><option value="36" ${key === '36' ? 'selected' : ''}>36″ × 36″</option><option value="c" ${key === 'c' ? 'selected' : ''}>Custom</option></select>`)}
       ${fld('Width', txt('pGW', fmtIn(o.w)))}${fld('Height', txt('pGH', fmtIn(o.h)))}
       ${fld('Bottom above floor', txt('pGSill', fmtIn(o.sill == null ? 0.5 : o.sill)))}
       ${fld('Damper', `<label class="chk"><input type="checkbox" id="pGD" ${o.damper ? 'checked' : ''}> Opposed-blade damper behind the grille</label>`)}
-      ${fld('Air goes in from', `<div class="seg" id="pGSide">${[['1', 'This side'], ['-1', 'Other side'], ['0', 'Both (transfer)']].map(([k, l]) => `<button type="button" data-s="${k}" class="${String(o.side == null ? 1 : o.side) === k ? 'on' : ''}">${l}</button>`).join('')}</div>`)}
+      ${fld('Air', `<div class="seg" id="pGFlow">${[['in', 'Into the grille (return)'], ['out', 'Out of the grille']].map(([k, l]) => `<button type="button" data-f="${k}" class="${((o.flow || (o.plenum ? 'out' : 'in')) === k) ? 'on' : ''}">${l}</button>`).join('')}</div>`)}
+      ${fld('Room side', `<div class="seg" id="pGSide">${[['1', 'This side'], ['-1', 'Other side'], ['0', 'Both (transfer)']].map(([k, l]) => `<button type="button" data-s="${k}" class="${String(o.side == null ? 1 : o.side) === k ? 'on' : ''}">${l}</button>`).join('')}</div>`)}
       <p class="note">Set into the wall panel; the panel stays on the parts list with the grille and damper. Drag it to slide it along the wall or onto another wall. With Airflow on in 3D, purple arrows show the return air going in.</p>`;
     $('#pGS').onchange = (e) => ed.edit(() => { if (e.target.value === '20') o.w = o.h = 20 / 12; if (e.target.value === '36') o.w = o.h = 3; });
     bindLen('pGW', 'in', v => ed.edit(() => { o.w = Math.max(0.25, Math.min(8, v)); }));
@@ -480,6 +481,7 @@ function renderProps(opt) {
     bindLen('pGSill', 'in', v => ed.edit(() => { o.sill = Math.max(0, Math.min(12, v)); }));
     $('#pGD').onchange = (e) => ed.edit(() => { o.damper = e.target.checked; });
     $$('#pGSide button').forEach(b => b.onclick = () => ed.edit(() => { o.side = +b.dataset.s; }));
+    $$('#pGFlow button').forEach(b => b.onclick = () => ed.edit(() => { o.flow = b.dataset.f; }));
     $('#pDel').onclick = () => ed.deleteSel();
     return;
   }
