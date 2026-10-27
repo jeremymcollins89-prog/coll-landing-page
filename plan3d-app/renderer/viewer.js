@@ -1156,7 +1156,7 @@ function ceilingSpaceData(plan) {
     // line facing each other (up to 16′ apart), or two walls at a right angle that would meet at a corner if both
     // ran on (up to 16′ each). Ends that merely sit near each other across an aisle between rooms are left open,
     // so the aisles between cleanroom boxes stay outside the ceiling.
-    const virt = [], done = new Set();
+    const virt = [], done = new Set(), shut = new Set();
     const dirOf = (e) => { const w = e.w, L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, far = Math.hypot(w.x1 - e.x, w.y1 - e.z) < 1e-6 ? [w.x2, w.y2] : [w.x1, w.y1]; return [(e.x - far[0]) / L, (e.z - far[1]) / L]; };
     const close = (pts) => { for (let q = 0; q + 1 < pts.length; q++) { stampLine(pts[q][0], pts[q][1], pts[q + 1][0], pts[q + 1][1]); virt.push({ x1: pts[q][0], z1: pts[q][1], x2: pts[q + 1][0], z2: pts[q + 1][1], r: G.cell * 2, hard: true }); } };
     const clear = (a, b, skip) => !A.walls.some(w => {
@@ -1188,8 +1188,44 @@ function ceilingSpaceData(plan) {
         }
       });
       if (!best) return; const key = Math.min(ia, best.ib) + '-' + Math.max(ia, best.ib); if (done.has(key)) return; done.add(key);
-      close(best.pts);
+      close(best.pts); shut.add(e); shut.add(ends[best.ib]);
     });
+    // an open bay: a room with three walls, its fourth side open (onto a corridor or the warehouse). Its two side
+    // walls run the same way from one back wall; the open side between their ends is closed (9' to 30' wide).
+    const backWall = (w, x, z) => A.walls.find(o => o !== w && isHard(o) && segDist(x, z, o.x1, o.y1, o.x2, o.y2) < Math.max(w.t || 0.25, o.t || 0.25) + 0.3 && Math.abs(((w.x2 - w.x1) * (o.x2 - o.x1) + (w.y2 - w.y1) * (o.y2 - o.y1)) / ((Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1) * (Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1))) < 0.1);
+    // (a side wall's end can be a corner too, where a short return or the next room's wall meets it)
+    const sideEnds = ends.concat(HW.flatMap(w => [[w.x1, w.y1], [w.x2, w.y2]].filter(([x, z]) => !ends.some(q => q.w === w && Math.hypot(q.x - x, q.z - z) < 1e-6)).map(([x, z]) => ({ x, z, w }))));
+    for (const e of sideEnds) {
+      if (shut.has(e)) continue;
+      const [ux, uz] = dirOf(e), w = e.w;
+      // something already carries on past this end in line: not an open side
+      if (A.walls.some(o => o !== w && segDist(e.x + ux * 0.6, e.z + uz * 0.6, o.x1, o.y1, o.x2, o.y2) < (o.t || 0.25) / 2 + 0.1)) continue;
+      // the side wall can be drawn in pieces on one line: follow it back to its real end
+      let far = Math.hypot(w.x1 - e.x, w.y1 - e.z) < 1e-6 ? [w.x2, w.y2] : [w.x1, w.y1], seen = new Set([w]);
+      for (let step = 0; step < 20; step++) {
+        const nx = A.walls.find(o => !seen.has(o) && isHard(o) && Math.abs(ux * (o.y2 - o.y1) - uz * (o.x2 - o.x1)) / (Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1) < 0.05 && Math.min(Math.hypot(o.x1 - far[0], o.y1 - far[1]), Math.hypot(o.x2 - far[0], o.y2 - far[1])) < 0.3);
+        if (!nx) break; seen.add(nx);
+        const a1 = (nx.x1 - far[0]) * ux + (nx.y1 - far[1]) * uz, a2 = (nx.x2 - far[0]) * ux + (nx.y2 - far[1]) * uz;
+        far = a1 < a2 ? [nx.x1, nx.y1] : [nx.x2, nx.y2];
+      }
+      const back = backWall(w, far[0], far[1]) || A.walls.find(o => !seen.has(o) && isHard(o) && segDist(far[0], far[1], o.x1, o.y1, o.x2, o.y2) < (o.t || 0.25) + 0.3 && Math.abs(ux * (o.x2 - o.x1) + uz * (o.y2 - o.y1)) / (Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1) < 0.1);
+      if (!back) continue;
+      let best = null;
+      for (const o of A.walls) {
+        if (seen.has(o) || o === back || !isHard(o)) continue;
+        const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1; if (Math.abs(ux * (o.y2 - o.y1) / L - uz * (o.x2 - o.x1) / L) > 0.05) continue;
+        for (const [fx, fz, gx, gz] of [[o.x1, o.y1, o.x2, o.y2], [o.x2, o.y2, o.x1, o.y1]]) {
+          const along = (fx - e.x) * ux + (fz - e.z) * uz, d = Math.abs(-(fx - e.x) * uz + (fz - e.z) * ux);
+          // a bay is room-sized; a narrow slot between two rooms (an aisle, 6′ or so) isn't one
+          if (Math.abs(along) > 1.5 || d < 9 || d > 30) continue;
+          if ((gx - fx) * ux + (gz - fz) * uz > -2) continue; // its wall runs back the same way
+          if (segDist(gx, gz, back.x1, back.y1, back.x2, back.y2) > Math.max(o.t || 0.25, back.t || 0.25) + 0.3) continue; // from the same back wall
+          if (!clear([e.x, e.z], [fx, fz], [w, o])) continue;
+          if (!best || d < best.d) best = { d, pts: [[e.x, e.z], [fx, fz]] };
+        }
+      }
+      if (best) { close(best.pts); shut.add(e); }
+    }
     // how much of a space's edge is cleanroom hardwall (doors and glass in hardwall, and the closed gaps, count),
     // not the building's shell: a warehouse aisle is edged by the shell and the cleanroom's outside
     // which cleanroom box each hardwall wall belongs to: walls that touch, or meet across a door, are one box
