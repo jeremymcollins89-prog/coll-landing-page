@@ -272,7 +272,7 @@ function renderProps(opt) {
   const box = $('#props'), P = ed.plan, s = ed.sel, o = ed.selected();
   let h = '';
   if (ed.multi && ed.multi.length > 1) {
-    const M = ed.multi, cnt = {}, NAMES = { tile: 'ceiling tile', wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', gzone: 'grid section', fixture: 'FFUs and lights' };
+    const M = ed.multi, cnt = {}, NAMES = { deck: 'lid piece', tile: 'ceiling tile', wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', gzone: 'grid section', fixture: 'FFUs and lights' };
     M.forEach(r => { cnt[r.kind] = (cnt[r.kind] || 0) + 1; });
     const grouped = M.every(r => { const x = ed.find(r); return x && x.gid && x.gid === ed.find(M[0]).gid; });
     box.innerHTML = `<div class="hd"><span class="kind">${M.length} pieces selected${grouped ? ' (a group)' : ''}</span><button class="btn small danger" id="mDel">Delete</button></div>
@@ -446,6 +446,15 @@ function renderProps(opt) {
     bindLen('pCaH', 'ft', v => ed.edit(() => { o.ceiling = Math.max(6, Math.min(40, v)); }));
     $('#pCaR').onchange = (e) => { ed.edit(() => { if (e.target.checked) o.raise = true; else delete o.raise; }); renderProps(); };
     $('#pDel').onclick = () => ed.deleteSel();
+    return;
+  }
+  if (s && o && s.kind === 'deck') {
+    const Dk = (Plan3DViewer.deckShapes(P) || []).find(d => d.id === o.id);
+    box.innerHTML = `<div class="hd"><span class="kind">Lid piece</span><button class="btn small danger" id="pDel">Delete</button></div>
+      <div class="grp"><div class="stats"><span>Area</span><span>${Dk ? Math.round(Dk.area) + ' sq ft' : '—'}</span><span>From</span><span>${esc(P.deckSource || 'deck drawing')}</span></div></div>
+      <div class="row"><button class="btn small" id="pDkL">⟲ Turn left</button><button class="btn small" id="pDkR">⟳ Turn right</button></div>
+      <p class="note">Drag it by its outline or its LID label; its corners catch on wall ends (Alt moves it freely, arrow keys nudge 1″). It sits on top of the walls. In 3D, the Lid button shows it in every view.</p>`;
+    $('#pDkL').onclick = () => ed.turnDeck(o, true); $('#pDkR').onclick = () => ed.turnDeck(o, false); $('#pDel').onclick = () => ed.deleteSel();
     return;
   }
   if (s && o && s.kind === 'tile') {
@@ -1081,6 +1090,146 @@ function moveCeilingDialog() {
     ed.edit(P => C.shiftCeiling(P, n.dx, n.dy, n.rot));
     toast('Ceiling moved.');
   });
+}
+
+/* ---------- The lid / roof deck: a drawing of its outline (one piece, or several to move on their own) ----------
+   The drawing's lines are joined into closed outlines; an outline inside another is a hole in it. Each piece is
+   placed where it is on the drawing when the project came from a drawing in the same coordinates, otherwise
+   lined up on the walls. Pick which pieces to use (a drawing can hold more than one way of doing it). */
+function deckPiecesFromDxf(data) {
+  // the drawing's lines as a planar graph (split where lines cross or one ends on another, loose ends trimmed
+  // off); every closed face of it is a piece. A face inside another one (not touching it) is a hole in it.
+  const k = IMP.UNIT_FT[data.insunits] || 1 / 12, tol = 0.5 / 12 / k;
+  const S = data.segs.map(q => [q[0], q[1], q[2], q[3]]).filter(q => Math.hypot(q[2] - q[0], q[3] - q[1]) > tol);
+  const cuts = S.map(q => [0, 1]);
+  for (let i = 0; i < S.length; i++) for (let j = i + 1; j < S.length; j++) {
+    const a = S[i], b = S[j], rx = a[2] - a[0], ry = a[3] - a[1], sx = b[2] - b[0], sy = b[3] - b[1], den = rx * sy - ry * sx;
+    const La = Math.hypot(rx, ry), Lb = Math.hypot(sx, sy), ea = tol / La, eb = tol / Lb;
+    if (Math.abs(den) < 1e-12) {
+      // collinear overlaps: each one's ends on the other
+      for (const [P, Q, cq, L] of [[a, b, cuts[i], La], [b, a, cuts[j], Lb]]) for (const [x, y] of [[Q[0], Q[1]], [Q[2], Q[3]]]) { const ux = (P[2] - P[0]) / L, uy = (P[3] - P[1]) / L, t = ((x - P[0]) * ux + (y - P[1]) * uy) / L, d = Math.abs((x - P[0]) * uy - (y - P[1]) * ux); if (d < tol && t > 0 && t < 1) cq.push(t); }
+      continue;
+    }
+    const t = ((b[0] - a[0]) * sy - (b[1] - a[1]) * sx) / den, u = ((b[0] - a[0]) * ry - (b[1] - a[1]) * rx) / den;
+    if (t >= -ea && t <= 1 + ea && u >= -eb && u <= 1 + eb) { cuts[i].push(Math.max(0, Math.min(1, t))); cuts[j].push(Math.max(0, Math.min(1, u))); }
+  }
+  const nodes = [], nodeAt = (x, y) => { for (let n = 0; n < nodes.length; n++) if (Math.abs(nodes[n][0] - x) < tol && Math.abs(nodes[n][1] - y) < tol) return n; nodes.push([x, y]); return nodes.length - 1; };
+  const E = new Set();
+  S.forEach((q, i) => { const T = [...new Set(cuts[i].map(t => +t.toFixed(9)))].sort((p, r) => p - r); for (let m = 0; m + 1 < T.length; m++) { const a = nodeAt(q[0] + (q[2] - q[0]) * T[m], q[1] + (q[3] - q[1]) * T[m]), b = nodeAt(q[0] + (q[2] - q[0]) * T[m + 1], q[1] + (q[3] - q[1]) * T[m + 1]); if (a !== b) E.add(Math.min(a, b) + ',' + Math.max(a, b)); } });
+  const adj = new Map(); const addE = (a, b) => { (adj.get(a) || adj.set(a, new Set()).get(a)).add(b); };
+  for (const e of E) { const [a, b] = e.split(',').map(Number); addE(a, b); addE(b, a); }
+  // trim loose ends
+  let changed = true; while (changed) { changed = false; for (const [n, L] of adj) if (L.size < 2) { for (const m of L) adj.get(m).delete(n); adj.delete(n); changed = true; } }
+  const ang = (a, b) => Math.atan2(nodes[b][1] - nodes[a][1], nodes[b][0] - nodes[a][0]);
+  const order = new Map(); for (const [n, L] of adj) order.set(n, [...L].sort((p, q) => ang(n, p) - ang(n, q)));
+  const seen = new Set(), faces = [];
+  for (const [a, L] of adj) for (const b of L) {
+    if (seen.has(a + '>' + b)) continue;
+    const cyc = []; let u = a, v = b, guard = 0;
+    while (!seen.has(u + '>' + v) && guard++ < 10000) { seen.add(u + '>' + v); cyc.push(u); const O = order.get(v), i = O.indexOf(u); const w = O[(i - 1 + O.length) % O.length]; u = v; v = w; }
+    if (cyc.length >= 3) faces.push(cyc.map(n => nodes[n]));
+  }
+  const sarea = (P) => { let a = 0; for (let i = 0; i < P.length; i++) { const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length]; a += x1 * y2 - x2 * y1; } return a / 2; };
+  const inside = (pt, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) c = !c; } return c; };
+  const tidy = (P) => P.filter((p, i) => { const a = P[(i + P.length - 1) % P.length], b = P[(i + 1) % P.length]; return Math.abs((p[0] - a[0]) * (b[1] - p[1]) - (p[1] - a[1]) * (b[0] - p[0])) > tol * tol * 4; });
+  // faces turning one way are the pieces; the other way round are the outside of a separate outline (its hole
+  // in whatever face holds it, if any)
+  const pos = faces.filter(F => sarea(F) > 0).map(F => ({ outer: tidy(F), raw: F, holes: [], a: sarea(F) })).filter(p => p.outer.length >= 3 && p.a > tol * tol * 100);
+  const neg = faces.filter(F => sarea(F) < 0).map(F => tidy(F));
+  for (const N of neg) {
+    const pt = N[0], host = pos.filter(p => p.outer !== N && inside([pt[0] + tol, pt[1] + tol], p.outer) && Math.abs(sarea(N)) < p.a).sort((p, q) => p.a - q.a)[0];
+    if (host && !N.every(q => host.outer.some(r => Math.abs(r[0] - q[0]) < tol && Math.abs(r[1] - q[1]) < tol))) { host.holes.push(N.slice().reverse()); host.a -= Math.abs(sarea(N)); }
+  }
+  return { pieces: pos.sort((p, q) => (p.outer[0][0] - q.outer[0][0])), k };
+}
+// pieces that share an edge, joined into one: their outlines' edges, with the shared ones (run both ways)
+// cancelled out, chained back into loops; the loop going round the right way is the outline, any others holes
+function joinDeckPieces(L) {
+  const key = (q) => q[0].toFixed(5) + ',' + q[1].toFixed(5), sarea = (P) => { let a = 0; for (let i = 0; i < P.length; i++) { const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length]; a += x1 * y2 - x2 * y1; } return a / 2; };
+  const edgesOf = (p) => { const out = [], add = (R) => R.forEach((q, i) => out.push([q, R[(i + 1) % R.length]])); add(p.raw || p.outer); (p.holes || []).forEach(add); return out; };
+  // which pieces share an edge
+  const par = L.map((_, i) => i), find = (i) => (par[i] === i ? i : (par[i] = find(par[i])));
+  const E = L.map(p => new Set(edgesOf(p).map(([a, b]) => key(a) + '>' + key(b))));
+  for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) for (const e of E[j]) { const [a, b] = e.split('>'); if (E[i].has(b + '>' + a)) { par[find(i)] = find(j); break; } }
+  const groups = new Map(); L.forEach((p, i) => { const r = find(i); (groups.get(r) || groups.set(r, []).get(r)).push(p); });
+  const out = [];
+  for (const G of groups.values()) {
+    if (G.length === 1) { out.push(G[0]); continue; }
+    const all = [].concat(...G.map(edgesOf)), pts = new Map(), es = new Map();
+    for (const [a, b] of all) { pts.set(key(a), a); pts.set(key(b), b); const f = key(a) + '>' + key(b), r = key(b) + '>' + key(a); if (es.has(r)) es.delete(r); else es.set(f, [key(a), key(b)]); }
+    const from = new Map(); for (const [, [a, b]] of es) (from.get(a) || from.set(a, []).get(a)).push(b);
+    const loops = [];
+    for (const [a] of from) while ((from.get(a) || []).length) { const loop = [a]; let cur = from.get(a).pop(), g = 0; while (cur !== a && g++ < 10000) { loop.push(cur); const nx = from.get(cur); if (!nx || !nx.length) break; cur = nx.pop(); } loops.push(loop.map(k => pts.get(k))); }
+    const tidy = (P) => P.filter((p, i) => { const a = P[(i + P.length - 1) % P.length], b = P[(i + 1) % P.length]; return Math.abs((p[0] - a[0]) * (b[1] - p[1]) - (p[1] - a[1]) * (b[0] - p[0])) > 1e-6; });
+    // (the drawing's y runs up, the plan's down, so which way round the outline goes isn't fixed: the biggest loop is it)
+    const outer = loops.slice().sort((p, q) => Math.abs(sarea(q)) - Math.abs(sarea(p)))[0];
+    if (!outer) { out.push(...G); continue; }
+    out.push({ outer: tidy(outer), raw: outer, holes: loops.filter(P => P !== outer).map(tidy), a: G.reduce((t, p) => t + p.a, 0) });
+  }
+  return out;
+}
+async function lidMenu() {
+  const P = ed.plan, D = P.deckPieces || [];
+  if (!D.length) { importDeck(); return; }
+  const a = await dialogOpen({ title: 'Lid', body: `<p>The lid over the cleanroom is ${D.length} piece${D.length === 1 ? '' : 's'} from <b>${esc(P.deckSource || 'a deck drawing')}</b>. On the plan each piece is a dashed violet outline: drag it by its outline or its LID label (its corners catch on wall ends), R turns it, Delete removes it.</p><p class="note">In 3D the <b>Lid</b> button turns the lid on in every view, Dollhouse too, or back off.</p>`,
+    buttons: [{ label: 'Remove the lid drawing', danger: true, ret: 'remove' }, { label: 'Use another drawing', ret: 'new' }, { label: 'OK', primary: true, ret: null }] });
+  if (a === 'remove') { ed.edit(Q => { delete Q.deckPieces; delete Q.deckSource; }); toast('Lid drawing removed. The cleanroom gets its own lid over the plenum again.'); queue3D(); }
+  if (a === 'new') importDeck();
+}
+async function importDeck() {
+  const r = await api.openFile('ceiling'); if (!r) return;
+  if (r.kind === 'error') { handleLoaded(r); return; }
+  if (r.kind !== 'dxf') { toast('Pick the deck drawing as a DWG or DXF.'); return; }
+  const { pieces, k } = deckPiecesFromDxf(r);
+  if (!pieces.length) { await dialogOpen({ title: 'No outline found', body: '<p>No closed outlines in that drawing. Draw the lid as closed shapes (lines that meet end to end, or closed polylines) and save it again.</p>', buttons: [{ label: 'OK', primary: true, ret: null }] }); return; }
+  const P = ed.plan, O = P.dxfOrigin;
+  // drawing units to the plan's feet: the project's own drawing origin when it has one
+  let tf = (x, y) => [x * k, -y * k], how = 'where it is on the drawing';
+  if (O) tf = (x, y) => [x * k - O.x0, O.y0 - y * k];
+  let placed = pieces.map(p => ({ outer: p.outer.map(q => tf(q[0], q[1])), raw: p.raw.map(q => tf(q[0], q[1])), holes: p.holes.map(h => h.map(q => tf(q[0], q[1]))), a: p.a * k * k }));
+  // A deck drawing often shows the lid more than one way (one piece, or the same lid cut in pieces and drawn
+  // apart), each away from where it goes. Pieces drawn touching are one item (joined); each item lines up on
+  // the walls by itself, so every option lands over the building.
+  let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9; P.walls.forEach(w => { bx0 = Math.min(bx0, w.x1, w.x2); bx1 = Math.max(bx1, w.x1, w.x2); by0 = Math.min(by0, w.y1, w.y2); by1 = Math.max(by1, w.y1, w.y2); });
+  const boxOf = (p) => { let a = 1e9, b = 1e9, c = -1e9, d = -1e9; p.outer.forEach(q => { a = Math.min(a, q[0]); c = Math.max(c, q[0]); b = Math.min(b, q[1]); d = Math.max(d, q[1]); }); return [a, b, c, d]; };
+  const par = placed.map((_, i) => i), find = (i) => par[i] === i ? i : (par[i] = find(par[i]));
+  const bxs = placed.map(boxOf);
+  for (let i = 0; i < placed.length; i++) for (let j = i + 1; j < placed.length; j++) { const A = bxs[i], B = bxs[j]; if (A[0] <= B[2] + 0.05 && B[0] <= A[2] + 0.05 && A[1] <= B[3] + 0.05 && B[1] <= A[3] + 0.05) par[find(i)] = find(j); }
+  const groups = new Map(); placed.forEach((p, i) => (groups.get(find(i)) || groups.set(find(i), []).get(find(i))).push(p));
+  let lined = 0;
+  placed = [];
+  for (const G of groups.values()) {
+    let items = G.length > 1 ? joinDeckPieces(G) : G;
+    if (P.walls.length) {
+      // the outline cut into short bits, so every stretch of it counts in how well it sits on the walls
+      const lines = [];
+      items.forEach(p => p.outer.forEach((q, i) => { const b = p.outer[(i + 1) % p.outer.length], n = Math.max(1, Math.ceil(Math.hypot(b[0] - q[0], b[1] - q[1]) / 2)); for (let j = 0; j < n; j++) lines.push([q[0] + (b[0] - q[0]) * j / n, q[1] + (b[1] - q[1]) * j / n, q[0] + (b[0] - q[0]) * (j + 1) / n, q[1] + (b[1] - q[1]) * (j + 1) / n]); }));
+      // a lid piece sits against the building's outside walls: favour places where two or more of its sides do
+      const edge = (x0, y0, x1, y1) => 0.05 * [x0 - bx0, y0 - by0, x1 - bx1, y1 - by1].reduce((t, d) => t + Math.max(0, 1 - Math.abs(d)), 0);
+      const al = IMP.alignToWalls(lines, P.walls, edge);
+      if (al && al.score >= 0.25) { const mv = (q) => [q[0] + al.dx, q[1] + al.dy]; items = items.map(p => ({ ...p, outer: p.outer.map(mv), raw: (p.raw || p.outer).map(mv), holes: p.holes.map(h => h.map(mv)) })); lined++; }
+    }
+    placed.push(...items);
+  }
+  placed.sort((p, q) => boxOf(p)[0] - boxOf(q)[0]);
+  if (lined) how = lined === groups.size ? 'each lined up on the walls' : 'lined up on the walls where they fit';
+  else if (!O) how = 'where it is on the drawing (move it into place)';
+  // which pieces sit on the plan: picked to start with
+  const onPlan = (p) => { const c = p.outer.reduce((t, q) => [t[0] + q[0] / p.outer.length, t[1] + q[1] / p.outer.length], [0, 0]); return c[0] > bx0 - 2 && c[0] < bx1 + 2 && c[1] > by0 - 2 && c[1] < by1 + 2; };
+  const thumb = (p) => { let [a, b, c, d] = boxOf(p); if (P.walls.length) { a = Math.min(a, bx0); b = Math.min(b, by0); c = Math.max(c, bx1); d = Math.max(d, by1); } const pad = Math.max(c - a, d - b) * 0.06, sw = (Math.max(c - a, d - b) / 90).toFixed(3); const path = (R) => 'M' + R.map(q => q[0].toFixed(2) + ' ' + q[1].toFixed(2)).join('L') + 'Z'; const wl = P.walls.map(w => `M${w.x1.toFixed(2)} ${w.y1.toFixed(2)}L${w.x2.toFixed(2)} ${w.y2.toFixed(2)}`).join(''); return `<svg viewBox="${(a - pad).toFixed(2)} ${(b - pad).toFixed(2)} ${(c - a + 2 * pad).toFixed(2)} ${(d - b + 2 * pad).toFixed(2)}" style="width:150px;height:96px;background:#1b2023;border-radius:6px"><path d="${wl}" stroke="#5d6a70" stroke-width="${sw}" fill="none"/><path d="${path(p.outer)}${p.holes.map(path).join('')}" fill="rgba(190,150,255,.3)" fill-rule="evenodd" stroke="#c9a6ff" stroke-width="${(sw * 1.6).toFixed(3)}"/></svg>`; };
+  // pieces that land on top of each other are different ways of doing the same lid: start with the biggest one ticked
+  const big = placed.reduce((m, p, i) => (p.a > placed[m].a ? i : m), 0);
+  const pick = await dialogOpen({ wide: true, title: 'Lid from ' + r.name, body: `<p>${placed.length} piece${placed.length === 1 ? '' : 's'} in the drawing, placed ${how}. Tick the pieces to use; each one comes in as its own piece you can drag, turn (R) and delete on the plan.${placed.length > 1 ? ' When the drawing shows the lid more than one way (one piece, or the same lid in several pieces), tick the pieces for the way you want: the one big piece, or the smaller pieces together.' : ''}</p>
+    <label class="chk"><input type="checkbox" id="dkJoin"> Join ticked pieces that touch into one piece (one solid lid). Leave it off to move each piece on its own.</label>
+    <div class="row" style="gap:10px;flex-wrap:wrap">${placed.map((p, i) => `<label class="chk" style="display:flex;flex-direction:column;align-items:center;gap:4px">${thumb(p)}<span><input type="checkbox" data-dk="${i}" ${(placed.length === 1 || i === big) ? 'checked' : ''}> Piece ${i + 1} · ${Math.round(p.a)} sq ft${onPlan(p) ? '' : ' · off the plan'}</span></label>`).join('')}</div>`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Use the ticked pieces', primary: true, value: () => ({ pick: $$('[data-dk]').filter(c => c.checked).map(c => +c.dataset.dk), join: $('#dkJoin').checked }) }] });
+  if (!pick || !pick.pick.length) return;
+  const out = pick.join ? joinDeckPieces(pick.pick.map(i => placed[i])) : pick.pick.map(i => placed[i]);
+  ed.edit(Q => { Q.deckPieces = out.map(p => ({ id: Plan3DEditor.uid(), outer: p.outer, holes: p.holes })); Q.deckSource = r.name; });
+  const off = out.filter(p => !onPlan(p)).length;
+  if (view === '3d' || view === 'build') setView('split');
+  ed.fit(); updateChrome(); queue3D();
+  toast(`Lid placed: ${out.length} piece${out.length === 1 ? '' : 's'}.${off ? ` ${off} ${off === 1 ? 'is' : 'are'} off the plan: drag ${off === 1 ? 'it' : 'each'} by its outline or LID label onto the walls (corners catch on wall ends).` : ''} In 3D, the Lid button shows it in every view.`);
 }
 
 /* ---------- Revit / IFC ---------- */
@@ -2021,7 +2170,7 @@ $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave
   item('#bBldInsert', () => libraryDialog()); item('#bBldFile', insertFromFile); item('#bBldSave', saveBuildingDialog);
   item('#bLibGroup', saveGroupDialog); item('#bLibCeil', saveCeilingDialog);
 }
-$('#bCeiling').onclick = ceilingMenu; $('#bGenCeil').onclick = generateCeilingDialog; $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
+$('#bCeiling').onclick = ceilingMenu; $('#bGenCeil').onclick = generateCeilingDialog; $('#bLid').onclick = lidMenu; $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
 $('#wCleanroom').onclick = () => pickMode('cleanroom'); $('#wHouse').onclick = () => pickMode('house');
 $('#wBack').onclick = (e) => { e.preventDefault(); modePicked = false; updateChrome(); };
 $('#wDraw').onclick = () => { $('#welcome').hidden = true; ed.setTool('wall'); $('#plan').focus(); };

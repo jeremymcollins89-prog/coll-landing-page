@@ -398,7 +398,7 @@ function alignToWalls(lines, walls, prefer) {
     const h = (w.t || 0.25) / 2, dx = ex - cx + sx * h, dy = ey - cy + sy * h, k = Math.round(dx * 8) + ',' + Math.round(dy * 8);
     if (tried.has(k)) continue; tried.add(k);
     let n = 0; for (const [px, py] of pts) if (hit.has(key(px + dx, py + dy))) n++;
-    const raw = n / pts.length, sc = raw + (prefer && prefer(x0 + dx, y0 + dy, x1 + dx, y1 + dy) ? 0.04 : 0);
+    const raw = n / pts.length, pv = prefer ? prefer(x0 + dx, y0 + dy, x1 + dx, y1 + dy) : 0, sc = raw + (typeof pv === 'number' ? pv : pv ? 0.04 : 0);
     if (sc > best.score) best = { dx, dy, score: sc, raw };
   }
   return { dx: best.dx, dy: best.dy, score: best.raw };

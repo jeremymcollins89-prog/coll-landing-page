@@ -51,7 +51,7 @@ const DEFAULT_W = { door: 3, door2: 6, glass: 4, open: 3, pass: 2, window: 3, ov
 // houses: 2′-8″ doors, 5′ pairs, 3′ windows, 6′-8″ heads
 const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2, overhead: 16 };
 const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass', 'overhead']);
-const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas', gzone: 'gridZones', tile: 'ceilTiles' };
+const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas', gzone: 'gridZones', tile: 'ceilTiles', deck: 'deckPieces' };
 const COL = {
   bg: '#1a2024', gridMinor: 'rgba(255,255,255,.035)', gridMajor: 'rgba(255,255,255,.08)', axis: 'rgba(255,255,255,.14)',
   wall: '#e9eef0', wallLine: '#8e9aa1', sp: '#f2d06b', chase: '#59666d', chaseLine: '#b7c2c7', grille: '#9fdbe8',
@@ -285,6 +285,14 @@ class Editor {
     this.edit(() => { const w = o.w; o.w = o.h; o.h = w; });
     const q = this.snapBox(o.x, o.y, o.w, o.h, new Set([o.id]), false); if (Math.abs(q.x - o.x) + Math.abs(q.y - o.y) > 1e-6) this.edit(() => { o.x = q.x; o.y = q.y; });
   }
+  // where a lid piece's label sits: inside its top-left corner
+  deckLabel(d) { let x0 = 1e9, y0 = 1e9; for (const q of d.outer) { if (q[1] < y0 - 1e-6 || (Math.abs(q[1] - y0) < 1e-6 && q[0] < x0)) { y0 = q[1]; x0 = q[0]; } } return { x: x0 + 4 / this.view.s, y: y0 + 4 / this.view.s }; }
+  // a lid piece turned a quarter turn about its middle
+  turnDeck(d, back) {
+    let a = 0, b = 0; d.outer.forEach(q => { a += q[0] / d.outer.length; b += q[1] / d.outer.length; });
+    const T = (q) => back ? [a + (q[1] - b), b - (q[0] - a)] : [a - (q[1] - b), b + (q[0] - a)];
+    this.edit(() => { d.outer = d.outer.map(T); d.holes = (d.holes || []).map(h => h.map(T)); });
+  }
   /* beams sit on the studs of the cleanroom walls: the H-studs every 48″ and the posts at the ends */
   studs() {
     const V = global.Plan3DViewer, key = this.plan.walls.length + '|' + this.hist.length + '|' + this.fut.length;
@@ -335,10 +343,12 @@ class Editor {
     if (r.kind === 'wall' || r.kind === 'opening' || r.kind === 'beam') return [[o.x1, o.y1], [o.x2, o.y2]];
     if (r.kind === 'chase' || r.kind === 'carea' || r.kind === 'gzone') return [[o.x0, o.y0], [o.x1, o.y1]];
     if (r.kind === 'insert') { const b = this.insBox(o); return [[b.x0, b.y0], [b.x1, b.y1]]; }
+    if (r.kind === 'deck') return o.outer.map(q => [q[0], q[1]]);
     return [[o.x, o.y]];
   }
   // a piece moved by (dx, dy) from its original copy O
   shiftRef(kind, o, O, dx, dy) {
+    if (kind === 'deck') { o.outer = O.outer.map(q => [q[0] + dx, q[1] + dy]); o.holes = (O.holes || []).map(h => h.map(q => [q[0] + dx, q[1] + dy])); return; }
     if (kind === 'wall' || kind === 'opening' || kind === 'beam') { o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy; }
     else if (kind === 'chase' || kind === 'carea' || kind === 'gzone') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; if (kind === 'gzone') { if (isFinite(O.ox)) o.ox = O.ox + dx; if (isFinite(O.oy)) o.oy = O.oy + dy; } }
     else { o.x = O.x + dx; o.y = O.y + dy; }
@@ -392,6 +402,7 @@ class Editor {
     (P.beams || []).forEach(b => { e(b.x1, b.y1); e(b.x2, b.y2); }); (P.columns || []).forEach(c => e(c.x, c.y));
     if (P.ceilingMode === 'manual') (P.fixtures || []).forEach(f => { e(f.x - (f.w || 2) / 2, f.y - (f.h || 4) / 2); e(f.x + (f.w || 2) / 2, f.y + (f.h || 4) / 2); });
     (P.ceilTiles || []).forEach(t => { e(t.x - t.w / 2, t.y - t.h / 2); e(t.x + t.w / 2, t.y + t.h / 2); });
+    (P.deckPieces || []).forEach(d => (d.outer || []).forEach(q => e(q[0], q[1])));
     if (!P.walls.length) (P.ceilingGrid || []).forEach(q => { e(q[0], q[1]); e(q[2], q[3]); });
     if (this.bgImg && P.background && P.background.visible !== false && this.bgImg.naturalWidth) {
       const B = P.background, w = this.bgImg.naturalWidth * B.scale / 2, h = this.bgImg.naturalHeight * B.scale / 2, r = Math.hypot(w, h);
@@ -565,6 +576,12 @@ class Editor {
     }
     const h = this.wallAt(x, y, 7); if (h) return { kind: 'wall', id: h.w.id };
     if (P.ceilingMode === 'manual' && this.showCeil !== false) for (let i = (P.fixtures || []).length - 1; i >= 0; i--) { const f = P.fixtures[i]; if (f.id && Math.abs(x - f.x) < (f.w || 2) / 2 && Math.abs(y - f.y) < (f.h || 4) / 2) return { kind: 'fixture', id: f.id }; }
+    // a lid / roof deck piece: picked on its outline or its label (the inside stays free for clicking rooms)
+    for (let i = (P.deckPieces || []).length - 1; i >= 0; i--) {
+      const d = P.deckPieces[i], O = d.outer; if (!O || O.length < 3) continue;
+      for (let k = 0; k < O.length; k++) { const a = O[k], b = O[(k + 1) % O.length]; if (segProj(x, y, a[0], a[1], b[0], b[1]).d < tol * 1.2) return { kind: 'deck', id: d.id }; }
+      const L = this.deckLabel(d); if (x >= L.x - 2 / this.view.s && x <= L.x + 56 / this.view.s && y >= L.y - 2 / this.view.s && y <= L.y + 16 / this.view.s) return { kind: 'deck', id: d.id };
+    }
     if (this.showCeil !== false) for (let i = (P.ceilTiles || []).length - 1; i >= 0; i--) { const t = P.ceilTiles[i]; if (t.id && Math.abs(x - t.x) < t.w / 2 && Math.abs(y - t.y) < t.h / 2) return { kind: 'tile', id: t.id }; }
     for (let i = (P.inserts || []).length - 1; i >= 0; i--) { const b = this.insBox(P.inserts[i]); if (x >= b.x0 - tol && x <= b.x1 + tol && y >= b.y0 - tol && y <= b.y1 + tol) return { kind: 'insert', id: P.inserts[i].id }; }
     return null;
@@ -836,6 +853,13 @@ class Editor {
       else if (D.sel.kind === 'fixture' && e.altKey) { o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy); this.status('Moving freely (Alt): ' + fmt(Math.hypot(o.x - O.x, o.y - O.y))); }
       else if (D.sel.kind === 'fixture') { const V = global.Plan3DViewer, q = V.placeFixture(this.plan, { x: O.x + (p.x - D.sx), y: O.y + (p.y - D.sy), w: O.w || 2, h: O.h || 4 }); o.x = q.x; o.y = q.y; if (q.inHole) this.status('In the opening · Alt moves it freely, arrow keys nudge 1″'); }
       else if (D.sel.kind === 'gzone') { this.shiftRef('gzone', o, O, dx, dy); }
+      else if (D.sel.kind === 'deck') {
+        // its corners catch on wall ends (within 12 px), so a lid drops onto the walls it covers
+        const rx = p.x - D.sx, ry = p.y - D.sy, tol = 12 / this.view.s; let best = null, bd = tol;
+        if (!e.altKey) for (const q of O.outer) for (const w of this.plan.walls) for (const [px, py] of [[w.x1, w.y1], [w.x2, w.y2]]) { const d0 = Math.hypot(px - (q[0] + rx), py - (q[1] + ry)); if (d0 < bd) { bd = d0; best = [px - q[0], py - q[1]]; } }
+        if (best) { dx = best[0]; dy = best[1]; } else if (e.altKey) { dx = rx; dy = ry; }
+        this.shiftRef('deck', o, O, dx, dy); this.status('Moving the lid piece' + (best ? ' · a corner is on a wall end' : '') + ' (Alt: no snapping; R turns it)');
+      }
       else if (D.sel.kind === 'chase' || D.sel.kind === 'carea') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
       else if (D.sel.kind === 'room') { o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy); }
       else if (D.sel.kind === 'column') { const g = this.snapIn / 12 || 1 / 12; o.x = Math.round((O.x + (p.x - D.sx)) / g) * g; o.y = Math.round((O.y + (p.y - D.sy)) / g) * g; }
@@ -1004,6 +1028,7 @@ class Editor {
       this.render(); return true;
     }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.tool === 'grid' && (this.gridMode === 'place' || this.gridMode === 'fill') && !(this.sel && (this.sel.kind === 'tile' || this.sel.kind === 'fixture'))) { const w = this.tileW || 2; this.tileW = this.tileH || 4; this.tileH = w; if (this.cursor) this.tileGhost = this.pieceAt(this.cursor.x, this.cursor.y); this.emit('tilesize'); this.render(); return true; }
+    if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'deck') { const o = this.selected(); if (o) this.turnDeck(o, e.shiftKey); return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'tile') { const o = this.selected(); if (o) this.turnTile(o); return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'fixture' && this.built()) { const o = this.selected(); if (o) { this.edit(() => { const w = o.w || 2; o.w = o.h || 4; o.h = w; }); } return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'fixture') { const o = this.selected(); if (o) this.turnFixture(o); return true; }
@@ -1196,6 +1221,14 @@ class Editor {
       g.font = '600 11px Consolas, monospace'; g.fillStyle = '#f2c84b'; g.textAlign = 'right'; g.textBaseline = 'top';
       g.fillText('GRID ' + (k.swap ? '4′ ↔' : '4′ ↕'), X + W - 5, Y + 4); g.restore();
     }
+    // lid / roof deck pieces: a dashed violet outline and a label to pick it up by
+    for (const d of P.deckPieces || []) {
+      if (!d.outer || d.outer.length < 3) continue;
+      g.save(); g.strokeStyle = 'rgba(190,150,255,.9)'; g.fillStyle = 'rgba(190,150,255,.06)'; g.lineWidth = 1.6; g.setLineDash([9, 5]); g.beginPath();
+      for (const R of [d.outer].concat(d.holes || [])) { R.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); }
+      g.fill('evenodd'); g.stroke(); g.setLineDash([]);
+      const L = this.deckLabel(d); g.font = '600 11px Consolas, monospace'; g.fillStyle = '#c9a6ff'; g.textBaseline = 'top'; g.fillText('LID' + ((P.deckPieces || []).length > 1 ? ' ' + ((P.deckPieces || []).indexOf(d) + 1) : ''), this.sx(L.x), this.sy(L.y)); g.restore();
+    }
     // a built ceiling's tiles: a cut tile shows its size when there's room to read it
     if ((P.ceilTiles || []).length && this.showCeil !== false) {
       g.save(); g.fillStyle = 'rgba(127,211,227,.05)'; g.font = '10px Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -1362,6 +1395,7 @@ class Editor {
       else if (sel.kind === 'device') { const r = Math.max(5, Math.min(9, this.view.s * 0.35)); g.beginPath(); g.arc(this.sx(o.x) + Math.cos(o.a || 0) * r * 1.1, this.sy(o.y) + Math.sin(o.a || 0) * r * 1.1, r + 4, 0, Math.PI * 2); g.stroke(); }
       else if (sel.kind === 'item') { const c = global.Plan3DViewer.itemCorners(o); g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.stroke(); }
       else if (sel.kind === 'beam') { quad(o.x1, o.y1, o.x2, o.y2, (global.Plan3DViewer ? global.Plan3DViewer.beamSize(o).bf / 12 : 0.5) + 6 / s); g.stroke(); }
+      else if (sel.kind === 'deck') { g.beginPath(); o.outer.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.stroke(); }
       else if (sel.kind === 'fixture' || sel.kind === 'tile') { const fw = o.w || 2, fh = o.h || 4; g.strokeRect(this.sx(o.x - fw / 2) - 2, this.sy(o.y - fh / 2) - 2, fw * s + 4, fh * s + 4); }
       else if (sel.kind === 'insert') { const b = this.insBox(o); g.strokeRect(this.sx(b.x0) - 6, this.sy(b.y0) - 6, (b.x1 - b.x0) * s + 12, (b.y1 - b.y0) * s + 12); }
     };

@@ -247,6 +247,7 @@ function transformPlan(src, T, idp) {
   if (P.ceilGrid && isFinite(P.ceilGrid.ox)) { const [gx, gy] = X(P.ceilGrid.ox, P.ceilGrid.oy); P.ceilGrid = { ox: gx, oy: gy, swap: !!P.ceilGrid.swap !== turned }; }
   else if (turned) P.ceilGrid = null, P.ceilSwap = !P.ceilSwap;
   if (Array.isArray(P.ceilingGrid)) P.ceilingGrid = P.ceilingGrid.map(q => [...X(q[0], q[1]), ...X(q[2], q[3])]);
+  for (const d of P.deckPieces || []) { d.outer = d.outer.map(q => X(q[0], q[1])); d.holes = (d.holes || []).map(h => h.map(q => X(q[0], q[1]))); if (d.id) d.id = pre + d.id; }
   for (const t of P.ceilTiles || []) { [t.x, t.y] = X(t.x, t.y); if (turned) { const w = t.w; t.w = t.h; t.h = w; } if (t.id) t.id = pre + t.id; }
   if (P.ceilingImage) { const I = P.ceilingImage; [I.x, I.y] = X(I.x, I.y); I.rot = ((I.rot || 0) + (turned ? (T.c > 0 ? 90 : 270) : (T.a < 0 && T.d < 0 ? 180 : 0))) % 360; }
   return P;
@@ -2023,6 +2024,26 @@ function ceilingFixtures(plan, A) {
   return out;
 }
 
+/* A roof deck / lid laid over the cleanroom, from a drawing: plan.deckPieces = [{ id, outer: [[x, y], …],
+   holes: [[[x, y], …], …] }], each piece placed (and moved) on its own. */
+/* The height a lid piece sits at: on top of everything under it. The plenum (the top of the walls), a taller
+   room's walls, and the I-beams across the cleanroom all hold it up; the ceiling under it doesn't change. */
+function deckBase(plan, A, d, WH) {
+  const inside = (x, z) => { let c = false; const P = d.outer; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, zi] = P[i], [xj, zj] = P[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; };
+  const near = (x1, z1, x2, z2) => { for (let t = 0; t <= 1.0001; t += 0.25) if (inside(x1 + (x2 - x1) * t, z1 + (z2 - z1) * t)) return true; return false; };
+  let top = WH;
+  for (const p of A.pieces || []) if (p.hard && p.h > top && near(p.x1, p.z1, p.x2, p.z2)) top = p.h;
+  for (const b of plan.beams || []) {
+    const q = beamSeat(plan, A, b); if (!near(q.x1, q.y1, q.x2, q.y2)) continue;
+    top = Math.max(top, q.bot + beamSize(b).d / 12);
+  }
+  return top;
+}
+function deckShapes(plan) {
+  const L = plan && Array.isArray(plan.deckPieces) ? plan.deckPieces : [];
+  const area = (P) => { let a = 0; for (let i = 0; i < P.length; i++) { const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length]; a += x1 * y2 - x2 * y1; } return Math.abs(a / 2); };
+  return L.filter(d => d && Array.isArray(d.outer) && d.outer.length >= 3).map(d => ({ outer: d.outer, holes: d.holes || [], area: area(d.outer) - (d.holes || []).reduce((t, h) => t + area(h), 0), id: d.id }));
+}
 /* ---------- house helpers ---------- */
 const FLOOR_TEX = {};
 function floorMat(THREE, kind) {
@@ -2722,7 +2743,20 @@ function buildScene(THREE, plan, A) {
   if (A.frameAny && FPall && plan.roof && plan.roof.type && plan.roof.type !== 'none') buildRoof(THREE, roof, A, plan, FPall, sidingMat, M);
   // plenum lid: the top of the cleanroom, over the plenum (hidden in Dollhouse and Plenum views)
   const lid = new THREE.Group(); root.add(lid);
-  if (A.PL > 0 && FP) {
+  const DK = deckShapes(plan);
+  if (DK.length) {
+    // a roof deck / lid drawn and placed over the cleanroom: its outline, 2″ thick, on top of the plenum and beams
+    // steel roof deck: galvanized, ribbed every 6″
+    const dc = cachedCanvas('deck', () => makeCanvas(64, 64, (g, w, h) => { g.fillStyle = '#a9afb3'; g.fillRect(0, 0, w, h); for (let x = 0; x < w; x += 16) { g.fillStyle = 'rgba(255,255,255,.28)'; g.fillRect(x, 0, 5, h); g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x + 9, 0, 3, h); } }));
+    const dtx = new THREE.CanvasTexture(dc); dtx.wrapS = dtx.wrapT = THREE.RepeatWrapping; dtx.repeat.set(0.5, 0.5); dtx.anisotropy = ANISO;
+    const dm = new THREE.MeshPhongMaterial({ map: dtx, color: 0xd5dadd, specular: 0x555555, shininess: 40, side: THREE.DoubleSide });
+    for (const d of DK) {
+      const sh = new THREE.Shape(d.outer.map(([x, z]) => new THREE.Vector2(x, z)));
+      for (const h of d.holes) sh.holes.push(new THREE.Path(h.map(([x, z]) => new THREE.Vector2(x, z))));
+      const g = new THREE.ExtrudeGeometry(sh, { depth: 0.17, bevelEnabled: false }), m = new THREE.Mesh(g, dm);
+      m.rotation.x = Math.PI / 2; m.position.y = deckBase(plan, A, d, WH) + 0.17; outline(m); if (d.id) m.userData.ref = { kind: 'deck', id: d.id }; pick.push(m); lid.add(m);
+    }
+  } else if (A.PL > 0 && FP) {
     const lm = new THREE.MeshLambertMaterial({ color: 0xeef0f0, side: THREE.DoubleSide }), LR = ceilingRects(plan, FP, A);
     // a taller section (a ceiling area set to raise the walls): its own top, and panels closing the step
     const up = ceilAreas(plan, A).filter(a => a.raise && a.h + A.PL > WH + 0.05);
@@ -3138,6 +3172,7 @@ function mount(container, plan, opts) {
       <div class="p3v-panel p3v-card"><div class="p3v-title"></div><div class="p3v-meta"></div><div class="p3v-here"><b></b><span></span></div></div>
       <div class="p3v-right"><div class="p3v-panel p3v-modes" role="group" aria-label="View"><button data-m="walk">Walk</button><button data-m="doll">Dollhouse</button><button data-m="plenum" hidden title="Looks into the plenum: the grid ceiling stays, the top comes off">Plenum</button><button data-m="exterior" hidden title="The outside, with the roof on">Exterior</button><button data-m="plan">Plan</button></div>
       <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button>
+      <button class="p3v-panel p3v-look p3v-lidb" aria-pressed="false" hidden title="Show the lid (the top of the cleanroom, or a roof deck you placed) in every view, or take it off again">Lid</button>
       <button class="p3v-panel p3v-look p3v-air" aria-pressed="true" hidden title="Show or hide the airflow: air down out of the FFUs, into the return grilles, and along the floor out through the doors and out of the building">Airflow</button>
       <button class="p3v-panel p3v-cbtn" aria-pressed="false" hidden title="Click anything in the model to leave a comment on it">💬 Comment</button></div>
     </div>
@@ -3160,6 +3195,9 @@ function mount(container, plan, opts) {
     if (airBtn) { airBtn.hidden = !G.some(o => o.children.length); airBtn.setAttribute('aria-pressed', String(airOn)); }
   }
   if (airBtn) airBtn.addEventListener('click', (e) => { e.stopPropagation(); airOn = !airOn; refreshAir(); });
+  // the lid on in every view (Dollhouse and Plan too), or back to each view's own
+  const lidBtn = container.querySelector('.p3v-lidb'); let lidOn = false;
+  if (lidBtn) lidBtn.addEventListener('click', (e) => { e.stopPropagation(); lidOn = !lidOn; lidBtn.setAttribute('aria-pressed', String(lidOn)); applyVis(mode); });
   // Light switches: click one to turn its lights off and on. A light goes dark when any switch it's on is off.
   // This is for looking around; it doesn't change the plan (a switch saved with off: true starts off).
   const swState = new Map(), ledOff = new THREE.MeshPhongMaterial({ color: 0x5d6468, specular: 0x222222, shininess: 10 });
@@ -3267,7 +3305,8 @@ function mount(container, plan, opts) {
   function applyVis(m) {
     if (!built) return;
     built.ceiling.visible = m === 'walk' || m === 'plenum' || m === 'exterior';
-    if (built.lid) built.lid.visible = m === 'walk' || m === 'exterior';
+    if (built.lid) built.lid.visible = lidOn || m === 'walk' || m === 'exterior';
+    if (lidBtn) lidBtn.hidden = !(built.lid && built.lid.children.length);
     if (built.roof) built.roof.visible = m === 'walk' || m === 'exterior';
   }
   function startTween(to, dur, done) {
@@ -3675,5 +3714,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture };
+global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, deckShapes, deckBase };
 })(typeof window !== 'undefined' ? window : this);
