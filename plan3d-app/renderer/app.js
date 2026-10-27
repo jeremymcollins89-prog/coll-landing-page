@@ -15,7 +15,7 @@ const ed = new Editor($('#plan'), {
   onChange: () => { updateChrome(); queue3D(); if (builder && view === 'build') builder.refresh(); renderProps(); },
   onLive: () => queue3D(),
   onSelect: (d) => { renderProps(d); if (builder && view === 'build') builder.drawSel(); },
-  onTool: (t) => { $$('.tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; $('#itemPal').hidden = t !== 'item'; if (t === 'item') itemPalette(); $('#elecPal').hidden = t !== 'elec'; if (t === 'elec') elecPalette(); if (t === 'piece') hideBanner(); toolHint(t); },
+  onTool: (t) => { $$('.tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; $('#itemPal').hidden = t !== 'item'; if (t === 'item') itemPalette(); $('#elecPal').hidden = t !== 'elec'; if (t === 'elec') elecPalette(); $('#gridPal').hidden = t !== 'grid'; if (t === 'grid') gridPalette(); if (t === 'piece') hideBanner(); toolHint(t); },
   onStatus: (m) => msg(m || toolHintText(ed.tool)),
   onCursor: (p) => { $('#sXY').textContent = fmt(p.x) + ', ' + fmt(p.y); $('#sZoom').textContent = Math.round(ed.view.s) + ' px/ft'; },
   onCalibrate: (cal) => calibrateDialog(cal),
@@ -53,7 +53,7 @@ const HINTS = {
   open: 'Click on a wall to place a cased opening (no door).',
   pass: 'Click on a wall to place a 24″ × 24″ stainless pass-thru.',
   chase: 'Drag a rectangle to place a full-height air chase.',
-  grid: 'Grid tool. Click a room or aisle to take its generated ceiling off (FFUs and lights too), or put it back. Drag a rectangle to make a grid section you can turn or shift.',
+  grid: 'Grid tool. Pick what a click or drag does in the bar at the top: Rooms (click a room to put its ceiling on or take it off), Add area or Cut out (drag a box), Centre grid (click a room), Grid section (drag a box for a part on its own grid). The arrows slide the whole grid, FFUs and lights with it.',
   carea: 'Drag a rectangle inside a room to give that part of it its own ceiling height. Bulkhead panels fill the step where it meets the rest of the ceiling.',
   room: 'Click inside a room to label it.',
   beam: 'Click both ends of a steel beam (I-beam). Over the cleanroom it spans wall to wall in the plenum, its top level with the top of the walls; otherwise it goes up under the roof. Pick it to change its size or height.',
@@ -79,6 +79,18 @@ function elecPalette() {
   if (!ed.deviceType) ed.deviceType = 'outlet';
   $('#elecPal').innerHTML = Object.entries(groups).map(([g, list]) => `<div class="grp"><h5>${esc(g)}</h5><div class="row">${list.map(([k, v]) => `<button data-dv="${k}" class="${ed.deviceType === k ? 'on' : ''}">${esc(v.label)}</button>`).join('')}</div></div>`).join('');
   $$('#elecPal button').forEach(b => b.onclick = () => { ed.deviceType = b.dataset.dv; elecPalette(); $('#plan').focus(); });
+}
+/* The Grid tool's bar: what a click or drag does, and nudges for the main grid */
+const GRID_MODES = [['room', 'Rooms', 'Click a room to put its ceiling on or take it off'], ['add', 'Add area', 'Drag a box to put ceiling there'], ['cut', 'Cut out', 'Drag a box to take ceiling (and its FFUs and lights) off'], ['center', 'Centre grid', 'Click a room to centre the grid in it'], ['section', 'Grid section', 'Drag a box for a part of the ceiling on its own grid (turned or shifted)']];
+function gridPalette() {
+  if (!ed.gridMode) ed.gridMode = 'room';
+  const st = ed.gridStep || 1 / 12;
+  $('#gridPal').innerHTML = `<div class="grp"><h5>Click or drag does</h5><div class="row">${GRID_MODES.map(([k, l, tip]) => `<button data-gm="${k}" class="${ed.gridMode === k ? 'on' : ''}" title="${esc(tip)}">${esc(l)}</button>`).join('')}</div></div>
+    <div class="grp"><h5>Slide the grid</h5><div class="row"><button data-gs="-1,0" title="Left">←</button><button data-gs="1,0" title="Right">→</button><button data-gs="0,-1" title="Up">↑</button><button data-gs="0,1" title="Down">↓</button>
+      <select id="gpStep" title="How far each click slides it">${[[1 / 12, '1″'], [0.5, '6″'], [1, '1′']].map(([v, l]) => `<option value="${v}" ${Math.abs(v - st) < 1e-6 ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>`;
+  $$('#gridPal [data-gm]').forEach(b => b.onclick = () => { ed.gridMode = b.dataset.gm; gridPalette(); msg(GRID_MODES.find(m => m[0] === ed.gridMode)[2] + '.'); $('#plan').focus(); });
+  $$('#gridPal [data-gs]').forEach(b => b.onclick = () => { const [a, c] = b.dataset.gs.split(',').map(Number), d = ed.gridStep || 1 / 12; ed.shiftGrid(a * d, c * d); $('#plan').focus(); });
+  $('#gpStep').onchange = (e) => { ed.gridStep = +e.target.value; $('#plan').focus(); };
 }
 function toolHintText(t) { return HINTS[t] || ''; }
 function toolHint(t) { msg(toolHintText(t)); }
@@ -205,13 +217,13 @@ function renderProps(opt) {
     const grouped = M.every(r => { const x = ed.find(r); return x && x.gid && x.gid === ed.find(M[0]).gid; });
     box.innerHTML = `<div class="hd"><span class="kind">${M.length} pieces selected${grouped ? ' (a group)' : ''}</span><button class="btn small danger" id="mDel">Delete</button></div>
       <div class="grp"><div class="stats">${Object.entries(cnt).map(([k, n]) => `<span>${esc(NAMES[k] || k)}${n > 1 && k !== 'opening' && k !== 'fixture' ? 's' : ''}</span><span>${n}</span>`).join('')}</div></div>
-      <div class="row">${grouped ? '<button class="btn small" id="mUngroup">Ungroup</button>' : '<button class="btn small" id="mGroup">Group them</button>'}<button class="btn small" id="mCopy">Copy</button></div>
+      <div class="row">${grouped ? '<button class="btn small" id="mUngroup">Ungroup</button>' : '<button class="btn small" id="mGroup">Group them</button>'}<button class="btn small" id="mCopy">Copy</button><button class="btn small" id="mSize">Resize…</button></div>
       <div class="row"><button class="btn small primary" id="mSave">Save to the library…</button></div>
       <p class="note">Drag any of them to move them all; their walls catch on nearby wall ends (hold Alt to move freely). Shift+click adds or takes out one piece; Shift-drag a box adds more. A group stays together: clicking one piece picks up the whole group. Ctrl+G groups, Ctrl+Shift+G ungroups, Ctrl+C / Ctrl+V copy and paste.</p>`;
     $('#mDel').onclick = () => ed.deleteSel();
     if ($('#mGroup')) $('#mGroup').onclick = () => { ed.groupSel(true); renderProps(); };
     if ($('#mUngroup')) $('#mUngroup').onclick = () => { ed.groupSel(false); renderProps(); };
-    $('#mCopy').onclick = copyPieces; $('#mSave').onclick = saveGroupDialog;
+    $('#mCopy').onclick = copyPieces; $('#mSave').onclick = saveGroupDialog; $('#mSize').onclick = resizeSelection;
     return;
   }
   if (s && o && s.kind === 'wall') {
@@ -777,6 +789,8 @@ async function generateCeilingDialog() {
     title: 'Ceiling generated',
     wide: true,
     body: `<p>${R.keep ? `Ceiling laid around your ${R.rooms.reduce((t, r) => t + r.ffu, 0)} FFUs${R.fixtures.length ? `, with ${R.fixtures.length} new light${R.fixtures.length === 1 ? '' : 's'} in the free cells` : ''}, in ${R.rooms.length} room${R.rooms.length === 1 ? '' : 's'}.` : `${R.fixtures.filter(f => f.type === 'ffu').length} FFUs and ${R.fixtures.filter(f => f.type !== 'ffu').length} lights in ${R.rooms.length} room${R.rooms.length === 1 ? '' : 's'}.`}</p>
+      ${R.bare ? `<p class="note" style="color:var(--warn)">${R.bare} of your FFUs/lights have no ceiling over them: they're in a space the walls don't close in. Close the room's walls, or use the Grid tool's Add area to box the room in.</p>` : ''}
+      ${R.offices ? `<p class="note">${R.offices} room${R.offices === 1 ? '' : 's'} built onto the building's walls (offices, restrooms) got no ceiling. Click one with the Grid tool (Rooms) if it should have one.</p>` : ''}
       ${R.keep && R.offGrid ? `<p class="note" style="color:var(--warn)">${R.offGrid} of your fixtures sit off the grid lines, so tees run across them. Select one and use Snap to grid in Edit ceiling, or nudge it with the arrow keys.</p>` : ''}
       <div class="layers"><label style="grid-template-columns:1.6fr .6fr .8fr .9fr .6fr .9fr;cursor:default"><b>Room</b><b>Class</b><b>Area</b><b>FFUs</b><b>Lights</b><b>Air changes</b></label>
       ${R.rooms.map(r => `<label style="grid-template-columns:1.6fr .6fr .8fr .9fr .6fr .9fr;cursor:default"><span>${esc(r.name)}</span><span>ISO ${r.iso}</span><span>${Math.round(r.area)} sq ft</span><span${r.ffu < r.need ? ' style="color:var(--warn)"' : ''}>${r.ffu}${r.ffu < r.need ? ' of ' + r.need : ''}</span><span>${r.led}${r.lightsOnly ? ' (no FFUs)' : ''}</span><span>${Math.round(r.achGot)} / ${r.ach}</span></label>`).join('')}</div>
@@ -1421,6 +1435,31 @@ function pastePieces(data, x, y, group) {
   });
   ed.setTool('select'); ed.setMulti(refs);
   return refs.length;
+}
+/* Resize the selected pieces about their middle: for a group that came in at the wrong scale (drawn in inches
+   but read as feet, millimetres …). Wall thicknesses, door sizes and fixture sizes stay as they are. */
+async function resizeSelection() {
+  const refs = ed.withOpenings(ed.multi || (ed.sel ? [ed.sel] : [])); if (!refs.length) return;
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const r of refs) for (const [x, y] of ed.refPts(r)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  const W = x1 - x0, H = y1 - y0;
+  const k = await dialogOpen({ title: 'Resize the selection', body: `<p>It measures <b>${fmt(W)} × ${fmt(H)}</b> now. Type the width it should be, or pick a fix for a drawing read in the wrong units.</p>
+    ${fld('Width should be', txt('rzW', fmt(W)))}
+    ${fld('Or', `<select id="rzK"><option value="">(use the width above)</option><option value="${1 / 12}">It's 12 times too big (inches read as feet)</option><option value="12">It's 12 times too small (feet read as inches)</option><option value="${1 / 25.4}">It's 25.4 times too big (millimetres read as inches)</option><option value="0.5">Half the size</option><option value="2">Twice the size</option></select>`)}
+    <p class="note">Walls stay their thickness, and doors, FFUs and lights keep their sizes; only where everything sits changes. Ctrl+Z undoes it.</p>`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Resize', primary: true, value: () => { const f = +$('#rzK').value; if (f > 0) return f; const v = parseLen($('#rzW').value, 'ft'); return v > 0 && W > 0 ? v / W : null; } }],
+    onOpen: () => { $('#rzW').focus(); $('#rzW').select(); } });
+  if (!k || Math.abs(k - 1) < 1e-6) return;
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, S = (v, c) => c + (v - c) * k;
+  ed.edit(() => {
+    for (const r of refs) {
+      const o = ed.find(r); if (!o) continue;
+      if (r.kind === 'opening') { const mx = (o.x1 + o.x2) / 2, my = (o.y1 + o.y2) / 2, nx = S(mx, cx) - mx, ny = S(my, cy) - my; o.x1 += nx; o.x2 += nx; o.y1 += ny; o.y2 += ny; }
+      else if ('x2' in o) { o.x1 = S(o.x1, cx); o.x2 = S(o.x2, cx); o.y1 = S(o.y1, cy); o.y2 = S(o.y2, cy); }
+      else if ('x0' in o && 'x1' in o) { o.x0 = S(o.x0, cx); o.x1 = S(o.x1, cx); o.y0 = S(o.y0, cy); o.y1 = S(o.y1, cy); }
+      else if ('x' in o) { o.x = S(o.x, cx); o.y = S(o.y, cy); }
+    }
+  });
+  renderProps(); toast(`Resized to ${fmt(W * k)} × ${fmt(H * k)}.`);
 }
 let pieceClip = null;
 function copyPieces() { const refs = ed.multi || (ed.sel ? [ed.sel] : []); const d = refs.length ? collectPieces(refs) : null; if (d) { pieceClip = d; toast('Copied ' + refs.length + ' piece' + (refs.length > 1 ? 's' : '') + '. Ctrl+V pastes them.'); } }
