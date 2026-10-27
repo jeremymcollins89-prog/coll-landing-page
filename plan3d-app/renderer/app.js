@@ -758,26 +758,29 @@ async function generateCeilingDialog() {
   const opts = await dialogOpen({
     title: 'Generate ceiling',
     body: `<p>Lays out a 2′ × 4′ grid centred in the biggest room (so the cut tiles at its two walls match), then in every room inside the cleanroom walls: enough fan filter units for the room's cleanroom class, and lights spread evenly in the cells left over. Cells against walls, chases and ceiling-area edges are skipped. Everything stays editable: drag, delete, add or turn (R) any FFU or light afterwards.</p>
+      ${(P.fixtures || []).length ? fld('FFUs and lights already placed', `<select id="gcKeep"><option value="keep" selected>Keep them where they are: line the grid up with them and lay the ceiling around them</option><option value="keepL">Keep them, and add lights in the free cells</option><option value="new">Replace them with a new layout</option></select>`) : ''}
       ${fld('Class for rooms without one', `<select id="gcIso">${[5, 6, 7, 8, 9].map(n => `<option value="${n}" ${n === 7 ? 'selected' : ''}>ISO ${n} (${Plan3DViewer.ISO_TARGETS[n].ach} air changes, ${Plan3DViewer.ISO_TARGETS[n].cov}% FFU coverage)</option>`).join('')}</select>`)}
       ${fld('Lights', `<select id="gcLt"><option value="48">Bright: one per 48 sq ft</option><option value="64" selected>Standard: one per 64 sq ft</option><option value="80">One per 80 sq ft</option><option value="100">Low: one per 100 sq ft</option></select>`)}
       ${fld('Grid', `<select id="gcSw"><option value="0" ${!G0.swap ? 'selected' : ''}>4′ side of the tiles runs up and down the plan</option><option value="1" ${G0.swap ? 'selected' : ''}>4′ side of the tiles runs across the plan</option></select>`)}
       <p class="note">FFU airflow: ${FM ? esc(FM.name) + ', ' + ((FM.sizes.find(q => q.nominal === '2x4') || FM.sizes[0]).cfm || '?') + ' CFM per 2×4 (pick another model in the Plan panel)' : 'no FFU model picked, so 720 CFM per 2×4 (90 fpm); pick a model in the Plan panel for its real airflow'}. A room's own class (set on its room label) wins over the one above. A room label's <b>Generated ceiling</b> setting can also give a room a ceiling no matter what, lights but no FFUs, or no ceiling. Gaps of up to 20′ between cleanroom wall ends count as closed. Afterwards, the <b>Grid</b> tool (T) takes ceiling off a space or puts it back with a click, and makes grid sections you can turn or shift; generating again keeps those choices.</p>
+      ${nF0 ? `<p class="note">Keeping them: the grid runs the way most of your FFUs face and sits on the edges most of them are on, and any room with one of them gets a ceiling. Nothing you placed is moved, removed or added to (the Grid choice above is set by your FFUs).</p>` : ''}
       ${has ? `<p class="note" style="color:var(--warn)">This replaces the current ceiling${P.ceilingSource ? ' from ' + esc(P.ceilingSource) : ''} (${nF0} FFUs, ${nL0} lights). Ctrl+Z puts it back.</p>` : ''}`,
-    buttons: [{ label: 'Cancel', ret: null }, { label: 'Generate', primary: true, value: () => ({ iso: +$('#gcIso').value, sqftPerLight: +$('#gcLt').value, swap: $('#gcSw').value === '1' }) }]
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Generate', primary: true, value: () => { const k = $('#gcKeep') ? $('#gcKeep').value : 'new'; return { iso: +$('#gcIso').value, sqftPerLight: +$('#gcLt').value, swap: $('#gcSw').value === '1', keep: k !== 'new', addLights: k === 'keepL' }; } }]
   });
   if (!opts) return;
   const R = Plan3DViewer.generateCeiling(P, opts);
   if (!R || !R.rooms.length) { toast('No room inside cleanroom (hardwall) walls was found to put a ceiling in.'); return; }
-  ed.edit(Q => { Q.ceilGrid = R.ceilGrid; Q.fixtures = R.fixtures; Q.ceilRects = R.ceilRects; Q.ceilingMode = 'manual'; Q.ceilingSource = 'Generated'; delete Q.ceilingGrid; delete Q.ceilingImage; delete Q.fixturesFinal; });
+  ed.edit(Q => { Q.ceilGrid = R.ceilGrid; Q.fixtures = R.keep ? (Q.fixtures || []).concat(R.fixtures) : R.fixtures; Q.ceilRects = R.ceilRects; Q.ceilingMode = 'manual'; Q.ceilingSource = 'Generated'; delete Q.ceilingGrid; delete Q.ceilingImage; delete Q.fixturesFinal; });
   updateChrome(); renderProps();
   const short = R.rooms.filter(r => r.ffu < r.need);
   await dialogOpen({
     title: 'Ceiling generated',
     wide: true,
-    body: `<p>${R.fixtures.filter(f => f.type === 'ffu').length} FFUs and ${R.fixtures.filter(f => f.type !== 'ffu').length} lights in ${R.rooms.length} room${R.rooms.length === 1 ? '' : 's'}.</p>
+    body: `<p>${R.keep ? `Ceiling laid around your ${R.rooms.reduce((t, r) => t + r.ffu, 0)} FFUs${R.fixtures.length ? `, with ${R.fixtures.length} new light${R.fixtures.length === 1 ? '' : 's'} in the free cells` : ''}, in ${R.rooms.length} room${R.rooms.length === 1 ? '' : 's'}.` : `${R.fixtures.filter(f => f.type === 'ffu').length} FFUs and ${R.fixtures.filter(f => f.type !== 'ffu').length} lights in ${R.rooms.length} room${R.rooms.length === 1 ? '' : 's'}.`}</p>
+      ${R.keep && R.offGrid ? `<p class="note" style="color:var(--warn)">${R.offGrid} of your fixtures sit off the grid lines, so tees run across them. Select one and use Snap to grid in Edit ceiling, or nudge it with the arrow keys.</p>` : ''}
       <div class="layers"><label style="grid-template-columns:1.6fr .6fr .8fr .9fr .6fr .9fr;cursor:default"><b>Room</b><b>Class</b><b>Area</b><b>FFUs</b><b>Lights</b><b>Air changes</b></label>
       ${R.rooms.map(r => `<label style="grid-template-columns:1.6fr .6fr .8fr .9fr .6fr .9fr;cursor:default"><span>${esc(r.name)}</span><span>ISO ${r.iso}</span><span>${Math.round(r.area)} sq ft</span><span${r.ffu < r.need ? ' style="color:var(--warn)"' : ''}>${r.ffu}${r.ffu < r.need ? ' of ' + r.need : ''}</span><span>${r.led}${r.lightsOnly ? ' (no FFUs)' : ''}</span><span>${Math.round(r.achGot)} / ${r.ach}</span></label>`).join('')}</div>
-      ${short.length ? `<p class="note" style="color:var(--warn)">${short.map(r => esc(r.name)).join(', ')}: not enough whole ceiling cells for the FFUs that class needs. Pick a bigger FFU model, a lower class, or move a chase or wall.</p>` : ''}
+      ${short.length ? `<p class="note" style="color:var(--warn)">${short.map(r => esc(r.name)).join(', ')}: ${R.keep ? 'fewer FFUs than that class needs.' : 'not enough whole ceiling cells for the FFUs that class needs. Pick a bigger FFU model, a lower class, or move a chase or wall.'}</p>` : ''}
       <p class="note">Open the 3D view to walk under it. Move, delete or turn (R) any FFU or light in the plan; Edit ceiling has Snap to grid and Remove.</p>`,
     buttons: [{ label: 'OK', primary: true, ret: true }]
   });

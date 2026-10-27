@@ -1161,7 +1161,12 @@ function ceilingSpaceAt(plan, x, z) {
 function generateCeiling(plan, opts) {
   opts = opts || {};
   const uid = () => Math.random().toString(36).slice(2, 10);
-  const swap = opts.swap != null ? !!opts.swap : !!(plan.ceilGrid && isFinite(plan.ceilGrid.ox) ? plan.ceilGrid.swap : plan.ceilSwap);
+  let swap = opts.swap != null ? !!opts.swap : !!(plan.ceilGrid && isFinite(plan.ceilGrid.ox) ? plan.ceilGrid.swap : plan.ceilSwap);
+  // opts.keep: the FFUs and lights already placed stay as they are; the grid is lined up with them and the
+  // ceiling laid around them (new lights only go in cells left free, and only with opts.addLights)
+  const keep = !!opts.keep, EX = keep ? (plan.fixtures || []).filter(f => f && isFinite(f.x) && isFinite(f.y) && f.w > 0 && f.h > 0) : [];
+  const EF = EX.filter(f => f.type === 'ffu');
+  if (keep) { const wide = EF.filter(f => f.w > f.h + 0.1).length, tall = EF.filter(f => f.h > f.w + 0.1).length; if (wide !== tall) swap = wide > tall; }
   const cw = swap ? 4 : 2, cl = swap ? 2 : 4;
   const FM = plan.ffuModel && Array.isArray(plan.ffuModel.sizes) && plan.ffuModel.sizes.length ? plan.ffuModel : null;
   const z24 = FM ? (FM.sizes.find(q => q.nominal === '2x4') || FM.sizes[0]) : null, cfm = z24 && z24.cfm > 0 ? z24.cfm : 8 * 90;
@@ -1177,7 +1182,8 @@ function generateCeiling(plan, opts) {
     const holds = (f, pts) => (pts || []).some(q => { const k = at(q.x, q.y); return k >= 0 && comp[k] === f.id; });
     for (const f of found) {
       if (holds(f, P.ceilSkip)) continue;
-      const mode = holds(f, P.ceilForce) ? 'always' : f.room && f.room.ceil ? f.room.ceil : 'auto';
+      const mine = keep && holds(f, EX.map(q => ({ x: q.x, y: q.y })));
+      const mode = holds(f, P.ceilForce) || mine ? 'always' : f.room && f.room.ceil ? f.room.ceil : 'auto';
       if (mode === 'none' || f.cells.length * G.cell * G.cell < 16) continue;
       const share = hardShare(f.cells);
       // a labelled room needs half its edge to be hardwall, an unlabelled space nearly all of it
@@ -1192,7 +1198,14 @@ function generateCeiling(plan, opts) {
   let bx0 = 1e9, bx1 = -1e9, bz0 = 1e9, bz1 = -1e9;
   for (const k of big.cells) { const i = k % big.G.nx, j = (k - i) / big.G.nx, x = big.G.x0 + (i + 0.5) * big.G.cell, z = big.G.z0 + (j + 0.5) * big.G.cell; bx0 = Math.min(bx0, x); bx1 = Math.max(bx1, x); bz0 = Math.min(bz0, z); bz1 = Math.max(bz1, z); }
   const centre = (lo, hi, sp) => { const c = (lo + hi) / 2, cut = (o) => { const r = ((((lo - o) % sp) + sp) % sp); return r < 1e-6 ? sp : sp - r; }; return cut(c) >= cut(c + sp / 2) ? c : c + sp / 2; };
-  const ox = centre(bx0, bx1, cw), oz = centre(bz0, bz1, cl);
+  let ox = centre(bx0, bx1, cw), oz = centre(bz0, bz1, cl);
+  if (keep) {
+    // the grid line most of the placed fixtures (lying the grid's way) have an edge on
+    const on = EX.filter(f => Math.abs(f.w - cw) < 0.1 && Math.abs(f.h - cl) < 0.1);
+    const vote = (vals, sp) => { let best = null, bn = 0; for (const v of vals) { const n = vals.filter(u => { const d = Math.abs(u - v) % sp; return Math.min(d, sp - d) < 0.1; }).length; if (n > bn) { bn = n; best = v; } } return best; };
+    const md = (v, sp) => ((v % sp) + sp) % sp;
+    if (on.length) { ox = vote(on.map(f => md(f.x - f.w / 2, cw)), cw); oz = vote(on.map(f => md(f.y - f.h / 2, cl)), cl); }
+  }
   const G = { ox, oz, cw, cl, swap };
   const out = [], rooms = [], taken = new Set();
   for (const sp of spaces) {
@@ -1213,6 +1226,7 @@ function generateCeiling(plan, opts) {
       if (A.boxes.some(b => x < b.x1 && x + cw > b.x0 && z < b.z1 && z + cl > b.z0)) continue;
       const hs = pts.map(([px, pz]) => ceilingAt(CA, roomKey(P, sp.room).H, px, pz)); if (hs.some(h => Math.abs(h - hs[0]) > 0.01)) continue;
       const key = cx.toFixed(2) + ',' + cz.toFixed(2); if (taken.has(key)) continue;
+      if (EX.some(f => Math.abs(f.x - cx) < (f.w + cw) / 2 - 0.05 && Math.abs(f.y - cz) < (f.h + cl) / 2 - 0.05)) continue;
       cells.push({ x: cx, y: cz, key, h: hs[0], w: cw, d: cl });
     }
     }
@@ -1220,18 +1234,24 @@ function generateCeiling(plan, opts) {
     const iso = sp.room && sp.room.iso ? +sp.room.iso : (opts.iso ? +opts.iso : 7), T = ISO_TARGETS[iso] || ISO_TARGETS[7];
     const ach = sp.room && sp.room.ach > 0 ? +sp.room.ach : T.ach;
     const need = Math.max(Math.ceil(ach * area * H / 60 / cfm), Math.ceil(T.cov / 100 * area / (cw * cl)), area > 30 && T.cov > 0 ? 1 : 0);
-    const nF = sp.lightsOnly ? 0 : Math.min(need, cells.length);
+    const mineF = EF.filter(f => inSpace(f.x, f.y)), mineL = EX.filter(f => f.type !== 'ffu' && inSpace(f.x, f.y)).length;
+    const nF = keep || sp.lightsOnly ? 0 : Math.min(need, cells.length);
     const pickF = spread(cells, nF);
     const rest = cells.filter((c, i) => !pickF.includes(i));
-    const nL = Math.min(rest.length, Math.max(area > 20 ? 1 : 0, Math.round(area / (opts.sqftPerLight > 0 ? opts.sqftPerLight : 64))));
+    const wantL = Math.max(area > 20 ? 1 : 0, Math.round(area / (opts.sqftPerLight > 0 ? opts.sqftPerLight : 64)));
+    const nL = keep && !opts.addLights ? 0 : Math.min(rest.length, Math.max(0, wantL - (keep ? mineL : 0)));
     const pickL = spread(rest, nL);
     for (const i of pickF) { const c = cells[i]; taken.add(c.key); out.push({ id: uid(), type: 'ffu', x: c.x, y: c.y, w: c.w, h: c.d }); }
     for (const i of pickL) { const c = rest[i]; taken.add(c.key); out.push({ id: uid(), type: 'led', x: c.x, y: c.y, w: c.w, h: c.d }); }
-    rooms.push({ name: sp.room ? (sp.room.name || 'Room') : 'Unlabelled space', area, iso, ach, ffu: nF, led: pickL.length, need: sp.lightsOnly ? 0 : need, lightsOnly: !!sp.lightsOnly, cells: cells.length, cfm: nF * cfm, achGot: area * H > 0 ? nF * cfm * 60 / (area * H) : 0 });
+    // with keep, the FFUs counted are the ones already placed (a 2×2 moves half the air of a 2×4)
+    const fN = keep ? mineF.length : nF, fCfm = keep ? mineF.reduce((t, f) => t + cfm * Math.min(1, (f.w * f.h) / 8), 0) : nF * cfm;
+    rooms.push({ name: sp.room ? (sp.room.name || 'Room') : 'Unlabelled space', area, iso, ach, ffu: fN, led: pickL.length + (keep ? mineL : 0), need: sp.lightsOnly ? 0 : need, lightsOnly: !!sp.lightsOnly, cells: cells.length, cfm: fCfm, achGot: area * H > 0 ? fCfm * 60 / (area * H) : 0 });
   }
   const ceilRects = [];
   for (const sp of spaces) ceilRects.push(...cellRects(sp.G, sp.cells));
-  return { ceilGrid: { ox: G.ox, oy: G.oz, swap }, fixtures: out, rooms, ceilRects };
+  // fixtures placed by hand that sit off the new grid (so the tees run across them)
+  const off = keep ? EX.filter(f => { const a = (v, o, sp) => { const d = Math.abs(v - o) % sp; return Math.min(d, sp - d) < 0.05; }; return !(a(f.x - f.w / 2, G.ox, Math.min(cw, f.w)) && a(f.y - f.h / 2, G.oz, Math.min(cl, f.h))); }).length : 0;
+  return { ceilGrid: { ox: G.ox, oy: G.oz, swap }, fixtures: out, rooms, ceilRects, keep, offGrid: off };
 }
 // k points spread evenly over a set of cells: start nearest the middle, add the farthest, then even them out
 function spread(cells, k) {
