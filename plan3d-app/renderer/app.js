@@ -781,7 +781,7 @@ async function generateCeilingDialog() {
   });
   if (!opts) return;
   const R = Plan3DViewer.generateCeiling(P, opts);
-  if (!R || !R.rooms.length) { toast('No room inside cleanroom (hardwall) walls was found to put a ceiling in.'); return; }
+  if (!R || !R.rooms.length) { await dialogOpen({ title: 'No closed-in rooms found', body: '<p>Generate ceiling only puts grid where the cleanroom walls close a room in, so it never runs out into the warehouse. None of the rooms here are closed in: a wall is missing or stops short somewhere (gaps up to 10′ are closed for it).</p><p>Pick the <b>Grid</b> tool (T), choose <b>Add area</b> and drag a box over each room, then Generate ceiling again to fill them with FFUs and lights. Or close the gaps in the walls.</p>', buttons: [{ label: 'Use the Grid tool', primary: true, ret: 'grid' }, { label: 'Close', ret: null }] }).then(a => { if (a === 'grid') { setView(view === '3d' || view === 'build' ? 'split' : view); ed.setTool('grid'); ed.gridMode = 'add'; gridPalette(); } }); return; }
   ed.edit(Q => { Q.ceilGrid = R.ceilGrid; Q.fixtures = R.keep ? (Q.fixtures || []).concat(R.fixtures) : R.fixtures; Q.ceilRects = R.ceilRects; Q.ceilingMode = 'manual'; Q.ceilingSource = 'Generated'; delete Q.ceilingGrid; delete Q.ceilingImage; delete Q.fixturesFinal; });
   updateChrome(); renderProps();
   const short = R.rooms.filter(r => r.ffu < r.need);
@@ -790,6 +790,7 @@ async function generateCeilingDialog() {
     wide: true,
     body: `<p>${R.keep ? `Ceiling laid around your ${R.rooms.reduce((t, r) => t + r.ffu, 0)} FFUs${R.fixtures.length ? `, with ${R.fixtures.length} new light${R.fixtures.length === 1 ? '' : 's'} in the free cells` : ''}, in ${R.rooms.length} room${R.rooms.length === 1 ? '' : 's'}.` : `${R.fixtures.filter(f => f.type === 'ffu').length} FFUs and ${R.fixtures.filter(f => f.type !== 'ffu').length} lights in ${R.rooms.length} room${R.rooms.length === 1 ? '' : 's'}.`}</p>
       ${R.bare ? `<p class="note" style="color:var(--warn)">${R.bare} of your FFUs/lights have no ceiling over them: they're in a space the walls don't close in. Close the room's walls, or use the Grid tool's Add area to box the room in.</p>` : ''}
+      ${R.open ? `<p class="note" style="color:var(--warn)">${R.open} room${R.open === 1 ? ' is' : 's are'} not closed in by walls, so ${R.open === 1 ? 'it' : 'they'} got no grid. Box ${R.open === 1 ? 'it' : 'them'} in with the Grid tool's Add area.</p>` : ''}
       ${R.offices ? `<p class="note">${R.offices} room${R.offices === 1 ? '' : 's'} built onto the building's walls (offices, restrooms) got no ceiling. Click one with the Grid tool (Rooms) if it should have one.</p>` : ''}
       ${R.keep && R.offGrid ? `<p class="note" style="color:var(--warn)">${R.offGrid} of your fixtures sit off the grid lines, so tees run across them. Select one and use Snap to grid in Edit ceiling, or nudge it with the arrow keys.</p>` : ''}
       <div class="layers"><label style="grid-template-columns:1.6fr .6fr .8fr .9fr .6fr .9fr;cursor:default"><b>Room</b><b>Class</b><b>Area</b><b>FFUs</b><b>Lights</b><b>Air changes</b></label>
