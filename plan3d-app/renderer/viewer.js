@@ -2028,16 +2028,91 @@ function ceilingFixtures(plan, A) {
    holes: [[[x, y], …], …] }], each piece placed (and moved) on its own. */
 /* The height a lid piece sits at: on top of everything under it. The plenum (the top of the walls), a taller
    room's walls, and the I-beams across the cleanroom all hold it up; the ceiling under it doesn't change. */
-function deckBase(plan, A, d, WH) {
-  const inside = (x, z) => { let c = false; const P = d.outer; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, zi] = P[i], [xj, zj] = P[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; };
-  const near = (x1, z1, x2, z2) => { for (let t = 0; t <= 1.0001; t += 0.25) if (inside(x1 + (x2 - x1) * t, z1 + (z2 - z1) * t)) return true; return false; };
-  let top = WH;
-  for (const p of A.pieces || []) if (p.hard && p.h > top && near(p.x1, p.z1, p.x2, p.z2)) top = p.h;
-  for (const b of plan.beams || []) {
-    const q = beamSeat(plan, A, b); if (!near(q.x1, q.y1, q.x2, q.y2)) continue;
-    top = Math.max(top, q.bot + beamSize(b).d / 12);
+/* Where a lid piece sits: on top of the room under each part of it, so a piece over a tall room and a short
+   one steps down with the walls instead of floating over the short part. A spot's height is its room's wall
+   top (the lowest of the nearest walls each way round it: a shared wall with a taller room doesn't lift the
+   short one), raised by any I-beam sitting on those walls. The ceiling under it doesn't change.
+   Returns [{h, rects:[[x0, z0, x1, z1]...]}] covering the piece's box, one entry per height. */
+function deckLevels(plan, A, d, WH) {
+  const walls = (A.pieces || []).filter(p => p.hard);
+  // doorways close their wall here (so a corridor doesn't see past them), at that wall's height
+  const hard = walls.concat((plan.openings || []).map(o => { let best = null, bd = 1e9; if (o.x2 == null) return null; for (const p of walls) { const dd = Math.min(segDist(o.x1, o.y1, p.x1, p.z1, p.x2, p.z2), segDist(o.x2, o.y2, p.x1, p.z1, p.x2, p.z2)); if (dd < bd) { bd = dd; best = p; } } return best && bd < 1.5 && o.x2 != null ? { x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: best.t, h: best.h, hard: true } : null; }).filter(Boolean));
+  const P = d.outer;
+  let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; P.forEach(q => { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); z0 = Math.min(z0, q[1]); z1 = Math.max(z1, q[1]); });
+  // cut lines: the piece's own corners and every wall end and wall face inside its box
+  const xs = new Set([x0, x1]), zs = new Set([z0, z1]);
+  P.forEach(q => { xs.add(q[0]); zs.add(q[1]); });
+  for (const p of hard) {
+    const e = (p.t || 0.25) / 2;
+    if (Math.abs(p.x1 - p.x2) < 0.05) { xs.add(p.x1 - e); xs.add(p.x1 + e); } else if (Math.abs(p.z1 - p.z2) < 0.05) { zs.add(p.z1 - e); zs.add(p.z1 + e); }
+    for (const [x, z] of [[p.x1, p.z1], [p.x2, p.z2]]) { xs.add(x); zs.add(z); }
   }
-  return top;
+  const cut = (S, lo, hi) => { const v = [...S].filter(t => t >= lo - 1e-6 && t <= hi + 1e-6).sort((a, b) => a - b), o = []; for (const t of v) if (!o.length || t - o[o.length - 1] > 0.05) o.push(t); o[0] = lo; o[o.length - 1] = hi; return o; };
+  const X = cut(xs, x0, x1), Z = cut(zs, z0, z1);
+  // the beams each lid height rests on: on walls with no plenum a beam sits on top of them and lifts the lid
+  const beams = (plan.beams || []).map(b => { const q = beamSeat(plan, A, b); return { q, top: q.bot + beamSize(b).d / 12 }; });
+  const wallTop = (x, z) => {
+    const hits = [[], [], [], []];
+    for (const p of hard) {
+      const e = (p.t || 0.25) / 2 + 0.05;
+      if (Math.abs(p.z1 - p.z2) < 0.05 || Math.abs(p.x1 - p.x2) >= 0.05) {
+        // crossing the vertical line through x (up / down)
+        const lo = Math.min(p.x1, p.x2) - e, hi = Math.max(p.x1, p.x2) + e;
+        if (x >= lo && x <= hi) { const t = Math.abs(p.x2 - p.x1) < 1e-6 ? null : (x - p.x1) / (p.x2 - p.x1); const zz = t == null ? (p.z1 + p.z2) / 2 : p.z1 + (p.z2 - p.z1) * Math.max(0, Math.min(1, t)); if (t != null || Math.abs(x - p.x1) <= e) hits[zz < z ? 0 : 1].push([Math.abs(zz - z), p.h]); }
+      }
+      if (Math.abs(p.x1 - p.x2) < 0.05 || Math.abs(p.z1 - p.z2) >= 0.05) {
+        const lo = Math.min(p.z1, p.z2) - e, hi = Math.max(p.z1, p.z2) + e;
+        if (z >= lo && z <= hi) { const t = Math.abs(p.z2 - p.z1) < 1e-6 ? null : (z - p.z1) / (p.z2 - p.z1); const xx = t == null ? (p.x1 + p.x2) / 2 : p.x1 + (p.x2 - p.x1) * Math.max(0, Math.min(1, t)); if (t != null || Math.abs(z - p.z1) <= e) hits[xx < x ? 2 : 3].push([Math.abs(xx - x), p.h]); }
+      }
+    }
+    const near = hits.filter(h => h.length).map(h => h.sort((a, b) => a[0] - b[0])[0]);
+    if (!near.length) return WH;
+    // standing on a wall: that wall's own top
+    const on = near.find(n => n[0] < 0.2); if (on) return on[1];
+    return Math.min(...near.map(n => n[1]));
+  };
+  const at = (x, z) => {
+    let t = wallTop(x, z);
+    for (const B of beams) {
+      const q = B.q, L = Math.hypot(q.x2 - q.x1, q.y2 - q.y1); if (L < 0.2 || B.top <= t + 0.01) continue;
+      // a beam over this room (its seat at this wall top, or anywhere within the span when it sits on top of the walls)
+      const seat = A.PL > 0 ? B.top : q.bot - 0.01;
+      if (Math.abs(seat - t) > 0.15) continue;
+      const along = ((x - q.x1) * (q.x2 - q.x1) + (z - q.y1) * (q.y2 - q.y1)) / L;
+      if (along < -1 || along > L + 1) continue;
+      t = B.top;
+    }
+    return t;
+  };
+  // each cell's height, then cells merged into rectangles per height
+  const nI = X.length - 1, nJ = Z.length - 1, H = [];
+  for (let i = 0; i < nI; i++) { H.push([]); for (let j = 0; j < nJ; j++) H[i].push(Math.round(at((X[i] + X[i + 1]) / 2, (Z[j] + Z[j + 1]) / 2) * 50) / 50); }
+  const used = H.map(r => r.map(() => false)), lv = new Map();
+  for (let i = 0; i < nI; i++) for (let j = 0; j < nJ; j++) {
+    if (used[i][j]) continue;
+    const h = H[i][j]; let j2 = j; while (j2 + 1 < nJ && !used[i][j2 + 1] && H[i][j2 + 1] === h) j2++;
+    let i2 = i; while (i2 + 1 < nI) { let ok = true; for (let k = j; k <= j2; k++) if (used[i2 + 1][k] || H[i2 + 1][k] !== h) { ok = false; break; } if (!ok) break; i2++; }
+    for (let a = i; a <= i2; a++) for (let k = j; k <= j2; k++) used[a][k] = true;
+    (lv.get(h) || lv.set(h, []).get(h)).push([X[i], Z[j], X[i2 + 1], Z[j2 + 1]]);
+  }
+  return [...lv.entries()].map(([h, rects]) => ({ h, rects }));
+}
+/* The highest point a lid piece sits at (parts list). */
+function deckBase(plan, A, d, WH) { return Math.max(WH, ...deckLevels(plan, A, d, WH).map(l => l.h)); }
+/* A polygon clipped to a rectangle (Sutherland–Hodgman). */
+function clipPolyRect(P, r) {
+  let out = P;
+  const edges = [[0, r[0], 1], [0, r[2], -1], [1, r[1], 1], [1, r[3], -1]];
+  for (const [ax, v, sg] of edges) {
+    const inp = out; out = []; if (!inp.length) break;
+    const inside = (q) => (q[ax] - v) * sg >= -1e-9;
+    for (let i = 0; i < inp.length; i++) {
+      const c = inp[i], p = inp[(i + inp.length - 1) % inp.length], ci = inside(c), pi = inside(p);
+      if (ci !== pi) { const t = (v - p[ax]) / (c[ax] - p[ax]), q = [p[0] + (c[0] - p[0]) * t, p[1] + (c[1] - p[1]) * t]; out.push(q); }
+      if (ci) out.push(c);
+    }
+  }
+  return out;
 }
 function deckShapes(plan) {
   const L = plan && Array.isArray(plan.deckPieces) ? plan.deckPieces : [];
@@ -2750,11 +2825,18 @@ function buildScene(THREE, plan, A) {
     const dc = cachedCanvas('deck', () => makeCanvas(64, 64, (g, w, h) => { g.fillStyle = '#a9afb3'; g.fillRect(0, 0, w, h); for (let x = 0; x < w; x += 16) { g.fillStyle = 'rgba(255,255,255,.28)'; g.fillRect(x, 0, 5, h); g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x + 9, 0, 3, h); } }));
     const dtx = new THREE.CanvasTexture(dc); dtx.wrapS = dtx.wrapT = THREE.RepeatWrapping; dtx.repeat.set(0.5, 0.5); dtx.anisotropy = ANISO;
     const dm = new THREE.MeshPhongMaterial({ map: dtx, color: 0xd5dadd, specular: 0x555555, shininess: 40, side: THREE.DoubleSide });
+    const sarea = (R) => { let a = 0; for (let i = 0; i < R.length; i++) { const [x1, y1] = R[i], [x2, y2] = R[(i + 1) % R.length]; a += x1 * y2 - x2 * y1; } return a / 2; };
     for (const d of DK) {
-      const sh = new THREE.Shape(d.outer.map(([x, z]) => new THREE.Vector2(x, z)));
-      for (const h of d.holes) sh.holes.push(new THREE.Path(h.map(([x, z]) => new THREE.Vector2(x, z))));
-      const g = new THREE.ExtrudeGeometry(sh, { depth: 0.17, bevelEnabled: false }), m = new THREE.Mesh(g, dm);
-      m.rotation.x = Math.PI / 2; m.position.y = deckBase(plan, A, d, WH) + 0.17; outline(m); if (d.id) m.userData.ref = { kind: 'deck', id: d.id }; pick.push(m); lid.add(m);
+      const LV = deckLevels(plan, A, d, WH);
+      // one height under the whole piece: the piece as drawn; otherwise each part of it at its own height
+      const parts = LV.length === 1 ? [{ h: LV[0].h, outer: d.outer, holes: d.holes }] : [].concat(...LV.map(l => l.rects.map(r => ({ h: l.h, outer: clipPolyRect(d.outer, r), holes: d.holes.map(hh => clipPolyRect(hh, r)).filter(hh => hh.length >= 3 && Math.abs(sarea(hh)) > 0.01) }))));
+      for (const pt of parts) {
+        if (pt.outer.length < 3 || Math.abs(sarea(pt.outer)) < 0.01) continue;
+        const sh = new THREE.Shape(pt.outer.map(([x, z]) => new THREE.Vector2(x, z)));
+        for (const h of pt.holes) sh.holes.push(new THREE.Path(h.map(([x, z]) => new THREE.Vector2(x, z))));
+        const g = new THREE.ExtrudeGeometry(sh, { depth: 0.17, bevelEnabled: false }), m = new THREE.Mesh(g, dm);
+        m.rotation.x = Math.PI / 2; m.position.y = pt.h + 0.17; outline(m); if (d.id) m.userData.ref = { kind: 'deck', id: d.id }; pick.push(m); lid.add(m);
+      }
     }
   } else if (A.PL > 0 && FP) {
     const lm = new THREE.MeshLambertMaterial({ color: 0xeef0f0, side: THREE.DoubleSide }), LR = ceilingRects(plan, FP, A);
@@ -3714,5 +3796,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, deckShapes, deckBase };
+global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, deckShapes, deckBase, deckLevels };
 })(typeof window !== 'undefined' ? window : this);
