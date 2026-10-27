@@ -109,8 +109,12 @@ function finish(walls, minLen) {
 
 /* Where the drawing's corner lands on the plan: DXF y is up, plan y is down; origin at the top-left of the selection. */
 function dxfFrame(data, o) {
+  // a drawing added to a project that came from a drawing in the same coordinates: the same origin, so it lands
+  // right where it belongs (o.frame: that origin, in feet)
+  if (o.frame && isFinite(o.frame.x0)) { const k = o.unitFt, f = o.frame; return { k, minX: f.x0 / k, maxY: f.y0 / k, P: (x, y) => [x * k - f.x0, f.y0 - y * k] }; }
   let minX = 1e18, maxY = -1e18;
-  for (const s of data.segs) if (o.layers.has(s[4])) { minX = Math.min(minX, s[0], s[2]); maxY = Math.max(maxY, s[1], s[3]); }
+  const FL = o.frameLayers && o.frameLayers.size ? o.frameLayers : o.layers;
+  for (const s of data.segs) if (FL.has(s[4])) { minX = Math.min(minX, s[0], s[2]); maxY = Math.max(maxY, s[1], s[3]); }
   if (o.keepOrigin || !(minX < 1e17)) { minX = 0; maxY = 0; } // drawings saved by Coll Plan3D: keep the project's own coordinates
   const k = o.unitFt;
   return { k, minX, maxY, P: (x, y) => [(x - minX) * k, (maxY - y) * k] };
