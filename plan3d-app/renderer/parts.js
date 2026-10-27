@@ -352,6 +352,7 @@ function partsList(plan) {
       if (T) {
         if (T.mainPcs) add('Ceiling grid', 'Main tee, 15/16″, 12′ (runs spliced, +5%)', '12′', T.mainPcs, 'ea', 70);
         if (T.cross4) add('Ceiling grid', 'Cross tee, 15/16″, 4′', '', T.cross4, 'ea', 71);
+        if (T.framePcs) add('Ceiling grid', 'Cross tee, 15/16″, 4′, cut to frame FFUs and lights off the grid (' + Math.ceil(T.frameFt) + ' ft)', '', T.framePcs, 'ea', 71.5);
         if (T.cross2) add('Ceiling grid', 'Cross tee, 15/16″, 2′ (at 2 × 2 fixtures)', '', T.cross2, 'ea', 72);
         if (T.hangers) add('Ceiling grid', 'Hanger wire, 12 ga (every 4′ on mains + 4 per fixture)', '', T.hangers, 'ea', 73);
       }

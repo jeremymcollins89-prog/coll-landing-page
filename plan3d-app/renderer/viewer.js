@@ -954,7 +954,9 @@ function gridTakeoff(plan, A) {
       }
     }
     const fx = ceilingFixtures(plan, A), cross2 = fx.filter(f => Math.max(f.w || 2, f.h || 4) <= 2.2).length;
-    return { mainFt, mainPcs: Math.ceil(mainFt * 1.05 / 12), mainRuns, cross4, cross2, hangers: Math.ceil(mainFt / 4) + mainRuns + fx.length * 4, fixtures: fx.length };
+    // tees cut to frame fixtures that sit off the grid lines or turned across it
+    let frameFt = 0; try { for (const l of fixtureFrames(plan, A).lines) frameFt += Math.hypot(l[2] - l[0], l[3] - l[1]); } catch (e) { frameFt = 0; }
+    return { mainFt, mainPcs: Math.ceil(mainFt * 1.05 / 12), mainRuns, cross4, cross2, frameFt, framePcs: Math.ceil(frameFt / 4), hangers: Math.ceil(mainFt / 4) + mainRuns + fx.length * 4, fixtures: fx.length };
   }
   const G = ceilingGrid(plan, A), B = A.bounds, step = Math.min(0.25, fp.cell / 2);
   // mains run along the 2′ direction (lines 4′ apart); crosses run along the 4′ direction (lines 2′ apart)
@@ -1067,12 +1069,66 @@ function gridLinesIn(rects, G) {
   }
   return out;
 }
-// every T-grid line of a generated ceiling, each grid section on its own grid
+// every T-grid line of a generated ceiling, each grid section on its own grid, fitted to the fixtures
 function generatedGridLines(plan, A) {
   if (!(Array.isArray(plan.ceilRects) && plan.ceilRects.length)) return null;
   A = A || analyze(plan);
   const R = ceilingRects(plan, footprint(A), A), out = [];
   for (const p of gridPieces(plan, R)) for (const q of gridLinesIn(p.rects, p.G)) out.push(q);
+  const F = fixtureFrames(plan, A, R);
+  return cutByFixtures(out, F.fx).concat(F.lines);
+}
+/* The tees a fixture needs when it isn't sitting in whole grid cells (placed by hand off the grid lines, turned
+   across the grid, or a 2 × 2 in a 2 × 4 cell): one along each of its four edges, each running on to the nearest
+   grid line either side so it lands on a tee; the tiles around it are cut to fit. No tee runs across a fixture.
+   Returns { fx: the fixtures' boxes [x0, z0, x1, z1], lines: the frame tees, cut where they cross fixtures }. */
+function fixtureFrames(plan, A, R) {
+  A = A || analyze(plan);
+  if (!R) { const fp = footprint(A); R = fp ? ceilingRects(plan, fp, A) : []; }
+  let FX = []; try { FX = ceilingFixtures(plan, A); } catch (e) { FX = []; }
+  const on = (v, o, sp) => { const d = Math.abs(v - o) % sp; return Math.min(d, sp - d) < 0.03; };
+  const prev = (v, o, sp) => (on(v, o, sp) ? v : o + Math.floor((v - o) / sp) * sp), next = (v, o, sp) => (on(v, o, sp) ? v : o + Math.ceil((v - o) / sp) * sp);
+  // a tee clipped to the ceiling (it never runs into a wall)
+  const clip = (l) => {
+    const out = [], vert = Math.abs(l[0] - l[2]) < 1e-6;
+    for (const [x0, z0, x1, z1] of R) {
+      if (vert) { if (l[0] < x0 - 1e-6 || l[0] > x1 + 1e-6) continue; const a = Math.max(Math.min(l[1], l[3]), z0), b = Math.min(Math.max(l[1], l[3]), z1); if (b - a > 0.05) out.push([l[0], a, l[0], b]); }
+      else { if (l[1] < z0 - 1e-6 || l[1] > z1 + 1e-6) continue; const a = Math.max(Math.min(l[0], l[2]), x0), b = Math.min(Math.max(l[0], l[2]), x1); if (b - a > 0.05) out.push([a, l[1], b, l[1]]); }
+    }
+    return out;
+  };
+  const fx = [], lines = [];
+  for (const f of FX) {
+    const G = gridAt(plan, f.x, f.y, A); if (!G || G.fromLines) continue;
+    const w = f.w || (G.swap ? 4 : 2), h = f.h || (G.swap ? 2 : 4), x0 = f.x - w / 2, x1 = f.x + w / 2, z0 = f.y - h / 2, z1 = f.y + h / 2;
+    if (!R.some(r => f.x > r[0] && f.x < r[2] && f.y > r[1] && f.y < r[3])) continue;
+    fx.push([x0, z0, x1, z1]);
+    if (on(x0, G.ox, G.cw) && on(x1, G.ox, G.cw) && on(z0, G.oz, G.cl) && on(z1, G.oz, G.cl)) continue;
+    const ax0 = prev(x0, G.ox, G.cw), ax1 = next(x1, G.ox, G.cw), az0 = prev(z0, G.oz, G.cl), az1 = next(z1, G.oz, G.cl);
+    for (const l of [[ax0, z0, ax1, z0], [ax0, z1, ax1, z1], [x0, az0, x0, az1], [x1, az0, x1, az1]]) lines.push(...clip(l));
+  }
+  return { fx, lines: cutByFixtures(lines, fx) };
+}
+// lines with the parts that run across a fixture taken out (lines along a fixture's edge stay: it sits on them)
+function cutByFixtures(lines, fx) {
+  if (!fx.length) return lines;
+  const e = 0.03; let out = lines;
+  for (const [x0, z0, x1, z1] of fx) {
+    const nx = [];
+    for (const l of out) {
+      const vert = Math.abs(l[0] - l[2]) < 1e-6, horiz = Math.abs(l[1] - l[3]) < 1e-6;
+      if (vert && l[0] > x0 + e && l[0] < x1 - e) {
+        const a = Math.min(l[1], l[3]), b = Math.max(l[1], l[3]);
+        if (b <= z0 || a >= z1) { nx.push(l); continue; }
+        if (z0 - a > 0.05) nx.push([l[0], a, l[0], z0]); if (b - z1 > 0.05) nx.push([l[0], z1, l[0], b]);
+      } else if (horiz && l[1] > z0 + e && l[1] < z1 - e) {
+        const a = Math.min(l[0], l[2]), b = Math.max(l[0], l[2]);
+        if (b <= x0 || a >= x1) { nx.push(l); continue; }
+        if (x0 - a > 0.05) nx.push([a, l[1], x0, l[1]]); if (b - x1 > 0.05) nx.push([x1, l[1], b, l[1]]);
+      } else nx.push(l);
+    }
+    out = nx;
+  }
   return out;
 }
 /* The spaces a generated ceiling can go in: every closed-off space of the plan (all walls, with gaps of up to
@@ -1334,7 +1390,9 @@ function ceilingFixtures(plan, A) {
   const G = ceilingGrid(plan, A);
   if (plan.fixturesFinal) return (plan.fixtures || []).map(f => ({ ...f }));
   if (plan.ceilingMode === 'manual') {
-    const own = Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length > 0;
+    // a generated ceiling keeps each fixture where it was placed (moved freely or nudged off the grid lines, the
+    // tees are fitted around it); fixtures traced from a ceiling picture are snapped into cells
+    const own = (Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length > 0) || (Array.isArray(plan.ceilRects) && plan.ceilRects.length > 0);
     return (plan.fixtures || []).map(f => own ? { ...f } : clearOfWalls(snapFixture(f, G), f, G, A));
   }
   // automatic layout: only where there's a cleanroom (hardwall) ceiling
@@ -2166,22 +2224,16 @@ function buildScene(THREE, plan, A) {
     const long = Math.max(f.w || 2, f.h || 4), nominal = '2x' + Math.max(2, Math.min(4, Math.round(long)));
     return FM.sizes.find(s => s.nominal === nominal) || FM.sizes.slice().sort((a, b) => Math.abs(a.w - long) - Math.abs(b.w - long))[0];
   };
-  // fixtures turned across the grid: the open half of their 4′ × 4′ block gets one plain 2′ × 4′ tile laid the same
-  // way (covering the cell line that ran there) and its T-grid, with the cross tee along the fixture's edge
-  const FXL = ceilingFixtures(plan, A), CGF = ceilingGrid(plan, A), FPc = footprint(A);
-  const tileMat = new THREE.MeshLambertMaterial({ color: 0xbfc2c2, emissive: 0x9a9c9c, side: THREE.DoubleSide }), teeMat = new THREE.MeshBasicMaterial({ color: 0xd0d6d9, side: THREE.DoubleSide });
-  for (const f of FXL) {
-    const FG = gridAt(plan, f.x, f.y, A); if (!fixtureTurned(f, FG)) continue;
-    const o = turnedOpenHalf(f, FG), cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2, hc = ceilingAt(CA, H, f.x, f.y);
-    if (FPc && !FPc.has(cx, cz)) continue;
-    if (FXL.some(q => q !== f && Math.abs(q.x - cx) < (q.w || 2) / 2 && Math.abs(q.y - cz) < (q.h || 4) / 2)) continue;
-    const tile = new THREE.Mesh(new THREE.PlaneGeometry(o.x1 - o.x0, o.z1 - o.z0), tileMat); tile.rotation.x = Math.PI / 2; tile.position.set(cx, hc - 0.004, cz); fixtures.add(tile);
-    const tw = 15 / 16 / 12;
-    for (const [x1, z1, x2, z2] of [[o.x0, o.z0, o.x1, o.z0], [o.x0, o.z1, o.x1, o.z1], [o.x0, o.z0, o.x0, o.z1], [o.x1, o.z0, o.x1, o.z1]]) {
-      const L = Math.hypot(x2 - x1, z2 - z1), t = new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(x2 - x1) > 0.01 ? L + tw : tw, Math.abs(z2 - z1) > 0.01 ? L + tw : tw), teeMat);
+  // the tees framing fixtures that sit off the grid lines or turned across it (seen from below); the grid's own
+  // lines come with the tiles
+  const FXL = ceilingFixtures(plan, A);
+  try {
+    const teeMat = new THREE.MeshBasicMaterial({ color: 0xd0d6d9, side: THREE.DoubleSide }), tw = 15 / 16 / 12;
+    for (const [x1, z1, x2, z2] of fixtureFrames(plan, A).lines) {
+      const L = Math.hypot(x2 - x1, z2 - z1), hc = ceilingAt(CA, H, (x1 + x2) / 2, (z1 + z2) / 2), t = new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(x2 - x1) > 0.01 ? L + tw : tw, Math.abs(z2 - z1) > 0.01 ? L + tw : tw), teeMat);
       t.rotation.x = Math.PI / 2; t.position.set((x1 + x2) / 2, hc - 0.007, (z1 + z2) / 2); fixtures.add(t);
     }
-  }
+  } catch (e) { /* drawn without the frames */ }
   for (const f of FXL) {
     if (FM && f.type === 'ffu') {
       const u = ffuUnit(ffuSize(f)); u.position.set(f.x, ceilingAt(CA, H, f.x, f.y), f.y);
@@ -2982,5 +3034,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);

@@ -131,7 +131,7 @@ class Editor {
     if (Math.abs(w - h) < 0.1) { this.status('A square fixture looks the same turned.'); return; }
     this.edit(() => { const q = V2.snapFixture({ x: o.x, y: o.y, w: h, h: w }, G); o.w = h; o.h = w; o.x = q.x; o.y = q.y; });
     const turned = V2.fixtureTurned ? V2.fixtureTurned(o, G) : false;
-    this.status(turned ? 'Turned across the grid. The cross tee moves to its edge, and the rest of the two cells takes one 2′ × 4′ tile turned the same way.' : 'Back in line with the grid.');
+    this.status(turned ? 'Turned across the grid. Tees frame it on all four sides and the tiles around it are cut to fit.' : 'Back in line with the grid.');
   }
   /* the ceiling lights (not FFUs) a switch can work, from the ceiling as laid out; worked out once per change */
   lights() {
@@ -963,7 +963,7 @@ class Editor {
     if (this.tool === 'beam' && this.beamA && this.cursor) { const q = this.snap(this.cursor.x, this.cursor.y, this.beamA, {}); g.save(); g.strokeStyle = COL.draft; g.setLineDash([7, 4]); g.lineWidth = 1.5; g.beginPath(); g.moveTo(this.sx(this.beamA.x), this.sy(this.beamA.y)); g.lineTo(this.sx(q.x), this.sy(q.y)); g.stroke(); g.restore(); this.status('Beam ' + fmt(Math.hypot(q.x - this.beamA.x, q.y - this.beamA.y)) + ' — click the other end.'); }
     // a generated ceiling: its T-grid, drawn over the rooms it was laid out in
     if (Array.isArray(P.ceilRects) && P.ceilRects.length && this.showCeil !== false && V2 && V2.ceilingGrid) {
-      const key = JSON.stringify([P.ceilRects.length, P.ceilRects[0], P.gridZones || [], P.ceilGrid || null, P.walls.length]);
+      const key = JSON.stringify([P.ceilRects.length, P.ceilRects[0], P.gridZones || [], P.ceilGrid || null, P.walls.length, (P.fixtures || []).map(f => [f.x, f.y, f.w, f.h])]);
       if (this._gridKey !== key) { try { this._gridLines = V2.generatedGridLines(P) || []; } catch (e) { this._gridLines = []; } this._gridKey = key; }
       g.save(); g.strokeStyle = 'rgba(127,211,227,.32)'; g.lineWidth = 1; g.beginPath();
       for (const q of this._gridLines) { g.moveTo(this.sx(q[0]), this.sy(q[1])); g.lineTo(this.sx(q[2]), this.sy(q[3])); }
