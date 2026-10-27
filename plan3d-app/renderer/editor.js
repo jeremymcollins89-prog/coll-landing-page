@@ -585,10 +585,10 @@ class Editor {
       if (best) { dx += best[0]; dy += best[1]; } else { const g = this.snapIn / 12 || 1 / 48; dx = Math.round(dx / g) * g; dy = Math.round(dy / g) * g; }
       // FFUs and lights moving together land in the ceiling grid's cells
       const fx = D.items.find(it => it.r.kind === 'fixture');
-      if (fx && !best && global.Plan3DViewer) { const V = global.Plan3DViewer, q = V.snapFixture({ x: fx.O.x + dx, y: fx.O.y + dy, w: fx.O.w || 2, h: fx.O.h || 4 }, V.gridAt(this.plan, fx.O.x + dx, fx.O.y + dy)); dx = q.x - fx.O.x; dy = q.y - fx.O.y; }
+      if (fx && !best && !e.altKey && global.Plan3DViewer) { const V = global.Plan3DViewer, q = V.snapFixture({ x: fx.O.x + dx, y: fx.O.y + dy, w: fx.O.w || 2, h: fx.O.h || 4 }, V.gridAt(this.plan, fx.O.x + dx, fx.O.y + dy)); dx = q.x - fx.O.x; dy = q.y - fx.O.y; }
       for (const it of D.items) this.shiftRef(it.r.kind, it.o, it.O, dx, dy);
       // and each one sits in a cell of its own (a layout drawn a hair off the grid still lands cleanly)
-      if (fx && !best && global.Plan3DViewer) {
+      if (fx && !best && !e.altKey && global.Plan3DViewer) {
         const V = global.Plan3DViewer, taken = new Set();
         for (const it of D.items) if (it.r.kind === 'fixture') { const q = V.snapFixture({ x: it.o.x, y: it.o.y, w: it.o.w || 2, h: it.o.h || 4 }, V.gridAt(this.plan, it.o.x, it.o.y)), k = Math.round(q.x * 4) + ',' + Math.round(q.y * 4); if (!taken.has(k)) { taken.add(k); it.o.x = q.x; it.o.y = q.y; } }
       }
@@ -625,6 +625,7 @@ class Editor {
           o.x1 = w.x1 + wx * (s - len / 2); o.y1 = w.y1 + wy * (s - len / 2); o.x2 = w.x1 + wx * (s + len / 2); o.y2 = w.y1 + wy * (s + len / 2); o.t = w.t;
         } else { const k = dx * ux + dy * uy; o.x1 = O.x1 + ux * k; o.y1 = O.y1 + uy * k; o.x2 = O.x2 + ux * k; o.y2 = O.y2 + uy * k; }
       } else if (D.sel.kind === 'beam') { o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy; }
+      else if (D.sel.kind === 'fixture' && e.altKey) { o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy); this.status('Moving freely (Alt): ' + fmt(Math.hypot(o.x - O.x, o.y - O.y))); }
       else if (D.sel.kind === 'fixture') { const V = global.Plan3DViewer, G = V.gridAt(this.plan, O.x + (p.x - D.sx), O.y + (p.y - D.sy)), q = V.snapFixture({ x: O.x + (p.x - D.sx), y: O.y + (p.y - D.sy), w: O.w || 2, h: O.h || 4 }, G); o.x = q.x; o.y = q.y; }
       else if (D.sel.kind === 'gzone') { this.shiftRef('gzone', o, O, dx, dy); }
       else if (D.sel.kind === 'chase' || D.sel.kind === 'carea') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
@@ -753,6 +754,14 @@ class Editor {
     const k = e.key;
     if (k === ' ') { this.spaceDown = e.type === 'keydown'; return true; }
     if (e.type !== 'keydown') return false;
+    // arrow keys nudge what's selected: 1″, Shift 6″, Alt ⅛″ (no snapping, so FFUs and lights can go exactly where you want)
+    const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[k];
+    if (dir && !e.ctrlKey && !e.metaKey && (this.multi || (this.sel && this.sel.kind !== 'bg'))) {
+      const st = (e.shiftKey ? 6 : e.altKey ? 0.125 : 1) / 12, refs = this.withOpenings(this.multi || [this.sel]);
+      this.edit(() => { for (const r of refs) { const o = this.find(r); if (o) this.shiftRef(r.kind, o, JSON.parse(JSON.stringify(o)), dir[0] * st, dir[1] * st); } });
+      this.status('Nudged ' + (e.shiftKey ? '6″' : e.altKey ? '⅛″' : '1″') + '. Arrow keys: 1″ · Shift 6″ · Alt ⅛″. Hold Alt while dragging to move without snapping.');
+      return true;
+    }
     if (this.linkSw && (k === 'Escape' || k === 'Enter' || k === 'l' || k === 'L')) { this.linkSw = null; this.status(''); this.render(); return true; }
     if ((k === 'l' || k === 'L') && !e.ctrlKey && !e.metaKey && this.tool === 'select' && this.sel && this.sel.kind === 'device') {
       const o = this.selected(); if (o && o.type === 'switch') { this.linkSw = o.id; this.linkStatus(o); this.render(); return true; }
