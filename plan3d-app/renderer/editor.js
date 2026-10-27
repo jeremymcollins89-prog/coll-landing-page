@@ -388,6 +388,11 @@ class Editor {
     P.walls.forEach(w => { e(w.x1, w.y1); e(w.x2, w.y2); }); P.chases.forEach(k => { e(k.x0, k.y0); e(k.x1, k.y1); });
     P.rooms.forEach(r => e(r.x, r.y));
     (P.inserts || []).forEach(i => { const b = this.insBox(i); e(b.x0, b.y0); e(b.x1, b.y1); });
+    // beams, columns, FFUs and lights, ceiling pieces and lines: a drawing of just those still fits the view
+    (P.beams || []).forEach(b => { e(b.x1, b.y1); e(b.x2, b.y2); }); (P.columns || []).forEach(c => e(c.x, c.y));
+    if (P.ceilingMode === 'manual') (P.fixtures || []).forEach(f => { e(f.x - (f.w || 2) / 2, f.y - (f.h || 4) / 2); e(f.x + (f.w || 2) / 2, f.y + (f.h || 4) / 2); });
+    (P.ceilTiles || []).forEach(t => { e(t.x - t.w / 2, t.y - t.h / 2); e(t.x + t.w / 2, t.y + t.h / 2); });
+    if (!P.walls.length) (P.ceilingGrid || []).forEach(q => { e(q[0], q[1]); e(q[2], q[3]); });
     if (this.bgImg && P.background && P.background.visible !== false && this.bgImg.naturalWidth) {
       const B = P.background, w = this.bgImg.naturalWidth * B.scale / 2, h = this.bgImg.naturalHeight * B.scale / 2, r = Math.hypot(w, h);
       if (!P.walls.length) { e(B.cx - r, B.cy - r); e(B.cx + r, B.cy + r); }

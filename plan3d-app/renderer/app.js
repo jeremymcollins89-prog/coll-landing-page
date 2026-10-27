@@ -138,7 +138,7 @@ function updateChrome() {
   $('#docName').textContent = (P.name || 'Untitled plan') + (ed.dirty ? ' •' : '');
   document.title = (P.name || 'Untitled plan') + ' — Coll Plan3D';
   const cb = $('#bCeiling'); if (cb) cb.textContent = (P.ceilingSource || (P.ceilingMode === 'manual' && (P.fixtures || []).length)) ? 'Edit ceiling' : 'Add ceiling';
-  const empty = !P.walls.length && !P.chases.length && !P.background && !(P.inserts || []).length;
+  const empty = !P.walls.length && !P.chases.length && !P.background && !(P.inserts || []).length && !(P.beams || []).length && !(P.columns || []).length && !(P.ceilTiles || []).length && !(P.ceilingGrid || []).length && !(P.ceilingMode === 'manual' && (P.fixtures || []).length);
   $('#welcome').hidden = !empty;
   if (empty) { $('#wPick').hidden = modePicked; $('#wNext').hidden = !modePicked; welcomeText(); }
 }
@@ -223,6 +223,32 @@ function bindLen(id, unit, apply) {
   el.addEventListener('change', go); el.addEventListener('keydown', e => { if (e.key === 'Enter') { go(); el.blur(); } });
 }
 // a hardwall's usual height: the top of the tallest ceiling area it bounds (rooms can have their own ceiling and plenum)
+/* Make a wall h tall (floor to top). A building or framed wall takes its own height; a cleanroom hardwall gets
+   one height section the length of the wall (its default height again: the section goes). */
+function setWallHeight(P, w, h) {
+  const hard = Plan3DViewer.isHard(w);
+  if (!hard) { w.h = Math.max(6, Math.min(80, h)); return; }
+  const def = wallTopOf(P, w), L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+  if (Math.abs(h - def) < 1 / 96) delete w.sections; else w.sections = [{ a: 0, b: +L.toFixed(4), h: Math.max(6, Math.min(80, h)) }];
+}
+function wallHeightOf(P, w) {
+  if (!Plan3DViewer.isHard(w)) return Plan3DViewer.WALL_KINDS[w.kind] && Plan3DViewer.WALL_KINDS[w.kind].frame ? (w.h || P.ceiling || 8) : Plan3DViewer.shellHeight(P, w);
+  const secs = w.sections || [], L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+  return secs.length === 1 && Math.min(secs[0].a, secs[0].b) < 0.01 && Math.max(secs[0].a, secs[0].b) > L - 0.01 ? secs[0].h : wallTopOf(P, w);
+}
+// several walls picked: one height for all of them
+async function wallHeightDialog() {
+  const P = ed.plan, W = (ed.multi || (ed.sel ? [ed.sel] : [])).filter(r => r.kind === 'wall').map(r => ed.find(r)).filter(Boolean);
+  if (!W.length) { toast('Pick the walls first: Shift-drag a box around them, or Shift+click them.'); return; }
+  const hs = [...new Set(W.map(w => +wallHeightOf(P, w).toFixed(3)))];
+  const v = await dialogOpen({ title: 'Wall height', body: `<p>${W.length} wall${W.length === 1 ? '' : 's'} picked, ${hs.length === 1 ? 'all ' + esc(fmt(hs[0])) + ' tall' : 'now ' + hs.map(fmt).map(esc).join(', ') + ' tall'}.</p>${fld('Make them', txt('whH', fmt(Math.max(...hs))))}<p class="note">Floor to top. Cleanroom walls run on up past the ceiling to this height (the panels and posts on the parts list grow with them); the rest of the cleanroom stays as it is. To raise the ceiling over a room along with its walls, use a <b>Ceiling area</b> (A) with <b>Raise the walls and the top with it</b>.</p>`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Back to normal', ret: 'reset' }, { label: 'Set height', primary: true, value: () => parseLen($('#whH').value, 'ft') }], onOpen: () => { $('#whH').focus(); $('#whH').select(); } });
+  if (v == null) return;
+  if (v === 'reset') { ed.edit(() => { for (const w of W) { if (Plan3DViewer.isHard(w)) delete w.sections; else delete w.h; } }); toast('Walls back to their normal height.'); renderProps(); queue3D(); return; }
+  if (!(v > 1)) { toast('Type a height like 12 ft or 14 ft 6 in.'); return; }
+  ed.edit(() => { for (const w of W) setWallHeight(P, w, v); });
+  toast(`${W.length} wall${W.length === 1 ? '' : 's'} now ${fmt(v)} tall.`); renderProps(); queue3D();
+}
 function wallTopOf(P, w) {
   try { for (const z of Plan3DViewer.zones(P)) if ((z.plan.walls || []).includes(w)) return Math.max(6, z.plan.ceiling || 8) + Math.max(0, +z.plan.plenum || 0); } catch (e) { /* fall back to the building's */ }
   const K = Plan3DViewer.roomKey(P, null); return K.H + K.PL;
@@ -236,13 +262,13 @@ function renderProps(opt) {
     const grouped = M.every(r => { const x = ed.find(r); return x && x.gid && x.gid === ed.find(M[0]).gid; });
     box.innerHTML = `<div class="hd"><span class="kind">${M.length} pieces selected${grouped ? ' (a group)' : ''}</span><button class="btn small danger" id="mDel">Delete</button></div>
       <div class="grp"><div class="stats">${Object.entries(cnt).map(([k, n]) => `<span>${esc(NAMES[k] || k)}${n > 1 && k !== 'opening' && k !== 'fixture' ? 's' : ''}</span><span>${n}</span>`).join('')}</div></div>
-      <div class="row">${grouped ? '<button class="btn small" id="mUngroup">Ungroup</button>' : '<button class="btn small" id="mGroup">Group them</button>'}<button class="btn small" id="mCopy">Copy</button><button class="btn small" id="mSize">Resize…</button></div>
+      <div class="row">${grouped ? '<button class="btn small" id="mUngroup">Ungroup</button>' : '<button class="btn small" id="mGroup">Group them</button>'}<button class="btn small" id="mCopy">Copy</button><button class="btn small" id="mSize">Resize…</button>${M.some(r => r.kind === 'wall') ? '<button class="btn small" id="mWH">Wall height…</button>' : ''}</div>
       <div class="row"><button class="btn small primary" id="mSave">Save to the library…</button></div>
       <p class="note">Drag any of them to move them all; their walls catch on nearby wall ends (hold Alt to move freely). Shift+click adds or takes out one piece; Shift-drag a box adds more. A group stays together: clicking one piece picks up the whole group. Ctrl+G groups, Ctrl+Shift+G ungroups, Ctrl+C / Ctrl+V copy and paste.</p>`;
     $('#mDel').onclick = () => ed.deleteSel();
     if ($('#mGroup')) $('#mGroup').onclick = () => { ed.groupSel(true); renderProps(); };
     if ($('#mUngroup')) $('#mUngroup').onclick = () => { ed.groupSel(false); renderProps(); };
-    $('#mCopy').onclick = copyPieces; $('#mSave').onclick = saveGroupDialog; $('#mSize').onclick = resizeSelection;
+    $('#mCopy').onclick = copyPieces; $('#mSave').onclick = saveGroupDialog; $('#mSize').onclick = resizeSelection; if ($('#mWH')) $('#mWH').onclick = wallHeightDialog;
     return;
   }
   if (s && o && s.kind === 'wall') {
@@ -253,7 +279,7 @@ function renderProps(opt) {
       ${fld('Wall type', `<select id="pKind">${kindOrder.map(([k, v]) => `<option value="${k}" ${k === kind ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select>`)}
       ${fld('Length', txt('pLen', fmt(len)))}
       ${fld('Thickness', txt('pT', fmtIn(o.t || 0.25)))}
-      ${hard ? fld('S.P. panel', `<label class="chk"><input type="checkbox" id="pSP" ${o.sp ? 'checked' : ''}> Highlight yellow</label>`) : fld('Height', txt('pWH', fmt(KINDS[kind].frame ? (o.h || P.ceiling || 8) : Plan3DViewer.shellHeight(P, o))))}
+      ${hard ? fld('S.P. panel', `<label class="chk"><input type="checkbox" id="pSP" ${o.sp ? 'checked' : ''}> Highlight yellow</label>`) : ''}${fld('Height', txt('pWH', fmt(wallHeightOf(P, o))))}
       ${KINDS[kind].frame ? fld('Studs', `<select id="pStud">${(kind === 'steel' ? [['', 'Auto (6″ outside, 3⅝″ inside)'], ['3⅝″', '3⅝″ steel'], ['6″', '6″ steel']] : [['', 'Auto (2×6 outside, 2×4 inside)'], ['2×4', '2×4'], ['2×6', '2×6']]).map(([v, l]) => `<option value="${v}" ${(o.stud || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`)
         + fld('Exterior wall', `<select id="pExt"><option value="" ${o.ext == null ? 'selected' : ''}>Auto (outside walls)</option><option value="1" ${o.ext === true ? 'selected' : ''}>Yes: sheathing, wrap, siding</option><option value="0" ${o.ext === false ? 'selected' : ''}>No: drywall both sides</option></select>`) : ''}
       ${hard ? (() => {
@@ -272,7 +298,7 @@ function renderProps(opt) {
       if (k === 'hardwall') { delete o.kind; delete o.h; if ((o.t || 0) > 0.4) o.t = P.wallT && P.wallT < 0.4 ? P.wallT : 0.25; }
       else { o.kind = k; o.sp = false; o.t = KINDS[k].t; }
     });
-    bindLen('pWH', 'ft', v => ed.edit(() => { o.h = Math.max(6, Math.min(80, v)); }));
+    bindLen('pWH', 'ft', v => { ed.edit(() => setWallHeight(P, o, v)); renderProps(); });
     if ($('#pStud')) $('#pStud').onchange = e => ed.edit(() => { if (e.target.value) o.stud = e.target.value; else delete o.stud; });
     if ($('#pExt')) $('#pExt').onchange = e => ed.edit(() => { if (e.target.value === '') delete o.ext; else o.ext = e.target.value === '1'; });
     if ($('#pAllK')) $('#pAllK').onclick = () => ed.edit(Pl => {
@@ -1157,7 +1183,9 @@ function dialogOpen({ title, body, buttons, onOpen, wide }) {
       el.onclick = () => { const r = b.value ? b.value() : b.ret; if (r === false) return; d.close(); resolve(r); };
       m.appendChild(el);
     });
-    d.onclose = () => resolve(undefined);
+    // a close left over from the dialog before (one dialog opening right after another closes) arrives after
+    // this one is up: ignore it while this one is still open
+    d.onclose = () => { if (!d.open) resolve(undefined); };
     d.oncancel = () => resolve(undefined);
     d.showModal();
     if (onOpen) onOpen(d);
@@ -1361,7 +1389,11 @@ function dxfDialog(data, preset) {
   const notWall = /title|dim|text|anno|defpoints|border|logo|watermark|hatch|furn|grid|tag|note|symbol|xref|viewport|detl|detail|path|walk|egress|patt|^0$/i;
   const pre = new Set(preset.layers ? names.filter(n => preset.layers.includes(n)) : wallish.length ? wallish : names.filter(n => !notWall.test(n)).length ? names.filter(n => !notWall.test(n)) : names);
   // what each layer brings in: walls, or another kind of piece, placed where it is on the drawing
-  const roleOf = (n) => pre.has(n) && !LAYER_GUESS.some(([r, rx]) => r !== 'wall' && rx.test(n)) ? 'wall' : (LAYER_GUESS.find(([, rx]) => rx.test(n)) || ['ignore'])[0];
+  // a drawing named for one kind of piece ("Beams", "Filters", "Ceiling grid") whose layers don't say what
+  // they are: its drawn layers are that kind
+  const fileRole = (LAYER_GUESS.concat([['ffu', /filter/i]]).find(([, rx]) => rx.test(data.name || '')) || [null])[0];
+  const named = names.some(n => wallish.includes(n) || LAYER_GUESS.some(([, rx]) => rx.test(n)));
+  const roleOf = (n) => fileRole && !named && !/dim|text|anno|title|border|defpoints|viewport/i.test(n) ? fileRole : pre.has(n) && !LAYER_GUESS.some(([r, rx]) => r !== 'wall' && rx.test(n)) ? 'wall' : (LAYER_GUESS.find(([, rx]) => rx.test(n)) || ['ignore'])[0];
   const iu = data.insunits;
   const unitOpts = [[1, 'Inches'], [2, 'Feet'], [4, 'Millimeters'], [5, 'Centimeters'], [6, 'Meters']];
   const defUnit = preset.unit || (IMP.UNIT_FT[iu] && iu ? iu : 1);
@@ -1400,6 +1432,11 @@ function dxfDialog(data, preset) {
   }).then(o => {
     if (!o) return;
     try { localStorage.setItem('p3d.dxClusters', o.clusters); } catch (e) { /* no storage */ }
+    // no walls on the drawing (a beam or FFU drawing on its own): its other pieces set where (0, 0) is
+    if (!data.segs.some(q => o.layers.has(q[4]))) o.frameLayers = new Set(Object.keys(o.roles || {}));
+    // added to a project imported from a drawing: the same origin, so a beam or FFU drawing in the same
+    // coordinates (exported from the same AutoCAD file) lands right on the plan
+    const plF = addMode && ed.plan.dxfOrigin && !preset.keepOrigin ? ed.plan.dxfOrigin : null; if (plF) o.frame = plF;
     let walls = IMP.wallsFromDxf(data, o), skipped = 0;
     // a second copy of the plan or loose bits elsewhere on the sheet: keep the main building
     if (o.clusters === 'main' && IMP.wallClusters && walls.length) { const C = IMP.wallClusters(walls, 30); if (C.length > 1) { skipped = walls.length - C[0].walls.length; walls = C[0].walls; } }
@@ -1422,10 +1459,24 @@ function dxfDialog(data, preset) {
     const bld = IMP.buildingWalls ? eachDrawing(walls, ops.openings, o.bldMode) : new Set();
     for (const w of walls) if (bld.has(w.id)) w.kind = o.bldKind === 'auto' ? (w.t <= 0.5 + 1e-6 ? 'metal' : 'concrete') : o.bldKind;
     const p = Editor.blank(); p.name = data.name; p.walls = walls; p.openings = ops.openings; p.wallT = o.mode === 'single' ? o.tFt : 0.25;
+    { const F0 = IMP.dxfFrame(data, o); p.dxfOrigin = { x0: F0.minX * F0.k, y0: F0.maxY * F0.k }; if (plF) p.__inPlace = true; }
     const rp = layerPieces(data, o, p);
     let extra = o.extras && walls.length ? sheetExtrasToPlan(data, { ...o, layers: new Set([...o.layers, ...Object.keys(o.roles || {})]) }, walls, bld, p) : null;
     if (rp && extra) extra.text = rp + ' ' + extra.text; else if (rp && !extra) extra = { text: rp };
     if (walls.length) { const t = walls.map(w => w.t).sort((a, b) => a - b); p.wallT = t[t.length >> 1]; }
+    // added to a plan that has no drawing origin on record (imported before this version, or drawn by hand):
+    // a beam or grid drawing still lines up when its line ends land on this plan's walls
+    if (addMode && !plF && !walls.length && ed.plan.walls.length && ((p.beams || []).length || (p.ceilingGrid || []).length)) {
+      const L = (p.beams || []).map(b => [b.x1, b.y1, b.x2, b.y2]).concat(p.ceilingGrid || []), al = IMP.alignToWalls(L, ed.plan.walls);
+      if (al && al.score >= 0.5) {
+        const dx = al.dx, dy = al.dy;
+        for (const b of p.beams || []) { b.x1 += dx; b.x2 += dx; b.y1 += dy; b.y2 += dy; }
+        if (p.ceilingGrid) p.ceilingGrid = p.ceilingGrid.map(q => [q[0] + dx, q[1] + dy, q[2] + dx, q[3] + dy]);
+        for (const f of p.fixtures || []) { f.x += dx; f.y += dy; } for (const c of p.columns || []) { c.x += dx; c.y += dy; }
+        for (const k of p.chases || []) { k.x0 += dx; k.x1 += dx; k.y0 += dy; k.y1 += dy; }
+        p.__inPlace = true;
+      }
+    }
     if (adoptImported(p, extra && extra.text)) return;
     projectPath = null; ed.setPlan(p); ed.dirty = true; updateChrome();
     const f = ops.found, parts = [];
@@ -1515,9 +1566,9 @@ async function pickBuilding(title, okLabel) {
   });
   return picked;
 }
-function placeBuilding(src, name, libId, libSaved) {
+function placeBuilding(src, name, libId, libSaved, at) {
   const plan = Plan3DViewer.centredCopy(src); delete plan.libId;
-  const g = 0.5, cx = ed.W ? ed.wx(ed.W / 2) : 0, cy = ed.H ? ed.wy(ed.H / 2) : 0;
+  const g = at ? 1 / 96 : 0.5, cx = at ? at.x : ed.W ? ed.wx(ed.W / 2) : 0, cy = at ? at.y : ed.H ? ed.wy(ed.H / 2) : 0;
   const ins = { id: Plan3DEditor.uid(), name: name || plan.name || 'Building', libId: libId || null, libSaved: libSaved || null, x: Math.round(cx / g) * g, y: Math.round(cy / g) * g, rot: 0, mirror: false, plan };
   ed.edit(P => { (P.inserts = P.inserts || []).push(ins); });
   ed.setTool('select'); ed.sel = { kind: 'insert', id: ins.id }; ed.emit('select'); ed.render(); queue3D();
@@ -1549,7 +1600,8 @@ function pastePieces(data, x, y, group) {
   const ids = new Map(), gid = group ? Plan3DEditor.uid() : null, refs = [], KIND = { walls: 'wall', openings: 'opening', chases: 'chase', rooms: 'room', devices: 'device', items: 'item', columns: 'column', beams: 'beam', fixtures: 'fixture' };
   ed.edit(P => {
     // FFUs and lights join a drawn ceiling: an automatic one becomes hand-placed first
-    if ((data.fixtures || []).length && P.ceilingMode !== 'manual') { P.fixtures = Plan3DViewer.ceilingFixtures(P).map(f => ({ id: Plan3DEditor.uid(), type: f.type, x: f.x, y: f.y })); P.ceilingMode = 'manual'; }
+    // (an FFU layout replaces the automatic placeholder one; lights alone join it)
+    if ((data.fixtures || []).length && P.ceilingMode !== 'manual') { P.fixtures = data.fixtures.some(f => f.type === 'ffu') ? [] : Plan3DViewer.ceilingFixtures(P).map(f => ({ id: Plan3DEditor.uid(), type: f.type, x: f.x, y: f.y })); P.ceilingMode = 'manual'; }
     for (const k of PIECE_LISTS) for (const src of data[k] || []) {
       const o = JSON.parse(JSON.stringify(src)), nid = Plan3DEditor.uid(); ids.set(o.id, nid); o.id = nid;
       if ('x0' in o && 'x1' in o) { o.x0 += x; o.x1 += x; o.y0 += y; o.y1 += y; } else if ('x2' in o) { o.x1 += x; o.x2 += x; o.y1 += y; o.y2 += y; } else { o.x += x; o.y += y; }
@@ -1813,13 +1865,18 @@ function adoptImported(p, note) {
   const name = p.name || 'Imported plan', nW = (p.walls || []).length;
   if (!nW && !(p.inserts || []).length && !PIECE_LISTS.some(k => (p[k] || []).length) && !(p.ceilingGrid || []).length) { toast('Nothing to add: no walls came in from that file.'); return true; }
   (async () => {
-    const a = await dialogOpen({ title: 'Add ' + name, body: `<p>${nW} wall${nW === 1 ? '' : 's'} from <b>${esc(name)}</b>. How should it go into this project?</p>
+    const inPlace = !!p.__inPlace; delete p.__inPlace;
+    const a = await dialogOpen({ title: 'Add ' + name, body: `<p>${[nW ? nW + ' wall' + (nW === 1 ? '' : 's') : '', (p.beams || []).length ? p.beams.length + ' beam' + (p.beams.length === 1 ? '' : 's') : '', (p.fixtures || []).length ? p.fixtures.length + ' FFUs and lights' : '', (p.columns || []).length ? p.columns.length + ' columns' : '', (p.chases || []).length ? p.chases.length + ' chases' : '', (p.ceilingGrid || []).length ? 'a ceiling grid' : ''].filter(Boolean).join(', ')} from <b>${esc(name)}</b>.${inPlace ? ' It\'s set where it is on the drawing, lined up with this plan (both came from drawings in the same coordinates).' : ''} How should it go into this project?</p>
       <ul class="help"><li><b>As a separate building</b>: moved and turned as one (R turns it), with its own height, ceiling and section of the parts list. Good for another building on the site.</li>
       <li><b>As pieces of this plan</b>: its walls, doors, chases, rooms, FFUs and lights join this plan as a group. Drag the group into place (its walls catch on wall ends), then Ungroup to work on them like any other walls. Good for adding a room or a wing.</li></ul>${note ? `<p class="note">${esc(note)}</p>` : ''}`,
-      buttons: [{ label: 'Cancel', ret: null }, { label: 'As pieces of this plan', ret: 'pieces' }, { label: 'As a separate building', primary: true, ret: 'bld' }] });
+      buttons: nW && !inPlace ? [{ label: 'Cancel', ret: null }, { label: 'As pieces of this plan', ret: 'pieces' }, { label: 'As a separate building', primary: true, ret: 'bld' }] : [{ label: 'Cancel', ret: null }, { label: 'As a separate building', ret: 'bld' }, { label: 'As pieces of this plan', primary: true, ret: 'pieces' }] });
     if (!a) return;
     if (view === '3d' || view === 'build') setView('split');
-    if (a === 'bld') { placeBuilding(p, name); return; }
+    if (a === 'bld') {
+      // lined up: the building goes where its walls are on the drawing
+      let at = null; if (inPlace && nW) { let a0 = 1e9, b0 = 1e9, a1 = -1e9, b1 = -1e9; p.walls.forEach(w => { a0 = Math.min(a0, w.x1, w.x2); a1 = Math.max(a1, w.x1, w.x2); b0 = Math.min(b0, w.y1, w.y2); b1 = Math.max(b1, w.y1, w.y2); }); (p.chases || []).forEach(k => { a0 = Math.min(a0, k.x0, k.x1); a1 = Math.max(a1, k.x0, k.x1); b0 = Math.min(b0, k.y0, k.y1); b1 = Math.max(b1, k.y0, k.y1); }); at = { x: (a0 + a1) / 2, y: (b0 + b1) / 2 }; }
+      placeBuilding(p, name, null, null, at); return;
+    }
     // pieces: centred on their middle, put down at the middle of the screen, grouped and picked up
     const d = {}; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; const e = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
     (p.walls || []).forEach(w => { e(w.x1, w.y1); e(w.x2, w.y2); });
@@ -1829,12 +1886,14 @@ function adoptImported(p, note) {
     for (const k of PIECE_LISTS) d[k] = JSON.parse(JSON.stringify(k === 'fixtures' ? fx : p[k] || []));
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     for (const k of PIECE_LISTS) for (const o of d[k]) { if ('x0' in o && 'x1' in o) { o.x0 -= cx; o.x1 -= cx; o.y0 -= cy; o.y1 -= cy; } else if ('x2' in o) { o.x1 -= cx; o.x2 -= cx; o.y1 -= cy; o.y2 -= cy; } else { o.x -= cx; o.y -= cy; } }
-    const n = pastePieces(d, ed.wx(ed.W / 2), ed.wy(ed.H / 2), true);
+    // lined up with the plan (same drawing coordinates): put back exactly where it was
+    const px = inPlace ? cx : ed.wx(ed.W / 2), py = inPlace ? cy : ed.wy(ed.H / 2);
+    const n = pastePieces(d, px, py, true);
     // its imported ceiling drawing comes along when this plan has none
     const withCeil = Array.isArray(p.ceilingGrid) && p.ceilingGrid.length && !(ed.plan.ceilingGrid || []).length;
-    if (withCeil) { const gx = Math.round(ed.wx(ed.W / 2) * 12) / 12 - cx, gy = Math.round(ed.wy(ed.H / 2) * 12) / 12 - cy; ed.edit(Q => { Q.ceilingGrid = p.ceilingGrid.map(q => [q[0] + gx, q[1] + gy, q[2] + gx, q[3] + gy]); Q.ceilingMode = 'manual'; Q.ceilingSource = Q.ceilingSource || name; }); }
+    if (withCeil) { const gx = Math.round(px * 12) / 12 - cx, gy = Math.round(py * 12) / 12 - cy; ed.edit(Q => { Q.ceilingGrid = p.ceilingGrid.map(q => [q[0] + gx, q[1] + gy, q[2] + gx, q[3] + gy]); Q.ceilingMode = 'manual'; Q.ceilingSource = Q.ceilingSource || name; }); }
     ed.fit(); updateChrome(); queue3D();
-    toast(`Added ${n} pieces from ${name} as a group. Drag it into place; Ctrl+Shift+G ungroups it.${withCeil ? ' Its ceiling drawing came too: once the walls are in place, line it up with Edit ceiling → Move or turn.' : ''}`);
+    toast(`Added ${n} pieces from ${name} as a group${inPlace ? ', where they are on the drawing' : '. Drag it into place'}; Ctrl+Shift+G ungroups it.${withCeil ? ' Its ceiling drawing came too: once the walls are in place, line it up with Edit ceiling → Move or turn.' : ''}`);
   })();
   return true;
 }
@@ -1984,5 +2043,5 @@ window.addEventListener('drop', async e => {
 
 renderProps(); updateChrome(); toolHint('select');
 if (api.rendererReady) api.rendererReady();
-window.__app = { setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
+window.__app = { wallHeightDialog, setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
 })();
