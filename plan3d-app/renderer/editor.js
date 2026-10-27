@@ -51,7 +51,7 @@ const DEFAULT_W = { door: 3, door2: 6, glass: 4, open: 3, pass: 2, window: 3, ov
 // houses: 2′-8″ doors, 5′ pairs, 3′ windows, 6′-8″ heads
 const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2, overhead: 16 };
 const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass', 'overhead']);
-const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas', gzone: 'gridZones', tile: 'ceilTiles', deck: 'deckPieces', lstep: 'lidSteps', header: 'headers' };
+const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas', gzone: 'gridZones', tile: 'ceilTiles', deck: 'deckPieces', lstep: 'lidSteps', header: 'headers', grille: 'grilles' };
 const COL = {
   bg: '#1a2024', gridMinor: 'rgba(255,255,255,.035)', gridMajor: 'rgba(255,255,255,.08)', axis: 'rgba(255,255,255,.14)',
   wall: '#e9eef0', wallLine: '#8e9aa1', sp: '#f2d06b', chase: '#59666d', chaseLine: '#b7c2c7', grille: '#9fdbe8',
@@ -215,6 +215,16 @@ class Editor {
     if (best) return best;
     return this.snap(x, y, from || null, {});
   }
+  // a return grille centred on the wall under (x, y): along the wall on the snap grid, kept inside the wall, facing
+  // the side clicked
+  grillePlace(x, y, w, keep) {
+    const hit = this.wallAt(x, y, 14); if (!hit || hit.p.len < w + 0.05) return null;
+    const W = hit.w, L = hit.p.len, ux = (W.x2 - W.x1) / L, uy = (W.y2 - W.y1) / L, g = this.snapIn / 12 || 1 / 48;
+    let s = Math.round(hit.p.tc * L / g) * g; s = Math.max(w / 2, Math.min(L - w / 2, s));
+    const side = keep && keep.side === 0 ? 0 : ((x - (W.x1 + ux * s)) * -uy + (y - (W.y1 + uy * s)) * ux) >= 0 ? 1 : -1;
+    return { x: W.x1 + ux * s, y: W.y1 + uy * s, a: Math.atan2(uy, ux), t: W.t || 0.25, wall: W.id, side };
+  }
+  grilleCorners(o) { const c = Math.cos(o.a || 0), sn = Math.sin(o.a || 0), w = o.w / 2, d = (o.t || 0.25) / 2 + 0.08; return [[-w, -d], [w, -d], [w, d], [-w, d]].map(([u, v]) => [o.x + c * u - sn * v, o.y + sn * u + c * v]); }
   refreshHeaderGaps() { const V = global.Plan3DViewer; try { this.headerGapList = V.headerGaps ? V.headerGaps(this.plan) : []; } catch (e) { this.headerGapList = []; } return this.headerGapList; }
   addHeaders(L) { if (!L.length) return 0; const add = L.map(q => ({ id: uid(), x1: q[0], y1: q[1], x2: q[2], y2: q[3] })); this.edit(P => { P.headers = (P.headers || []).concat(add); }); this.refreshHeaderGaps(); this.render(); return add.length; }
   refreshSteps() { const V = global.Plan3DViewer; try { const A = V.analyze(this.plan); this.autoSteps = V.deckSteps ? V.deckSteps(this.plan, A, A.WH).filter(q => q.auto) : []; } catch (e) { this.autoSteps = []; } return this.autoSteps; }
@@ -569,6 +579,7 @@ class Editor {
   }
   hitTest(x, y) {
     const P = this.plan, tol = 7 / this.view.s;
+    for (let i = (P.grilles || []).length - 1; i >= 0; i--) { if (inPoly(x, y, this.grilleCorners(P.grilles[i]))) return { kind: 'grille', id: P.grilles[i].id }; }
     for (let i = (P.headers || []).length - 1; i >= 0; i--) { const q = P.headers[i]; if (segProj(x, y, q.x1, q.y1, q.x2, q.y2).d < 0.25 + tol) return { kind: 'header', id: q.id }; }
     for (let i = (P.lidSteps || []).length - 1; i >= 0; i--) { const q = P.lidSteps[i]; if (segProj(x, y, q.x1, q.y1, q.x2, q.y2).d < 0.2 + tol) return { kind: 'lstep', id: q.id }; }
     for (let i = (P.beams || []).length - 1; i >= 0; i--) { const b = P.beams[i], bw = (global.Plan3DViewer ? global.Plan3DViewer.beamSize(b).bf / 12 : 0.5) / 2 + tol; if (segProj(x, y, b.x1, b.y1, b.x2, b.y2).d < bw) return { kind: 'beam', id: b.id }; }
@@ -709,6 +720,14 @@ class Editor {
       if (PC && PC.widths && g.mode !== 'replace') { this.drag = { kind: 'run', S: g, px: p.px, py: p.py }; this.c.setPointerCapture(e.pointerId); return; }
       if (this.pieces.place(g)) { this.pieceGhost = this.pieces.ghostAt({ x: p.x, y: p.y }); this.render(); }
       return;
+    }
+    if (T === 'grille') {
+      const w = (this.grW || 20) / 12, q = this.grillePlace(p.x, p.y, w);
+      if (!q) { this.status('Click on a wall panel to put a return grille in it.'); return; }
+      const o = { id: uid(), ...q, w, h: (this.grH || 20) / 12, sill: this.grSill != null ? this.grSill : 0.5, damper: !!this.grDamper };
+      this.edit(P => { (P.grilles = P.grilles || []).push(o); }); this.emit('grille');
+      this.status('Return grille ' + Math.round(o.w * 12) + '″ × ' + Math.round(o.h * 12) + '″' + (o.damper ? ' with damper' : '') + ' placed, facing the side you clicked. Click to add another, Esc when done.');
+      this.render(); return;
     }
     if (T === 'header') {
       // a click on a suggested gap fills it; otherwise click one end, then the other
@@ -905,6 +924,12 @@ class Editor {
       else if (D.sel.kind === 'device') {
         const q = this.devicePlace(O.x + (p.x - D.sx), O.y + (p.y - D.sy), o.type, o);
         if (q) { o.x = q.x; o.y = q.y; o.a = q.a; }
+      }
+      else if (D.sel.kind === 'grille') {
+        // slides along its wall, or onto another wall; keeps its size and the way it faces
+        const q = this.grillePlace(O.x + (p.x - D.sx), O.y + (p.y - D.sy), o.w, o);
+        if (q) { Object.assign(o, { x: q.x, y: q.y, a: q.a, t: q.t, wall: q.wall }); if (o.side !== 0 && Math.abs(Math.cos(q.a - (O.a || 0))) < 0.9) o.side = q.side; }
+        this.status('Moving the return grille along the wall');
       }
       else if (D.sel.kind === 'item' && o.type === 'machine') {
         // a machine moves freely; its box edges catch on wall faces (Alt: no snapping)
@@ -1295,6 +1320,18 @@ class Editor {
       g.fill('evenodd'); g.stroke(); g.setLineDash([]);
       const L = this.deckLabel(d); g.font = '600 11px Consolas, monospace'; g.fillStyle = '#c9a6ff'; g.textBaseline = 'top'; g.fillText('LID' + ((P.deckPieces || []).length > 1 ? ' ' + ((P.deckPieces || []).indexOf(d) + 1) : ''), this.sx(L.x), this.sy(L.y)); g.restore();
     }
+    // return grilles: a hatched box across the wall, an arrow on the side the air goes in, the size (D: damper)
+    for (const gr of P.grilles || []) {
+      const c = this.grilleCorners(gr); g.save(); g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath();
+      g.fillStyle = 'rgba(164,139,232,.35)'; g.fill(); g.strokeStyle = '#a48be8'; g.lineWidth = 1.4; g.stroke();
+      g.clip(); g.strokeStyle = 'rgba(220,210,255,.7)'; g.lineWidth = 1; const ca = Math.cos(gr.a || 0), sa = Math.sin(gr.a || 0);
+      for (let u = -gr.w / 2; u <= gr.w / 2 + 1e-6; u += 2 / 12) { const ax = gr.x + ca * u, ay = gr.y + sa * u; g.beginPath(); g.moveTo(this.sx(ax + sa * 0.3), this.sy(ay - ca * 0.3)); g.lineTo(this.sx(ax - sa * 0.3), this.sy(ay + ca * 0.3)); g.stroke(); }
+      g.restore(); g.save();
+      const nx = -sa, ny = ca, d0 = (gr.t || 0.25) / 2 + 0.15;
+      for (const sd of gr.side === 0 ? [1, -1] : [gr.side || 1]) { const bx = gr.x + nx * sd * (d0 + 0.9), by = gr.y + ny * sd * (d0 + 0.9), tx = gr.x + nx * sd * d0, ty = gr.y + ny * sd * d0; g.strokeStyle = '#a48be8'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(this.sx(bx), this.sy(by)); g.lineTo(this.sx(tx), this.sy(ty)); g.stroke(); const hx = this.sx(tx), hy = this.sy(ty), ang = Math.atan2(hy - this.sy(by), hx - this.sx(bx)); g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx - 7 * Math.cos(ang - 0.45), hy - 7 * Math.sin(ang - 0.45)); g.moveTo(hx, hy); g.lineTo(hx - 7 * Math.cos(ang + 0.45), hy - 7 * Math.sin(ang + 0.45)); g.stroke(); }
+      if (s > 10) { const sd = gr.side === 0 ? 1 : (gr.side || 1), lx = gr.x - nx * sd * (d0 + 0.5), ly = gr.y - ny * sd * (d0 + 0.5); g.font = '600 10px Consolas, monospace'; g.fillStyle = '#c9b8ff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('RG ' + Math.round(gr.w * 12) + '×' + Math.round(gr.h * 12) + (gr.damper ? ' D' : ''), this.sx(lx), this.sy(ly)); }
+      g.restore();
+    }
     // posts: corner, T and cross posts, end caps and H-studs (the 48″ module and where runs meet straight), as the
     // parts list counts them, so they can be checked on the plan; H-mold joints along header panels too
     if (this.showPosts !== false && s > 6 && global.Plan3DViewer && global.Plan3DViewer.wallJoints) {
@@ -1497,6 +1534,7 @@ class Editor {
       else if (sel.kind === 'column') { const r = (o.size || 0.67) / 2; g.strokeRect(this.sx(o.x - r) - 4, this.sy(o.y - r) - 4, 2 * r * s + 8, 2 * r * s + 8); }
       else if (sel.kind === 'device') { const r = Math.max(5, Math.min(9, this.view.s * 0.35)); g.beginPath(); g.arc(this.sx(o.x) + Math.cos(o.a || 0) * r * 1.1, this.sy(o.y) + Math.sin(o.a || 0) * r * 1.1, r + 4, 0, Math.PI * 2); g.stroke(); }
       else if (sel.kind === 'item') { const c = global.Plan3DViewer.itemCorners(o); g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.stroke(); }
+      else if (sel.kind === 'grille') { const c = this.grilleCorners(o); g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.stroke(); }
       else if (sel.kind === 'header') { quad(o.x1, o.y1, o.x2, o.y2, 0.25 + 6 / s); g.stroke(); }
       else if (sel.kind === 'lstep') { quad(o.x1, o.y1, o.x2, o.y2, 0.25 + 6 / s); g.stroke(); }
       else if (sel.kind === 'beam') { quad(o.x1, o.y1, o.x2, o.y2, (global.Plan3DViewer ? global.Plan3DViewer.beamSize(o).bf / 12 : 0.5) + 6 / s); g.stroke(); }

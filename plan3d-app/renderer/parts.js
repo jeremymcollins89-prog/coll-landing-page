@@ -281,6 +281,12 @@ function partsList(plan) {
   if (crosses) add('Studs & posts', 'Cross post', ftin(WH), crosses, 'ea', 23);
   if (caps) add('Studs & posts', 'End cap', ftin(WH), caps, 'ea', 24);
 
+  // return grilles set into wall panels, and their dampers
+  for (const gr of plan.grilles || []) {
+    const sz = inch(gr.w || 20 / 12) + ' × ' + inch(gr.h || 20 / 12);
+    add('Air chases', 'Return grille (in wall panel)', sz, 1, 'ea', 41.5);
+    if (gr.damper) add('Air chases', 'Opposed-blade damper (behind wall grille)', sz, 1, 'ea', 41.6);
+  }
   // --- Doors, glass, pass-thrus
   for (const i of A.opInfo) {
     const o = i.o, W = i.len;

@@ -16,7 +16,7 @@ const ed = new Editor($('#plan'), {
   onLive: () => queue3D(),
   onSelect: (d) => { renderProps(d); if (builder && view === 'build') builder.drawSel(); },
   onTilesize: () => { if (ed.tool === 'grid') gridPalette(); },
-  onTool: (t) => { $$('.tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; $('#itemPal').hidden = t !== 'item'; if (t === 'item') itemPalette(); $('#elecPal').hidden = t !== 'elec'; if (t === 'elec') elecPalette(); $('#gridPal').hidden = t !== 'grid'; if (t === 'grid') gridPalette(); if (t === 'piece') hideBanner(); toolHint(t); },
+  onTool: (t) => { $$('.tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; $('#itemPal').hidden = t !== 'item'; if (t === 'item') itemPalette(); $('#elecPal').hidden = t !== 'elec'; $('#grillePal').hidden = t !== 'grille'; if (t === 'grille') grillePalette(); if (t === 'elec') elecPalette(); $('#gridPal').hidden = t !== 'grid'; if (t === 'grid') gridPalette(); if (t === 'piece') hideBanner(); toolHint(t); },
   onStatus: (m) => msg(m || toolHintText(ed.tool)),
   onCursor: (p) => { $('#sXY').textContent = fmt(p.x) + ', ' + fmt(p.y); $('#sZoom').textContent = Math.round(ed.view.s) + ' px/ft'; },
   onCalibrate: (cal) => calibrateDialog(cal),
@@ -42,6 +42,7 @@ function pickMode(m) {
 }
 function msg(t) { $('#sMsg').textContent = t || 'Ready'; }
 const HINTS = {
+  grille: 'Pick a size in the bar above (20×20, 36×36 or your own) and whether it has a damper, then click on a wall panel: the return grille goes in the panel, facing the side you clicked (air flows into it from that side). Drag it to slide it along the wall.',
   header: 'Header panels close the plenum over an open passage between walls. The orange dashes are open gaps: click one to fill it, or press F to fill them all. Or click one end and then the other (ends catch on wall ends and faces). They run from the ceiling up to the top of the walls, with H-studs at 48″ on center.',
   overhead: 'Click on a wall to put an overhead sectional door there (12′ wide, head 2′ below the top of the wall). Change its size in its properties.',
   column: 'Click to place a building column. Its size and steel or concrete are in its properties; it runs up to the roof structure.',
@@ -64,6 +65,17 @@ const HINTS = {
   item: 'Pick an item above, then click near a wall: it backs up against the wall. R turns it. Islands, tables, rugs, lights, cars and outdoor pieces go anywhere.',
   piece: 'Pick a piece above and click to place it, or drag to lay a whole run of panels. Drag a placed panel with Select to move it; its ends catch on nearby walls. Pieces snap to open ends and turn the corner toward the mouse. R turns a free piece. Right-drag pans.'
 };
+function grillePalette() {
+  const W = ed.grW || 20, H = ed.grH || 20, key = W === 20 && H === 20 ? '20' : W === 36 && H === 36 ? '36' : 'c';
+  $('#grillePal').innerHTML = `<div class="grp"><div class="row"><b style="margin-right:6px">Return grille</b>${[['20', '20″ × 20″'], ['36', '36″ × 36″'], ['c', 'Custom']].map(([k, l]) => `<button data-gs="${k}" class="${key === k ? 'on' : ''}">${l}</button>`).join('')}
+    ${key === 'c' ? `<label>W <input type="text" id="gpW" value="${W}″" style="width:52px"></label><label>H <input type="text" id="gpH" value="${H}″" style="width:52px"></label>` : ''}
+    <label>Bottom <input type="text" id="gpS" value="${fmtIn(ed.grSill != null ? ed.grSill : 0.5)}" style="width:52px"></label>
+    <label class="chk"><input type="checkbox" id="gpD" ${ed.grDamper ? 'checked' : ''}> Damper</label></div></div>`;
+  $$('#grillePal [data-gs]').forEach(b => b.onclick = () => { const k = b.dataset.gs; if (k === '20') { ed.grW = ed.grH = 20; } else if (k === '36') { ed.grW = ed.grH = 36; } else { ed.grW = ed.grW === 20 || ed.grW === 36 ? 24 : ed.grW; ed.grH = ed.grH === 20 || ed.grH === 36 ? 12 : ed.grH; } grillePalette(); });
+  const inch = (id, set) => { const el = $('#' + id); if (!el) return; el.onchange = () => { const v = parseLen(el.value, 'in'); if (isFinite(v) && v > 0) set(v); grillePalette(); }; el.onkeydown = (e) => e.stopPropagation(); };
+  inch('gpW', v => { ed.grW = Math.round(Math.min(96, v * 12)); }); inch('gpH', v => { ed.grH = Math.round(Math.min(96, v * 12)); }); inch('gpS', v => { ed.grSill = Math.min(10, v); });
+  $('#gpD').onchange = (e) => { ed.grDamper = e.target.checked; };
+}
 function itemPalette() {
   // one group at a time, picked from a row of tabs, so the palette stays small over the plan
   const IT = Plan3DViewer.ITEMS, groups = {};
@@ -183,7 +195,7 @@ $('#optOrtho').addEventListener('change', e => { ed.ortho = e.target.checked; })
 $('#optDims').addEventListener('change', e => { ed.showDims = e.target.checked; ed.render(); });
 $('#optPosts').addEventListener('change', e => { ed.showPosts = e.target.checked; ed.render(); });
 
-const TOOL_KEYS = { j: 'header', v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', b: 'beam', i: 'item', e: 'elec', h: 'overhead', u: 'column', a: 'carea', t: 'grid' };
+const TOOL_KEYS = { q: 'grille', j: 'header', v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', b: 'beam', i: 'item', e: 'elec', h: 'overhead', u: 'column', a: 'carea', t: 'grid' };
 const HOUSE_ONLY = new Set(['item']), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase', 'column', 'carea', 'grid']);
 function inField(e) { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA'); }
 window.addEventListener('keydown', e => {
@@ -274,7 +286,7 @@ function renderProps(opt) {
   const box = $('#props'), P = ed.plan, s = ed.sel, o = ed.selected();
   let h = '';
   if (ed.multi && ed.multi.length > 1) {
-    const M = ed.multi, cnt = {}, NAMES = { header: 'header panel run', lstep: 'lid step panel run', deck: 'lid piece', tile: 'ceiling tile', wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', gzone: 'grid section', fixture: 'FFUs and lights' };
+    const M = ed.multi, cnt = {}, NAMES = { grille: 'return grille', header: 'header panel run', lstep: 'lid step panel run', deck: 'lid piece', tile: 'ceiling tile', wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', gzone: 'grid section', fixture: 'FFUs and lights' };
     M.forEach(r => { cnt[r.kind] = (cnt[r.kind] || 0) + 1; });
     const grouped = M.every(r => { const x = ed.find(r); return x && x.gid && x.gid === ed.find(M[0]).gid; });
     box.innerHTML = `<div class="hd"><span class="kind">${M.length} pieces selected${grouped ? ' (a group)' : ''}</span><button class="btn small danger" id="mDel">Delete</button></div>
@@ -447,6 +459,24 @@ function renderProps(opt) {
     box.innerHTML = h;
     bindLen('pCaH', 'ft', v => ed.edit(() => { o.ceiling = Math.max(6, Math.min(40, v)); }));
     $('#pCaR').onchange = (e) => { ed.edit(() => { if (e.target.checked) o.raise = true; else delete o.raise; }); renderProps(); };
+    $('#pDel').onclick = () => ed.deleteSel();
+    return;
+  }
+  if (s && o && s.kind === 'grille') {
+    const Wi = Math.round(o.w * 12), Hi = Math.round(o.h * 12), key = Wi === 20 && Hi === 20 ? '20' : Wi === 36 && Hi === 36 ? '36' : 'c';
+    box.innerHTML = `<div class="hd"><span class="kind">Return grille</span><button class="btn small danger" id="pDel">Delete</button></div>
+      ${fld('Size', `<select id="pGS"><option value="20" ${key === '20' ? 'selected' : ''}>20″ × 20″</option><option value="36" ${key === '36' ? 'selected' : ''}>36″ × 36″</option><option value="c" ${key === 'c' ? 'selected' : ''}>Custom</option></select>`)}
+      ${fld('Width', txt('pGW', fmtIn(o.w)))}${fld('Height', txt('pGH', fmtIn(o.h)))}
+      ${fld('Bottom above floor', txt('pGSill', fmtIn(o.sill == null ? 0.5 : o.sill)))}
+      ${fld('Damper', `<label class="chk"><input type="checkbox" id="pGD" ${o.damper ? 'checked' : ''}> Opposed-blade damper behind the grille</label>`)}
+      ${fld('Air goes in from', `<div class="seg" id="pGSide">${[['1', 'This side'], ['-1', 'Other side'], ['0', 'Both (transfer)']].map(([k, l]) => `<button type="button" data-s="${k}" class="${String(o.side == null ? 1 : o.side) === k ? 'on' : ''}">${l}</button>`).join('')}</div>`)}
+      <p class="note">Set into the wall panel; the panel stays on the parts list with the grille and damper. Drag it to slide it along the wall or onto another wall. With Airflow on in 3D, purple arrows show the return air going in.</p>`;
+    $('#pGS').onchange = (e) => ed.edit(() => { if (e.target.value === '20') o.w = o.h = 20 / 12; if (e.target.value === '36') o.w = o.h = 3; });
+    bindLen('pGW', 'in', v => ed.edit(() => { o.w = Math.max(0.25, Math.min(8, v)); }));
+    bindLen('pGH', 'in', v => ed.edit(() => { o.h = Math.max(0.25, Math.min(8, v)); }));
+    bindLen('pGSill', 'in', v => ed.edit(() => { o.sill = Math.max(0, Math.min(12, v)); }));
+    $('#pGD').onchange = (e) => ed.edit(() => { o.damper = e.target.checked; });
+    $$('#pGSide button').forEach(b => b.onclick = () => ed.edit(() => { o.side = +b.dataset.s; }));
     $('#pDel').onclick = () => ed.deleteSel();
     return;
   }
