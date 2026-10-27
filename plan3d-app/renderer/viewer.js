@@ -1582,10 +1582,39 @@ function generateCeiling(plan, opts) {
     if (on.length) { ox = vote(on.map(f => md(f.x - cw / 2, cw)), cw); oz = vote(on.map(f => md(f.y - cl / 2, cl)), cl); }
   }
   const G = { ox, oz, cw, cl, swap };
+  const spIn = (sp, x, z) => { const g = sp.G, i = Math.floor((x - g.x0) / g.cell), j = Math.floor((z - g.z0) / g.cell); return i >= 0 && j >= 0 && i < g.nx && j < g.nz && sp.comp[j * g.nx + i] === sp.id && (!sp.hull || sp.hull[j * g.nx + i]); };
+  const mdv = (v, sp) => ((v % sp) + sp) % sp, sameLine = (a, b, sp) => { const d = Math.abs(a - b) % sp; return Math.min(d, sp - d) < 0.06; };
+  // a room whose FFUs face the other way from the main grid, or sit on other lines (a layout dragged in off the
+  // main grid), gets its own grid section lined up with them, so the tiles between them stay whole: no tiles
+  // split down the middle, no tees framing every FFU. Sections from an earlier Generate are made fresh.
+  const userZones = (plan.gridZones || []).filter(q => q && !q.auto), autoZones = [];
+  if (keep) for (const sp of spaces) {
+    const mine = EF.filter(f => spIn(sp, f.x, f.y)); if (mine.length < 2) continue;
+    const wd = mine.filter(f => f.w > f.h + 0.1).length, tl = mine.filter(f => f.h > f.w + 0.1).length;
+    const sw = wd === tl ? swap : wd > tl, zw = sw ? 4 : 2, zl = sw ? 2 : 4;
+    const on = mine.filter(f => Math.abs(f.w - zw) < 0.25 && Math.abs(f.h - zl) < 0.25); if (on.length < 2) continue;
+    const vote = (vals, s) => { let best = null, bn = 0; for (const v of vals) { const n = vals.filter(u => sameLine(u, v, s)).length; if (n > bn) { bn = n; best = v; } } return best; };
+    const zx = vote(on.map(f => mdv(f.x - zw / 2, zw)), zw), zz = vote(on.map(f => mdv(f.y - zl / 2, zl)), zl);
+    if (sw === swap && sameLine(zx, ox, cw) && sameLine(zz, oz, cl)) continue;
+    // the room's box; not when it takes in much of another room (an L-shaped room wrapped round a neighbour)
+    const g = sp.G; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+    for (const k of sp.cells) { const i = k % g.nx, j = (k - i) / g.nx; x0 = Math.min(x0, g.x0 + i * g.cell); x1 = Math.max(x1, g.x0 + (i + 1) * g.cell); z0 = Math.min(z0, g.z0 + j * g.cell); z1 = Math.max(z1, g.z0 + (j + 1) * g.cell); }
+    let other = 0; for (const s2 of spaces) if (s2 !== sp) for (const k of s2.cells) { const i = k % s2.G.nx, j = (k - i) / s2.G.nx, x = s2.G.x0 + (i + 0.5) * s2.G.cell, z = s2.G.z0 + (j + 0.5) * s2.G.cell; if (x > x0 && x < x1 && z > z0 && z < z1 && !spIn(sp, x, z)) other++; }
+    if (other > 0.1 * sp.cells.length) continue;
+    // out to the middle of the room's walls (the room's cells stop a little short of them), so no sliver of the
+    // main grid is left along a wall
+    const reach = (vert, at, lo, hi, dir) => { let best = null; for (const p of sp.A.pieces) { if (vert ? Math.abs(p.x1 - p.x2) > 1e-3 : Math.abs(p.z1 - p.z2) > 1e-3) continue; const c = vert ? p.x1 : p.z1, a = vert ? Math.min(p.z1, p.z2) : Math.min(p.x1, p.x2), b = vert ? Math.max(p.z1, p.z2) : Math.max(p.x1, p.x2); const d = (c - at) * dir; if (d >= -0.05 && d <= 1.25 && b > lo + 0.5 && a < hi - 0.5 && (best === null || d < (best - at) * dir)) best = c; } return best === null ? at : best; };
+    [x0, x1, z0, z1] = [reach(true, x0, z0, z1, -1), reach(true, x1, z0, z1, 1), reach(false, z0, x0, x1, -1), reach(false, z1, x0, x1, 1)];
+    autoZones.push({ id: uid(), x0, y0: z0, x1, y1: z1, swap: sw, ox: x0 + mdv(zx - x0, zw), oy: z0 + mdv(zz - z0, zl), auto: true });
+  }
+  const gridZones = userZones.concat(autoZones);
+  const PZ = Object.assign({}, plan, { gridZones, ceilRects: [[0, 0, 0, 0]] });
+  const gridFor = (x, z) => { const q = gridZoneAt(PZ, x, z); return q ? zoneGrid(q) : G; };
   // FFUs and lights kept from before that sit a little off the grid (up to 6″, from an older grid or a drawing)
   // are set into their cells, so the grid doesn't get extra tees framing them
   const snapped = [];
   if (keep) for (const f of EX) {
+    const g = gridFor(f.x, f.y), ox = g.ox, oz = g.oz, cw = g.cw, cl = g.cl;
     if (!(Math.abs(f.w - cw) < 0.25 && Math.abs(f.h - cl) < 0.25)) continue;
     const cx = ox + Math.round((f.x - ox - cw / 2) / cw) * cw + cw / 2, cz = oz + Math.round((f.y - oz - cl / 2) / cl) * cl + cl / 2;
     const dx = cx - f.x, dz = cz - f.y;
@@ -1599,7 +1628,7 @@ function generateCeiling(plan, opts) {
     let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
     for (const k of sp.cells) { const i = k % g.nx, j = (k - i) / g.nx; x0 = Math.min(x0, g.x0 + i * g.cell); x1 = Math.max(x1, g.x0 + (i + 1) * g.cell); z0 = Math.min(z0, g.z0 + j * g.cell); z1 = Math.max(z1, g.z0 + (j + 1) * g.cell); }
     const cells = [];
-    for (const gp of gridPieces(P, [[x0 - 1, z0 - 1, x1 + 1, z1 + 1]], G)) {
+    for (const gp of gridPieces(Object.assign({}, P, { gridZones, ceilRects: [[0, 0, 0, 0]] }), [[x0 - 1, z0 - 1, x1 + 1, z1 + 1]], G)) {
     const { ox: gox, oz: goz, cw: gcw, cl: gcl } = gp.G, inPiece = (x, z, w, h) => gp.rects.some(r => x >= r[0] - 1e-6 && z >= r[1] - 1e-6 && x + w <= r[2] + 1e-6 && z + h <= r[3] + 1e-6);
     for (let x = gox + Math.floor((x0 - gox) / gcw) * gcw; x + gcw <= x1 + 1; x += gcw) for (let z = goz + Math.floor((z0 - goz) / gcl) * gcl; z + gcl <= z1 + 1; z += gcl) {
       const cw = gcw, cl = gcl; if (!inPiece(x, z, cw, cl)) continue;
@@ -1641,8 +1670,8 @@ function generateCeiling(plan, opts) {
   const bare = keep ? EX.filter(f => !ceilRects.some(r => f.x > r[0] && f.x < r[2] && f.y > r[1] && f.y < r[3])).length : 0;
   // fixtures placed by hand that sit off the new grid (so the tees run across them)
   const sm = new Map(snapped.map(q => [q.id, q]));
-  const off = keep ? EX.filter(f => { const q = sm.get(f.id) || f, nom = (v) => (Math.abs(v - Math.round(v)) < 0.2 ? Math.round(v) : v), w = nom(f.w), h = nom(f.h), a = (v, o, sp) => { const d = Math.abs(v - o) % sp; return Math.min(d, sp - d) < 0.06; }; return !(a(q.x - w / 2, G.ox, Math.min(cw, w)) && a(q.y - h / 2, G.oz, Math.min(cl, h))); }).length : 0;
-  return { ceilGrid: { ox: G.ox, oy: G.oz, swap }, fixtures: out, rooms, ceilRects, keep, offGrid: off, bare, offices: skippedOffices, open: openRooms, snapped };
+  const off = keep ? EX.filter(f => { const q = sm.get(f.id) || f, nom = (v) => (Math.abs(v - Math.round(v)) < 0.2 ? Math.round(v) : v), w = nom(f.w), h = nom(f.h), a = (v, o, sp) => { const d = Math.abs(v - o) % sp; return Math.min(d, sp - d) < 0.06; }, g = gridFor(q.x, q.y); return !(a(q.x - w / 2, g.ox, Math.min(g.cw, w)) && a(q.y - h / 2, g.oz, Math.min(g.cl, h))); }).length : 0;
+  return { ceilGrid: { ox: G.ox, oy: G.oz, swap }, gridZones, fixtures: out, rooms, ceilRects, keep, offGrid: off, bare, offices: skippedOffices, open: openRooms, snapped };
 }
 // k points spread evenly over a set of cells: start nearest the middle, add the farthest, then even them out
 function spread(cells, k) {
