@@ -458,7 +458,8 @@ function analyze(plan) {
   for (const o of ops) {
     const dx = o.x2 - o.x1, dz = o.y2 - o.y1, len = Math.hypot(dx, dz); if (len < 0.05) continue;
     let t = o.t, host = null, best = 1e9;
-    for (const w of walls) { const d = segDist((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, w.x1, w.y1, w.x2, w.y2); if (d < best) { best = d; host = w; } }
+    // the wall it's in: the nearest one running the same way (a short cross wall nearby doesn't count)
+    for (const w of walls) { const wl = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); let d = segDist((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, w.x1, w.y1, w.x2, w.y2); if (wl < 0.05 || Math.abs(dx * (w.y2 - w.y1) - dz * (w.x2 - w.x1)) / (len * wl) > 0.1) d += 10; if (d < best) { best = d; host = w; } }
     if (best > 1.5) host = null;
     if (!t) t = host && host.t ? host.t : 0.25;
     const hard = isHard(host), frame = isFrame(host), i = { o, len, ux: dx / len, uz: dz / len, t, hard, frame, ceilw: hard || frame, kind: hard ? 'hardwall' : host.kind, wallH: hard ? (host ? sectionTop(host, ((o.x1 + o.x2) / 2 - host.x1) * (host.x2 - host.x1) / (Math.hypot(host.x2 - host.x1, host.y2 - host.y1) || 1) + ((o.y1 + o.y2) / 2 - host.y1) * (host.y2 - host.y1) / (Math.hypot(host.x2 - host.x1, host.y2 - host.y1) || 1), WH) : WH) : frame ? Math.max(6, host.h || H) : shellHeight(plan, host) };
@@ -1332,7 +1333,12 @@ function ceilingSpaceData(plan) {
       return hull;
     };
     const hull = makeHull([]), hullLoose = makeHull(loose);
-    return { P, A, G, comp, found, at, hardShare, hull, hullLoose, shellFeet, oneBox, shellBox, freeBox };
+    // where the cleanroom's own walls (and their doors) are, cell by cell
+    const hardBar = new Uint8Array(N);
+    { const band = (ax, az, bx, bz, r) => { const L = Math.hypot(bx - ax, bz - az), n = Math.max(2, Math.ceil(L / (G.cell / 2))), rr = Math.max(1, Math.ceil(r / G.cell)); for (let q = 0; q <= n; q++) { const x = ax + (bx - ax) * q / n, z = az + (bz - az) * q / n, i = Math.floor((x - G.x0) / G.cell), j = Math.floor((z - G.z0) / G.cell); for (let dj = -rr; dj <= rr; dj++) for (let di = -rr; di <= rr; di++) { const ii = i + di, jj = j + dj; if (ii >= 0 && jj >= 0 && ii < G.nx && jj < G.nz) hardBar[jj * G.nx + ii] = 1; } } };
+      for (const p of A.pieces) if (p.hard) band(p.x1, p.z1, p.x2, p.z2, (p.t || 0.25) / 2);
+      for (const i of A.opInfo) if (i.hard) band(i.o.x1, i.o.y1, i.o.x2, i.o.y2, (i.t || 0.25) / 2); }
+    return { P, A, G, comp, found, at, hardShare, hull, hullLoose, hardBar, boxAt: (x, z) => { const w = hostOf(x, z); return w ? find(w) : null; }, shellFeet, oneBox, shellBox, freeBox };
 }
 /* A space's cells as rectangles, grown half a cell so they meet the walls. */
 function cellRects(g, cells) {
@@ -1442,6 +1448,73 @@ function generateCeiling(plan, opts) {
     }
   }
   if (!spaces.length) return null;
+  // The hallway joining the rooms: open floor with a ceiling room on one side and, straight across (7′–16′ of
+  // floor), another room or the cleanroom's own wall. A slot narrower than 7′ between two rooms is an aisle
+  // outside the cleanroom and stays bare; so does a strip along the building's own walls.
+  if (!plan.noHall) {
+    const { G, comp, hardBar } = D, N = G.nx * G.nz, ceil = new Uint8Array(N);
+    // real walls only (the plan's footprint also draws guessed closing lines between wall ends; those are floor here)
+    const shellBar = new Uint8Array(N);
+    for (const p of D.A.pieces) { if (p.hard) continue; const L = Math.hypot(p.x2 - p.x1, p.z2 - p.z1), n = Math.max(2, Math.ceil(L / (G.cell / 2))), rr = Math.max(1, Math.ceil((p.t || 0.25) / 2 / G.cell)); for (let q = 0; q <= n; q++) { const x = p.x1 + (p.x2 - p.x1) * q / n, z = p.z1 + (p.z2 - p.z1) * q / n, i0 = Math.floor((x - G.x0) / G.cell), j0 = Math.floor((z - G.z0) / G.cell); for (let dj = -rr; dj <= rr; dj++) for (let di = -rr; di <= rr; di++) { const ii = i0 + di, jj = j0 + dj; if (ii >= 0 && jj >= 0 && ii < G.nx && jj < G.nz) shellBar[jj * G.nx + ii] = 1; } } }
+    const isWall = (q) => hardBar[q] || shellBar[q];
+    for (const sp of spaces) for (const k of sp.cells) ceil[k] = 1;
+    // the hallway stays within the stretch the rooms cover (it doesn't wander off down an office corridor)
+    let rx0 = 1e9, rz0 = 1e9, rx1 = -1e9, rz1 = -1e9;
+    for (const sp of spaces) for (const k of sp.cells) { const i = k % G.nx, j = (k - i) / G.nx; rx0 = Math.min(rx0, i); rx1 = Math.max(rx1, i); rz0 = Math.min(rz0, j); rz1 = Math.max(rz1, j); }
+    const pad = Math.round(0.5 / G.cell), within = (k) => { const i = k % G.nx, j = (k - i) / G.nx; return i >= rx0 - pad && i <= rx1 + pad && j >= rz0 - pad && j <= rz1 + pad; };
+    const lim = Math.round(16 / G.cell), wallMax = Math.round(1.5 / G.cell), hall = new Uint8Array(N), shape = new Uint8Array(N);
+    // from a cell, step one way: how far to the next wall, and what's past it (a ceiling room, or a cleanroom wall)
+    const look = (k, di, dj) => {
+      let i = k % G.nx, j = (k - i) / G.nx, n = 0;
+      while (n <= lim) {
+        i += di; j += dj; n++; if (i < 0 || j < 0 || i >= G.nx || j >= G.nz) return null;
+        const q = j * G.nx + i;
+        if (ceil[q]) return { d: n, room: true };
+        if (isWall(q)) {
+          const hard = hardBar[q], box = hard ? D.boxAt(G.x0 + (i + 0.5) * G.cell, G.z0 + (j + 0.5) * G.cell) : null; let m = 0;
+          // through the wall: a room straight behind it?
+          while (m <= wallMax) { i += di; j += dj; m++; if (i < 0 || j < 0 || i >= G.nx || j >= G.nz) break; const r2 = j * G.nx + i; if (ceil[r2]) return { d: n, room: true, box }; if (!isWall(r2)) break; }
+          return hard ? { d: n, room: false, box } : null;
+        }
+      }
+      return null;
+    };
+    for (let k = 0; k < N; k++) {
+      if (ceil[k] || isWall(k) || !G.inside[k] || !within(k)) continue;
+      for (const [di, dj] of [[1, 0], [0, 1]]) {
+        const a = look(k, di, dj); if (!a) continue; const b = look(k, -di, -dj); if (!b) continue;
+        const w = (a.d + b.d - 1) * G.cell;
+        // a room one side; across, another room or a wall of the same cleanroom (not a building wall that
+        // happens to be drawn as hardwall)
+        if ((a.room || b.room) && w >= 7 && w <= 16) {
+          const r = a.room ? a : b, o = a.room ? b : a;
+          // a room each side; or a room one side and, across, a wall of that same cleanroom (or any of its walls
+          // when the room side is an open bay) -- not a building wall that happens to be drawn as hardwall
+          if (o.room || !r.box || (o.box && o.box === r.box)) { hall[k] = 1; break; }
+        }
+        // corridor-shaped: cleanroom walls both sides, 7'-16' apart (where the hallway carries on past the rooms)
+        if (!a.room && !b.room && w >= 7 && w <= 16) shape[k] = 1;
+      }
+    }
+    // (bridge the odd column right where a wall stops, by growing it a foot)
+    { const g = Math.round(1 / G.cell), add = [];
+      for (let k = 0; k < N; k++) { if (!shape[k]) continue; const i = k % G.nx; for (let d = 1; d <= g; d++) for (const v of [i - d >= 0 ? k - d : -1, i + d < G.nx ? k + d : -1, k - d * G.nx, k + d * G.nx]) if (v >= 0 && v < N && !shape[v] && !ceil[v] && !isWall(v) && G.inside[v] && within(v)) add.push(v); }
+      for (const v of add) shape[v] = 1; }
+    // carry the hallway on along corridor-shaped floor joined to it
+    { const st = []; for (let k = 0; k < N; k++) if (hall[k]) st.push(k);
+      while (st.length) { const u = st.pop(), a = u % G.nx; for (const v of [a > 0 ? u - 1 : -1, a < G.nx - 1 ? u + 1 : -1, u - G.nx, u + G.nx]) if (v >= 0 && v < N && shape[v] && !hall[v]) { hall[v] = 1; st.push(v); } } }
+    // keep each stretch of hallway that's big enough to be one, as its own ceiling area
+    const seen = new Uint8Array(N);
+    for (let k0 = 0; k0 < N; k0++) {
+      if (!hall[k0] || seen[k0]) continue;
+      const cells = [], st = [k0]; seen[k0] = 1;
+      while (st.length) { const u = st.pop(), a = u % G.nx; cells.push(u); for (const v of [a > 0 ? u - 1 : -1, a < G.nx - 1 ? u + 1 : -1, u - G.nx, u + G.nx]) if (v >= 0 && v < N && hall[v] && !seen[v]) { seen[v] = 1; st.push(v); } }
+      if (cells.length * G.cell * G.cell < 40) continue;
+      const mask = new Uint8Array(N); for (const c of cells) mask[c] = 1;
+      const ids = new Map(); for (const c of cells) ids.set(comp[c], (ids.get(comp[c]) || 0) + 1);
+      for (const [id] of ids) { const mine = cells.filter(c => comp[c] === id); if (mine.length * G.cell * G.cell >= 20) spaces.push({ P: D.P, A: D.A, G, comp, id, room: { name: 'Hallway' }, cells: mine, hull: mask, lightsOnly: false, hallway: true }); }
+    }
+  }
   // the grid: centred in the biggest space, on whichever of "a line at the centre" or "a cell at the centre"
   // leaves the bigger cut tiles at the walls
   const big = spaces.reduce((a, b) => (b.cells.length > a.cells.length ? b : a));
