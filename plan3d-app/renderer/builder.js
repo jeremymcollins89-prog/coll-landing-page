@@ -168,6 +168,9 @@ class PieceLogic {
     // the cell under the pointer, on the ceiling's own grid (an imported drawing's, or the 2′ × 4′ one):
     // a 2 × 4 fixture fills it, or two cells of a 2 × 2 grid
     const G = V.ceilingGrid(this.ed.plan, this.A), w = G.swap ? 4 : 2, h = G.swap ? 2 : 4;
+    const pl = this.ed.plan;
+    // an imported ceiling drawing: the drawing's own opening under the pointer
+    if (V.snapToDrawn && Array.isArray(pl.ceilingGrid) && pl.ceilingGrid.length) { const d = V.snapToDrawn(pl, { x: P.x, y: P.y, w, h }, 2.5); if (d && d.caught) return { x: d.x, y: d.y, w, h, mode: 'cell' }; }
     const c = V.snapFixture({ x: P.x, y: P.y, w, h }, G);
     return { x: c.x, y: c.y, w, h, mode: 'cell' };
   }
