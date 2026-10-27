@@ -1060,24 +1060,61 @@ function gridPieces(plan, rects, G0) {
   Z.forEach((q, i) => out.push({ rects: subtractRects(clipRects(rects, zoneBox(q)), Z.slice(i + 1).map(zoneBox)), G: zoneGrid(q) }));
   return out.filter(p => p.rects.length);
 }
-// the T-grid lines of one grid inside some rectangles
+// the T-grid lines of one grid inside some rectangles: the grid's own lines only (the rectangles are just how
+// the ceiling's outline is stored; their edges aren't tees). Lines along the same grid line are joined.
 function gridLinesIn(rects, G) {
   const out = [];
   for (const [x0, z0, x1, z1] of rects) {
     for (let x = G.ox + Math.ceil((x0 - G.ox) / G.cw - 1e-6) * G.cw; x <= x1 + 1e-6; x += G.cw) out.push([x, z0, x, z1]);
     for (let z = G.oz + Math.ceil((z0 - G.oz) / G.cl - 1e-6) * G.cl; z <= z1 + 1e-6; z += G.cl) out.push([x0, z, x1, z]);
-    out.push([x0, z0, x1, z0], [x0, z1, x1, z1], [x0, z0, x0, z1], [x1, z0, x1, z1]);
+  }
+  return joinLines(out);
+}
+// lines lying on the same straight line and overlapping or touching, joined into one
+function joinLines(lines) {
+  const by = new Map(), out = [];
+  for (const q of lines) {
+    const v = Math.abs(q[0] - q[2]) < 1e-6, h = Math.abs(q[1] - q[3]) < 1e-6; if (!v && !h) { out.push(q); continue; }
+    const key = (v ? 'v' : 'h') + Math.round((v ? q[0] : q[1]) * 96), a = v ? Math.min(q[1], q[3]) : Math.min(q[0], q[2]), b = v ? Math.max(q[1], q[3]) : Math.max(q[0], q[2]);
+    (by.get(key) || by.set(key, []).get(key)).push([a, b, v ? q[0] : q[1], v]);
+  }
+  for (const L of by.values()) {
+    L.sort((p, q) => p[0] - q[0]); let cur = null;
+    const put = (c) => { if (c[1] - c[0] > 0.05) out.push(c[3] ? [c[2], c[0], c[2], c[1]] : [c[0], c[2], c[1], c[2]]); };
+    for (const s of L) { if (cur && s[0] <= cur[1] + 0.02) cur[1] = Math.max(cur[1], s[1]); else { if (cur) put(cur); cur = s.slice(); } }
+    if (cur) put(cur);
   }
   return out;
+}
+// the open edges of a ceiling (where it stops in mid-air, not at a wall: an area boxed in by hand, or a grid
+// section's border): those get a tee; edges along a wall get the wall angle, not a tee
+function openEdges(rects, A) {
+  const out = [], e = 0.02;
+  const covered = (x, z) => rects.some(r => x > r[0] - 1e-6 && x < r[2] + 1e-6 && z > r[1] - 1e-6 && z < r[3] + 1e-6);
+  for (const [x0, z0, x1, z1] of rects) {
+    const sides = [[x0, z0, x1, z0, 0, -1], [x0, z1, x1, z1, 0, 1], [x0, z0, x0, z1, -1, 0], [x1, z0, x1, z1, 1, 0]];
+    for (const [ax, az, bx, bz, nx, nz] of sides) {
+      const L = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.ceil(L / 0.25)); let st = null;
+      for (let k = 0; k <= n; k++) {
+        const t = k / n, x = ax + (bx - ax) * t, z = az + (bz - az) * t;
+        const open = k < n && !covered(x + nx * e, z + nz * e) && !A.pieces.some(p => segDist(x, z, p.x1, p.z1, p.x2, p.z2) < (p.t || 0.25) / 2 + 0.75) && !A.opInfo.some(i => segDist(x, z, i.o.x1, i.o.y1, i.o.x2, i.o.y2) < (i.t || 0.25) / 2 + 0.75);
+        if (open && st === null) st = t;
+        if (!open && st !== null) { if ((t - st) * L > 0.5) out.push([ax + (bx - ax) * st, az + (bz - az) * st, ax + (bx - ax) * t, az + (bz - az) * t]); st = null; }
+      }
+    }
+  }
+  return joinLines(out);
 }
 // every T-grid line of a generated ceiling, each grid section on its own grid, fitted to the fixtures
 function generatedGridLines(plan, A) {
   if (!(Array.isArray(plan.ceilRects) && plan.ceilRects.length)) return null;
   A = A || analyze(plan);
   const R = ceilingRects(plan, footprint(A), A), out = [];
-  for (const p of gridPieces(plan, R)) for (const q of gridLinesIn(p.rects, p.G)) out.push(q);
+  for (const p of gridPieces(plan, R)) { for (const q of gridLinesIn(p.rects, p.G)) out.push(q); for (const q of openEdges(p.rects, A)) out.push(q); }
   const F = fixtureFrames(plan, A, R);
-  return cutByFixtures(out, F.fx).concat(F.lines);
+  // tees stop at walls: no tee runs through a wall from one room into the next
+  const wallBoxes = A.pieces.filter(p => Math.abs(p.x1 - p.x2) < 1e-3 || Math.abs(p.z1 - p.z2) < 1e-3).map(p => { const h = (p.t || 0.25) / 2; return [Math.min(p.x1, p.x2) - h, Math.min(p.z1, p.z2) - h, Math.max(p.x1, p.x2) + h, Math.max(p.z1, p.z2) + h]; });
+  return cutByFixtures(cutByFixtures(joinLines(out), wallBoxes), F.fx).concat(F.lines);
 }
 /* The tees a fixture needs when it isn't sitting in whole grid cells (placed by hand off the grid lines, turned
    across the grid, or a 2 × 2 in a 2 × 4 cell): one along each of its four edges, each running on to the nearest
@@ -1571,7 +1608,7 @@ function generateCeiling(plan, opts) {
     rooms.push({ name: sp.room ? (sp.room.name || 'Room') : 'Unlabelled space', area, iso, ach, ffu: fN, led: pickL.length + (keep ? mineL : 0), need: sp.lightsOnly ? 0 : need, lightsOnly: !!sp.lightsOnly, cells: cells.length, cfm: fCfm, achGot: area * H > 0 ? fCfm * 60 / (area * H) : 0 });
   }
   let ceilRects = [];
-  for (const sp of spaces) ceilRects.push(...cellRects(sp.G, sp.cells));
+  { const g0 = spaces[0].G, seen = new Set(), all = []; for (const sp of spaces) for (const k of sp.cells) if (!seen.has(k)) { seen.add(k); all.push(k); } ceilRects = cellRects(g0, all); }
   // areas boxed in by hand with the Grid tool: added (plan.ceilAdd) and cut out (plan.ceilCut), last
   const cut = Array.isArray(plan.ceilCut) ? plan.ceilCut : [];
   if (Array.isArray(plan.ceilAdd) && plan.ceilAdd.length) ceilRects = rectsMinus(ceilRects, plan.ceilAdd).concat(plan.ceilAdd.map(r => r.slice()));
