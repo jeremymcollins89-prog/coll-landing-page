@@ -92,7 +92,7 @@ class Editor {
   snapshot() { return JSON.stringify(this.plan); }
   commit(before) {
     this.hist.push(before); if (this.hist.length > 200) this.hist.shift(); this.fut = []; this.dirty = true;
-    this._chk = undefined; this.emit('change'); this.render();
+    this._chk = undefined; this._seats = null; this._lights = null; this.emit('change'); this.render();
   }
   /* the cleanroom check (airflow per room, pressure across doors), worked out once per change */
   check() {
@@ -101,10 +101,27 @@ class Editor {
     this._chk = V2 && V2.cleanroomCheck && (P.rooms || []).some(r => r.iso || (r.pressure != null && r.pressure !== '')) ? (() => { try { return V2.cleanroomCheck(P); } catch (e) { return null; } })() : null;
     return this._chk;
   }
+  /* the ceiling lights (not FFUs) a switch can work, from the ceiling as laid out; worked out once per change */
+  lights() {
+    const V2 = global.Plan3DViewer;
+    if (!this._lights) { try { this._lights = V2 && V2.ceilingFixtures ? V2.ceilingFixtures(this.plan).filter(f => f.type !== 'ffu') : []; } catch (e) { this._lights = []; } }
+    return this._lights;
+  }
+  lightAt(x, y) { return this.lights().find(f => Math.abs(x - f.x) < (f.w || 2) / 2 && Math.abs(y - f.y) < (f.h || 4) / 2) || null; }
+  linkStatus(sw) { const n = (sw.lights || []).length; this.status('Light switch: ' + n + ' light' + (n === 1 ? '' : 's') + ' on it. Click a light to add or take it off, or drag a box around several. Enter or Esc when done.'); }
+  /* where each beam really sits (spanning cleanroom walls in the plenum, or up at the roof), worked out once per change */
+  seats() {
+    const V2 = global.Plan3DViewer, P = this.plan, B = P.beams || [];
+    const key = B.map(b => [b.x1, b.y1, b.x2, b.y2, b.size, b.bot].join(',')).join(';') + '|' + P.walls.length;
+    if (this._seats && this._seatsKey === key) return this._seats;
+    const m = new Map();
+    if (V2 && V2.beamSeat && B.length) { try { const A = V2.analyze(P); for (const b of B) m.set(b, V2.beamSeat(P, A, b)); } catch (e) { /* drawn as placed */ } }
+    this._seatsKey = key; return (this._seats = m);
+  }
   edit(fn) { const b = this.snapshot(); fn(this.plan); this.commit(b); }
   undo() { if (!this.hist.length) return; this.fut.push(this.snapshot()); this.plan = JSON.parse(this.hist.pop()); this.afterRestore(); }
   redo() { if (!this.fut.length) return; this.hist.push(this.snapshot()); this.plan = JSON.parse(this.fut.pop()); this.afterRestore(); }
-  afterRestore() { this._chk = undefined; this.dirty = true; this.loadBg(); if (this.sel && !this.find(this.sel)) this.sel = null; if (this.multi) { this.multi = this.multi.filter(r => this.find(r)); if (this.multi.length < 2) this.multi = null; } this.emit('select'); this.emit('change'); this.render(); }
+  afterRestore() { this._chk = undefined; this._seats = null; this._lights = null; this.dirty = true; this.loadBg(); if (this.sel && !this.find(this.sel)) this.sel = null; if (this.multi) { this.multi = this.multi.filter(r => this.find(r)); if (this.multi.length < 2) this.multi = null; } this.emit('select'); this.emit('change'); this.render(); }
   emit(ev, d) { const f = this.o['on' + ev[0].toUpperCase() + ev.slice(1)]; if (f) f(d); }
   find(sel) {
     if (!sel) return null;
@@ -364,6 +381,15 @@ class Editor {
     if (e.button === 2 && this.tool === 'wall') { this.endChain(); return; }
     if (e.button !== 0) return;
     const T = this.tool;
+    if (this.linkSw) {
+      const sw = (this.plan.devices || []).find(d => d.id === this.linkSw), V2 = global.Plan3DViewer;
+      if (!sw || T !== 'select') this.linkSw = null;
+      else {
+        const f = this.lightAt(p.x, p.y);
+        if (f) { const k = V2.lightKey(f); this.edit(() => { const L = sw.lights = Array.isArray(sw.lights) ? sw.lights : []; const i = L.indexOf(k); if (i >= 0) L.splice(i, 1); else L.push(k); }); this.linkStatus(sw); return; }
+        this.drag = { kind: 'linkbox', x0: p.x, y0: p.y, x1: p.x, y1: p.y }; this.c.setPointerCapture(e.pointerId); return;
+      }
+    }
     if (T === 'select') {
       // endpoint handles of selected wall
       const s = this.selected();
@@ -495,6 +521,7 @@ class Editor {
       this.emit('live'); this.render(); return;
     }
     if (D && D.kind === 'box') { D.x1 = p.x; D.y1 = p.y; this.render(); return; }
+    if (D && D.kind === 'linkbox') { D.x1 = p.x; D.y1 = p.y; this.render(); return; }
     if (D && D.kind === 'gmove') {
       let dx = p.x - D.sx, dy = p.y - D.sy;
       if (!D.moved && Math.hypot(dx, dy) * this.view.s < 4) return;
@@ -591,6 +618,13 @@ class Editor {
     const D = this.drag; this.drag = null;
     try { this.c.releasePointerCapture(e.pointerId); } catch (err) { /* not captured */ }
     if (!D) return;
+    if (D.kind === 'linkbox') {
+      const sw = (this.plan.devices || []).find(d => d.id === this.linkSw), V2 = global.Plan3DViewer;
+      const x0 = Math.min(D.x0, D.x1), x1 = Math.max(D.x0, D.x1), y0 = Math.min(D.y0, D.y1), y1 = Math.max(D.y0, D.y1);
+      const add = this.lights().filter(f => f.x >= x0 && f.x <= x1 && f.y >= y0 && f.y <= y1).map(f => V2.lightKey(f));
+      if (sw && add.length) { this.edit(() => { const L = sw.lights = Array.isArray(sw.lights) ? sw.lights : []; for (const k of add) if (!L.includes(k)) L.push(k); }); this.linkStatus(sw); }
+      this.render(); return;
+    }
     if (D.kind === 'box') {
       const x0 = Math.min(D.x0, D.x1), x1 = Math.max(D.x0, D.x1), y0 = Math.min(D.y0, D.y1), y1 = Math.max(D.y0, D.y1);
       if (x1 - x0 > 1e-6 && y1 - y0 > 1e-6) {
@@ -642,6 +676,10 @@ class Editor {
     const k = e.key;
     if (k === ' ') { this.spaceDown = e.type === 'keydown'; return true; }
     if (e.type !== 'keydown') return false;
+    if (this.linkSw && (k === 'Escape' || k === 'Enter' || k === 'l' || k === 'L')) { this.linkSw = null; this.status(''); this.render(); return true; }
+    if ((k === 'l' || k === 'L') && !e.ctrlKey && !e.metaKey && this.tool === 'select' && this.sel && this.sel.kind === 'device') {
+      const o = this.selected(); if (o && o.type === 'switch') { this.linkSw = o.id; this.linkStatus(o); this.render(); return true; }
+    }
     if (this.tool === 'wall' && this.draft) {
       if (/^[0-9.'"\- /]$/.test(k)) { this.typed += k; this.status('Length: ' + this.typed + '   (Enter to place)'); this.render(); return true; }
       if (k === 'Backspace' && this.typed) { this.typed = this.typed.slice(0, -1); this.status('Length: ' + this.typed); this.render(); return true; }
@@ -806,13 +844,24 @@ class Editor {
     const V2 = global.Plan3DViewer;
     if (V2 && V2.itemCorners) for (const it of P.items || []) this.drawItem(it, false);
     // building columns: a filled square with its cross
-    // steel beams: the flange outline, dashed (they're overhead), with the centre line
+    // steel beams: the flange outline, dashed (they're overhead), with the centre line. A beam that bears on
+    // the cleanroom walls is drawn where it sits, with a bearing mark on each wall; the rest of the line as
+    // drawn or imported stays faint.
+    const seats = this.seats();
     for (const b of P.beams || []) {
       const L = Math.hypot(b.x2 - b.x1, b.y2 - b.y1); if (L < 0.05) continue;
-      const hw = (global.Plan3DViewer ? global.Plan3DViewer.beamSize(b).bf / 12 : 0.5) / 2, nx = -(b.y2 - b.y1) / L * hw, ny = (b.x2 - b.x1) / L * hw;
-      g.save(); g.strokeStyle = '#c9a66b'; g.lineWidth = 1.3; g.setLineDash([7, 4]); g.beginPath();
-      for (const sd of [1, -1]) { g.moveTo(this.sx(b.x1 + nx * sd), this.sy(b.y1 + ny * sd)); g.lineTo(this.sx(b.x2 + nx * sd), this.sy(b.y2 + ny * sd)); }
-      g.stroke(); g.setLineDash([12, 3, 2, 3]); g.lineWidth = 0.8; g.beginPath(); g.moveTo(this.sx(b.x1), this.sy(b.y1)); g.lineTo(this.sx(b.x2), this.sy(b.y2)); g.stroke(); g.restore();
+      const hw = (global.Plan3DViewer ? global.Plan3DViewer.beamSize(b).bf / 12 : 0.5) / 2, q = seats.get(b);
+      const run = (a, faint) => {
+        const l = Math.hypot(a.x2 - a.x1, a.y2 - a.y1) || 1, nx = -(a.y2 - a.y1) / l * hw, ny = (a.x2 - a.x1) / l * hw;
+        g.save(); g.strokeStyle = faint ? 'rgba(201,166,107,.3)' : '#c9a66b'; g.lineWidth = 1.3; g.setLineDash([7, 4]); g.beginPath();
+        for (const sd of [1, -1]) { g.moveTo(this.sx(a.x1 + nx * sd), this.sy(a.y1 + ny * sd)); g.lineTo(this.sx(a.x2 + nx * sd), this.sy(a.y2 + ny * sd)); }
+        g.stroke(); g.setLineDash([12, 3, 2, 3]); g.lineWidth = 0.8; g.beginPath(); g.moveTo(this.sx(a.x1), this.sy(a.y1)); g.lineTo(this.sx(a.x2), this.sy(a.y2)); g.stroke(); g.restore();
+      };
+      if (q && q.onWalls) {
+        if (Math.hypot(q.x1 - b.x1, q.y1 - b.y1) + Math.hypot(q.x2 - b.x2, q.y2 - b.y2) > 0.1) run(b, true);
+        run(q, false);
+        g.save(); g.fillStyle = '#c9a66b'; for (const [x, y] of [[q.x1, q.y1], [q.x2, q.y2]]) { const r = Math.max(3, hw * this.view.s); g.fillRect(this.sx(x) - r, this.sy(y) - r, 2 * r, 2 * r); } g.restore();
+      } else run(b, false);
     }
     if (this.tool === 'beam' && this.beamA && this.cursor) { const q = this.snap(this.cursor.x, this.cursor.y, this.beamA, {}); g.save(); g.strokeStyle = COL.draft; g.setLineDash([7, 4]); g.lineWidth = 1.5; g.beginPath(); g.moveTo(this.sx(this.beamA.x), this.sy(this.beamA.y)); g.lineTo(this.sx(q.x), this.sy(q.y)); g.stroke(); g.restore(); this.status('Beam ' + fmt(Math.hypot(q.x - this.beamA.x, q.y - this.beamA.y)) + ' — click the other end.'); }
     // FFUs and lights from a drawn ceiling (drag them; they land in the grid's cells)
@@ -857,6 +906,23 @@ class Editor {
       g.beginPath(); g.moveTo(ex, ey); g.lineTo(ex - hs * Math.cos(ang - 0.45), ey - hs * Math.sin(ang - 0.45)); g.lineTo(ex - hs * Math.cos(ang + 0.45), ey - hs * Math.sin(ang + 0.45)); g.closePath(); g.fill();
       g.font = '600 10px Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(Math.round(Math.abs(d.dp) * 10) / 10 + ' Pa', cx + (ey - by) / Math.hypot(ex - bx, ey - by) * 14, cy - (ex - bx) / Math.hypot(ex - bx, ey - by) * 14);
+    }
+    // light switches: while one is selected (or being linked, L), dashed lines run to the lights it works
+    const swSel = this.linkSw ? (P.devices || []).find(d => d.id === this.linkSw) : (this.sel && this.sel.kind === 'device' ? this.selected() : null);
+    if (swSel && swSel.type === 'switch' && V2 && V2.lightKey) {
+      const on = new Set(swSel.lights || []), L = this.lights(), sx0 = this.sx(swSel.x), sy0 = this.sy(swSel.y);
+      g.save(); g.lineWidth = 1.2;
+      for (const f of L) {
+        const linked = on.has(V2.lightKey(f)), fw = (f.w || 2) - 0.1, fh = (f.h || 4) - 0.1;
+        if (!linked && !this.linkSw) continue;
+        g.setLineDash([]); g.strokeStyle = linked ? '#f2c84b' : 'rgba(230,236,238,.55)'; g.fillStyle = linked ? 'rgba(242,200,75,.22)' : 'rgba(255,255,255,.05)';
+        g.fillRect(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2), fw * s, fh * s); g.strokeRect(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2), fw * s, fh * s);
+        if (linked) { g.setLineDash([5, 4]); g.beginPath(); g.moveTo(sx0, sy0); g.lineTo(this.sx(f.x), this.sy(f.y)); g.stroke(); }
+      }
+      g.setLineDash([]);
+      if (!this.linkSw) { g.font = '600 11px Consolas, monospace'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = '#f2c84b'; g.fillText((on.size ? on.size + ' lights · ' : '') + 'L to link lights', sx0 + 16, sy0 - 14); }
+      const D = this.drag; if (D && D.kind === 'linkbox') { g.strokeStyle = '#f2c84b'; g.setLineDash([4, 3]); g.strokeRect(this.sx(Math.min(D.x0, D.x1)), this.sy(Math.min(D.y0, D.y1)), Math.abs(D.x1 - D.x0) * s, Math.abs(D.y1 - D.y0) * s); }
+      g.restore();
     }
   }
 

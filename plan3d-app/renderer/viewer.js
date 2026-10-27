@@ -155,6 +155,9 @@ const DEVICES = {
   data: { label: 'Data jack', short: 'D', group: 'Data', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.DATAOUTLET.'] },
   panel: { label: 'Electrical panel', short: 'EP', group: 'Power', h: 5, w: 20 / 12, hh: 40 / 12, d: 4 / 12, ifc: ['IFCELECTRICDISTRIBUTIONBOARD', '.DISTRIBUTIONBOARD.'] }
 };
+/* Which lights a switch works: dv.lights holds light keys, the fixture's id, or 'at:x,y' for a light from the
+   automatic ceiling layout (those have no id; they always land in the same places). */
+const lightKey = (f) => f.id ? String(f.id) : 'at:' + (+f.x).toFixed(1) + ',' + (+f.y).toFixed(1);
 function transformPlan(src, T, idp) {
   const P = JSON.parse(JSON.stringify(src)), X = (x, y) => [T.a * x + T.b * y + T.tx, T.c * x + T.d * y + T.ty];
   const flip = T.a * T.d - T.b * T.c < 0, turned = Math.abs(T.a) < 0.5, pre = idp ? idp + ':' : '';
@@ -170,7 +173,10 @@ function transformPlan(src, T, idp) {
   for (const r of P.rooms || []) { [r.x, r.y] = X(r.x, r.y); if (r.id) r.id = pre + r.id; }
   // things facing a way (devices, house items) turn with the building
   const turnA = (a) => { const cx = Math.cos(a || 0), sy = Math.sin(a || 0); return Math.atan2(T.c * cx + T.d * sy, T.a * cx + T.b * sy); };
-  for (const dv of P.devices || []) { [dv.x, dv.y] = X(dv.x, dv.y); dv.a = turnA(dv.a); if (dv.id) dv.id = pre + dv.id; }
+  for (const dv of P.devices || []) {
+    [dv.x, dv.y] = X(dv.x, dv.y); dv.a = turnA(dv.a); if (dv.id) dv.id = pre + dv.id;
+    if (Array.isArray(dv.lights)) dv.lights = dv.lights.map(k => { const m = /^at:(-?[\d.]+),(-?[\d.]+)$/.exec(k); return m ? lightKey({ x: X(+m[1], +m[2])[0], y: X(+m[1], +m[2])[1] }) : pre + k; });
+  }
   for (const c of P.columns || []) { [c.x, c.y] = X(c.x, c.y); if (c.id) c.id = pre + c.id; }
   for (const b of P.beams || []) { [b.x1, b.y1] = X(b.x1, b.y1); [b.x2, b.y2] = X(b.x2, b.y2); if (b.id) b.id = pre + b.id; }
   for (const it of P.items || []) { [it.x, it.y] = X(it.x, it.y); it.a = turnA(it.a); if (it.id) it.id = pre + it.id; }
@@ -605,8 +611,7 @@ function gridFromLines(L) {
   LINE_GRID.set(L, r); return r;
 }
 /* Steel beams (I-beams, wide flange) laid on the plan: { id, x1, y1, x2, y2, size, bot }. size is a W shape;
-   bot is the height of the beam's underside (unset: on top of the cleanroom when it's over one, otherwise up
-   under the roof deck). */
+   bot is the height of the beam's underside (unset: see beamSeat). */
 const BEAMS = {
   W8x18: { d: 8.14, bf: 5.25, tf: 0.33, tw: 0.23, lb: 18 }, W10x22: { d: 10.17, bf: 5.75, tf: 0.36, tw: 0.24, lb: 22 },
   W12x26: { d: 12.22, bf: 6.49, tf: 0.38, tw: 0.23, lb: 26 }, W14x30: { d: 13.84, bf: 6.73, tf: 0.39, tw: 0.27, lb: 30 },
@@ -614,14 +619,41 @@ const BEAMS = {
   W21x44: { d: 20.66, bf: 6.5, tf: 0.45, tw: 0.35, lb: 44 }, W24x55: { d: 23.57, bf: 7.0, tf: 0.51, tw: 0.4, lb: 55 }
 };
 const beamSize = (b) => BEAMS[b && b.size] || BEAMS.W12x26;
-function beamBottom(plan, A, b) {
-  if (b.bot > 0) return +b.bot;
+/* Where a beam actually goes. A beam over the cleanroom bears on the cleanroom walls: it runs from the wall it
+   crosses going into the cleanroom to the wall it crosses coming out (stretched to the next wall when it stops
+   short inside), with its top flush with the top of the walls, so it hangs in the plenum. With no plenum it sits
+   on top of the walls. A beam that never crosses the cleanroom stays building structure, up under the roof deck.
+   b.bot (feet) sets the underside by hand and leaves the beam where it was drawn.
+   Returns { x1, y1, x2, y2, bot, onWalls }. */
+function beamSeat(plan, A, b) {
   A = A || analyze(plan);
-  const fp = footprint(A), mx = (b.x1 + b.x2) / 2, my = (b.y1 + b.y2) / 2, d = beamSize(b).d / 12;
-  const over = fp && [0.25, 0.5, 0.75].some(f => fp.has(b.x1 + (b.x2 - b.x1) * f, b.y1 + (b.y2 - b.y1) * f));
-  if (over || !A.shellTop) return (A.WH || (plan.ceiling || 8)) + (A.PL > 0 ? 0.17 : 0.05);
-  return Math.max(1, A.shellTop - d - 0.05);
+  const d = beamSize(b).d / 12, raw = { x1: b.x1, y1: b.y1, x2: b.x2, y2: b.y2 };
+  const up = () => ({ ...raw, bot: A.shellTop ? Math.max(1, A.shellTop - d - 0.05) : (A.WH || (plan.ceiling || 8)) + (A.PL > 0 ? 0.17 : 0.05), onWalls: false });
+  if (b.bot > 0) return { ...raw, bot: +b.bot, onWalls: false };
+  const L = Math.hypot(b.x2 - b.x1, b.y2 - b.y1), fp = A.hardAny ? footprint(A) : null;
+  if (!(L > 0.2) || !fp) return up();
+  const ux = (b.x2 - b.x1) / L, uy = (b.y2 - b.y1) / L;
+  // the stretch of the beam over the cleanroom
+  let sa = null, sb = null;
+  for (let s = 0; s <= L + 1e-9; s += 0.25) if (fp.has(b.x1 + ux * s, b.y1 + uy * s)) { if (sa == null) sa = s; sb = s; }
+  if (sa == null) return up();
+  // where the beam's line crosses cleanroom walls (distance along the beam from its first end)
+  const hits = [];
+  for (const w of A.walls) {
+    if (!isHard(w)) continue;
+    const wl = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (wl < 0.1) continue;
+    const wx = (w.x2 - w.x1) / wl, wy = (w.y2 - w.y1) / wl, den = ux * wy - uy * wx; if (Math.abs(den) < 0.05) continue;
+    const ex = w.x1 - b.x1, ey = w.y1 - b.y1, s = (ex * wy - ey * wx) / den, t = (ex * uy - ey * ux) / den, e = (w.t || 0.25) / 2;
+    if (t >= -e && t <= wl + e) hits.push(s);
+  }
+  const tol = 0.75, before = hits.filter(s => s <= sa + tol), after = hits.filter(s => s >= sb - tol);
+  if (!before.length && !after.length) return up();
+  const s0 = before.length ? Math.max(...before) : sa, s1 = after.length ? Math.min(...after) : sb;
+  if (s1 - s0 < 1) return up();
+  const WH = A.WH || A.H, top = WH - 0.02;
+  return { x1: b.x1 + ux * s0, y1: b.y1 + uy * s0, x2: b.x1 + ux * s1, y2: b.y1 + uy * s1, bot: A.PL > 0 ? Math.max(A.H + 0.05, top - d) : WH + 0.01, onWalls: true };
 }
+function beamBottom(plan, A, b) { return beamSeat(plan, A, b).bot; }
 /* Zoom for the orbit views: the wheel zooms toward whatever is under the mouse (not the middle of the
    screen), in steps that scale with distance, so a far corner comes up in a few turns and a close-up
    still gets fine steps. Double-click flies the view to the spot clicked. Touchpad pinch works too. */
@@ -1505,12 +1537,12 @@ function buildScene(THREE, plan, A) {
   }
   // steel beams: top and bottom flanges and the web, along the beam
   for (const b of plan.beams || []) {
-    const L = Math.hypot(b.x2 - b.x1, b.y2 - b.y1); if (L < 0.2) continue;
-    const S = beamSize(b), d = S.d / 12, bf = S.bf / 12, tf = Math.max(0.025, S.tf / 12), tw = Math.max(0.02, S.tw / 12), y0 = beamBottom(plan, A, b);
+    const q = beamSeat(plan, A, b), L = Math.hypot(q.x2 - q.x1, q.y2 - q.y1); if (L < 0.2) continue;
+    const S = beamSize(b), d = S.d / 12, bf = S.bf / 12, tf = Math.max(0.025, S.tf / 12), tw = Math.max(0.02, S.tw / 12), y0 = q.bot;
     const stl = new THREE.MeshPhongMaterial({ color: 0x7d868b, specular: 0x444444, shininess: 30 }), g = new THREE.Group();
     for (const y of [tf / 2, d - tf / 2]) { const f = new THREE.Mesh(new THREE.BoxGeometry(L, tf, bf), stl); f.position.y = y; g.add(f); }
     const wb = new THREE.Mesh(new THREE.BoxGeometry(L, d - 2 * tf, tw), stl); wb.position.y = d / 2; g.add(wb);
-    g.position.set((b.x1 + b.x2) / 2, y0, (b.y1 + b.y2) / 2); g.rotation.y = -Math.atan2(b.y2 - b.y1, b.x2 - b.x1);
+    g.position.set((q.x1 + q.x2) / 2, y0, (q.y1 + q.y2) / 2); g.rotation.y = -Math.atan2(q.y2 - q.y1, q.x2 - q.x1);
     g.traverse(o => { if (o.isMesh) { outline(o); pick.push(o); if (b.id) o.userData.ref = { kind: 'beam', id: b.id }; } });
     root.add(g);
   }
@@ -1549,6 +1581,8 @@ function buildScene(THREE, plan, A) {
     if (dv.type === 'monitor') { const sc = new THREE.Mesh(new THREE.BoxGeometry(0.005, D.hh * 0.6, D.w * 0.7), screenMat); sc.position.x = dep + 0.003; g.add(sc); }
     else if (dv.type !== 'panel' && dv.type !== 'jbox') { const sl = new THREE.Mesh(new THREE.BoxGeometry(0.004, D.hh * (dv.type === 'switch' ? 0.25 : 0.18), D.w * (dv.type === 'switch' ? 0.18 : 0.4)), slotMat); sl.position.x = dep + 0.002; if (dv.type !== 'switch') { sl.position.y = D.hh * 0.18; const s2 = sl.clone(); s2.position.y = -D.hh * 0.18; g.add(s2); } g.add(sl); }
     g.position.set(dv.x, dv.h != null ? dv.h : D.h, dv.y); g.rotation.y = -(dv.a || 0);
+    // a switch knows its lights; the viewer flips them when it's clicked (its toggle moves up and down)
+    if (dv.type === 'switch') { g.userData.sw = { id: dv.id, lights: Array.isArray(dv.lights) ? dv.lights : [], off: !!dv.off }; g.children[g.children.length - 1].userData.toggle = true; }
     g.traverse(o => { if (o.isMesh) { pick.push(o); if (dv.id) o.userData.ref = { kind: 'device', id: dv.id }; } });
     fixtures.add(g);
   }
@@ -1596,11 +1630,13 @@ function buildScene(THREE, plan, A) {
     if (f.w > 0 && f.h > 0 && !(Math.abs(f.w - 2) < 0.06 && Math.abs(f.h - 4) < 0.06)) { const key = f.w.toFixed(2) + 'x' + f.h.toFixed(2); geo = fgs[key] || (fgs[key] = new THREE.BoxGeometry(Math.max(0.3, f.w - 0.1), 0.08, Math.max(0.3, f.h - 0.1))); }
     const m = new THREE.Mesh(geo, f.type === 'ffu' ? ffu : led); m.position.set(f.x, H - 0.04, f.y);
     if (f.id) m.userData.ref = { kind: 'fixture', id: f.id };
+    if (f.type !== 'ffu') m.userData.light = lightKey(f);
     fixtures.add(m);
     // its housing above the grid (seen in the Plenum view)
     const fw = Math.max(0.3, (f.w || 2) - 0.12), fd = Math.max(0.3, (f.h || 4) - 0.12), hh = f.type === 'ffu' ? 0.9 : 0.28;
     const hs = new THREE.Mesh(new THREE.BoxGeometry(fw, hh, fd), f.type === 'ffu' ? M.white : housingMat); hs.position.set(f.x, H + 0.005 + hh / 2, f.y); outline(hs); fixtures.add(hs);
   }
+  root.add(airflowArrows(THREE, plan, A));
   return { root, pick, floor, floors: [floor], ground, ceiling, lid, roof, ceilPlane: ceil || new THREE.Object3D(), fixtures, doors, doorObs };
 }
 
@@ -1638,6 +1674,161 @@ function buildAll(THREE, plan, M) {
   return out;
 }
 
+/* Airflow in 3D: clean air pushed straight down out of each fan filter unit (blue), and room air drawn into
+   each air chase's return grille (purple). They go in a group marked userData.airflow so the viewer can show
+   and hide them. */
+function airflowArrows(THREE, plan, A) {
+  const g = new THREE.Group(); g.userData.airflow = true;
+  if (A.empty) return g;
+  const supply = new THREE.MeshBasicMaterial({ color: 0x4fb8e8, transparent: true, opacity: 0.6, depthWrite: false });
+  const ret = new THREE.MeshBasicMaterial({ color: 0xa48be8, transparent: true, opacity: 0.7, depthWrite: false });
+  const shaftG = new THREE.CylinderGeometry(1, 1, 1, 10), headG = new THREE.ConeGeometry(1, 1, 14), up = new THREE.Vector3(0, 1, 0);
+  const arrow = (x, y, z, dir, len, r, m) => {
+    const a = new THREE.Group(), hl = Math.min(len * 0.4, r * 5), sl = len - hl;
+    const sh = new THREE.Mesh(shaftG, m); sh.scale.set(r, sl, r); sh.position.y = sl / 2; a.add(sh);
+    const hd = new THREE.Mesh(headG, m); hd.scale.set(r * 2.6, hl, r * 2.6); hd.position.y = sl + hl / 2; a.add(hd);
+    a.position.set(x, y, z); a.quaternion.setFromUnitVectors(up, new THREE.Vector3(...dir).normalize());
+    a.traverse(o => { o.renderOrder = 3; }); g.add(a);
+  };
+  const H = A.H;
+  // down out of each FFU face: one arrow per 2′ of its long side
+  for (const f of ceilingFixtures(plan, A)) {
+    if (f.type !== 'ffu') continue;
+    const w = f.w || 2, h = f.h || 4, n = Math.max(1, Math.round(Math.max(w, h) / 2)), alongZ = h >= w, len = Math.min(3.2, H * 0.4);
+    for (let i = 0; i < n; i++) { const o = (i - (n - 1) / 2) * 1.6; arrow(f.x + (alongZ ? 0 : o), H - 0.3, f.y + (alongZ ? o : 0), [0, -1, 0], len, 0.13, supply); }
+  }
+  // into each return grille, low on the chase face
+  for (const b of A.boxes) {
+    const D = { N: [0, 1], S: [0, -1], W: [1, 0], E: [-1, 0] }[b.grille]; if (!D) continue;
+    const across = (b.grille === 'N' || b.grille === 'S'), G = grilleSize(b.c, across ? b.x1 - b.x0 : b.z1 - b.z0, H), y = G.sill + G.h / 2;
+    const fx = b.grille === 'W' ? b.x0 : b.grille === 'E' ? b.x1 : 0, fz = b.grille === 'N' ? b.z0 : b.grille === 'S' ? b.z1 : 0;
+    const n = Math.max(1, Math.round(G.w / 1.5));
+    for (let i = 0; i < n; i++) {
+      const o = (i - (n - 1) / 2) * Math.min(1.5, G.w / n), len = 2;
+      if (across) arrow((b.x0 + b.x1) / 2 + o, y, fz - D[1] * (len + 0.05), [0, 0, D[1]], len, 0.11, ret);
+      else arrow(fx - D[0] * (len + 0.05), y, (b.z0 + b.z1) / 2 + o, [D[0], 0, 0], len, 0.11, ret);
+    }
+  }
+  return g;
+}
+/* Airflow on the floor: how the air leaves each room through its doors, room to room, and out of the building.
+   The plan is cut into spaces by every wall, door and chase (rooms, the warehouse around the cleanroom, the
+   outdoors). Through each door the air goes from the higher room pressure to the lower when both sides have one
+   set; otherwise it goes from the space further inside to the one nearer the outdoors, as a positive-pressure
+   cleanroom does. In each space a path runs along the floor from where the air starts (the room label, or the
+   door it came in by) to each door it leaves by, then on through that door; moving chevrons show the way.
+   One group, marked userData.airflow, so the Airflow button shows and hides it with the other arrows. */
+function floorFlow(THREE, root, plan) {
+  const grp = new THREE.Group(); grp.userData.airflow = true; root.add(grp);
+  let A; try { A = analyzeAll(plan); } catch (e) { return; }
+  if (A.empty || !A.pieces || !A.pieces.length) return;
+  const rooms = (zones(plan).length > 1 ? flatten(plan).rooms : plan.rooms) || [];
+  const B = A.bounds, M = 8;
+  let c = 0.5; while (((B.w + 2 * M) / c) * ((B.d + 2 * M) / c) > 1.2e6) c *= 1.25;
+  const x0 = B.minX - M, z0 = B.minZ - M, nx = Math.ceil((B.w + 2 * M) / c), nz = Math.ceil((B.d + 2 * M) / c), N = nx * nz;
+  const ix = (x) => Math.floor((x - x0) / c), iz = (z) => Math.floor((z - z0) / c), at = (x, z) => { const i = ix(x), j = iz(z); return i < 0 || j < 0 || i >= nx || j >= nz ? -1 : j * nx + i; };
+  const cx = (k) => x0 + (k % nx + 0.5) * c, cz = (k) => z0 + (Math.floor(k / nx) + 0.5) * c;
+  // walls, openings (closed, so they part the spaces) and chases
+  const solid = new Uint8Array(N);
+  const stamp = (ax, az, bx, bz, r) => { const L = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.ceil(L / (c / 3))); for (let k = 0; k <= n; k++) { const x = ax + (bx - ax) * k / n, z = az + (bz - az) * k / n; for (let j = iz(z - r); j <= iz(z + r); j++) for (let i = ix(x - r); i <= ix(x + r); i++) if (i >= 0 && j >= 0 && i < nx && j < nz) solid[j * nx + i] = 1; } };
+  for (const p of A.pieces) stamp(p.x1, p.z1, p.x2, p.z2, Math.max(c * 0.6, (p.t || 0.25) / 2));
+  for (const i of A.opInfo) stamp(i.o.x1, i.o.y1, i.o.x2, i.o.y2, Math.max(c * 0.6, (i.t || 0.25) / 2));
+  for (const b of A.boxes) for (let j = iz(b.z0); j <= iz(b.z1); j++) for (let i = ix(b.x0); i <= ix(b.x1); i++) if (i >= 0 && j >= 0 && i < nx && j < nz) solid[j * nx + i] = 1;
+  // spaces
+  const comp = new Int32Array(N).fill(-1); let nc = 0;
+  for (let s0 = 0; s0 < N; s0++) {
+    if (solid[s0] || comp[s0] >= 0) continue;
+    const st = [s0]; comp[s0] = nc;
+    while (st.length) { const k = st.pop(), i = k % nx; for (const q of [i > 0 ? k - 1 : -1, i < nx - 1 ? k + 1 : -1, k - nx, k + nx]) if (q >= 0 && q < N && !solid[q] && comp[q] < 0) { comp[q] = nc; st.push(q); } }
+    nc++;
+  }
+  const OUT = comp[0];
+  const compAt = (x, z) => { const k = at(x, z); if (k < 0) return OUT; if (comp[k] >= 0) return comp[k]; for (let r = 1; r <= 3; r++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) { const q = k + dj * nx + di; if (q >= 0 && q < N && comp[q] >= 0) return comp[q]; } return -1; };
+  // room pressures and starting points by space
+  const P = new Map(), labels = new Map();
+  for (const r of rooms) {
+    const k = compAt(r.x, r.y); if (k < 0 || k === OUT) continue;
+    (labels.get(k) || labels.set(k, []).get(k)).push([r.x, r.y]);
+    const pr = r.pressure != null && r.pressure !== '' && isFinite(+r.pressure) ? +r.pressure : null;
+    if (pr != null) P.set(k, Math.max(P.has(k) ? P.get(k) : -1e9, pr));
+  }
+  P.set(OUT, 0);
+  // doors between spaces
+  const doors = [];
+  for (const i of A.opInfo) {
+    const o = i.o; if (o.type === 'glass' || o.type === 'window' || o.type === 'pass') continue;
+    const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1); if (L < 0.5) continue;
+    const ux = (o.x2 - o.x1) / L, uz = (o.y2 - o.y1) / L, mx = (o.x1 + o.x2) / 2, mz = (o.y1 + o.y2) / 2, off = (i.t || 0.25) / 2 + 1.1;
+    const sa = [mx - uz * off, mz + ux * off], sb = [mx + uz * off, mz - ux * off], a = compAt(...sa), b = compAt(...sb);
+    if (a < 0 || b < 0 || a === b) continue;
+    doors.push({ a, b, sa, sb, mx, mz });
+  }
+  if (!doors.length) return;
+  // hops from the outdoors
+  const hop = new Map([[OUT, 0]]), q0 = [OUT];
+  while (q0.length) { const k = q0.shift(); for (const d of doors) { const o = d.a === k ? d.b : d.b === k ? d.a : -1; if (o >= 0 && !hop.has(o)) { hop.set(o, hop.get(k) + 1); q0.push(o); } } }
+  // which way each door goes: from (space, inside point) to (space, inside point)
+  const flows = [];
+  for (const d of doors) {
+    const pa = P.get(d.a), pb = P.get(d.b), ha = hop.has(d.a) ? hop.get(d.a) : 1e9, hb = hop.has(d.b) ? hop.get(d.b) : 1e9;
+    let fwd = null;
+    if (pa != null && pb != null && Math.abs(pa - pb) >= 0.5) fwd = pa > pb;
+    else if (ha !== hb) fwd = ha > hb;
+    if (fwd == null) continue;
+    flows.push(fwd ? { from: d.a, to: d.b, p: d.sa, q: d.sb } : { from: d.b, to: d.a, p: d.sb, q: d.sa });
+  }
+  if (!flows.length) return;
+  // paths inside each space keep about 9″ off the walls where they can
+  const pad = new Uint8Array(N), R = Math.max(1, Math.round(0.75 / c));
+  for (let k = 0; k < N; k++) if (solid[k]) { const i = k % nx, j = Math.floor(k / nx); for (let dj = -R; dj <= R; dj++) for (let di = -R; di <= R; di++) { const ii = i + di, jj = j + dj; if (ii >= 0 && jj >= 0 && ii < nx && jj < nz) pad[jj * nx + ii] = 1; } }
+  const nearFree = (x, z, k) => { const s = at(x, z); if (s < 0) return -1; if (comp[s] === k && !pad[s]) return s; for (let r = 1; r <= 6; r++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) { const q = s + dj * nx + di; if (q >= 0 && q < N && comp[q] === k && !pad[q]) return q; } return comp[s] === k ? s : -1; };
+  const clearLine = (a, b) => { const ax = cx(a), az = cz(a), bx = cx(b), bz = cz(b), L = Math.hypot(bx - ax, bz - az), n = Math.ceil(L / (c / 2)); for (let t = 0; t <= n; t++) { const k = at(ax + (bx - ax) * t / n, az + (bz - az) * t / n); if (k < 0 || pad[k]) return false; } return true; };
+  const paths = [];
+  const bySpace = new Map(); for (const f of flows) (bySpace.get(f.from) || bySpace.set(f.from, { out: [], in: [] }).get(f.from)).out.push(f);
+  for (const f of flows) if (bySpace.has(f.to)) bySpace.get(f.to).in.push(f);
+  for (const [k, S] of bySpace) {
+    if (k === OUT) continue;
+    const src = [...(labels.get(k) || []), ...S.in.map(f => f.q)].map(([x, z]) => nearFree(x, z, k)).filter(s => s >= 0);
+    if (!src.length) continue;
+    // one search from every start; each way out traces back to the nearest start
+    const par = new Int32Array(N).fill(-2), qq = [];
+    for (const s of src) { par[s] = -1; qq.push(s); }
+    for (let h = 0; h < qq.length; h++) { const u = qq[h], i = u % nx; for (const v of [i > 0 ? u - 1 : -1, i < nx - 1 ? u + 1 : -1, u - nx, u + nx, i > 0 ? u - nx - 1 : -1, i < nx - 1 ? u - nx + 1 : -1, i > 0 ? u + nx - 1 : -1, i < nx - 1 ? u + nx + 1 : -1]) if (v >= 0 && v < N && par[v] === -2 && comp[v] === k && !pad[v]) { par[v] = u; qq.push(v); } }
+    for (const f of S.out) {
+      const e = nearFree(f.p[0], f.p[1], k); if (e < 0 || par[e] === -2) continue;
+      const cells = []; for (let u = e; u >= 0; u = par[u]) cells.push(u); cells.reverse();
+      // pull the path straight wherever the floor between two points is clear
+      const keep = [cells[0]]; let a = 0;
+      while (a < cells.length - 1) { let b = cells.length - 1; while (b > a + 1 && !clearLine(cells[a], cells[b])) b--; keep.push(cells[b]); a = b; }
+      const pts = keep.map(u => [cx(u), cz(u)]); pts.push(f.p, f.q);
+      paths.push({ pts, out: f.to === OUT });
+    }
+  }
+  // the outdoors: carry the air a few feet clear of the building
+  for (const f of flows) if (f.to === OUT) { const dx = f.q[0] - f.p[0], dz = f.q[1] - f.p[1], L = Math.hypot(dx, dz) || 1; paths.push({ pts: [f.p, f.q, [f.q[0] + dx / L * 4, f.q[1] + dz / L * 4]], out: true }); }
+  if (!paths.length) return;
+  // a ribbon of chevrons along each path, sliding along with time
+  const cv = document.createElement('canvas'); cv.width = 128; cv.height = 64;
+  const g = cv.getContext('2d'); g.fillStyle = 'rgba(255,255,255,1)';
+  g.beginPath(); g.moveTo(20, 6); g.lineTo(64, 32); g.lineTo(20, 58); g.lineTo(44, 58); g.lineTo(88, 32); g.lineTo(44, 6); g.closePath(); g.fill();
+  const tex = new THREE.CanvasTexture(cv); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = 4;
+  const mk = (col) => new THREE.MeshBasicMaterial({ map: tex, color: col, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, side: THREE.DoubleSide });
+  const inMat = mk(0x3fc4e0), outMat = mk(0xf0a35a), W = 0.6, Y = 0.1, rep = 1.7;
+  for (const pth of paths) {
+    const pts = pth.pts.filter((p, i, a) => !i || Math.hypot(p[0] - a[i - 1][0], p[1] - a[i - 1][1]) > 0.05); if (pts.length < 2) continue;
+    const pos = [], uv = [], idx = []; let u = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const pa = pts[Math.max(0, i - 1)], pb = pts[Math.min(pts.length - 1, i + 1)], dx = pb[0] - pa[0], dz = pb[1] - pa[1], L = Math.hypot(dx, dz) || 1, nX = -dz / L * W, nZ = dx / L * W;
+      if (i) u += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]) / rep;
+      pos.push(pts[i][0] + nX, Y, pts[i][1] + nZ, pts[i][0] - nX, Y, pts[i][1] - nZ); uv.push(u, 1, u, 0);
+      if (i) { const b = (i - 1) * 2; idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); }
+    }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx);
+    const m = new THREE.Mesh(geo, pth.out ? outMat : inMat); m.renderOrder = 2; grp.add(m);
+  }
+  const first = grp.children[0];
+  if (first) first.onBeforeRender = () => { tex.offset.x = -((performance.now() / 1000) * 0.6 % 1); };
+}
 /* Pressure cascade in 3D: a flat arrow on the floor through each door with pressures set on both sides,
    pointing the way the air goes, green when it's right and red when it's wrong or weak. */
 function pressureArrows(THREE, root, plan) {
@@ -1645,12 +1836,14 @@ function pressureArrows(THREE, root, plan) {
   let C; try { C = cleanroomCheck(plan); } catch (e) { return; }
   const shape = new THREE.Shape(); shape.moveTo(-0.9, -0.16); shape.lineTo(0.25, -0.16); shape.lineTo(0.25, -0.42); shape.lineTo(0.95, 0); shape.lineTo(0.25, 0.42); shape.lineTo(0.25, 0.16); shape.lineTo(-0.9, 0.16); shape.closePath();
   const geo = new THREE.ShapeGeometry(shape);
-  const good = new THREE.MeshBasicMaterial({ color: 0x3fbf6f, transparent: true, opacity: 0.85, depthWrite: false }), bad = new THREE.MeshBasicMaterial({ color: 0xe5533d, transparent: true, opacity: 0.85, depthWrite: false });
+  const po = { transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 };
+  const good = new THREE.MeshBasicMaterial({ color: 0x3fbf6f, ...po }), bad = new THREE.MeshBasicMaterial({ color: 0xe5533d, ...po });
+  const grp = new THREE.Group(); grp.userData.airflow = true; root.add(grp);
   for (const d of C.doors) {
     if (d.dp == null || Math.abs(d.dp) < 0.5) continue;
     const sg = d.dp > 0 ? -1 : 1, m = new THREE.Mesh(geo, d.warn ? bad : good);
     m.rotation.x = -Math.PI / 2; m.rotation.z = Math.atan2(-d.ny * sg, d.nx * sg);
-    m.position.set(d.mx, 0.06, d.my); m.renderOrder = 2; root.add(m);
+    m.scale.set(1.4, 1.4, 1); m.position.set(d.mx, 0.12, d.my); m.renderOrder = 2; grp.add(m);
   }
 }
 /* Roof structure over building (shell) walls: open-web steel joists across the short way, 5′ on center,
@@ -1686,6 +1879,7 @@ function mount(container, plan, opts) {
       <div class="p3v-panel p3v-card"><div class="p3v-title"></div><div class="p3v-meta"></div><div class="p3v-here"><b></b><span></span></div></div>
       <div class="p3v-right"><div class="p3v-panel p3v-modes" role="group" aria-label="View"><button data-m="walk">Walk</button><button data-m="doll">Dollhouse</button><button data-m="plenum" hidden title="Looks into the plenum: the grid ceiling stays, the top comes off">Plenum</button><button data-m="exterior" hidden title="The outside, with the roof on">Exterior</button><button data-m="plan">Plan</button></div>
       <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button>
+      <button class="p3v-panel p3v-look p3v-air" aria-pressed="true" hidden title="Show or hide the airflow: air down out of the FFUs, into the return grilles, and along the floor out through the doors and out of the building">Airflow</button>
       <button class="p3v-panel p3v-cbtn" aria-pressed="false" hidden title="Click anything in the model to leave a comment on it">💬 Comment</button></div>
     </div>
     <div class="p3v-aim" aria-hidden="true"></div>
@@ -1699,6 +1893,45 @@ function mount(container, plan, opts) {
   const titleEl = $('.p3v-title'), metaEl = $('.p3v-meta'), hereName = $('.p3v-here b'), hereDims = $('.p3v-here span'), emptyEl = $('.p3v-empty');
   const modeBtns = [...container.querySelectorAll('.p3v-modes button')];
   const lookBtn = container.querySelector('.p3v-look');
+  // Airflow arrows: shown until turned off; the button only shows when there are arrows to show
+  const airBtn = container.querySelector('.p3v-air'); let airOn = true;
+  function refreshAir() {
+    const G = []; if (built) built.root.traverse(o => { if (o.userData && o.userData.airflow) G.push(o); });
+    G.forEach(o => { o.visible = airOn; });
+    if (airBtn) { airBtn.hidden = !G.some(o => o.children.length); airBtn.setAttribute('aria-pressed', String(airOn)); }
+  }
+  if (airBtn) airBtn.addEventListener('click', (e) => { e.stopPropagation(); airOn = !airOn; refreshAir(); });
+  // Light switches: click one to turn its lights off and on. A light goes dark when any switch it's on is off.
+  // This is for looking around; it doesn't change the plan (a switch saved with off: true starts off).
+  const swState = new Map(), ledOff = new THREE.MeshPhongMaterial({ color: 0x5d6468, specular: 0x222222, shininess: 10 });
+  function applySwitches() {
+    if (!built) return;
+    const dark = new Set();
+    built.root.traverse(o => {
+      const S = o.userData && o.userData.sw; if (!S) return;
+      if (!swState.has(S.id)) swState.set(S.id, !S.off);
+      const on = swState.get(S.id);
+      if (!on) S.lights.forEach(k => dark.add(k));
+      o.children.forEach(c => { if (c.userData.toggle) c.position.y = on ? 0.03 : -0.03; });
+    });
+    built.root.traverse(o => {
+      if (!o.isMesh || !o.userData || !o.userData.light) return;
+      if (!o.userData.onMat) o.userData.onMat = o.material;
+      o.material = dark.has(o.userData.light) ? ledOff : o.userData.onMat;
+    });
+  }
+  function checkSwitchClick(clientX, clientY) {
+    if (!built) return false;
+    const r = canvas.getBoundingClientRect();
+    ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const hit = ray.intersectObjects([...(built.floors || [built.floor]), ...built.pick], false)[0]; if (!hit) return false;
+    for (let o = hit.object; o; o = o.parent) {
+      const S = o.userData && o.userData.sw;
+      if (S) { swState.set(S.id, !swState.get(S.id)); applySwitches(); return true; }
+    }
+    return false;
+  }
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: !!opts.preserve });
   renderer.setPixelRatio(Math.min(2, global.devicePixelRatio || 1));
@@ -1852,7 +2085,7 @@ function mount(container, plan, opts) {
   let hintGone = false; function dismissHint() { if (hintGone) return; hintGone = true; hint.classList.add('gone'); }
   const coarse = global.matchMedia && global.matchMedia('(pointer: coarse)').matches;
   if (coarse && lookBtn) lookBtn.hidden = true;
-  hint.textContent = coarse ? 'Drag to look · Tap the floor to walk · Tap doors to open' : 'Drag to look · L for mouse look · WASD to move, Shift to run · Q/E or ←/→ to turn · Click doors to open';
+  hint.textContent = coarse ? 'Drag to look · Tap the floor to walk · Tap doors to open' : 'Drag to look · L for mouse look · WASD to move, Shift to run · Q/E or ←/→ to turn · Click doors to open, switches for lights';
   setTimeout(dismissHint, 7000);
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('pointerdown', e => {
@@ -1905,6 +2138,7 @@ function mount(container, plan, opts) {
     if (isLocked()) { const r = canvas.getBoundingClientRect(); e = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; }
 
     if (commentMode) { placeComment(e.clientX, e.clientY); return; }
+    if (checkSwitchClick(e.clientX, e.clientY)) return;
     if (checkDoorClick(e.clientX, e.clientY)) return;
 
     const p = pick(e.clientX, e.clientY); if (!p) return;
@@ -2079,7 +2313,9 @@ function mount(container, plan, opts) {
     if (built) { scene.remove(built.root); built.root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     built = buildAll(THREE, p, A);
     pressureArrows(THREE, built.root, p);
+    floorFlow(THREE, built.root, p);
     scene.add(built.root);
+    refreshAir(); applySwitches();
     if (typeof drawPins === 'function' && cList) { loadMine(); drawPins(); }
     emptyEl.hidden = !A.empty;
     // the Plenum view only when there is a plenum
@@ -2181,5 +2417,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { BEAMS, beamSize, beamBottom, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);

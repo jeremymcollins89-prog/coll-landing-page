@@ -162,7 +162,7 @@ function toDxf(plan, opts) {
       pline('A-CLNG-FIXT', [[f.x - hw, f.y - hh], [f.x + hw, f.y - hh], [f.x + hw, f.y + hh], [f.x - hw, f.y + hh]], true);
       text('A-CLNG-FIXT', f.x, f.y, f.type === 'ffu' ? 'FFU' : 'LED', 0.3, hh >= hw ? 90 : 0);
     }
-    for (const bm of plan.beams || []) { line('S-BEAM', bm.x1, bm.y1, bm.x2, bm.y2); text('S-BEAM', (bm.x1 + bm.x2) / 2, (bm.y1 + bm.y2) / 2, (bm.size || 'W12x26').toUpperCase(), 0.3, Math.abs(bm.x2 - bm.x1) >= Math.abs(bm.y2 - bm.y1) ? 0 : 90); }
+    for (const b0 of plan.beams || []) { const bm = V.beamSeat ? V.beamSeat(plan, A, b0) : b0; line('S-BEAM', bm.x1, bm.y1, bm.x2, bm.y2); text('S-BEAM', (bm.x1 + bm.x2) / 2, (bm.y1 + bm.y2) / 2, (b0.size || 'W12x26').toUpperCase(), 0.3, Math.abs(bm.x2 - bm.x1) >= Math.abs(bm.y2 - bm.y1) ? 0 : 90); }
     for (const q of (plan.ceilingGrid && plan.ceilingGrid.length && V.ceilingLines ? V.ceilingLines(plan, A) : plan.ceilingGrid || [])) line('A-CLNG-GRID', q[0], q[1], q[2], q[3]);
   }
 

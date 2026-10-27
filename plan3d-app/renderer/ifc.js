@@ -579,9 +579,10 @@ function toIfc(plan, opts) {
   }
   // steel beams (I-beams): flanges and web along the beam
   for (const bm of plan.beams || []) {
-    const L = Math.hypot(bm.x2 - bm.x1, bm.y2 - bm.y1); if (L < 0.2 || !V.beamSize) continue;
-    const Z = V.beamSize(bm), d = Z.d / 12, bf = Z.bf / 12, tf = Math.max(0.025, Z.tf / 12), tw = Math.max(0.02, Z.tw / 12), y0 = V.beamBottom(plan, A, bm), nm = (bm.size || 'W12x26').replace('x', '×');
-    put('IFCBEAM', 'Steel beam ' + nm + ', ' + V.fmtFt(L), 'Steel wide-flange beam (I-beam)', shape([seg(bm.x1, bm.y1, bm.x2, bm.y2, y0, y0 + tf, bf, S.struct), seg(bm.x1, bm.y1, bm.x2, bm.y2, y0 + d - tf, y0 + d, bf, S.struct), seg(bm.x1, bm.y1, bm.x2, bm.y2, y0 + tf, y0 + d - tf, tw, S.struct)]), ',.BEAM.', S.struct);
+    if (!V.beamSize) continue;
+    const q = V.beamSeat(plan, A, bm), L = Math.hypot(q.x2 - q.x1, q.y2 - q.y1); if (L < 0.2) continue;
+    const Z = V.beamSize(bm), d = Z.d / 12, bf = Z.bf / 12, tf = Math.max(0.025, Z.tf / 12), tw = Math.max(0.02, Z.tw / 12), y0 = q.bot, nm = (bm.size || 'W12x26').replace('x', '×');
+    put('IFCBEAM', 'Steel beam ' + nm + ', ' + V.fmtFt(L), 'Steel wide-flange beam (I-beam)', shape([seg(q.x1, q.y1, q.x2, q.y2, y0, y0 + tf, bf, S.struct), seg(q.x1, q.y1, q.x2, q.y2, y0 + d - tf, y0 + d, bf, S.struct), seg(q.x1, q.y1, q.x2, q.y2, y0 + tf, y0 + d - tf, tw, S.struct)]), ',.BEAM.', S.struct);
   }
   if (!A.empty && opts.ceiling !== false) {
     // One ceiling per connected area, traced around the room footprint, so Revit shows no seams where

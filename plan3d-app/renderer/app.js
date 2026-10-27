@@ -54,7 +54,7 @@ const HINTS = {
   pass: 'Click on a wall to place a 24″ × 24″ stainless pass-thru.',
   chase: 'Drag a rectangle to place a full-height air chase.',
   room: 'Click inside a room to label it.',
-  beam: 'Click both ends of a steel beam (I-beam). It sits on top of the cleanroom when it is over one, otherwise up under the roof; pick it to change its size or height.',
+  beam: 'Click both ends of a steel beam (I-beam). Over the cleanroom it spans wall to wall in the plenum, its top level with the top of the walls; otherwise it goes up under the roof. Pick it to change its size or height.',
   measure: 'Click two points to measure between them. Snaps to wall ends and lines up with them; Alt for any angle. Esc clears.',
   calibrate: 'Click both ends of a dimension you know, like the 40′ overall.',
   item: 'Pick an item above, then click near a wall: it backs up against the wall. R turns it. Island goes anywhere.',
@@ -322,7 +322,7 @@ function renderProps(opt) {
       ${fld('Length', txt('pBmL', fmt(len)))}
       ${fld('Bottom of beam at', txt('pBmB', o.bot ? fmt(o.bot) : '', 'Auto (' + fmt(auto) + ')'))}
       <div class="row"><button class="btn small" id="pBmDup">Add another 8′ over</button></div>
-      <p class="note">Auto puts it on top of the cleanroom when it's over one, otherwise up under the roof. Beams go on the parts list (length and weight) and into the Revit export. Drag to move; Shift-drag a box to move a set of them.</p>`;
+      <p class="note">Auto: over the cleanroom it spans from wall to wall in the plenum, its top level with the top of the walls (the plan shows where it lands); otherwise up under the roof. Beams go on the parts list (length and weight) and into the Revit export. Drag to move; Shift-drag a box to move a set of them.</p>`;
     box.innerHTML = h;
     $('#pBmS').onchange = e => ed.edit(() => { o.size = e.target.value; ed.beamSize = o.size; });
     bindLen('pBmL', 'ft', v => ed.edit(() => { const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1, ux = (o.x2 - o.x1) / L, uy = (o.y2 - o.y1) / L; o.x2 = o.x1 + ux * Math.max(0.5, v); o.y2 = o.y1 + uy * Math.max(0.5, v); }));
