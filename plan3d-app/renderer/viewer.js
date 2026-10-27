@@ -165,7 +165,10 @@ const ITEMS = {
   grill: { label: 'Grill', group: 'Outdoor & garage', w: 5, d: 2, h: 3.75, free: true },
   hottub: { label: 'Hot tub', group: 'Outdoor & garage', w: 7, d: 7, h: 3, free: true },
   patioset: { label: 'Patio table and chairs', group: 'Outdoor & garage', w: 6, d: 6, h: 2.5, free: true },
-  condenser: { label: 'AC condenser', group: 'Outdoor & garage', w: 2.5, d: 2.5, h: 2.67 }
+  condenser: { label: 'AC condenser', group: 'Outdoor & garage', w: 2.5, d: 2.5, h: 2.67 },
+  // a machine brought in from a drawing (Library → Add a machine): it carries its own plan linework
+  // (it.lines, it.swings, local feet about its centre), size (w × d) and height (it.h)
+  machine: { label: 'Machine', group: 'Equipment', w: 4, d: 4, h: 8, free: true, hidden: true }
 };
 /* House finishes: picked in the Plan panel (plan.finish), shown in 3D and named on the parts list. */
 const FINISH = {
@@ -2164,9 +2167,9 @@ function deckSteps(plan, A, WH) {
   const lidAt = (x, z) => { let h = null; for (const q of R) if (inside(q, x, z)) h = h == null ? q.h : Math.max(h, q.h); return h; };
   const walls = (A.pieces || []).filter(p => p.hard);
   const walled = (x, z, hi) => walls.some(p => p.h >= hi - 0.05 && segDist(x, z, p.x1, p.z1, p.x2, p.z2) < (p.t || 0.25) / 2 + 0.25);
-  const out = [], st = 0.25, seen = new Set();
-  // every edge between two parts of the lid at different heights
-  for (let i = 0; i < R.length; i++) for (let j = 0; j < R.length; j++) {
+  const out = [], st = 0.25, seen = new Set(), auto = plan.lidStepsAuto !== false;
+  // every edge between two parts of the lid at different heights (unless automatic step panels are off)
+  if (auto) for (let i = 0; i < R.length; i++) for (let j = 0; j < R.length; j++) {
     if (i === j || R[i].h >= R[j].h - 0.05) continue;
     const a = R[i].r, b = R[j].r; // a lower, b higher
     const edges = [];
@@ -2198,17 +2201,43 @@ function deckSteps(plan, A, WH) {
     if (out.some((b, j) => j < i && (Math.abs(b.z1 - b.z2) < 0.01) === ha && (ha ? Math.abs(a.z1 - b.z1) : Math.abs(a.x1 - b.x1)) < 0.4 &&
       Math.min(ha ? Math.max(a.x1, a.x2) : Math.max(a.z1, a.z2), ha ? Math.max(b.x1, b.x2) : Math.max(b.z1, b.z2)) - Math.max(ha ? Math.min(a.x1, a.x2) : Math.min(a.z1, a.z2), ha ? Math.min(b.x1, b.x2) : Math.min(b.z1, b.z2)) > a.len * 0.5)) out.splice(i, 1);
   }
-  // drawn by hand: from the lower lid beside it up to the higher one (or, with the lid the same height on both
-  // sides, from the ceiling up under the lid)
+  // an automatic run lines up on the wall it runs beside (a step over a wall stands on that wall's line, not a
+  // few inches off it where the lid's cells happen to change height)
+  for (const q of out) {
+    const hz = Math.abs(q.z1 - q.z2) < 0.01, lo = hz ? Math.min(q.x1, q.x2) : Math.min(q.z1, q.z2), hi = hz ? Math.max(q.x1, q.x2) : Math.max(q.z1, q.z2);
+    let best = null, bd = 0.6;
+    for (const p of (A.pieces || []).filter(p => p.hard)) {
+      const ph = Math.abs(p.z1 - p.z2) < 0.01, pv = Math.abs(p.x1 - p.x2) < 0.01; if (hz ? !ph : !pv) continue;
+      const off = hz ? Math.abs(p.z1 - q.z1) : Math.abs(p.x1 - q.x1), plo = hz ? Math.min(p.x1, p.x2) : Math.min(p.z1, p.z2), phi = hz ? Math.max(p.x1, p.x2) : Math.max(p.z1, p.z2);
+      if (off < bd && Math.min(hi, phi) - Math.max(lo, plo) > -0.3) { bd = off; best = p; }
+    }
+    if (best) { if (hz) q.z1 = q.z2 = best.z1; else q.x1 = q.x2 = best.x1; }
+  }
+  // drawn by hand: along the run, from the lower lid beside it up to the higher one, worked out every 3″ so a run
+  // across lid heights changes height with them (with the lid the same height both sides: from the ceiling up
+  // under the lid, closing the plenum)
   for (const s of plan.lidSteps || []) {
     const L = Math.hypot(s.x2 - s.x1, s.y2 - s.y1); if (L < 0.2) continue;
-    const nx = -(s.y2 - s.y1) / L, nz = (s.x2 - s.x1) / L, hs = [];
-    for (const t of [0.25, 0.5, 0.75]) for (const sd of [1, -1]) { const x = s.x1 + (s.x2 - s.x1) * t + nx * sd * 0.3, z = s.y1 + (s.y2 - s.y1) * t + nz * sd * 0.3, h = lidAt(x, z); if (h != null) hs.push(h); }
-    const hi = hs.length ? Math.max(...hs) : WH, lo = hs.length ? Math.min(...hs) : WH;
-    const y0 = hi - lo > 0.05 ? lo + T : Math.min(A.H, hi - 0.5), y1 = hi;
-    out.push({ x1: s.x1, z1: s.y1, x2: s.x2, z2: s.y2, y0, y1, t: 0.25, len: L, id: s.id });
+    const ux = (s.x2 - s.x1) / L, uz = (s.y2 - s.y1) / L, nx = -uz, nz = ux, n = Math.max(1, Math.round(L / st));
+    let run = null;
+    const flush = (u) => { if (run && u - run.a > 0.1) out.push({ x1: s.x1 + ux * run.a, z1: s.y1 + uz * run.a, x2: s.x1 + ux * u, z2: s.y1 + uz * u, y0: run.y0, y1: run.y1, t: 0.25, len: u - run.a, id: s.id }); run = null; };
+    for (let k = 0; k < n; k++) {
+      const u0 = L * k / n, um = L * (k + 0.5) / n, x = s.x1 + ux * um, z = s.y1 + uz * um;
+      const hA = lidAt(x + nx * 0.3, z + nz * 0.3), hB = lidAt(x - nx * 0.3, z - nz * 0.3), hs = [hA, hB].filter(v => v != null);
+      const hi = hs.length ? Math.max(...hs) : WH, lo = hs.length ? Math.min(...hs) : WH;
+      const y0 = hi - lo > 0.05 ? lo + T : Math.min(A.H, hi - 0.5), y1 = hi;
+      if (run && (Math.abs(run.y0 - y0) > 0.01 || Math.abs(run.y1 - y1) > 0.01)) flush(u0);
+      if (!run) run = { a: u0, y0, y1 };
+    }
+    flush(L);
   }
-  return out;
+  // where a run drawn by hand covers an automatic one, the hand-drawn run is the one that stands
+  const mine = out.filter(q => q.id), along = (q, hz) => hz ? [Math.min(q.x1, q.x2), Math.max(q.x1, q.x2)] : [Math.min(q.z1, q.z2), Math.max(q.z1, q.z2)];
+  return out.filter(q => {
+    if (!q.auto) return true;
+    const hz = Math.abs(q.z1 - q.z2) < 0.01, [a0, a1] = along(q, hz);
+    return !mine.some(m => { const mh = Math.abs(m.z1 - m.z2) < 0.01, mv = Math.abs(m.x1 - m.x2) < 0.01; if (hz ? !mh : !mv) return false; const off = hz ? Math.abs(m.z1 - q.z1) : Math.abs(m.x1 - q.x1); const [b0, b1] = along(m, hz); return off < 0.5 && Math.min(a1, b1) - Math.max(a0, b0) > (a1 - a0) * 0.5; });
+  });
 }
 /* A polygon clipped to a rectangle (Sutherland–Hodgman). */
 function clipPolyRect(P, r) {
@@ -2361,8 +2390,32 @@ function buildRoof(THREE, group, A, plan, fp, sidingMat, M) {
   if (gp.length) { const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3)); gg.setAttribute('uv', new THREE.Float32BufferAttribute(guv, 2)); gg.computeVertexNormals(); const gm = sidingMat(1, 1); gm.side = THREE.DoubleSide; group.add(new THREE.Mesh(gg, gm)); }
 }
 /* a house item as a small 3D model */
+/* A machine from a drawing in 3D: each line of its plan stands up as a thin panel the machine's height (its
+   enclosure walls and doors), with a light top over the lines that close a box, so it reads as a cabinet.
+   Door swings stay on the plan. */
+function machineMesh(THREE, it) {
+  const g = new THREE.Group(), h = Math.max(1, +it.h || 8), t = 0.12, pos = [];
+  for (const q of it.lines || []) {
+    const L = Math.hypot(q[2] - q[0], q[3] - q[1]); if (L < 0.02) continue;
+    const nx = -(q[3] - q[1]) / L * t / 2, nz = (q[2] - q[0]) / L * t / 2;
+    const A = [q[0] + nx, q[1] + nz], B = [q[2] + nx, q[3] + nz], C = [q[2] - nx, q[3] - nz], D = [q[0] - nx, q[1] - nz];
+    const quad = (p1, p2, y0, y1) => pos.push(p1[0], y0, p1[1], p2[0], y0, p2[1], p2[0], y1, p2[1], p1[0], y0, p1[1], p2[0], y1, p2[1], p1[0], y1, p1[1]);
+    quad(A, B, 0, h); quad(C, D, 0, h); quad(B, C, 0, h); quad(D, A, 0, h);
+    pos.push(A[0], h, A[1], B[0], h, B[1], C[0], h, C[1], A[0], h, A[1], C[0], h, C[1], D[0], h, D[1]);
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ color: 0x8e9ba3, specular: 0x444444, shininess: 30, side: THREE.DoubleSide })); g.add(m);
+  // a dark line along the top and the foot of every panel, so the shape reads from any side
+  const lp = []; for (const q of it.lines || []) { lp.push(q[0], h + 0.01, q[1], q[2], h + 0.01, q[3], q[0], 0.02, q[1], q[2], 0.02, q[3]); }
+  const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3)); g.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x2c3438 })));
+  // its top: a see-through cover over its footprint box, so it shows as one machine from above
+  if (it.w > 0 && it.d > 0) { const top = new THREE.Mesh(new THREE.BoxGeometry(it.w, 0.02, it.d), new THREE.MeshLambertMaterial({ color: 0x7d8c95, transparent: true, opacity: 0.6, depthWrite: false })); top.position.set(0, h, 0); g.add(top); }
+  g.position.set(it.x, 0, it.y); g.rotation.y = -(it.a || 0);
+  return g;
+}
 function itemMesh(THREE, it, M, opt) {
   opt = opt || {};
+  if (it.type === 'machine') return machineMesh(THREE, it);
   const D = ITEMS[it.type], w = it.w || D.w, d = it.d || D.d, h = D.h, z0 = D.ceil ? Math.max(1, (opt.H || 8) - h) : (D.z || 0), g = new THREE.Group();
   const mat = (c, sp) => new THREE.MeshPhongMaterial({ color: c, specular: sp || 0x222222, shininess: sp ? 60 : 14 });
   const F = finishOf(opt.plan), hex = (k, v) => parseInt(((FINISH[k][v] || [])[1] || '#888888').slice(1), 16);

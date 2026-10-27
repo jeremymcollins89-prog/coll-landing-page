@@ -17,12 +17,14 @@
     <div class="dd">
       <button id="bBld" class="btn" aria-haspopup="menu" aria-expanded="false" title="Your library: save buildings, groups of pieces and ceilings, and place them in any project">Library <span class="caret" aria-hidden="true">▾</span></button>
       <div class="menu" id="bldMenu" role="menu" hidden>
-        <button role="menuitem" id="bBldInsert"><span>Insert from the library… <small>buildings, groups of pieces, ceilings</small></span><kbd></kbd></button>
+        <button role="menuitem" id="bBldInsert"><span>Insert from the library… <small>buildings, groups, ceilings, machines</small></span><kbd></kbd></button>
         <button role="menuitem" id="bBldFile"><span>Insert a building from a project file… <small>any saved .plan3d</small></span><kbd></kbd></button>
         <div class="msep"></div>
         <button role="menuitem" id="bBldSave"><span>Save this building… <small>the whole plan</small></span><kbd></kbd></button>
         <button role="menuitem" id="bLibGroup"><span>Save selected pieces as a group… <small>Shift-drag a box around them first</small></span><kbd></kbd></button>
         <button role="menuitem" id="bLibCeil"><span>Save this ceiling… <small>grid, FFUs and lights</small></span><kbd></kbd></button>
+        <div class="msep"></div>
+        <button role="menuitem" id="bLibMach"><span>Add a machine from a drawing… <small>DWG or DXF of the equipment</small></span><kbd></kbd></button>
       </div>
     </div>
     <button id="bOpen" class="btn" title="Open a saved project (Ctrl+O)">Open</button>

@@ -895,6 +895,16 @@ class Editor {
         const q = this.devicePlace(O.x + (p.x - D.sx), O.y + (p.y - D.sy), o.type, o);
         if (q) { o.x = q.x; o.y = q.y; o.a = q.a; }
       }
+      else if (D.sel.kind === 'item' && o.type === 'machine') {
+        // a machine moves freely; its box edges catch on wall faces (Alt: no snapping)
+        o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy);
+        if (!e.altKey) { const c = global.Plan3DViewer.itemCorners(o); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; c.forEach(q => { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); });
+          const tol = 10 / this.view.s; let bx = null, by = null, ex = tol, ey = tol;
+          for (const b of this.wallBoxes()) { for (const e1 of [b.x0, b.x1]) for (const m of [x0, x1]) if (Math.abs(e1 - m) < ex) { ex = Math.abs(e1 - m); bx = e1 - m; } for (const e1 of [b.y0, b.y1]) for (const m of [y0, y1]) if (Math.abs(e1 - m) < ey) { ey = Math.abs(e1 - m); by = e1 - m; } }
+          if (bx != null) o.x += bx; if (by != null) o.y += by;
+          if (bx == null) { const g2 = this.snapIn / 12 || 1 / 48; o.x = Math.round(o.x / g2) * g2; } if (by == null) { const g2 = this.snapIn / 12 || 1 / 48; o.y = Math.round(o.y / g2) * g2; } }
+        this.status('Moving ' + (o.name || 'the machine') + ' (edges catch on wall faces; Alt: no snapping; R turns it)');
+      }
       else if (D.sel.kind === 'item') {
         const q = this.itemPlace(O.x + (p.x - D.sx), O.y + (p.y - D.sy), o.type, o);
         if (q) { o.x = q.x; o.y = q.y; if (q.wall) o.a = q.a; }
@@ -1100,6 +1110,20 @@ class Editor {
 
   drawItem(it, ghost) {
     const g = this.g, s = this.view.s, V = global.Plan3DViewer, D = V.ITEMS[it.type]; if (!D) return;
+    if (it.type === 'machine') {
+      // a machine from a drawing: its own linework, turned and moved into place, its name in the middle
+      const a = it.a || 0, cs = Math.cos(a), sn = Math.sin(a), T = (u, v) => [this.sx(it.x + cs * u - sn * v), this.sy(it.y + sn * u + cs * v)];
+      g.save();
+      const c = V.itemCorners(it); g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.fillStyle = ghost ? 'rgba(242,200,75,.15)' : 'rgba(150,170,180,.08)'; g.fill();
+      g.strokeStyle = ghost ? COL.draft : '#c9d3d8'; g.lineWidth = 1; g.beginPath();
+      for (const q of it.lines || []) { const p1 = T(q[0], q[1]), p2 = T(q[2], q[3]); g.moveTo(p1[0], p1[1]); g.lineTo(p2[0], p2[1]); }
+      g.stroke();
+      g.strokeStyle = ghost ? COL.draft : 'rgba(201,211,216,.55)'; g.beginPath();
+      for (const P of it.swings || []) P.forEach((q, k) => { const p1 = T(q[0], q[1]); k ? g.lineTo(p1[0], p1[1]) : g.moveTo(p1[0], p1[1]); });
+      g.stroke();
+      if (s > 8) { const [X, Y] = T(0, 0); g.font = '600 11px Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = ghost ? COL.draft : '#e8edef'; const nm = (it.name || 'Machine').toUpperCase(); if (g.measureText(nm).width < it.w * s) g.fillText(nm, X, Y); }
+      g.restore(); return;
+    }
     const c = V.itemCorners(it), P = (u, v) => { const a = it.a || 0, cs = Math.cos(a), sn = Math.sin(a); return [this.sx(it.x + cs * u - sn * v), this.sy(it.y + sn * u + cs * v)]; };
     const w = it.w || D.w, d = it.d || D.d;
     g.save();

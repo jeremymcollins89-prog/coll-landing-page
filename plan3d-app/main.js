@@ -155,7 +155,7 @@ function flattenDxf(dxf) {
           if (e.type === 'ARC') {
             const a0 = e.startAngle || 0, a1 = e.endAngle != null ? e.endAngle : Math.PI * 2;
             ext(c.x + r * Math.cos(a0), c.y + r * Math.sin(a0)); ext(c.x + r * Math.cos(a1), c.y + r * Math.sin(a1));
-            arcs.push({ x: (c.x || 0) - bx, y: (c.y || 0) - by, r });
+            arcs.push({ x: (c.x || 0) - bx, y: (c.y || 0) - by, r, a0, a1 });
           }
         }
       } catch (err) { /* skip */ }
