@@ -53,6 +53,7 @@ const HINTS = {
   open: 'Click on a wall to place a cased opening (no door).',
   pass: 'Click on a wall to place a 24″ × 24″ stainless pass-thru.',
   chase: 'Drag a rectangle to place a full-height air chase.',
+  carea: 'Drag a rectangle inside a room to give that part of it its own ceiling height. Bulkhead panels fill the step where it meets the rest of the ceiling.',
   room: 'Click inside a room to label it.',
   beam: 'Click both ends of a steel beam (I-beam). Over the cleanroom it spans wall to wall in the plenum, its top level with the top of the walls; otherwise it goes up under the roof. Pick it to change its size or height.',
   measure: 'Click two points to measure between them. Snaps to wall ends and lines up with them; Alt for any angle. Esc clears.',
@@ -144,8 +145,8 @@ $$('.tools button').forEach(b => b.addEventListener('click', () => { ed.setTool(
 $('#optOrtho').addEventListener('change', e => { ed.ortho = e.target.checked; });
 $('#optDims').addEventListener('change', e => { ed.showDims = e.target.checked; ed.render(); });
 
-const TOOL_KEYS = { v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', b: 'beam', i: 'item', e: 'elec', h: 'overhead', u: 'column' };
-const HOUSE_ONLY = new Set(['item']), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase', 'column']);
+const TOOL_KEYS = { v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', b: 'beam', i: 'item', e: 'elec', h: 'overhead', u: 'column', a: 'carea' };
+const HOUSE_ONLY = new Set(['item']), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase', 'column', 'carea']);
 function inField(e) { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA'); }
 window.addEventListener('keydown', e => {
   if ($('#dlg').open || inField(e)) return;
@@ -185,11 +186,16 @@ function bindLen(id, unit, apply) {
   const go = () => { const v = parseLen(el.value, unit); if (isFinite(v) && v >= 0) apply(v); else { el.style.borderColor = 'var(--warn)'; setTimeout(() => el.style.borderColor = '', 900); } };
   el.addEventListener('change', go); el.addEventListener('keydown', e => { if (e.key === 'Enter') { go(); el.blur(); } });
 }
+// a hardwall's usual height: the top of the tallest ceiling area it bounds (rooms can have their own ceiling and plenum)
+function wallTopOf(P, w) {
+  try { for (const z of Plan3DViewer.zones(P)) if ((z.plan.walls || []).includes(w)) return Math.max(6, z.plan.ceiling || 8) + Math.max(0, +z.plan.plenum || 0); } catch (e) { /* fall back to the building's */ }
+  const K = Plan3DViewer.roomKey(P, null); return K.H + K.PL;
+}
 function renderProps(opt) {
   const box = $('#props'), P = ed.plan, s = ed.sel, o = ed.selected();
   let h = '';
   if (ed.multi && ed.multi.length > 1) {
-    const M = ed.multi, cnt = {}, NAMES = { wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', fixture: 'FFUs and lights' };
+    const M = ed.multi, cnt = {}, NAMES = { wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', fixture: 'FFUs and lights' };
     M.forEach(r => { cnt[r.kind] = (cnt[r.kind] || 0) + 1; });
     const grouped = M.every(r => { const x = ed.find(r); return x && x.gid && x.gid === ed.find(M[0]).gid; });
     box.innerHTML = `<div class="hd"><span class="kind">${M.length} pieces selected${grouped ? ' (a group)' : ''}</span><button class="btn small danger" id="mDel">Delete</button></div>
@@ -214,6 +220,13 @@ function renderProps(opt) {
       ${hard ? fld('S.P. panel', `<label class="chk"><input type="checkbox" id="pSP" ${o.sp ? 'checked' : ''}> Highlight yellow</label>`) : fld('Height', txt('pWH', fmt(KINDS[kind].frame ? (o.h || P.ceiling || 8) : Plan3DViewer.shellHeight(P, o))))}
       ${KINDS[kind].frame ? fld('Studs', `<select id="pStud">${(kind === 'steel' ? [['', 'Auto (6″ outside, 3⅝″ inside)'], ['3⅝″', '3⅝″ steel'], ['6″', '6″ steel']] : [['', 'Auto (2×6 outside, 2×4 inside)'], ['2×4', '2×4'], ['2×6', '2×6']]).map(([v, l]) => `<option value="${v}" ${(o.stud || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`)
         + fld('Exterior wall', `<select id="pExt"><option value="" ${o.ext == null ? 'selected' : ''}>Auto (outside walls)</option><option value="1" ${o.ext === true ? 'selected' : ''}>Yes: sheathing, wrap, siding</option><option value="0" ${o.ext === false ? 'selected' : ''}>No: drywall both sides</option></select>`) : ''}
+      ${hard ? (() => {
+        const def = wallTopOf(P, o), secs = Array.isArray(o.sections) ? o.sections : [];
+        return `<div class="grp"><h3>Height sections</h3>
+        ${secs.map((q, i) => `<div class="fld"><label>Section ${i + 1}</label><div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:4px">${txt('pSa' + i, fmt(Math.min(q.a, q.b)), 'from')}${txt('pSb' + i, fmt(Math.max(q.a, q.b)), 'to')}${txt('pSh' + i, fmt(q.h), 'height')}<button class="btn small" id="pSx${i}" title="Remove this section">✕</button></div></div>`).join('')}
+        <div class="row"><button class="btn small" id="pSecAdd">Add a section</button></div>
+        <p class="note">${secs.length ? 'From and to are measured along the wall from its first end; height is floor to top. ' : ''}The rest of the wall is ${esc(fmt(def))} tall. Where the height steps, the panels split and the step gets an end cap; a section not at the cleanroom's top gets a top cap. Both go on the parts list.</p></div>`;
+      })() : ''}
       <div class="row"><button class="btn small" id="pSplit">Split in half</button><button class="btn small" id="pAllT">Use this thickness on all walls</button></div>
       ${hard ? '' : '<div class="row"><button class="btn small" id="pAllK">Make every connected wall this type</button></div>'}
       <p class="note">${hard ? 'Hardwall panels are cleanroom walls: panels, studs, floor track, base and the grid ceiling.' : KINDS[kind].frame ? 'House wall: studs at 16″, plates and headers; drywall inside; sheathing, wrap and siding on outside walls.' : 'Building walls run to their own height, have no cleanroom ceiling, and go on the parts list by length and area.'} Length changes move the second end.</p>`;
@@ -236,7 +249,24 @@ function renderProps(opt) {
     bindLen('pLen', 'ft', v => ed.edit(() => { const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1; const ux = (o.x2 - o.x1) / L, uy = (o.y2 - o.y1) / L; const linked = ed.linkedEnds(o.x2, o.y2, o); o.x2 = o.x1 + ux * v; o.y2 = o.y1 + uy * v; linked.forEach(l => { if (l.end === 1) { l.w.x1 = o.x2; l.w.y1 = o.y2; } else { l.w.x2 = o.x2; l.w.y2 = o.y2; } }); }));
     bindLen('pT', 'in', v => ed.edit(() => { o.t = Math.max(1 / 48, v); }));
     if ($('#pSP')) $('#pSP').onchange = e => ed.edit(() => { o.sp = e.target.checked; });
-    $('#pSplit').onclick = () => ed.edit(Pl => { const mx = (o.x1 + o.x2) / 2, my = (o.y1 + o.y2) / 2; const n = { ...o, id: Plan3DEditor.uid(), x1: mx, y1: my }; o.x2 = mx; o.y2 = my; Pl.walls.push(n); });
+    if (hard) {
+      const def = wallTopOf(P, o), secs = Array.isArray(o.sections) ? o.sections : [];
+      secs.forEach((q, i) => {
+        const clampS = v => Math.max(0, Math.min(len, v));
+        bindLen('pSa' + i, 'ft', v => ed.edit(() => { q.a = clampS(v); }));
+        bindLen('pSb' + i, 'ft', v => ed.edit(() => { q.b = clampS(v); }));
+        bindLen('pSh' + i, 'ft', v => ed.edit(() => { q.h = Math.max(1, Math.min(40, v)); }));
+        $('#pSx' + i).onclick = () => ed.edit(() => { o.sections.splice(i, 1); if (!o.sections.length) delete o.sections; });
+      });
+      // a new section: the last 4′ of the wall past the last section, 2′ lower than the rest
+      $('#pSecAdd').onclick = () => ed.edit(() => {
+        const end = secs.reduce((m, q) => Math.max(m, q.a, q.b), 0), a = end > 0 && end < len - 1 ? end : Math.max(0, len - 4);
+        (o.sections = o.sections || []).push({ a: +a.toFixed(4), b: +Math.min(len, a + 4).toFixed(4), h: Math.max(6, def - 2) });
+      });
+    }
+    $('#pSplit').onclick = () => ed.edit(Pl => { const mx = (o.x1 + o.x2) / 2, my = (o.y1 + o.y2) / 2; const n = { ...o, id: Plan3DEditor.uid(), x1: mx, y1: my }; o.x2 = mx; o.y2 = my; Pl.walls.push(n);
+      // height sections go with the half they're on (cut at the middle)
+      if (Array.isArray(o.sections)) { const half = len / 2, all = o.sections; o.sections = all.map(q => ({ a: Math.min(q.a, q.b), b: Math.min(Math.max(q.a, q.b), half), h: q.h })).filter(q => q.b - q.a > 0.01); n.sections = all.map(q => ({ a: Math.max(Math.min(q.a, q.b), half) - half, b: Math.max(q.a, q.b) - half, h: q.h })).filter(q => q.b - q.a > 0.01); if (!o.sections.length) delete o.sections; if (!n.sections.length) delete n.sections; } });
     $('#pAllT').onclick = () => ed.edit(Pl => { Pl.walls.forEach(w => { w.t = o.t; }); Pl.wallT = o.t; });
     $('#pDel').onclick = () => ed.deleteSel();
     return;
@@ -305,12 +335,25 @@ function renderProps(opt) {
     $('#pDel').onclick = () => ed.deleteSel();
     return;
   }
+  if (s && o && s.kind === 'carea') {
+    const K = Plan3DViewer.roomKey(P, null), top = K.H + K.PL, w = Math.abs(o.x1 - o.x0), d = Math.abs(o.y1 - o.y0);
+    h = `<div class="hd"><span class="kind">Ceiling area</span><button class="btn small danger" id="pDel">Delete</button></div>
+      ${fld('Ceiling', txt('pCaH', fmt(+o.ceiling || K.H)))}
+      ${fld('Size', `<span class="mono">${esc(fmt(Math.max(w, d)))} × ${esc(fmt(Math.min(w, d)))}</span>`)}
+      <p class="note">This part of the room gets its own ceiling, raised or dropped. Where its edge crosses open ceiling, bulkhead panels fill the step (on the parts list with their H-studs and closure channel); along walls the ceiling track follows it. It stays at least 3″ under the top of the walls (${esc(fmt(top))}); to go higher, raise the plenum or the walls. Drag its outline or label to move it.</p>`;
+    box.innerHTML = h;
+    bindLen('pCaH', 'ft', v => ed.edit(() => { o.ceiling = Math.max(6, Math.min(40, v)); }));
+    $('#pDel').onclick = () => ed.deleteSel();
+    return;
+  }
   if (s && o && s.kind === 'fixture') {
     h = `<div class="hd"><span class="kind">${o.type === 'ffu' ? 'Fan filter unit' : 'LED light'}</span><button class="btn small danger" id="pDel">Delete</button></div>
       ${fld('Type', `<select id="pFx"><option value="led" ${o.type !== 'ffu' ? 'selected' : ''}>LED light, 2×4</option><option value="ffu" ${o.type === 'ffu' ? 'selected' : ''}>Fan filter unit, 2×4</option></select>`)}
-      <p class="note">Sits in the 2′ × 4′ ceiling grid.</p>`;
+      <div class="row"><button class="btn small" id="pFxTurn">Turn 90° (R)</button></div>
+      <p class="note">Sits in the 2′ × 4′ ceiling grid. Turned across the grid, it takes half of two cells side by side: the cross tee moves to its edge and the other half gets one 2′ × 4′ tile laid the same way.</p>`;
     box.innerHTML = h;
     $('#pFx').onchange = e => ed.edit(() => { o.type = e.target.value; });
+    $('#pFxTurn').onclick = () => ed.turnFixture(o);
     $('#pDel').onclick = () => ed.deleteSel();
     return;
   }

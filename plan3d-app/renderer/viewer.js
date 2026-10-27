@@ -179,6 +179,7 @@ function transformPlan(src, T, idp) {
   }
   for (const c of P.columns || []) { [c.x, c.y] = X(c.x, c.y); if (c.id) c.id = pre + c.id; }
   for (const b of P.beams || []) { [b.x1, b.y1] = X(b.x1, b.y1); [b.x2, b.y2] = X(b.x2, b.y2); if (b.id) b.id = pre + b.id; }
+  for (const k of P.ceilAreas || []) { const [ax, ay] = X(k.x0, k.y0), [bx, by] = X(k.x1, k.y1); k.x0 = Math.min(ax, bx); k.x1 = Math.max(ax, bx); k.y0 = Math.min(ay, by); k.y1 = Math.max(ay, by); if (k.id) k.id = pre + k.id; }
   for (const it of P.items || []) { [it.x, it.y] = X(it.x, it.y); it.a = turnA(it.a); if (it.id) it.id = pre + it.id; }
   for (const f of P.fixtures || []) { [f.x, f.y] = X(f.x, f.y); if (turned) { const w = f.w || 2, h = f.h || 4; f.w = h; f.h = w; } if (f.id) f.id = pre + f.id; }
   if (P.ceilGrid && isFinite(P.ceilGrid.ox)) { const [gx, gy] = X(P.ceilGrid.ox, P.ceilGrid.oy); P.ceilGrid = { ox: gx, oy: gy, swap: !!P.ceilGrid.swap !== turned }; }
@@ -207,8 +208,8 @@ function splitByCeiling(P) {
     if (G.comp[k] >= 0) return keyOfComp[G.comp[k]];
     return G.inside[k] && !G.wall[k] ? def : null;
   };
-  const groups = new Map([[def.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [], devices: [], items: [], columns: [], beams: [] }, def)]]);
-  const grp = (k) => { if (!groups.has(k.key)) groups.set(k.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [], devices: [], items: [], columns: [], beams: [] }, k)); return groups.get(k.key); };
+  const groups = new Map([[def.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [], devices: [], items: [], columns: [], beams: [], ceilAreas: [] }, def)]]);
+  const grp = (k) => { if (!groups.has(k.key)) groups.set(k.key, Object.assign({ walls: [], ghost: [], openings: [], chases: [], rooms: [], fixtures: [], devices: [], items: [], columns: [], beams: [], ceilAreas: [] }, k)); return groups.get(k.key); };
   const top = (k) => k.H + k.PL;
   const wallOf = new Map();
   for (const w of P.walls || []) {
@@ -235,12 +236,13 @@ function splitByCeiling(P) {
   for (const it of P.items || []) grp(at(it.x, it.y) || def).items.push(it);
   for (const c of P.columns || []) groups.get(def.key).columns.push(c);
   for (const b of P.beams || []) groups.get(def.key).beams.push(b);
+  for (const k of P.ceilAreas || []) grp(at((k.x0 + k.x1) / 2, (k.y0 + k.y1) / 2) || def).ceilAreas.push(k);
   // every area keeps the building's one ceiling grid, so tees line up across the areas
   const cg = P.ceilGrid && isFinite(P.ceilGrid.ox) ? P.ceilGrid : (() => { const g = ceilingGrid(P, A0); return { ox: g.ox, oy: g.oz, swap: g.swap }; })();
   const out = [];
   for (const g of groups.values()) {
     if (!g.walls.length && !g.rooms.length) continue;
-    const q = Object.assign({}, P, { inserts: undefined, walls: g.walls, openings: g.openings, chases: g.chases, rooms: g.rooms, fixtures: g.fixtures, devices: g.devices, items: g.items, columns: g.columns, beams: g.beams, ceiling: g.H, plenum: g.PL, ceilGrid: cg });
+    const q = Object.assign({}, P, { inserts: undefined, walls: g.walls, openings: g.openings, chases: g.chases, rooms: g.rooms, fixtures: g.fixtures, devices: g.devices, items: g.items, columns: g.columns, beams: g.beams, ceilAreas: g.ceilAreas, ceiling: g.H, plenum: g.PL, ceilGrid: cg });
     Object.defineProperty(q, '__ghost', { value: g.ghost, enumerable: false, configurable: true });
     out.push({ plan: q, H: g.H, PL: g.PL, def: g.key === def.key });
   }
@@ -271,7 +273,7 @@ function zones(plan, T, idp, out) {
 /* One flat plan with every building merged in (for 2D drawings: DWG/DXF and the plan sheet). */
 function flatten(plan) {
   const Z = zones(plan), F = Object.assign({}, Z[0].plan, { inserts: [] }); delete F.__sib;
-  for (const k of ['walls', 'openings', 'chases', 'rooms', 'devices', 'items', 'columns', 'beams']) F[k] = [].concat(...Z.map(z => z.plan[k] || []));
+  for (const k of ['walls', 'openings', 'chases', 'rooms', 'devices', 'items', 'columns', 'beams', 'ceilAreas']) F[k] = [].concat(...Z.map(z => z.plan[k] || []));
   // each building's own lights and FFUs, already laid out on its own grid
   F.fixtures = [].concat(...Z.map(z => ceilingFixtures(z.plan))); F.ceilingMode = 'manual'; F.fixturesFinal = true;
   return F;
@@ -348,9 +350,18 @@ function analyze(plan) {
     for (const [a, b] of cuts) { if (a > c + 0.004) segs.push([c, a]); c = Math.max(c, b); }
     if (len > c + 0.004) segs.push([c, len]);
     const hard = isHard(w), frame = isFrame(w), kind = hard ? 'hardwall' : w.kind, wh = hard ? WH : frame ? Math.max(6, w.h || H) : shellHeight(plan, w);
-    for (const [a, b] of segs) pieces.push({ id: w.id, piece: w.piece || null, x1: w.x1 + ux * a, z1: w.y1 + uz * a, x2: w.x1 + ux * b, z2: w.y1 + uz * b, t, sp: !!w.sp && hard, s0: a, len: b - a, kind, hard, frame, ceilw: hard || frame, h: wh, ext: w.ext });
-    ends.push({ x: w.x1, z: w.y1, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[0] < 0.01), w });
-    ends.push({ x: w.x2, z: w.y2, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[1] > len - 0.01), w });
+    const secs = hard && Array.isArray(w.sections) && w.sections.length ? w.sections : null;
+    for (const [a0, b0] of segs) {
+      // a hardwall with height sections is cut where its height changes
+      const bk = [a0, b0]; if (secs) for (const q of secs) for (const v of [q.a, q.b]) if (v > a0 + 0.01 && v < b0 - 0.01) bk.push(+v);
+      bk.sort((p, q) => p - q);
+      for (let k = 0; k + 1 < bk.length; k++) {
+        const a = bk[k], b = bk[k + 1]; if (b - a < 0.004) continue;
+        pieces.push({ id: w.id, piece: w.piece || null, x1: w.x1 + ux * a, z1: w.y1 + uz * a, x2: w.x1 + ux * b, z2: w.y1 + uz * b, t, sp: !!w.sp && hard, s0: a, len: b - a, kind, hard, frame, ceilw: hard || frame, h: secs ? sectionTop(w, (a + b) / 2, wh) : wh, ext: w.ext });
+      }
+    }
+    ends.push({ x: w.x1, z: w.y1, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[0] < 0.01), w, h: hard ? sectionTop(w, 0, wh) : wh });
+    ends.push({ x: w.x2, z: w.y2, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[1] > len - 0.01), w, h: hard ? sectionTop(w, len, wh) : wh });
   }
   // A wall end that meets another wall (a straight run drawn in pieces, or a tee) is a joint, not a free end:
   // it gets no end post, so runs don't sprout a post at every joint.
@@ -378,7 +389,8 @@ function analyze(plan) {
     const [dax, day] = away(a), [dbx, dby] = away(b);
     const S = Math.max(CORNER, a.t || 0.25, b.t || 0.25), wt = Math.max(a.t || 0.25, b.t || 0.25);
     const ox = cx - (dax + dbx) * wt / 2, oz = cz - (day + dby) * wt / 2;
-    corners.push({ x: ox, z: oz, a: [dax, day], b: [dbx, dby], size: S, wt, ang: Math.atan2(-ay, ax) });
+    const endTop = (w) => { const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); return sectionTop(w, Math.hypot(w.x1 - cx, w.y1 - cz) < Math.hypot(w.x2 - cx, w.y2 - cz) ? 0 : L, WH); };
+    corners.push({ x: ox, z: oz, a: [dax, day], b: [dbx, dby], size: S, wt, ang: Math.atan2(-ay, ax), h: Math.max(endTop(a), endTop(b)) });
   }
   const opInfo = [];
   for (const o of ops) {
@@ -387,7 +399,7 @@ function analyze(plan) {
     for (const w of walls) { const d = segDist((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, w.x1, w.y1, w.x2, w.y2); if (d < best) { best = d; host = w; } }
     if (best > 1.5) host = null;
     if (!t) t = host && host.t ? host.t : 0.25;
-    const hard = isHard(host), frame = isFrame(host), i = { o, len, ux: dx / len, uz: dz / len, t, hard, frame, ceilw: hard || frame, kind: hard ? 'hardwall' : host.kind, wallH: hard ? WH : frame ? Math.max(6, host.h || H) : shellHeight(plan, host) };
+    const hard = isHard(host), frame = isFrame(host), i = { o, len, ux: dx / len, uz: dz / len, t, hard, frame, ceilw: hard || frame, kind: hard ? 'hardwall' : host.kind, wallH: hard ? sectionTop(host, ((o.x1 + o.x2) / 2 - host.x1) * (host.x2 - host.x1) / (Math.hypot(host.x2 - host.x1, host.y2 - host.y1) || 1) + ((o.y1 + o.y2) / 2 - host.y1) * (host.y2 - host.y1) / (Math.hypot(host.x2 - host.x1, host.y2 - host.y1) || 1), WH) : frame ? Math.max(6, host.h || H) : shellHeight(plan, host) };
     i.leaves = leavesFor(i);
     opInfo.push(i);
   }
@@ -442,7 +454,14 @@ function analyze(plan) {
       if (best && best.y1 - best.y0 > 0.05 && !transitions.some(q => Math.hypot((q.x1 + q.x2 - best.x1 - best.x2) / 2, (q.z1 + q.z2 - best.z1 - best.z2) / 2) < 0.5 && Math.abs(q.len - best.len) < 0.5)) transitions.push(best);
     }
   }
-  return { sib: plan.__sib || [], ghost, transitions, H, PL, WH, hardAny, frameAny, ceilAny: hardAny || frameAny, house: frameAny && !hardAny, items, shellTop, walls, pieces, ends, corners, opInfo, boxes, obs, empty, bounds: { minX, minZ, maxX, maxZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, w: maxX - minX, d: maxZ - minZ } };
+  // steps: where a hardwall's height changes along its run, the taller part's exposed edge gets an end cap
+  const steps = [];
+  for (let k = 1; k < pieces.length; k++) {
+    const p = pieces[k - 1], q = pieces[k];
+    if (!p.hard || p.id !== q.id || Math.abs(p.s0 + p.len - q.s0) > 0.01 || Math.abs(p.h - q.h) < 0.02) continue;
+    steps.push({ x: q.x1, z: q.z1, t: q.t, ang: Math.atan2(-(q.z2 - q.z1), q.x2 - q.x1), y0: Math.min(p.h, q.h), y1: Math.max(p.h, q.h) });
+  }
+  return { steps, sib: plan.__sib || [], ghost, transitions, H, PL, WH, hardAny, frameAny, ceilAny: hardAny || frameAny, house: frameAny && !hardAny, items, shellTop, walls, pieces, ends, corners, opInfo, boxes, obs, empty, bounds: { minX, minZ, maxX, maxZ, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, w: maxX - minX, d: maxZ - minZ } };
 }
 
 /* Return grille on an air chase: c.grW / c.grH (feet) and c.grSill (feet, floor to bottom of the grille),
@@ -573,6 +592,71 @@ function footprint(A, all) {
   return fp;
 }
 
+/* Ceiling areas: a rectangle inside a room with a ceiling of its own, raised or dropped
+   (plan.ceilAreas: { id, x0, y0, x1, y1, ceiling }). It stays at least 3″ under the top of the walls; to go
+   higher, raise the plenum or the walls. Where its edge runs across open ceiling (no wall there) a bulkhead of
+   hardwall panels fills the step from the higher ceiling down to the lower one. */
+function ceilAreas(plan, A) {
+  const top = (A.WH || A.H) - 0.25;
+  return (plan.ceilAreas || []).filter(c => c && Math.abs(c.x1 - c.x0) > 0.5 && Math.abs(c.y1 - c.y0) > 0.5).map(c => ({
+    c, x0: Math.min(c.x0, c.x1), x1: Math.max(c.x0, c.x1), z0: Math.min(c.y0, c.y1), z1: Math.max(c.y0, c.y1),
+    h: Math.max(6, Math.min(top, c.ceiling > 0 ? +c.ceiling : A.H))
+  }));
+}
+// the ceiling height at a point: the last area drawn over it, or the room's
+function ceilingAt(CA, H, x, z, skip) { let h = H; for (const a of CA) if (a !== skip && x > a.x0 + 1e-6 && x < a.x1 - 1e-6 && z > a.z0 + 1e-6 && z < a.z1 - 1e-6) h = a.h; return h; }
+// the bulkheads: runs along each area's edge where the ceiling on the two sides differs and no wall stands there
+function areaBulkheads(plan, A, CA) {
+  CA = CA || ceilAreas(plan, A); if (!CA.length) return [];
+  const fp = footprint(A), out = [], st = 0.25, t = 0.25;
+  const nearWall = (x, z) => A.pieces.some(p => segDist(x, z, p.x1, p.z1, p.x2, p.z2) < (p.t || 0.25) / 2 + 0.2) || A.boxes.some(b => x > b.x0 - 0.2 && x < b.x1 + 0.2 && z > b.z0 - 0.2 && z < b.z1 + 0.2);
+  for (const a of CA) {
+    for (const [ax, az, bx, bz, nx, nz] of [[a.x0, a.z0, a.x1, a.z0, 0, -1], [a.x1, a.z0, a.x1, a.z1, 1, 0], [a.x1, a.z1, a.x0, a.z1, 0, 1], [a.x0, a.z1, a.x0, a.z0, -1, 0]]) {
+      const L = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.round(L / st)), ux = (bx - ax) / L, uz = (bz - az) / L;
+      let run = null;
+      const flush = () => { if (run && run.b - run.a > 0.2) out.push({ x1: ax + ux * run.a, z1: az + uz * run.a, x2: ax + ux * run.b, z2: az + uz * run.b, y0: Math.min(a.h, run.o), y1: Math.max(a.h, run.o), t, len: run.b - run.a, area: a }); run = null; };
+      for (let k = 0; k < n; k++) {
+        const s0 = k * L / n, s1 = (k + 1) * L / n, m = (s0 + s1) / 2, x = ax + ux * m, z = az + uz * m;
+        const ox = x + nx * 0.3, oz = z + nz * 0.3, other = ceilingAt(CA, A.H, ox, oz, a);
+        // another area outside this edge: only the higher of the two draws the step
+        const otherArea = CA.some(q => q !== a && ox > q.x0 && ox < q.x1 && oz > q.z0 && oz < q.z1);
+        const need = fp && fp.has(x, z) && fp.has(ox, oz) && Math.abs(other - a.h) > 0.05 && !(otherArea && other > a.h) && !nearWall(x, z);
+        if (need && run && Math.abs(run.o - other) < 0.01) run.b = s1;
+        else { flush(); if (need) run = { a: s0, b: s1, o: other }; }
+      }
+      flush();
+    }
+  }
+  return out;
+}
+// rectangles [x0, z0, x1, z1]: with the holes cut out / only the part inside a box
+function subtractRects(rects, holes) {
+  let cur = rects.slice();
+  for (const h of holes) {
+    const nxt = [];
+    for (const [a, b, c, d] of cur) {
+      const x0 = Math.max(a, h.x0), x1 = Math.min(c, h.x1), z0 = Math.max(b, h.z0), z1 = Math.min(d, h.z1);
+      if (x0 >= x1 || z0 >= z1) { nxt.push([a, b, c, d]); continue; }
+      if (b < z0) nxt.push([a, b, c, z0]); if (z1 < d) nxt.push([a, z1, c, d]);
+      if (a < x0) nxt.push([a, z0, x0, z1]); if (x1 < c) nxt.push([x1, z0, c, z1]);
+    }
+    cur = nxt;
+  }
+  return cur;
+}
+const clipRects = (rects, h) => rects.map(([a, b, c, d]) => [Math.max(a, h.x0), Math.max(b, h.z0), Math.min(c, h.x1), Math.min(d, h.z1)]).filter(([a, b, c, d]) => a < c && b < d);
+// a line [x1, z1, x2, z2] cut where it crosses ceiling areas: [[x1, z1, x2, z2, ceiling], …]
+function splitByAreas(q, CA, H) {
+  if (!CA.length) return [[...q, H]];
+  const ts = [0, 1], dx = q[2] - q[0], dz = q[3] - q[1];
+  for (const a of CA) { if (Math.abs(dx) > 1e-9) for (const x of [a.x0, a.x1]) ts.push((x - q[0]) / dx); if (Math.abs(dz) > 1e-9) for (const z of [a.z0, a.z1]) ts.push((z - q[1]) / dz); }
+  const T = [...new Set(ts.filter(t => t >= 0 && t <= 1).map(t => +t.toFixed(6)))].sort((a, b) => a - b), out = [];
+  for (let i = 0; i + 1 < T.length; i++) { if (T[i + 1] - T[i] < 1e-6) continue; const m = (T[i] + T[i + 1]) / 2; out.push([q[0] + dx * T[i], q[1] + dz * T[i], q[0] + dx * T[i + 1], q[1] + dz * T[i + 1], ceilingAt(CA, H, q[0] + dx * m, q[1] + dz * m)]); }
+  return out;
+}
+/* Wall height sections: w.sections = [{ a, b, h }], a and b in feet along the wall from its first end and h the
+   height of the wall's top there (floor to top). Outside every section the wall keeps its usual height. */
+const sectionTop = (w, s, def) => { for (const q of (w && w.sections) || []) if (q && q.h > 0 && s >= Math.min(q.a, q.b) - 1e-6 && s <= Math.max(q.a, q.b) + 1e-6) return Math.max(1, +q.h); return def; };
 function rectsGeometry(THREE, rects, y, down, su, sv, ox, oz, swapUV) {
   const pos = [], uv = [];
   for (const [ax, az, bx, bz] of rects) {
@@ -868,8 +952,22 @@ function cleanroomCheck(plan) {
 }
 /* Grid steps for a fixture: its long side steps on 4′, its short side on 2′ (a 2 × 2 on 2′ both ways).
    On a turned grid the two axes trade places. */
+/* Is a fixture turned across the grid (its long side across the cells' long side)? Only on the app's own
+   2′ × 4′ grid; an imported ceiling drawing keeps its own lines. */
+function fixtureTurned(f, G) {
+  if (!G || G.fromLines) return false;
+  const w = f.w || (G.swap ? 4 : 2), h = f.h || (G.swap ? 2 : 4);
+  return Math.abs(w - h) > 0.1 && (w > h) !== (G.cw > G.cl);
+}
+/* The half of a 4′ × 4′ block (two cells side by side) that a turned fixture leaves open: one 2′ × 4′ tile laid
+   the same way, with the cross tee moved to the fixture's edge. Returns { x0, z0, x1, z1 }. */
+function turnedOpenHalf(f, G) {
+  if (G.cl > G.cw) { const z0 = f.y - 1, c0 = G.oz + Math.floor((z0 - G.oz) / 4 + 1e-6) * 4, lo = z0 - c0 < 0.5 ? c0 + 2 : c0; return { x0: f.x - 2, x1: f.x + 2, z0: lo, z1: lo + 2 }; }
+  const x0 = f.x - 1, c0 = G.ox + Math.floor((x0 - G.ox) / 4 + 1e-6) * 4, lo = x0 - c0 < 0.5 ? c0 + 2 : c0; return { x0: lo, x1: lo + 2, z0: f.y - 2, z1: f.y + 2 };
+}
 function fixtureSteps(w, h, G) {
-  const base = (a, b) => [a > 2.2 ? 4 : 2, b > 2.2 ? 4 : (a <= 2.2 ? 2 : 4)];
+  // a 2 × 4 turned across the grid spans two cells side by side and fills half their length: 2′ steps both ways
+  const base = (a, b) => a > 2.2 && b <= 2.2 ? [2, 2] : [a > 2.2 ? 4 : 2, b > 2.2 ? 4 : (a <= 2.2 ? 2 : 4)];
   if (!G.swap) return base(w, h);
   const [sz, sx] = base(h, w); return [sx, sz];
 }
@@ -1225,10 +1323,12 @@ function buildScene(THREE, plan, A) {
     const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO;
     tex.repeat.set(p.len / 4, 1); tex.offset.set(((p.s0 % 4) + 4) % 4 / 4, 0);
     const face = new THREE.MeshPhongMaterial({ map: tex, color: p.sp ? 0xf6dc80 : 0xffffff, emissive: p.sp ? 0x000000 : 0x141515, specular: 0x1c1c1c, shininess: 16 });
-    const m = segBox(p.x1, p.z1, p.x2, p.z2, 0, WH, p.t, [M.edge, M.edge, M.edge, M.edge, face, face]);
+    const m = segBox(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, [M.edge, M.edge, M.edge, M.edge, face, face]);
     outline(m); pick.push(m);
     segBox(p.x1, p.z1, p.x2, p.z2, 0, 0.333, p.t + 0.022, M.base);
-    segBox(p.x1, p.z1, p.x2, p.z2, H - 0.17, H, p.t + 0.03, M.track);
+    if (p.h > H + 0.05) segBox(p.x1, p.z1, p.x2, p.z2, H - 0.17, H, p.t + 0.03, M.track);
+    // a section that stops short of (or runs past) the top of the cleanroom gets a cap along its top
+    if (Math.abs(p.h - WH) > 0.02) segBox(p.x1, p.z1, p.x2, p.z2, p.h - 0.03, p.h + 0.04, p.t + 0.03, M.white);
     shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
   }
   curRef = null;
@@ -1241,11 +1341,34 @@ function buildScene(THREE, plan, A) {
     segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
     if (H - q.y0 > 0.25) segBox(q.x1, q.z1, q.x2, q.z2, H - 0.17, H, q.t + 0.03, M.track);
   }
+  // end caps where a wall steps up or down
+  for (const st of A.steps || []) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.1, st.y1 - st.y0, st.t + 0.03), M.white);
+    m.position.set(st.x, (st.y0 + st.y1) / 2, st.z); m.rotation.y = st.ang; root.add(m); pick.push(m);
+  }
+  // bulkheads where a ceiling area steps up or down across open ceiling
+  const CA = ceilAreas(plan, A);
+  for (const q of areaBulkheads(plan, A, CA)) {
+    const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(q.len / 4, 1);
+    const face = new THREE.MeshPhongMaterial({ map: tex, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 });
+    const m = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); outline(m); pick.push(m);
+    if (q.area.c.id) m.userData.ref = { kind: 'carea', id: q.area.c.id };
+    segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
+    segBox(q.x1, q.z1, q.x2, q.z2, q.y1 - 0.17, q.y1, q.t + 0.03, M.track);
+  }
+  // ceiling track at a ceiling area's height along the walls it meets
+  for (const a of CA) for (const p of A.pieces) {
+    if (!p.hard || p.h < a.h) continue;
+    const ax = Math.abs(p.x2 - p.x1) < 1e-3, az = Math.abs(p.z2 - p.z1) < 1e-3; if (!ax && !az) continue;
+    const r = p.t / 2 + 0.3;
+    if (ax && (Math.abs(p.x1 - a.x0) < r || Math.abs(p.x1 - a.x1) < r)) { const lo = Math.max(Math.min(p.z1, p.z2), a.z0), hi = Math.min(Math.max(p.z1, p.z2), a.z1); if (hi - lo > 0.2) segBox(p.x1, lo, p.x1, hi, a.h - 0.17, a.h, p.t + 0.03, M.track); }
+    if (az && (Math.abs(p.z1 - a.z0) < r || Math.abs(p.z1 - a.z1) < r)) { const lo = Math.max(Math.min(p.x1, p.x2), a.x0), hi = Math.min(Math.max(p.x1, p.x2), a.x1); if (hi - lo > 0.2) segBox(lo, p.z1, hi, p.z1, a.h - 0.17, a.h, p.t + 0.03, M.track); }
+  }
   for (const c of A.corners) {
     const legs = [[c.a, c.b], [c.b, c.a]];
     for (const [u, v] of legs) {
       const x1 = c.x + v[0] * c.wt / 2, z1 = c.z + v[1] * c.wt / 2, x2 = x1 + u[0] * c.size, z2 = z1 + u[1] * c.size;
-      const m = segBox(x1, z1, x2, z2, 0, WH, c.wt + 0.006, M.white); outline(m); pick.push(m);
+      const m = segBox(x1, z1, x2, z2, 0, c.h || WH, c.wt + 0.006, M.white); outline(m); pick.push(m);
       segBox(x1, z1, x2, z2, 0, 0.333, c.wt + 0.024, M.base);
       segBox(x1, z1, x2, z2, H - 0.17, H, c.wt + 0.032, M.track);
     }
@@ -1254,8 +1377,8 @@ function buildScene(THREE, plan, A) {
   for (const e of A.ends) {
     if (e.cut || e.joined || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue;
     seen.push(e);
-    const m = new THREE.Mesh(new THREE.BoxGeometry(e.t, WH, e.t), M.white);
-    m.position.set(e.x, WH / 2, e.z); m.rotation.y = e.ang; root.add(m); pick.push(m);
+    const eh = e.h || WH, m = new THREE.Mesh(new THREE.BoxGeometry(e.t, eh, e.t), M.white);
+    m.position.set(e.x, eh / 2, e.z); m.rotation.y = e.ang; root.add(m); pick.push(m);
     const pb = new THREE.Mesh(new THREE.BoxGeometry(e.t + 0.022, 0.333, e.t + 0.022), M.base); pb.position.set(e.x, 0.1665, e.z); pb.rotation.y = e.ang; root.add(pb);
     const pt = new THREE.Mesh(new THREE.BoxGeometry(e.t + 0.03, 0.17, e.t + 0.03), M.track); pt.position.set(e.x, H - 0.085, e.z); pt.rotation.y = e.ang; root.add(pt);
   }
@@ -1451,7 +1574,8 @@ function buildScene(THREE, plan, A) {
   if (FP) {
     cMap.repeat.set(1, 1);
     const CG = ceilingGrid(plan, A);
-    ceil = new THREE.Mesh(rectsGeometry(THREE, FP.rects, H, true, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, CG.swap && !ownGrid), cMat);
+    ceil = new THREE.Mesh(rectsGeometry(THREE, subtractRects(FP.rects, CA), H, true, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, CG.swap && !ownGrid), cMat);
+    for (const a of CA) ceil.add(new THREE.Mesh(rectsGeometry(THREE, clipRects(FP.rects, a), a.h, true, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, CG.swap && !ownGrid), cMat));
   } else if (A.hardAny || !A.shellTop) { ceil = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.d), cMat); ceil.rotation.x = Math.PI / 2; ceil.position.set(B.cx, H, B.cz); }
   // a house has a plain drywall ceiling, no grid
   if (ceil && A.house) ceil.material = new THREE.MeshLambertMaterial({ color: 0xf4f2ee, emissive: 0xa9a7a3, side: THREE.DoubleSide });
@@ -1466,7 +1590,9 @@ function buildScene(THREE, plan, A) {
       if (!ownGrid) { g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, 0, w, 4); g.fillRect(0, 0, 4, h); g.fillStyle = '#f1f3f4'; g.fillRect(0, 0, w, 2.5); g.fillRect(0, 0, 2.5, h); }
     }));
     const tt = new THREE.CanvasTexture(topCanvas); tt.wrapS = tt.wrapT = THREE.RepeatWrapping; tt.anisotropy = ANISO;
-    ceiling.add(new THREE.Mesh(rectsGeometry(THREE, FP.rects, H + 0.004, false, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, sw), new THREE.MeshLambertMaterial({ map: tt, color: 0xd8d8d8 })));
+    const topMat = new THREE.MeshLambertMaterial({ map: tt, color: 0xd8d8d8 });
+    ceiling.add(new THREE.Mesh(rectsGeometry(THREE, subtractRects(FP.rects, CA), H + 0.004, false, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, sw), topMat));
+    for (const a of CA) ceiling.add(new THREE.Mesh(rectsGeometry(THREE, clipRects(FP.rects, a), a.h + 0.004, false, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, sw), topMat));
     // the tees: thin webs standing up along every grid line, only over the ceiling
     const lines = [];
     if (ownGrid) for (const q of ceilingLines(plan, A)) lines.push(q);
@@ -1482,8 +1608,9 @@ function buildScene(THREE, plan, A) {
       for (let x = CG.ox + Math.ceil((B.minX - CG.ox) / CG.cw) * CG.cw; x <= B.maxX; x += CG.cw) runs(x, B.minZ, B.maxZ, true);
       for (let z = CG.oz + Math.ceil((B.minZ - CG.oz) / CG.cl) * CG.cl; z <= B.maxZ; z += CG.cl) runs(z, B.minX, B.maxX, false);
     }
-    const tp = [], web = 0.014, y0 = H + 0.004, y1 = H + 0.14;
-    for (const q of lines) {
+    const tp = [], web = 0.014;
+    for (const q of [].concat(...lines.map(l => splitByAreas(l, CA, H)))) {
+      const y0 = q[4] + 0.004, y1 = q[4] + 0.14;
       const L = Math.hypot(q[2] - q[0], q[3] - q[1]); if (!(L > 0.05)) continue;
       const nx = -(q[3] - q[1]) / L * web, nz = (q[2] - q[0]) / L * web;
       for (const sd of [1, -1]) { const a = [q[0] + nx * sd, y0, q[1] + nz * sd], b = [q[2] + nx * sd, y0, q[3] + nz * sd], c = [q[2] + nx * sd, y1, q[3] + nz * sd], d = [q[0] + nx * sd, y1, q[1] + nz * sd]; tp.push(...a, ...b, ...c, ...a, ...c, ...d); }
@@ -1549,9 +1676,9 @@ function buildScene(THREE, plan, A) {
   curRef = null;
   if (ownGrid) {
     const tw = 0.078 / 2, pos = [];
-    for (const q of ceilingLines(plan, A)) {
+    for (const q of [].concat(...ceilingLines(plan, A).map(l => splitByAreas(l, CA, H)))) {
       const L = Math.hypot(q[2] - q[0], q[3] - q[1]); if (!(L > 0.01)) continue;
-      const nx = -(q[3] - q[1]) / L * tw, nz = (q[2] - q[0]) / L * tw, y = H - 0.012;
+      const nx = -(q[3] - q[1]) / L * tw, nz = (q[2] - q[0]) / L * tw, y = q[4] - 0.012;
       const a = [q[0] + nx, y, q[1] + nz], b = [q[2] + nx, y, q[3] + nz], c = [q[2] - nx, y, q[3] - nz], d = [q[0] - nx, y, q[1] - nz];
       pos.push(...a, ...c, ...b, ...a, ...d, ...c);
     }
@@ -1618,9 +1745,25 @@ function buildScene(THREE, plan, A) {
     const long = Math.max(f.w || 2, f.h || 4), nominal = '2x' + Math.max(2, Math.min(4, Math.round(long)));
     return FM.sizes.find(s => s.nominal === nominal) || FM.sizes.slice().sort((a, b) => Math.abs(a.w - long) - Math.abs(b.w - long))[0];
   };
-  for (const f of ceilingFixtures(plan, A)) {
+  // fixtures turned across the grid: the open half of their 4′ × 4′ block gets one plain 2′ × 4′ tile laid the same
+  // way (covering the cell line that ran there) and its T-grid, with the cross tee along the fixture's edge
+  const FXL = ceilingFixtures(plan, A), CGF = ceilingGrid(plan, A), FPc = footprint(A);
+  const tileMat = new THREE.MeshLambertMaterial({ color: 0xbfc2c2, emissive: 0x9a9c9c, side: THREE.DoubleSide }), teeMat = new THREE.MeshBasicMaterial({ color: 0xd0d6d9, side: THREE.DoubleSide });
+  for (const f of FXL) {
+    if (!fixtureTurned(f, CGF)) continue;
+    const o = turnedOpenHalf(f, CGF), cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2, hc = ceilingAt(CA, H, f.x, f.y);
+    if (FPc && !FPc.has(cx, cz)) continue;
+    if (FXL.some(q => q !== f && Math.abs(q.x - cx) < (q.w || 2) / 2 && Math.abs(q.y - cz) < (q.h || 4) / 2)) continue;
+    const tile = new THREE.Mesh(new THREE.PlaneGeometry(o.x1 - o.x0, o.z1 - o.z0), tileMat); tile.rotation.x = Math.PI / 2; tile.position.set(cx, hc - 0.004, cz); fixtures.add(tile);
+    const tw = 15 / 16 / 12;
+    for (const [x1, z1, x2, z2] of [[o.x0, o.z0, o.x1, o.z0], [o.x0, o.z1, o.x1, o.z1], [o.x0, o.z0, o.x0, o.z1], [o.x1, o.z0, o.x1, o.z1]]) {
+      const L = Math.hypot(x2 - x1, z2 - z1), t = new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(x2 - x1) > 0.01 ? L + tw : tw, Math.abs(z2 - z1) > 0.01 ? L + tw : tw), teeMat);
+      t.rotation.x = Math.PI / 2; t.position.set((x1 + x2) / 2, hc - 0.007, (z1 + z2) / 2); fixtures.add(t);
+    }
+  }
+  for (const f of FXL) {
     if (FM && f.type === 'ffu') {
-      const u = ffuUnit(ffuSize(f)); u.position.set(f.x, H, f.y);
+      const u = ffuUnit(ffuSize(f)); u.position.set(f.x, ceilingAt(CA, H, f.x, f.y), f.y);
       if ((f.w || 2) > (f.h || 4)) u.rotation.y = Math.PI / 2; // long side across the room
       if (f.id) u.traverse(o => { o.userData.ref = { kind: 'fixture', id: f.id }; });
       fixtures.add(u);
@@ -1628,13 +1771,13 @@ function buildScene(THREE, plan, A) {
     }
     let geo = fg;
     if (f.w > 0 && f.h > 0 && !(Math.abs(f.w - 2) < 0.06 && Math.abs(f.h - 4) < 0.06)) { const key = f.w.toFixed(2) + 'x' + f.h.toFixed(2); geo = fgs[key] || (fgs[key] = new THREE.BoxGeometry(Math.max(0.3, f.w - 0.1), 0.08, Math.max(0.3, f.h - 0.1))); }
-    const m = new THREE.Mesh(geo, f.type === 'ffu' ? ffu : led); m.position.set(f.x, H - 0.04, f.y);
+    const fh = ceilingAt(CA, H, f.x, f.y), m = new THREE.Mesh(geo, f.type === 'ffu' ? ffu : led); m.position.set(f.x, fh - 0.04, f.y);
     if (f.id) m.userData.ref = { kind: 'fixture', id: f.id };
     if (f.type !== 'ffu') m.userData.light = lightKey(f);
     fixtures.add(m);
     // its housing above the grid (seen in the Plenum view)
     const fw = Math.max(0.3, (f.w || 2) - 0.12), fd = Math.max(0.3, (f.h || 4) - 0.12), hh = f.type === 'ffu' ? 0.9 : 0.28;
-    const hs = new THREE.Mesh(new THREE.BoxGeometry(fw, hh, fd), f.type === 'ffu' ? M.white : housingMat); hs.position.set(f.x, H + 0.005 + hh / 2, f.y); outline(hs); fixtures.add(hs);
+    const hs = new THREE.Mesh(new THREE.BoxGeometry(fw, hh, fd), f.type === 'ffu' ? M.white : housingMat); hs.position.set(f.x, fh + 0.005 + hh / 2, f.y); outline(hs); fixtures.add(hs);
   }
   root.add(airflowArrows(THREE, plan, A));
   return { root, pick, floor, floors: [floor], ground, ceiling, lid, roof, ceilPlane: ceil || new THREE.Object3D(), fixtures, doors, doorObs };
@@ -1690,12 +1833,12 @@ function airflowArrows(THREE, plan, A) {
     a.position.set(x, y, z); a.quaternion.setFromUnitVectors(up, new THREE.Vector3(...dir).normalize());
     a.traverse(o => { o.renderOrder = 3; }); g.add(a);
   };
-  const H = A.H;
+  const H = A.H, CA = ceilAreas(plan, A);
   // down out of each FFU face: one arrow per 2′ of its long side
   for (const f of ceilingFixtures(plan, A)) {
     if (f.type !== 'ffu') continue;
     const w = f.w || 2, h = f.h || 4, n = Math.max(1, Math.round(Math.max(w, h) / 2)), alongZ = h >= w, len = Math.min(3.2, H * 0.4);
-    for (let i = 0; i < n; i++) { const o = (i - (n - 1) / 2) * 1.6; arrow(f.x + (alongZ ? 0 : o), H - 0.3, f.y + (alongZ ? o : 0), [0, -1, 0], len, 0.13, supply); }
+    for (let i = 0; i < n; i++) { const o = (i - (n - 1) / 2) * 1.6; arrow(f.x + (alongZ ? 0 : o), ceilingAt(CA, H, f.x, f.y) - 0.3, f.y + (alongZ ? o : 0), [0, -1, 0], len, 0.13, supply); }
   }
   // into each return grille, low on the chase face
   for (const b of A.boxes) {
@@ -2417,5 +2560,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);

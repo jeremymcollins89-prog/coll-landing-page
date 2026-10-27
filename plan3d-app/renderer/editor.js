@@ -51,7 +51,7 @@ const DEFAULT_W = { door: 3, door2: 6, glass: 4, open: 3, pass: 2, window: 3, ov
 // houses: 2′-8″ doors, 5′ pairs, 3′ windows, 6′-8″ heads
 const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2, overhead: 16 };
 const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass', 'overhead']);
-const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams' };
+const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas' };
 const COL = {
   bg: '#1a2024', gridMinor: 'rgba(255,255,255,.035)', gridMajor: 'rgba(255,255,255,.08)', axis: 'rgba(255,255,255,.14)',
   wall: '#e9eef0', wallLine: '#8e9aa1', sp: '#f2d06b', chase: '#59666d', chaseLine: '#b7c2c7', grille: '#9fdbe8',
@@ -101,6 +101,16 @@ class Editor {
     this._chk = V2 && V2.cleanroomCheck && (P.rooms || []).some(r => r.iso || (r.pressure != null && r.pressure !== '')) ? (() => { try { return V2.cleanroomCheck(P); } catch (e) { return null; } })() : null;
     return this._chk;
   }
+  /* turn an FFU or light a quarter turn in the grid: a 2 × 4 laid across the grid takes half of two cells side by
+     side, and the T-grid and tiles around it are worked out from that */
+  turnFixture(o) {
+    const V2 = global.Plan3DViewer; if (!V2) return;
+    const G = V2.ceilingGrid(this.plan), w = o.w || (G.swap ? 4 : 2), h = o.h || (G.swap ? 2 : 4);
+    if (Math.abs(w - h) < 0.1) { this.status('A square fixture looks the same turned.'); return; }
+    this.edit(() => { const q = V2.snapFixture({ x: o.x, y: o.y, w: h, h: w }, G); o.w = h; o.h = w; o.x = q.x; o.y = q.y; });
+    const turned = V2.fixtureTurned ? V2.fixtureTurned(o, G) : false;
+    this.status(turned ? 'Turned across the grid. The cross tee moves to its edge, and the rest of the two cells takes one 2′ × 4′ tile turned the same way.' : 'Back in line with the grid.');
+  }
   /* the ceiling lights (not FFUs) a switch can work, from the ceiling as laid out; worked out once per change */
   lights() {
     const V2 = global.Plan3DViewer;
@@ -142,14 +152,14 @@ class Editor {
   refPts(r) {
     const o = this.find(r); if (!o) return [];
     if (r.kind === 'wall' || r.kind === 'opening' || r.kind === 'beam') return [[o.x1, o.y1], [o.x2, o.y2]];
-    if (r.kind === 'chase') return [[o.x0, o.y0], [o.x1, o.y1]];
+    if (r.kind === 'chase' || r.kind === 'carea') return [[o.x0, o.y0], [o.x1, o.y1]];
     if (r.kind === 'insert') { const b = this.insBox(o); return [[b.x0, b.y0], [b.x1, b.y1]]; }
     return [[o.x, o.y]];
   }
   // a piece moved by (dx, dy) from its original copy O
   shiftRef(kind, o, O, dx, dy) {
     if (kind === 'wall' || kind === 'opening' || kind === 'beam') { o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy; }
-    else if (kind === 'chase') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
+    else if (kind === 'chase' || kind === 'carea') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
     else { o.x = O.x + dx; o.y = O.y + dy; }
   }
   isMulti(r) { return !!(this.multi && r && this.multi.some(m => m.kind === r.kind && m.id === r.id)); }
@@ -354,6 +364,12 @@ class Editor {
     if (V && V.itemCorners) for (let i = (P.items || []).length - 1; i >= 0; i--) { const c = V.itemCorners(P.items[i]); if (inPoly(x, y, c)) return { kind: 'item', id: P.items[i].id }; }
     for (let i = P.rooms.length - 1; i >= 0; i--) { const r = P.rooms[i]; if (Math.abs(x - r.x) < 50 / this.view.s && Math.abs(y - r.y) < 14 / this.view.s) return { kind: 'room', id: r.id }; }
     for (let i = P.chases.length - 1; i >= 0; i--) { const k = P.chases[i]; if (x >= Math.min(k.x0, k.x1) - tol && x <= Math.max(k.x0, k.x1) + tol && y >= Math.min(k.y0, k.y1) - tol && y <= Math.max(k.y0, k.y1) + tol) return { kind: 'chase', id: k.id }; }
+    for (let i = (P.ceilAreas || []).length - 1; i >= 0; i--) {
+      const k = P.ceilAreas[i], x0 = Math.min(k.x0, k.x1), x1 = Math.max(k.x0, k.x1), y0 = Math.min(k.y0, k.y1), y1 = Math.max(k.y0, k.y1);
+      const onLabel = x >= x0 && x <= x0 + 90 / this.view.s && y >= y0 && y <= y0 + 18 / this.view.s;
+      const onEdge = x >= x0 - tol && x <= x1 + tol && y >= y0 - tol && y <= y1 + tol && !(x > x0 + tol && x < x1 - tol && y > y0 + tol && y < y1 - tol);
+      if (onLabel || onEdge) return { kind: 'carea', id: k.id };
+    }
     const h = this.wallAt(x, y, 7); if (h) return { kind: 'wall', id: h.w.id };
     if (P.ceilingMode === 'manual' && this.showCeil !== false) for (let i = (P.fixtures || []).length - 1; i >= 0; i--) { const f = P.fixtures[i]; if (f.id && Math.abs(x - f.x) < (f.w || 2) / 2 && Math.abs(y - f.y) < (f.h || 4) / 2) return { kind: 'fixture', id: f.id }; }
     for (let i = (P.inserts || []).length - 1; i >= 0; i--) { const b = this.insBox(P.inserts[i]); if (x >= b.x0 - tol && x <= b.x1 + tol && y >= b.y0 - tol && y <= b.y1 + tol) return { kind: 'insert', id: P.inserts[i].id }; }
@@ -486,6 +502,10 @@ class Editor {
       const it = { id: uid(), type: q.type, x: q.x, y: q.y, a: q.a, w: q.w, d: q.d };
       this.edit(P => { (P.items = P.items || []).push(it); }); return;
     }
+    if (T === 'carea') {
+      const s = this.snap(p.x, p.y, null);
+      this.drag = { kind: 'carea', x0: s.x, y0: s.y, x1: s.x, y1: s.y }; this.c.setPointerCapture(e.pointerId); return;
+    }
     if (T === 'chase') {
       const s = this.snap(p.x, p.y, null);
       this.drag = { kind: 'chase', x0: s.x, y0: s.y, x1: s.x, y1: s.y }; this.c.setPointerCapture(e.pointerId); return;
@@ -573,7 +593,7 @@ class Editor {
         } else { const k = dx * ux + dy * uy; o.x1 = O.x1 + ux * k; o.y1 = O.y1 + uy * k; o.x2 = O.x2 + ux * k; o.y2 = O.y2 + uy * k; }
       } else if (D.sel.kind === 'beam') { o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy; }
       else if (D.sel.kind === 'fixture') { const V = global.Plan3DViewer, G = V.ceilingGrid(this.plan), q = V.snapFixture({ x: O.x + (p.x - D.sx), y: O.y + (p.y - D.sy), w: O.w || 2, h: O.h || 4 }, G); o.x = q.x; o.y = q.y; }
-      else if (D.sel.kind === 'chase') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
+      else if (D.sel.kind === 'chase' || D.sel.kind === 'carea') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
       else if (D.sel.kind === 'room') { o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy); }
       else if (D.sel.kind === 'column') { const g = this.snapIn / 12 || 1 / 12; o.x = Math.round((O.x + (p.x - D.sx)) / g) * g; o.y = Math.round((O.y + (p.y - D.sy)) / g) * g; }
       else if (D.sel.kind === 'device') {
@@ -595,7 +615,7 @@ class Editor {
       }
       this.emit('live'); this.render(); return;
     }
-    if (D && D.kind === 'chase') { const s = this.snap(p.x, p.y, null); D.x1 = s.x; D.y1 = s.y; this.render(); return; }
+    if (D && (D.kind === 'chase' || D.kind === 'carea')) { const s = this.snap(p.x, p.y, null); D.x1 = s.x; D.y1 = s.y; this.render(); return; }
     if (D && D.kind === 'run') {
       if (!D.moved && Math.hypot(p.px - D.px, p.py - D.py) < 5) return;
       D.moved = true; D.run = this.pieces.runAt(D.S, { x: p.x, y: p.y }); this.pieceGhost = D.run;
@@ -642,6 +662,17 @@ class Editor {
       const P = this.cursor || { x: D.S.x1, y: D.S.y1 };
       if (D.moved && D.run) this.pieces.placeRun(D.run); else this.pieces.place(D.S);
       this.pieceGhost = this.pieces.ghostAt({ x: P.x, y: P.y }); this.render();
+    }
+    else if (D.kind === 'carea') {
+      const x0 = Math.min(D.x0, D.x1), x1 = Math.max(D.x0, D.x1), y0 = Math.min(D.y0, D.y1), y1 = Math.max(D.y0, D.y1);
+      if (x1 - x0 > 1 && y1 - y0 > 1) {
+        // starts a foot above the room's ceiling when the plenum has room for it, otherwise a foot below
+        const V = global.Plan3DViewer, P = this.plan, H = P.ceiling || 8, PL = +P.plenum || 0;
+        const k = { id: uid(), x0, y0, x1, y1, ceiling: PL >= 1.5 ? H + 1 : Math.max(6, H - 1) };
+        this.edit(Q => (Q.ceilAreas = Q.ceilAreas || []).push(k)); this.sel = { kind: 'carea', id: k.id }; this.emit('select');
+        this.status('Ceiling area placed. Set its height on the right; bulkheads fill the step where it meets the rest of the ceiling.');
+      }
+      this.render();
     }
     else if (D.kind === 'chase') {
       const x0 = Math.min(D.x0, D.x1), x1 = Math.max(D.x0, D.x1), y0 = Math.min(D.y0, D.y1), y1 = Math.max(D.y0, D.y1);
@@ -700,6 +731,7 @@ class Editor {
       if (this.cursor) this.pieceGhost = this.pieces.ghostAt({ x: this.cursor.x, y: this.cursor.y });
       this.render(); return true;
     }
+    if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'fixture') { const o = this.selected(); if (o) this.turnFixture(o); return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.tool === 'item') { this.itemRot = ((this.itemRot || 0) + 1) % 4; this.render(); return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'item') { const o = this.selected(); if (o) this.edit(() => { o.a = (o.a || 0) + Math.PI / 2 * (e.shiftKey ? -1 : 1); }); return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'insert') { const o = this.selected(); if (o) this.edit(() => { o.rot = (((o.rot || 0) + (e.shiftKey ? 3 : 1)) % 4); }); return true; }
@@ -762,6 +794,14 @@ class Editor {
   drawContent(P) {
     const g = this.g, s = this.view.s, V = global.Plan3DViewer, KC = {};
     if (V && V.WALL_KINDS) for (const k in V.WALL_KINDS) KC[k] = V.WALL_KINDS[k].plan;
+    // ceiling areas: a dashed outline with the area's ceiling height
+    for (const k of P.ceilAreas || []) {
+      const X = this.sx(Math.min(k.x0, k.x1)), Y = this.sy(Math.min(k.y0, k.y1)), W = Math.abs(k.x1 - k.x0) * s, H = Math.abs(k.y1 - k.y0) * s;
+      g.save(); g.fillStyle = 'rgba(127,211,227,.07)'; g.fillRect(X, Y, W, H);
+      g.strokeStyle = 'rgba(127,211,227,.85)'; g.lineWidth = 1.4; g.setLineDash([8, 5]); g.strokeRect(X, Y, W, H); g.setLineDash([]);
+      g.font = '600 11px Consolas, monospace'; g.fillStyle = '#9fdbe8'; g.textAlign = 'left'; g.textBaseline = 'top';
+      g.fillText('CLG ' + (V && V.fmtFt ? V.fmtFt(+k.ceiling || P.ceiling || 8) : (k.ceiling || '')), X + 5, Y + 4); g.restore();
+    }
     // chases
     for (const k of P.chases) {
       const X = this.sx(Math.min(k.x0, k.x1)), Y = this.sy(Math.min(k.y0, k.y1)), W = Math.abs(k.x1 - k.x0) * s, H = Math.abs(k.y1 - k.y0) * s;
@@ -907,6 +947,19 @@ class Editor {
       g.font = '600 10px Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(Math.round(Math.abs(d.dp) * 10) / 10 + ' Pa', cx + (ey - by) / Math.hypot(ex - bx, ey - by) * 14, cy - (ex - bx) / Math.hypot(ex - bx, ey - by) * 14);
     }
+    // walls with height sections: a tick where the height changes, and each section's height while selected
+    for (const w of P.walls) {
+      if (!Array.isArray(w.sections) || !w.sections.length) continue;
+      const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 0.1) continue;
+      const ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, nx = -uy, ny = ux, t = Math.max(w.t || 0.25, 10 / s), isSel = this.sel && this.sel.kind === 'wall' && this.sel.id === w.id;
+      g.save(); g.strokeStyle = '#9fdbe8'; g.lineWidth = 2;
+      for (const q of w.sections) for (const v of [q.a, q.b]) { if (!(v > 0.01 && v < L - 0.01)) continue; const x = w.x1 + ux * v, y = w.y1 + uy * v; g.beginPath(); g.moveTo(this.sx(x + nx * t), this.sy(y + ny * t)); g.lineTo(this.sx(x - nx * t), this.sy(y - ny * t)); g.stroke(); }
+      if (isSel && V && V.fmtFt) {
+        g.font = '600 10px Consolas, monospace'; g.fillStyle = '#9fdbe8'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        for (const q of w.sections) { const m = (Math.min(q.a, q.b) + Math.max(q.a, q.b)) / 2; g.fillText('↕ ' + V.fmtFt(+q.h), this.sx(w.x1 + ux * m + nx * (t + 14 / s)), this.sy(w.y1 + uy * m + ny * (t + 14 / s))); }
+      }
+      g.restore();
+    }
     // light switches: while one is selected (or being linked, L), dashed lines run to the lights it works
     const swSel = this.linkSw ? (P.devices || []).find(d => d.id === this.linkSw) : (this.sel && this.sel.kind === 'device' ? this.selected() : null);
     if (swSel && swSel.type === 'switch' && V2 && V2.lightKey) {
@@ -986,7 +1039,7 @@ class Editor {
       g.strokeStyle = color; g.lineWidth = width;
       if (sel.kind === 'wall') { quad(o.x1, o.y1, o.x2, o.y2, Math.max(o.t || 0.25, 1.5 / s) + 4 / s); g.stroke(); }
       else if (sel.kind === 'opening') { quad(o.x1, o.y1, o.x2, o.y2, (o.t || 0.25) + 6 / s); g.stroke(); }
-      else if (sel.kind === 'chase') { g.strokeRect(this.sx(Math.min(o.x0, o.x1)) - 2, this.sy(Math.min(o.y0, o.y1)) - 2, Math.abs(o.x1 - o.x0) * s + 4, Math.abs(o.y1 - o.y0) * s + 4); }
+      else if (sel.kind === 'chase' || sel.kind === 'carea') { g.strokeRect(this.sx(Math.min(o.x0, o.x1)) - 2, this.sy(Math.min(o.y0, o.y1)) - 2, Math.abs(o.x1 - o.x0) * s + 4, Math.abs(o.y1 - o.y0) * s + 4); }
       else if (sel.kind === 'room') { g.strokeRect(this.sx(o.x) - 48, this.sy(o.y) - 14, 96, 28); }
       else if (sel.kind === 'column') { const r = (o.size || 0.67) / 2; g.strokeRect(this.sx(o.x - r) - 4, this.sy(o.y - r) - 4, 2 * r * s + 8, 2 * r * s + 8); }
       else if (sel.kind === 'device') { const r = Math.max(5, Math.min(9, this.view.s * 0.35)); g.beginPath(); g.arc(this.sx(o.x) + Math.cos(o.a || 0) * r * 1.1, this.sy(o.y) + Math.sin(o.a || 0) * r * 1.1, r + 4, 0, Math.PI * 2); g.stroke(); }
@@ -1024,7 +1077,7 @@ class Editor {
     }
     if (C && this.tool === 'elec' && global.Plan3DViewer) { const q = this.devicePlace(C.x, C.y, this.deviceType || 'outlet'); if (q) this.drawDevice(q, true); }
     if (C && this.tool === 'item' && global.Plan3DViewer) { const q = this.itemPlace(C.x, C.y, this.itemType); if (q) this.drawItem(q, true); }
-    if (this.drag && this.drag.kind === 'chase') {
+    if (this.drag && (this.drag.kind === 'chase' || this.drag.kind === 'carea')) {
       const D = this.drag; g.fillStyle = 'rgba(242,200,75,.25)'; g.strokeStyle = COL.draft; g.lineWidth = 1.5;
       const X = this.sx(Math.min(D.x0, D.x1)), Y = this.sy(Math.min(D.y0, D.y1)), W = Math.abs(D.x1 - D.x0) * s, H = Math.abs(D.y1 - D.y0) * s;
       g.fillRect(X, Y, W, H); g.strokeRect(X, Y, W, H);

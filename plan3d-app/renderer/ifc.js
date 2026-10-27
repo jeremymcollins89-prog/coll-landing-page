@@ -397,11 +397,11 @@ function toIfc(plan, opts) {
       put('IFCWALL', KIND_NAME(p.kind), 'House wall', shape(parts), ',.STANDARD.', S.wood); continue;
     }
     if (!p.hard) { put('IFCWALL', KIND_NAME(p.kind), 'Building wall', shape([seg(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, S[p.kind] || S.concrete)]), ',.STANDARD.', S[p.kind] || S.concrete); continue; }
-    const ux = (p.x2 - p.x1) / (p.len || 1), uz = (p.z2 - p.z1) / (p.len || 1), parts = [seg(p.x1, p.z1, p.x2, p.z2, 0, WH, p.t, p.sp ? S.sp : S.white), ...trim(p.x1, p.z1, p.x2, p.z2, p.t, true)];
+    const ux = (p.x2 - p.x1) / (p.len || 1), uz = (p.z2 - p.z1) / (p.len || 1), parts = [seg(p.x1, p.z1, p.x2, p.z2, 0, p.h || WH, p.t, p.sp ? S.sp : S.white), ...trim(p.x1, p.z1, p.x2, p.z2, p.t, true)];
     for (let m = Math.floor(p.s0 / 4 + 1e-6) * 4 + 4; m < p.s0 + p.len - 0.2; m += 4) {
       if (m - p.s0 < 0.2) continue;
       const k = m - p.s0, a = [p.x1 + ux * (k - 0.125), p.z1 + uz * (k - 0.125)], b = [p.x1 + ux * (k + 0.125), p.z1 + uz * (k + 0.125)];
-      parts.push(seg(a[0], a[1], b[0], b[1], 0.333, WH > H ? WH : H - 0.17, p.t + 0.012, S.batten));
+      parts.push(seg(a[0], a[1], b[0], b[1], 0.333, (p.h || WH) > H ? (p.h || WH) : (p.h || WH) - 0.17, p.t + 0.012, S.batten));
     }
     put('IFCWALL', p.sp ? 'S.P. panel wall' : 'Modular wall panel', 'Coll hardwall cleanroom wall', shape(parts), ',.STANDARD.', p.sp ? S.sp : S.white);
   }
@@ -409,11 +409,15 @@ function toIfc(plan, opts) {
   for (const q of A.transitions || []) {
     put('IFCWALL', 'Transition panel, ' + V.fmtFt(q.y0) + ' to ' + V.fmtFt(q.y1), 'Coll hardwall bulkhead over an opening into a lower ceiling area', shape([seg(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, S.white), seg(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, S.white), ...(H - q.y0 > 0.25 ? [seg(q.x1, q.z1, q.x2, q.z2, H - 0.17, H, q.t + 0.03, S.track)] : [])]), ',.STANDARD.', S.white);
   }
+  // bulkheads where a ceiling area steps up or down across open ceiling
+  for (const q of V.areaBulkheads ? V.areaBulkheads(plan, A) : []) {
+    put('IFCWALL', 'Bulkhead panel, ' + V.fmtFt(q.y0) + ' to ' + V.fmtFt(q.y1), 'Coll hardwall bulkhead at a ceiling height change', shape([seg(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, S.white)]), ',.STANDARD.', S.white);
+  }
   // posts: corners (4″ × 4″, L-shaped and flush) and free wall ends
   for (const c of A.corners) {
     const O = [c.x, c.z], Pt = (u, v, du, dv) => [O[0] + u[0] * du + v[0] * dv, O[1] + u[1] * du + v[1] * dv];
     const pts = [Pt(c.a, c.b, 0, 0), Pt(c.a, c.b, c.size, 0), Pt(c.a, c.b, c.size, c.wt), Pt(c.a, c.b, c.wt, c.wt), Pt(c.b, c.a, c.size, c.wt), Pt(c.b, c.a, c.size, 0)];
-    const parts = [solid(pts, 0, WH, S.white)];
+    const parts = [solid(pts, 0, c.h || WH, S.white)];
     for (const [u, v] of [[c.a, c.b], [c.b, c.a]]) { const x1 = c.x + v[0] * c.wt / 2, z1 = c.z + v[1] * c.wt / 2; parts.push(...trim(x1, z1, x1 + u[0] * c.size, z1 + u[1] * c.size, c.wt, true)); }
     put('IFCCOLUMN', 'Corner post 4x4', 'Coll corner post', shape(parts), ',.COLUMN.', S.white);
   }
@@ -421,7 +425,7 @@ function toIfc(plan, opts) {
   for (const e of A.ends) {
     if (e.cut || e.joined || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue; seen.push(e);
     const h = e.t / 2, g = h + 0.011;
-    put('IFCCOLUMN', 'End post', 'Coll wall post', shape([box(e.x - h, e.z - h, e.x + h, e.z + h, 0, WH, S.white), box(e.x - g, e.z - g, e.x + g, e.z + g, 0, 0.333, S.base)]), ',.COLUMN.', S.white);
+    put('IFCCOLUMN', 'End post', 'Coll wall post', shape([box(e.x - h, e.z - h, e.x + h, e.z + h, 0, e.h || WH, S.white), box(e.x - g, e.z - g, e.x + g, e.z + g, 0, 0.333, S.base)]), ',.COLUMN.', S.white);
   }
   // openings: the door / glass / pass-thru, with wall above (and below glass)
   for (const i of A.opInfo) {

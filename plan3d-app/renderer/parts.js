@@ -177,7 +177,7 @@ function partsList(plan) {
     let n = 0;
     for (let i = 0; i + 1 < cuts.length; i++) {
       const L = cuts[i + 1] - cuts[i]; if (L < 1 / 12) continue;
-      add('Wall panels', p.sp ? 'S.P. panel' : 'Wall panel', (Math.abs(L - 4) < 1 / 96 ? '48″' : inch(L)) + hgt, 1, 'ea', 10); n++;
+      add('Wall panels', p.sp ? 'S.P. panel' : 'Wall panel', (Math.abs(L - 4) < 1 / 96 ? '48″' : inch(L)) + ' × ' + ftin(p.h || WH), 1, 'ea', 10); n++;
     }
     hStuds += Math.max(0, n - 1);
   }
@@ -194,6 +194,20 @@ function partsList(plan) {
     // this area's grid on the other); hanger wire/rod to the structure over the opening
     add('Trim', 'Closure channel, bottom of transition panels', ftin(q.len), Math.ceil(q.len), 'lin ft', 53);
     tranTrack += q.len * (H - q.y0 > 0.25 ? 2 : 1);
+  }
+
+  // Wall height sections: an end cap where a wall steps, a top cap on any section not at the cleanroom's top
+  for (const st of A.steps || []) add('Studs & posts', 'Step end cap (where a wall changes height)', ftin(st.y1 - st.y0), 1, 'ea', 25);
+  let capFt = 0; for (const p of A.pieces) if (p.hard && Math.abs((p.h || WH) - WH) > 0.02) capFt += p.len;
+  if (capFt) add('Trim', 'Top cap, closure channel (wall sections not at the cleanroom top)', '', Math.ceil(capFt), 'lin ft', 54);
+  // Ceiling areas: bulkhead panels on the 48″ module where the ceiling steps across open ceiling
+  for (const q of V.areaBulkheads ? V.areaBulkheads(plan, A) : []) {
+    const cuts = [0]; for (let m = 4; m < q.len - 1e-6; m += 4) cuts.push(m); cuts.push(q.len);
+    let n = 0;
+    for (let i = 0; i + 1 < cuts.length; i++) { const L = cuts[i + 1] - cuts[i]; if (L < 1 / 12) continue; add('Wall panels', 'Bulkhead panel (ceiling height change)', (Math.abs(L - 4) < 1 / 96 ? '48″' : inch(L)) + ' × ' + ftin(q.y1 - q.y0), 1, 'ea', 12); n++; }
+    if (n > 1) add('Studs & posts', 'H-stud, 3″ with insert (bulkhead panels)', '3″ × ' + ftin(q.y1 - q.y0), n - 1, 'ea', 20);
+    add('Trim', 'Closure channel, bottom of bulkhead panels', '', Math.ceil(q.len), 'lin ft', 53);
+    tranTrack += q.len * 2;
   }
 
   // --- Joints: H-studs, corner posts, T-posts, end caps (from how wall ends meet).
