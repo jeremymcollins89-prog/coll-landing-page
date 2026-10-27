@@ -2755,7 +2755,11 @@ function buildScene(THREE, plan, A) {
     const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO;
     tex.repeat.set(p.len / 4, 1); tex.offset.set(((p.s0 % 4) + 4) % 4 / 4, 0);
     const face = new THREE.MeshPhongMaterial({ map: tex, color: p.sp ? 0xf6dc80 : 0xffffff, emissive: p.sp ? 0x000000 : 0x141515, specular: 0x1c1c1c, shininess: 16 });
-    const m = segBox(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, [M.edge, M.edge, M.edge, M.edge, face, face]);
+    // the other face runs its texture the other way along the wall: offset it so its seams land on the same
+    // 48″ module (from the wall's start) as this face's, where the panels really join
+    const tex2 = tex.clone(); tex2.offset.set(((-(p.len + p.s0) % 4) + 4) % 4 / 4, 0); tex2.needsUpdate = true;
+    const face2 = face.clone(); face2.map = tex2;
+    const m = segBox(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, [M.edge, M.edge, M.edge, M.edge, face, face2]);
     outline(m); pick.push(m);
     segBox(p.x1, p.z1, p.x2, p.z2, 0, 0.333, p.t + 0.022, M.base);
     // the ceiling track: on the side with the ceiling (the room side), not across the outside face, which is one
