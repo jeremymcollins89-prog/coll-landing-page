@@ -358,8 +358,15 @@ function partsList(plan) {
       add('Ceiling', `Ceiling tiles to order, 2′ × 4′ (${TT.full} full + ${TT.cutStock} for ${TT.cutPcs} cut${TT.cutPcs === 1 ? '' : 's'}, two small cuts from one tile where they fit, +5% spare)`, '2′ × 4′', Math.ceil((TT.full + TT.cutStock) * 1.05), 'ea', 62.2);
     } else add('Ceiling', 'Ceiling tile, 2×4 (approx.)', '2′ × 4′', tiles, 'ea', 62);
     const DKs = V.deckShapes ? V.deckShapes(plan) : [];
-    if (DKs.length) add('Ceiling', 'Steel roof deck / lid, from the deck drawing (' + DKs.length + ' piece' + (DKs.length === 1 ? '' : 's') + ')', 'sits on ' + ftin(Math.max(...DKs.map(d => V.deckBase ? V.deckBase(plan, A, d, A.WH) : A.WH))), Math.ceil(DKs.reduce((t, d) => t + d.area, 0)), 'sq ft', 67);
-    else if (A.PL > 0) add('Ceiling', 'Plenum lid (top of the cleanroom)', ftin(A.PL) + ' plenum above the grid, top at ' + ftin(A.WH), Math.ceil(area), 'sq ft', 67);
+    if (DKs.length) add('Ceiling', 'Steel roof deck / lid, from the deck drawing (' + DKs.length + ' piece' + (DKs.length === 1 ? '' : 's') + ')', 'sits on the walls, highest at ' + ftin(Math.max(...DKs.map(d => V.deckBase ? V.deckBase(plan, A, d, A.WH) : A.WH))), Math.ceil(DKs.reduce((t, d) => t + d.area, 0)), 'sq ft', 67);
+    if (DKs.length && V.deckSteps) {
+      // the steps in the lid: wall panels by height, with a closure channel along the bottom and a cap on top
+      const byH = new Map(); let ch = 0;
+      for (const q of V.deckSteps(plan, A, A.WH)) { if (q.y1 - q.y0 < 0.05) continue; const k = Math.ceil((q.y1 - q.y0) * 12 - 1e-6); byH.set(k, (byH.get(k) || 0) + Math.ceil(q.len / 4 - 1e-6)); ch += 2 * q.len; }
+      for (const [k, n] of [...byH.entries()].sort((a, b) => b[0] - a[0])) add('Ceiling', 'Wall panel, lid step (H-mold joints)', '4′ × ' + ftin(k / 12), n, 'ea', 67.1);
+      if (ch > 0) add('Ceiling', 'Lid step closure channel and cap', '', Math.ceil(ch * 1.05), 'lin ft', 67.2);
+    }
+    if (!DKs.length && A.PL > 0) add('Ceiling', 'Plenum lid (top of the cleanroom)', ftin(A.PL) + ' plenum above the grid, top at ' + ftin(A.WH), Math.ceil(area), 'sq ft', 67);
     if (!(plan.ceilingGrid && plan.ceilingGrid.length)) {
       add('Ceiling', 'Ceiling grid (area, approx.)', '', Math.ceil(area), 'sq ft', 63);
       // tee takeoff from the grid as laid out

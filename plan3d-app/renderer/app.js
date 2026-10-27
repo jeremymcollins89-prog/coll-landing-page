@@ -272,7 +272,7 @@ function renderProps(opt) {
   const box = $('#props'), P = ed.plan, s = ed.sel, o = ed.selected();
   let h = '';
   if (ed.multi && ed.multi.length > 1) {
-    const M = ed.multi, cnt = {}, NAMES = { deck: 'lid piece', tile: 'ceiling tile', wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', gzone: 'grid section', fixture: 'FFUs and lights' };
+    const M = ed.multi, cnt = {}, NAMES = { lstep: 'lid step panel run', deck: 'lid piece', tile: 'ceiling tile', wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', gzone: 'grid section', fixture: 'FFUs and lights' };
     M.forEach(r => { cnt[r.kind] = (cnt[r.kind] || 0) + 1; });
     const grouped = M.every(r => { const x = ed.find(r); return x && x.gid && x.gid === ed.find(M[0]).gid; });
     box.innerHTML = `<div class="hd"><span class="kind">${M.length} pieces selected${grouped ? ' (a group)' : ''}</span><button class="btn small danger" id="mDel">Delete</button></div>
@@ -446,6 +446,15 @@ function renderProps(opt) {
     bindLen('pCaH', 'ft', v => ed.edit(() => { o.ceiling = Math.max(6, Math.min(40, v)); }));
     $('#pCaR').onchange = (e) => { ed.edit(() => { if (e.target.checked) o.raise = true; else delete o.raise; }); renderProps(); };
     $('#pDel').onclick = () => ed.deleteSel();
+    return;
+  }
+  if (s && o && s.kind === 'lstep') {
+    const An = Plan3DViewer.analyze(P), q = Plan3DViewer.deckSteps(P, An, An.WH).find(t => t.id === o.id), L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1);
+    box.innerHTML = `<div class="hd"><span class="kind">Lid step panels</span><button class="btn small danger" id="pDel">Delete</button></div>
+      <div class="grp"><div class="stats"><span>Length</span><span>${fmt(L)}</span><span>Panels</span><span>${Math.ceil(L / 4 - 1e-6)} × 4′ wide</span><span>Height</span><span>${q ? fmt(q.y0) + ' to ' + fmt(q.y1) + ' (' + fmt(q.y1 - q.y0) + ')' : '—'}</span></div></div>
+      <div class="row"><button class="btn small" id="pStepTool">Draw more</button></div>
+      <p class="note">Wall panels standing on the lower lid up to the higher one (H-mold at each 4′ joint). Where the lid is the same height both sides, they close the plenum from the ceiling up to the lid. Drag to move; its ends catch on wall ends and lid corners.</p>`;
+    $('#pDel').onclick = () => ed.deleteSel(); $('#pStepTool').onclick = () => stepPanelTool();
     return;
   }
   if (s && o && s.kind === 'deck') {
@@ -1168,13 +1177,22 @@ function joinDeckPieces(L) {
   }
   return out;
 }
+function stepPanelTool() {
+  if (view === '3d' || view === 'build') setView('split');
+  ed.setTool('lstep');
+  const n = (ed.autoSteps || []).length;
+  ed.status((n ? `Step panels: the dotted blue lines are the ${n} step${n === 1 ? '' : 's'} already filled automatically. ` : 'Step panels: ') + 'Click one end and then the other to add a run of wall panels (ends catch on wall ends and lid corners). Esc when done.');
+}
 async function lidMenu() {
   const P = ed.plan, D = P.deckPieces || [];
   if (!D.length) { importDeck(); return; }
-  const a = await dialogOpen({ title: 'Lid', body: `<p>The lid over the cleanroom is ${D.length} piece${D.length === 1 ? '' : 's'} from <b>${esc(P.deckSource || 'a deck drawing')}</b>. On the plan each piece is a dashed violet outline: drag it by its outline or its LID label (its corners catch on wall ends), R turns it, Delete removes it.</p><p class="note">In 3D the <b>Lid</b> button turns the lid on in every view, Dollhouse too, or back off.</p>`,
-    buttons: [{ label: 'Remove the lid drawing', danger: true, ret: 'remove' }, { label: 'Use another drawing', ret: 'new' }, { label: 'OK', primary: true, ret: null }] });
-  if (a === 'remove') { ed.edit(Q => { delete Q.deckPieces; delete Q.deckSource; }); toast('Lid drawing removed. The cleanroom gets its own lid over the plenum again.'); queue3D(); }
+  const An = Plan3DViewer.analyze(P), steps = Plan3DViewer.deckSteps(P, An, An.WH), auto = steps.filter(q => q.auto), stepFt = steps.reduce((t, q) => t + q.len, 0);
+  const a = await dialogOpen({ title: 'Lid', body: `<p>The lid over the cleanroom is ${D.length} piece${D.length === 1 ? '' : 's'} from <b>${esc(P.deckSource || 'a deck drawing')}</b>. On the plan each piece is a dashed violet outline: drag it by its outline or its LID label (its corners catch on wall ends), R turns it, Delete removes it.</p>
+    <p>Where the lid steps up and no wall reaches the higher part, <b>wall panels</b> close the step (H-mold at each 4′ joint): ${auto.length ? `${auto.length} run${auto.length === 1 ? '' : 's'} found automatically` : 'none needed automatically'}${(P.lidSteps || []).length ? `, ${(P.lidSteps || []).length} drawn by hand` : ''}${stepFt ? `, ${Math.ceil(stepFt)} ft in all` : ''}. Use <b>Step panels</b> to add more.</p><p class="note">In 3D the <b>Lid</b> button turns the lid on in every view, Dollhouse too, or back off.</p>`,
+    buttons: [{ label: 'Remove the lid drawing', danger: true, ret: 'remove' }, { label: 'Use another drawing', ret: 'new' }, { label: 'Step panels', ret: 'step' }, { label: 'OK', primary: true, ret: null }] });
+  if (a === 'remove') { ed.edit(Q => { delete Q.deckPieces; delete Q.deckSource; delete Q.lidSteps; }); toast('Lid drawing removed. The cleanroom gets its own lid over the plenum again.'); queue3D(); }
   if (a === 'new') importDeck();
+  if (a === 'step') stepPanelTool();
 }
 async function importDeck() {
   const r = await api.openFile('ceiling'); if (!r) return;
