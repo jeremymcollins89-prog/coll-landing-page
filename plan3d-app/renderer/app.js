@@ -623,8 +623,21 @@ function renderProps(opt) {
     <kbd>Alt</kbd><span>Free angle while drawing</span><kbd>F1 F2 F3</kbd><span>Plan / split / 3D</span></div></div>`;
   box.innerHTML = h;
   $('#pPName').onchange = e => ed.edit(Pl => { Pl.name = e.target.value.trim() || 'Untitled plan'; });
-  bindLen('pCeil', 'ft', v => ed.edit(Pl => { Pl.ceiling = Math.max(6, Math.min(30, v)); }));
-  bindLen('pPlen', 'ft', v => ed.edit(Pl => { Pl.plenum = Math.max(0, Math.min(20, v)); }));
+  // the project's ceiling height or plenum: for the whole project, every placed building and every room
+  // label that had its own value too (so "a 3′ plenum" means all the walls)
+  const allLevels = (key, v, lo, hi, what) => {
+    const val = Math.max(lo, Math.min(hi, v)); let nb = 0, nr = 0;
+    ed.edit(Pl => {
+      const old = key === 'plenum' ? +Pl.plenum || 0 : Pl.ceiling || 8; Pl[key] = val;
+      for (const r of Pl.rooms || []) if (key === 'plenum' ? r.plenum != null && r.plenum !== '' && +r.plenum !== val : r.ceiling > 0 && r.ceiling !== val) { if (key === 'plenum') r.plenum = val; else r.ceiling = val; nr++; }
+      for (const ins of Pl.inserts || []) if (ins.plan) { const cur = key === 'plenum' ? +ins.plan.plenum || 0 : ins.plan.ceiling || 8; if (cur !== val) { ins.plan[key] = val; nb++; } for (const r of ins.plan.rooms || []) if (key === 'plenum' ? r.plenum != null && r.plenum !== '' : r.ceiling > 0) { if (key === 'plenum') r.plenum = val; else r.ceiling = val; nr++; } }
+      void old;
+    });
+    if (nb || nr) toast(`${what} set to ${fmt(val)} for the whole project${nb ? `, including ${nb} placed building${nb === 1 ? '' : 's'}` : ''}${nr ? `${nb ? ' and' : ', including'} ${nr} room${nr === 1 ? '' : 's'} that had ${nr === 1 ? 'its' : 'their'} own` : ''}. Set one room's or building's own on its label or panel.`);
+    renderProps(); queue3D();
+  };
+  bindLen('pCeil', 'ft', v => allLevels('ceiling', v, 6, 30, 'Ceiling'));
+  bindLen('pPlen', 'ft', v => allLevels('plenum', v, 0, 20, 'Plenum'));
   if ($('#pRoof')) $('#pRoof').onchange = e => ed.edit(Pl => { Pl.roof = Object.assign({ pitch: 6, overhang: 1 }, Pl.roof || {}, { type: e.target.value }); });
   if ($('#pPitch')) $('#pPitch').onchange = e => { const v = parseFloat(e.target.value); if (v >= 0 && v <= 24) ed.edit(Pl => { Pl.roof.pitch = v; }); };
   bindLen('pOver', 'ft', v => ed.edit(Pl => { Pl.roof.overhang = Math.max(0, Math.min(4, v)); }));
