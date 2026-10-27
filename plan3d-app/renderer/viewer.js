@@ -947,27 +947,44 @@ function ceilingLines(plan, A) {
   const i0 = Math.floor((B.minX - G.ox) / cw) - 1, i1 = Math.ceil((B.maxX - G.ox) / cw) + 1;
   const j0 = Math.floor((B.minZ - G.oz) / cl) - 1, j1 = Math.ceil((B.maxZ - G.oz) / cl) + 1;
   const X = (i) => G.ox + i * cw, Z = (j) => G.oz + j * cl;
-  // a cell the drawing already covers: at least three of its four sides drawn
+  // the areas the drawing covers: each patch of grid it draws (lines that touch or cross), as a box. A drawing
+  // can hold several patches laid out on their own lines (a room each, turned or shifted); the grid is only
+  // carried on where none of them reaches, so it never runs a second set of tees over a patch
+  const patches = [];
+  if (own) {
+    const n = own.length, par = own.map((_, i) => i), find = (i) => (par[i] === i ? i : (par[i] = find(par[i]))), bx = own.map(q => [Math.min(q[0], q[2]) - 0.3, Math.min(q[1], q[3]) - 0.3, Math.max(q[0], q[2]) + 0.3, Math.max(q[1], q[3]) + 0.3]);
+    const ord = bx.map((_, i) => i).sort((a, b) => bx[a][0] - bx[b][0]);
+    for (let a = 0; a < n; a++) { const p = bx[ord[a]]; for (let b = a + 1; b < n; b++) { const q = bx[ord[b]]; if (q[0] > p[2]) break; if (q[1] <= p[3] && q[3] >= p[1]) par[find(ord[a])] = find(ord[b]); } }
+    const m = new Map(); own.forEach((q, i) => { const r = find(i), b0 = m.get(r) || [1e9, 1e9, -1e9, -1e9, 0]; b0[0] = Math.min(b0[0], q[0], q[2]); b0[1] = Math.min(b0[1], q[1], q[3]); b0[2] = Math.max(b0[2], q[0], q[2]); b0[3] = Math.max(b0[3], q[1], q[3]); b0[4]++; m.set(r, b0); });
+    for (const b0 of m.values()) if (b0[4] >= 3 && b0[2] - b0[0] > 1 && b0[3] - b0[1] > 1) patches.push(b0);
+  }
+  const inPatch = (x, z, e) => patches.some(p => x > p[0] - e && x < p[2] + e && z > p[1] - e && z < p[3] + e);
+  // a cell the drawing already covers: inside one of its patches, or at least three of its four sides drawn
   const covered = (i, j) => {
     if (!own) return false;
     const xm = X(i) + cw / 2, zm = Z(j) + cl / 2;
+    if ([[.5, .5], [.15, .15], [.85, .15], [.15, .85], [.85, .85]].some(([a, b]) => inPatch(X(i) + a * cw, Z(j) + b * cl, 0.25))) return true;
     return (vDrawn(X(i), zm) + vDrawn(X(i + 1), zm) + hDrawn(Z(j), xm) + hDrawn(Z(j + 1), xm)) >= 3;
   };
-  const inCell = (i, j) => { const s = [[.5, .5], [.1, .1], [.9, .1], [.1, .9], [.9, .9], [.5, .1], [.5, .9], [.1, .5], [.9, .5]]; return s.some(([a, b]) => FP.has(X(i) + a * cw, Z(j) + b * cl)); };
+  const inCell = (i, j) => { const s = [[.5, .5], [.1, .1], [.9, .1], [.1, .9], [.9, .9], [.5, .1], [.5, .9], [.1, .5], [.9, .5]]; return s.filter(([a, b]) => FP.has(X(i) + a * cw, Z(j) + b * cl)).length >= 2; };
   const step = Math.min(0.25, FP.cell / 2);
   // one edge, clipped to where there is ceiling under it
-  const edge = (x1, z1, x2, z2) => {
+  const edge = (x1, z1, x2, z2, F) => {
+    F = F || FP;
     const L = Math.hypot(x2 - x1, z2 - z1), n = Math.max(1, Math.round(L / step)); let st = null;
     for (let k = 0; k <= n; k++) {
-      const t = k / n, x = x1 + (x2 - x1) * t, z = z1 + (z2 - z1) * t, ins = FP.has(x, z);
+      const t = k / n, x = x1 + (x2 - x1) * t, z = z1 + (z2 - z1) * t, ins = F.has(x, z);
       if (ins && st === null) st = t;
       if ((!ins || k === n) && st !== null) { const e = ins ? t : (k - 1) / n; if ((e - st) * L > 0.3) out.push([x1 + (x2 - x1) * st, z1 + (z2 - z1) * st, x1 + (x2 - x1) * e, z1 + (z2 - z1) * e]); st = null; }
     }
   };
   // the drawing's own lines, trimmed to the ceiling (a drawing bigger than the room, or set off to one side,
   // doesn't hang past the walls)
+  // (trimmed to the building, not just the closed-in cleanroom: a hall or a room left open in the plan still
+  // keeps the grid drawn over it)
   out.length = 0;
-  for (const q of own || []) edge(q[0], q[1], q[2], q[3]);
+  const FPd = own ? footprint(A, true) || FP : FP;
+  for (const q of own || []) edge(q[0], q[1], q[2], q[3], FPd);
   const need = new Set();
   for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) if (inCell(i, j) && !covered(i, j)) need.add(i + ',' + j);
   const done = new Set();
@@ -977,6 +994,8 @@ function ceilingLines(plan, A) {
     for (const [t, a, b, x1, z1, x2, z2] of sides) {
       const k = t + a + ',' + b; if (done.has(k)) continue; done.add(k);
       if (t === 'v' ? vDrawn(x1, (z1 + z2) / 2) : hDrawn(z1, (x1 + x2) / 2)) continue;
+      // a side running along or into a patch: the patch's own edge tee is already there
+      if (inPatch((x1 + x2) / 2, (z1 + z2) / 2, 0.15)) continue;
       edge(x1, z1, x2, z2);
     }
   }

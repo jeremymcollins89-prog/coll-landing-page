@@ -797,6 +797,7 @@ async function openCadProject(r) {
   }
   const p = got.plan;
   if (!p.name) p.name = r.name;
+  if (adoptImported(p)) return;
   projectPath = null; ed.setPlan(p); ed.dirty = true; hideBanner(); updateChrome();
   if (view !== '2d' && viewer) viewer.loadPlan(clonePlan());
   toast('Opened ' + (p.name || r.name) + ' from the ' + (/\.dwg$/i.test(r.path || '') ? 'DWG' : 'DXF') + '. Save it as a project to keep working.');
@@ -1092,6 +1093,7 @@ function ifcDialog(data) {
     if (a === 'saved') p = saved;
     else { if (!res) return; p = res.plan; }
     if (!p.name) p.name = data.name;
+    if (adoptImported(p)) return;
     projectPath = null; ed.setPlan(p); ed.dirty = true; hideBanner(); updateChrome();
     if (view === '2d') setView('split'); else if (viewer) viewer.loadPlan(clonePlan());
     toast(a === 'saved' ? 'Opened ' + p.name + ' from the IFC.' : `Imported ${p.walls.length} walls and ${p.openings.length} doors and windows from ${data.name}. Edit anything, then Save.`);
@@ -1350,6 +1352,7 @@ function dxfDialog(data, preset) {
     const p = Editor.blank(); p.name = data.name; p.walls = walls; p.openings = ops.openings; p.wallT = o.mode === 'single' ? o.tFt : 0.25;
     const extra = o.extras && walls.length ? sheetExtrasToPlan(data, o, walls, bld, p) : null;
     if (walls.length) { const t = walls.map(w => w.t).sort((a, b) => a - b); p.wallT = t[t.length >> 1]; }
+    if (adoptImported(p, extra && extra.text)) return;
     projectPath = null; ed.setPlan(p); ed.dirty = true; updateChrome();
     const f = ops.found, parts = [];
     if (f.door) parts.push(f.door + ' door' + (f.door > 1 ? 's' : '')); if (f.door2) parts.push(f.door2 + ' pair' + (f.door2 > 1 ? 's' : '') + ' of doors');
@@ -1691,6 +1694,7 @@ async function handleLoaded(r) {
   }
   if (r.kind === 'project') {
     let p; try { p = JSON.parse(r.json); } catch (e) { toast('That project file is damaged.'); return; }
+    if (adoptImported(p)) return;
     projectPath = r.path; modePicked = true; ed.setPlan(p); hideBanner(); updateChrome(); if (view !== '2d' && viewer) viewer.loadPlan(clonePlan());
     toast('Opened ' + (p.name || r.name)); return;
   }
@@ -1709,13 +1713,56 @@ async function handleLoaded(r) {
     im.src = r.dataUrl;
   }
 }
+/* Import: into a new project, or (when this one already has a plan) added to it, so several buildings or
+   drawings can be put together in one project */
+let addMode = false;
 async function importPlan() {
   if (!api.openFile) return;
+  addMode = false;
+  const P = ed.plan, has = (P.walls || []).length || (P.inserts || []).length;
+  if (has) {
+    const a = await dialogOpen({ title: 'Import', body: `<p>This project already has a plan in it. <b>Add</b> the file to it (another building, or more of the drawing to put together with what's here), or <b>replace</b> what's here with it?</p><p class="note">Added files come in at the middle of the screen as a group you drag into place. A Coll Plan3D project, DWG, DXF or Revit IFC can be added.</p>`, buttons: [{ label: 'Cancel', ret: null }, { label: 'Replace this plan', ret: 'new' }, { label: 'Add it to this project', primary: true, ret: 'add' }] });
+    if (!a) return;
+    if (a === 'add') { const r = await api.openFile('plan'); if (!r) return; if (r.kind === 'image') { toast('A picture can\'t be added to a project: import it on its own, or trace it into walls first.'); return; } addMode = true; handleLoaded(r); return; }
+  }
   if (!(await guardUnsaved())) return;
   handleLoaded(await api.openFile('plan'));
 }
+// a plan read from a file while adding: put it in this project instead of replacing it. Asks how: as a building
+// (moved and turned as one, its parts listed on their own) or as loose pieces (grouped, to drag into place and
+// then join to what's here). Returns true when it took the plan.
+function adoptImported(p, note) {
+  if (!addMode) return false;
+  addMode = false;
+  const name = p.name || 'Imported plan', nW = (p.walls || []).length;
+  if (!nW && !(p.inserts || []).length) { toast('Nothing to add: no walls came in from that file.'); return true; }
+  (async () => {
+    const a = await dialogOpen({ title: 'Add ' + name, body: `<p>${nW} wall${nW === 1 ? '' : 's'} from <b>${esc(name)}</b>. How should it go into this project?</p>
+      <ul class="help"><li><b>As a separate building</b>: moved and turned as one (R turns it), with its own height, ceiling and section of the parts list. Good for another building on the site.</li>
+      <li><b>As pieces of this plan</b>: its walls, doors, chases, rooms, FFUs and lights join this plan as a group. Drag the group into place (its walls catch on wall ends), then Ungroup to work on them like any other walls. Good for adding a room or a wing.</li></ul>${note ? `<p class="note">${esc(note)}</p>` : ''}`,
+      buttons: [{ label: 'Cancel', ret: null }, { label: 'As pieces of this plan', ret: 'pieces' }, { label: 'As a separate building', primary: true, ret: 'bld' }] });
+    if (!a) return;
+    if (view === '3d' || view === 'build') setView('split');
+    if (a === 'bld') { placeBuilding(p, name); return; }
+    // pieces: centred on their middle, put down at the middle of the screen, grouped and picked up
+    const d = {}; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; const e = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
+    (p.walls || []).forEach(w => { e(w.x1, w.y1); e(w.x2, w.y2); });
+    const fx = p.ceilingMode === 'manual' ? p.fixtures || [] : [];
+    for (const k of PIECE_LISTS) d[k] = JSON.parse(JSON.stringify(k === 'fixtures' ? fx : p[k] || []));
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    for (const k of PIECE_LISTS) for (const o of d[k]) { if ('x0' in o && 'x1' in o) { o.x0 -= cx; o.x1 -= cx; o.y0 -= cy; o.y1 -= cy; } else if ('x2' in o) { o.x1 -= cx; o.x2 -= cx; o.y1 -= cy; o.y2 -= cy; } else { o.x -= cx; o.y -= cy; } }
+    const n = pastePieces(d, ed.wx(ed.W / 2), ed.wy(ed.H / 2), true);
+    // its imported ceiling drawing comes along when this plan has none
+    const withCeil = Array.isArray(p.ceilingGrid) && p.ceilingGrid.length && !(ed.plan.ceilingGrid || []).length;
+    if (withCeil) { const gx = Math.round(ed.wx(ed.W / 2) * 12) / 12 - cx, gy = Math.round(ed.wy(ed.H / 2) * 12) / 12 - cy; ed.edit(Q => { Q.ceilingGrid = p.ceilingGrid.map(q => [q[0] + gx, q[1] + gy, q[2] + gx, q[3] + gy]); Q.ceilingMode = 'manual'; Q.ceilingSource = Q.ceilingSource || name; }); }
+    ed.fit(); updateChrome(); queue3D();
+    toast(`Added ${n} pieces from ${name} as a group. Drag it into place; Ctrl+Shift+G ungroups it.${withCeil ? ' Its ceiling drawing came too: once the walls are in place, line it up with Edit ceiling → Move or turn.' : ''}`);
+  })();
+  return true;
+}
 async function openProject() {
   if (!api.openFile) return;
+  addMode = false;
   if (!(await guardUnsaved())) return;
   handleLoaded(await api.openFile('project'));
 }
@@ -1859,5 +1906,5 @@ window.addEventListener('drop', async e => {
 
 renderProps(); updateChrome(); toolHint('select');
 if (api.rendererReady) api.rendererReady();
-window.__app = { libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
+window.__app = { setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
 })();
