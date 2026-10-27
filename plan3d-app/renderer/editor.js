@@ -110,6 +110,9 @@ class Editor {
     const inR = (rs, px, py) => rs.some(r => px >= r[0] && px <= r[2] && py >= r[1] && py <= r[3]);
     const over = (a, b) => Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])) * Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
     const has = P.ceilRects.reduce((t, r) => t + sp.rects.reduce((u, q) => u + over(r, q), 0), 0) > Math.min(4, sp.area * 0.3);
+    // putting it on: only the part the room's own walls close in, so it can't run out into the warehouse
+    if (!has && sp.open) { this.status('That space isn\'t closed in by walls, so its ceiling would run out into the warehouse. Use Add area in the Grid tool and drag a box over the room instead, or close the room\'s walls.'); return; }
+    const addRects = has ? sp.rects : (sp.inner && sp.inner.length ? sp.inner : sp.rects);
     this.edit(Q => {
       const pt = { x: +x.toFixed(2), y: +y.toFixed(2) };
       if (has) {
@@ -117,11 +120,56 @@ class Editor {
         Q.fixtures = (Q.fixtures || []).filter(f => !inR(sp.rects, f.x, f.y));
         Q.ceilForce = (Q.ceilForce || []).filter(q => !inR(sp.rects, q.x, q.y)); (Q.ceilSkip = Q.ceilSkip || []).push(pt);
       } else {
-        Q.ceilRects = Q.ceilRects.concat(sp.rects);
+        Q.ceilRects = Q.ceilRects.concat(addRects);
         Q.ceilSkip = (Q.ceilSkip || []).filter(q => !inR(sp.rects, q.x, q.y)); (Q.ceilForce = Q.ceilForce || []).push(pt);
       }
     });
     this.status(has ? 'Ceiling taken off ' + (sp.room ? sp.room.name || 'this room' : 'this space') + ' (with its FFUs and lights). Click again to put it back.' : 'Ceiling put on ' + (sp.room ? sp.room.name || 'this room' : 'this space') + '. Generate ceiling again to fill it with FFUs and lights, or place them.');
+  }
+  /* slide the main ceiling grid (its FFUs and lights go with it) */
+  shiftGrid(dx, dy) {
+    const V = global.Plan3DViewer, P = this.plan; if (!V) return;
+    const G = V.ceilingGrid(P);
+    this.edit(Q => {
+      Q.ceilGrid = { ox: G.ox + dx, oy: G.oz + dy, swap: G.swap };
+      for (const f of Q.fixtures || []) if (!V.gridZoneAt(Q, f.x, f.y)) { f.x += dx; f.y += dy; }
+    });
+    const g = V.ceilingGrid(this.plan), m = (v, sp) => (((v % sp) + sp) % sp);
+    this.status('Grid lines now at ' + fmtIn(m(g.ox, g.cw)) + ' and ' + fmtIn(m(g.oz, g.cl)) + ' past each 2′/4′ mark. FFUs and lights moved with it.');
+  }
+  /* centre the main grid in the room clicked, so the cut tiles at its two walls come out the same each way */
+  centreGridAt(x, y) {
+    const V = global.Plan3DViewer, sp = V.ceilingSpaceAt(this.plan, x, y);
+    if (!sp) { this.status('Click inside a room.'); return; }
+    const R = sp.inner && sp.inner.length ? sp.inner : sp.rects; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const r of R) { x0 = Math.min(x0, r[0]); y0 = Math.min(y0, r[1]); x1 = Math.max(x1, r[2]); y1 = Math.max(y1, r[3]); }
+    const G = V.ceilingGrid(this.plan);
+    const centre = (lo, hi, sp2, o0) => { const c = (lo + hi) / 2, cut = (o) => { const r2 = ((((lo - o) % sp2) + sp2) % sp2); return r2 < 1e-6 ? sp2 : sp2 - r2; }; const o = cut(c) >= cut(c + sp2 / 2) ? c : c + sp2 / 2; let d = (((o - o0) % sp2) + sp2) % sp2; if (d > sp2 / 2) d -= sp2; return d; };
+    const dx = centre(x0, x1, G.cw, G.ox), dy = centre(y0, y1, G.cl, G.oz);
+    if (Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3) { this.status('The grid is already centred in this room.'); return; }
+    this.shiftGrid(dx, dy);
+    this.status('Grid centred in ' + (sp.room ? sp.room.name || 'this room' : 'this room') + ' (moved ' + fmtIn(Math.abs(dx)) + ' across, ' + fmtIn(Math.abs(dy)) + ' up/down); FFUs and lights went with it.');
+  }
+  /* the Grid tool's Add area / Cut out: a box of ceiling put on, or cut out (with the FFUs and lights in it).
+     Both are remembered, so generating the ceiling again keeps them. */
+  ceilingBox(mode, r) {
+    const V = global.Plan3DViewer, P = this.plan, g = 1 / 12, q = (v) => Math.round(v / g) * g;
+    r = r.map(q);
+    if (P.ceilingGrid && P.ceilingGrid.length && !(P.ceilRects && P.ceilRects.length)) { this.status('This ceiling came from a drawing. Use Generate ceiling first (it can keep the FFUs), then box areas in or out.'); return; }
+    const inR = (px, py) => px > r[0] && px < r[2] && py > r[1] && py < r[3];
+    this.edit(Q => {
+      Q.ceilRects = V.rectsMinus(Q.ceilRects || [], [r]);
+      if (mode === 'add') {
+        Q.ceilRects.push(r.slice()); (Q.ceilAdd = Q.ceilAdd || []).push(r.slice()); Q.ceilCut = V.rectsMinus(Q.ceilCut || [], [r]);
+        if (!Q.ceilGrid) { const G = V.ceilingGrid(Q); Q.ceilGrid = { ox: G.ox, oy: G.oz, swap: G.swap }; }
+        if (Q.ceilingMode !== 'manual') { Q.fixtures = []; Q.ceilingMode = 'manual'; }
+        if (!Q.ceilingSource) Q.ceilingSource = 'Generated';
+      } else {
+        (Q.ceilCut = Q.ceilCut || []).push(r.slice()); Q.ceilAdd = V.rectsMinus(Q.ceilAdd || [], [r]);
+        Q.fixtures = (Q.fixtures || []).filter(f => !inR(f.x, f.y));
+      }
+    });
+    this.status(mode === 'add' ? 'Ceiling added over ' + fmt(r[2] - r[0]) + ' × ' + fmt(r[3] - r[1]) + '. Generate ceiling again to fill it with FFUs and lights, or place them.' : 'Ceiling cut out over ' + fmt(r[2] - r[0]) + ' × ' + fmt(r[3] - r[1]) + ', with its FFUs and lights.');
   }
   /* turn an FFU or light a quarter turn in the grid: a 2 × 4 laid across the grid takes half of two cells side by
      side, and the T-grid and tiles around it are worked out from that */
@@ -533,7 +581,7 @@ class Editor {
     }
     if (T === 'grid') {
       const s = this.snap(p.x, p.y, null);
-      this.drag = { kind: 'gzone', x0: s.x, y0: s.y, x1: s.x, y1: s.y, px: p.x, py: p.y }; this.c.setPointerCapture(e.pointerId); return;
+      this.drag = { kind: 'gzone', mode: this.gridMode || 'room', x0: s.x, y0: s.y, x1: s.x, y1: s.y, px: p.x, py: p.y }; this.c.setPointerCapture(e.pointerId); return;
     }
     if (T === 'carea') {
       const s = this.snap(p.x, p.y, null);
@@ -700,8 +748,11 @@ class Editor {
     }
     else if (D.kind === 'gzone') {
       const x0 = Math.min(D.x0, D.x1), x1 = Math.max(D.x0, D.x1), y0 = Math.min(D.y0, D.y1), y1 = Math.max(D.y0, D.y1);
+      if (x1 - x0 < 1 && y1 - y0 < 1 && D.mode === 'center') { this.centreGridAt(D.px, D.py); this.render(); return; }
       if (x1 - x0 < 1 && y1 - y0 < 1) { this.toggleCeilingAt(D.px, D.py); this.render(); return; }
-      if (x1 - x0 > 2 && y1 - y0 > 2) {
+      if ((D.mode === 'add' || D.mode === 'cut') && x1 - x0 > 0.5 && y1 - y0 > 0.5) { this.ceilingBox(D.mode, [x0, y0, x1, y1]); this.render(); return; }
+      if (D.mode === 'room') { this.status('Click a room to put its ceiling on or take it off. To box in an area, pick Add area or Cut out in the Grid tool bar.'); this.render(); return; }
+      if (D.mode === 'section' && x1 - x0 > 2 && y1 - y0 > 2) {
         const V = global.Plan3DViewer, G = V.ceilingGrid(this.plan);
         // a new section starts turned a quarter turn from the main grid, its lines from its own corner
         const k = { id: uid(), x0, y0, x1, y1, swap: !G.swap };
@@ -1150,7 +1201,8 @@ class Editor {
     if (C && this.tool === 'elec' && global.Plan3DViewer) { const q = this.devicePlace(C.x, C.y, this.deviceType || 'outlet'); if (q) this.drawDevice(q, true); }
     if (C && this.tool === 'item' && global.Plan3DViewer) { const q = this.itemPlace(C.x, C.y, this.itemType); if (q) this.drawItem(q, true); }
     if (this.drag && (this.drag.kind === 'chase' || this.drag.kind === 'carea' || this.drag.kind === 'gzone')) {
-      const D = this.drag; g.fillStyle = 'rgba(242,200,75,.25)'; g.strokeStyle = COL.draft; g.lineWidth = 1.5;
+      const D = this.drag; g.fillStyle = D.mode === 'add' ? 'rgba(127,211,227,.25)' : D.mode === 'cut' ? 'rgba(255,106,77,.22)' : 'rgba(242,200,75,.25)'; g.strokeStyle = D.mode === 'add' ? COL.snap : D.mode === 'cut' ? '#ff6a4d' : COL.draft; g.lineWidth = 1.5;
+      if (D.mode === 'room') { g.fillStyle = 'rgba(0,0,0,0)'; }
       const X = this.sx(Math.min(D.x0, D.x1)), Y = this.sy(Math.min(D.y0, D.y1)), W = Math.abs(D.x1 - D.x0) * s, H = Math.abs(D.y1 - D.y0) * s;
       g.fillRect(X, Y, W, H); g.strokeRect(X, Y, W, H);
       g.font = '11px Consolas, monospace'; g.fillStyle = COL.draft; g.textAlign = 'left'; g.textBaseline = 'top';
