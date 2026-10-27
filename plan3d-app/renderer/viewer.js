@@ -884,8 +884,13 @@ function beamSeat(plan, A, b) {
   if (!before.length && !after.length) return up();
   const s0 = before.length ? Math.max(...before) : sa, s1 = after.length ? Math.min(...after) : sb;
   if (s1 - s0 < 1) return up();
-  const WH = A.WH || A.H, top = WH - 0.02;
-  return { x1: b.x1 + ux * s0, y1: b.y1 + uy * s0, x2: b.x1 + ux * s1, y2: b.y1 + uy * s1, bot: A.PL > 0 ? Math.max(A.H + 0.05, top - d) : WH + 0.01, onWalls: true };
+  // it sits on the walls it spans, at their top there: a taller room's walls (raised with a ceiling area, or
+  // given their own height) carry it higher
+  const ex = (s) => [b.x1 + ux * s, b.y1 + uy * s];
+  const wallTop = (s) => { const [x, z] = ex(s); let best = null, bd = 1e9; for (const p of A.pieces) { if (!p.hard) continue; const dd = segDist(x, z, p.x1, p.z1, p.x2, p.z2); if (dd < (p.t || 0.25) / 2 + 0.75 && dd < bd) { bd = dd; best = p.h; } } return best; };
+  const WH0 = A.WH || A.H, t0 = wallTop(s0), t1 = wallTop(s1), WH = t0 != null && t1 != null ? Math.min(t0, t1) : t0 != null ? t0 : t1 != null ? t1 : WH0, top = WH - 0.02;
+  const ceilUnder = A.PL > 0 ? WH - A.PL : A.H;
+  return { x1: b.x1 + ux * s0, y1: b.y1 + uy * s0, x2: b.x1 + ux * s1, y2: b.y1 + uy * s1, bot: A.PL > 0 ? Math.max(ceilUnder + 0.05, top - d) : WH + 0.01, onWalls: true };
 }
 /* Where a beam can sit on a cleanroom wall: the studs. A wall drawn as a long run has an H-stud every 48″ from
    its start (where its panels join) and a post at each end; a snap-together panel has one at each end. */
