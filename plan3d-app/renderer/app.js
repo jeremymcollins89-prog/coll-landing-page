@@ -262,6 +262,8 @@ function snapFixturesIn(ids) {
   } });
   toast(drawn ? `${holes} of ${n} FFUs and lights sit in an opening of the ceiling drawing${moved ? ` (${moved} moved into place)` : ''}.${holes < n ? ' The others are more than 1′ from an opening that fits them: drag them over one, or nudge them with the arrow keys.' : ''}` : moved ? `Moved ${moved} fixture${moved === 1 ? '' : 's'} into the grid cells.` : 'Everything already sits in the grid.');
 }
+// cleanroom walls with one height section along their whole length (set with Wall height or the Height field)
+function ownHeightWalls(P) { return (P.walls || []).filter(w => Plan3DViewer.isHard(w) && Array.isArray(w.sections) && w.sections.length === 1 && Math.min(w.sections[0].a, w.sections[0].b) < 0.01 && Math.max(w.sections[0].a, w.sections[0].b) > Math.hypot(w.x2 - w.x1, w.y2 - w.y1) - 0.05); }
 function wallTopOf(P, w) {
   try { for (const z of Plan3DViewer.zones(P)) if ((z.plan.walls || []).includes(w)) return Math.max(6, z.plan.ceiling || 8) + Math.max(0, +z.plan.plenum || 0); } catch (e) { /* fall back to the building's */ }
   const K = Plan3DViewer.roomKey(P, null); return K.H + K.PL;
@@ -574,7 +576,7 @@ function renderProps(opt) {
   h = `<div class="hd"><span class="kind">${house ? 'House' : 'Plan'}</span></div>
     ${fld('Name', txt('pPName', P.name))}
     ${fld(house ? 'Wall height' : 'Ceiling', txt('pCeil', fmt(P.ceiling)))}
-    ${house ? '' : fld('Plenum above', txt('pPlen', fmt(P.plenum || 0))) + `<p class="note" style="margin-top:-4px">Plenum: the space between the grid ceiling and the top of the cleanroom. Walls are ${esc(fmt((P.ceiling || 8) + (P.plenum || 0)))} tall.</p>`}
+    ${house ? '' : fld('Plenum above', txt('pPlen', fmt(P.plenum || 0))) + `<p class="note" style="margin-top:-4px">Plenum: the space between the grid ceiling and the top of the cleanroom. Walls are ${esc(fmt((P.ceiling || 8) + (P.plenum || 0)))} tall.</p>${ownHeightWalls(P).length ? `<p class="note" style="color:var(--warn)">${ownHeightWalls(P).length} walls have their own height set, so they don't follow this. <button class="btn small" id="pWallsFollow">Make them follow</button></p>` : ''}`}
     ${fld('New wall type', `<select id="pNK">${kindList.map(([k, v]) => `<option value="${k}" ${(P.newKind || (house ? 'wood' : 'hardwall')) === k ? 'selected' : ''}>${esc(v.short)}</option>`).join('')}</select>`)}
     ${fld('New walls', txt('pWT', fmtIn(P.wallT || 0.25)))}
     ${(P.walls.some(w => !Plan3DViewer.isHard(w) && !Plan3DViewer.isFrame(w)) || shellNew) ? fld('Building wall height', txt('pSH', fmt(P.shellH || 20))) : ''}
@@ -633,11 +635,15 @@ function renderProps(opt) {
       for (const ins of Pl.inserts || []) if (ins.plan) { const cur = key === 'plenum' ? +ins.plan.plenum || 0 : ins.plan.ceiling || 8; if (cur !== val) { ins.plan[key] = val; nb++; } for (const r of ins.plan.rooms || []) if (key === 'plenum' ? r.plenum != null && r.plenum !== '' : r.ceiling > 0) { if (key === 'plenum') r.plenum = val; else r.ceiling = val; nr++; } }
       void old;
     });
-    if (nb || nr) toast(`${what} set to ${fmt(val)} for the whole project${nb ? `, including ${nb} placed building${nb === 1 ? '' : 's'}` : ''}${nr ? `${nb ? ' and' : ', including'} ${nr} room${nr === 1 ? '' : 's'} that had ${nr === 1 ? 'its' : 'their'} own` : ''}. Set one room's or building's own on its label or panel.`);
+    // walls given their own height (Wall height…) don't follow the plenum: offer to put them back
+    const own = ownHeightWalls(ed.plan);
+    if (own.length) { dialogOpen({ title: 'Walls with their own height', body: `<p>${own.length} wall${own.length === 1 ? ' has' : 's have'} a height set on ${own.length === 1 ? 'it' : 'them'} (${[...new Set(own.map(w => fmt(w.sections[0].h)))].join(', ')}), so ${own.length === 1 ? 'it doesn\'t' : 'they don\'t'} follow the ${what.toLowerCase()}. Put ${own.length === 1 ? 'it' : 'them'} back to the ceiling plus plenum (${fmt(wallTopOf(ed.plan, own[0]))})?</p>`, buttons: [{ label: 'Keep their heights', ret: null }, { label: 'Follow the ' + what.toLowerCase(), primary: true, ret: true }] }).then(a => { if (a) { ed.edit(() => { for (const w of own) delete w.sections; }); toast(`${own.length} wall${own.length === 1 ? '' : 's'} now follow the ceiling and plenum.`); renderProps(); queue3D(); } }); }
+    else if (nb || nr) toast(`${what} set to ${fmt(val)} for the whole project${nb ? `, including ${nb} placed building${nb === 1 ? '' : 's'}` : ''}${nr ? `${nb ? ' and' : ', including'} ${nr} room${nr === 1 ? '' : 's'} that had ${nr === 1 ? 'its' : 'their'} own` : ''}. Set one room's or building's own on its label or panel.`);
     renderProps(); queue3D();
   };
   bindLen('pCeil', 'ft', v => allLevels('ceiling', v, 6, 30, 'Ceiling'));
   bindLen('pPlen', 'ft', v => allLevels('plenum', v, 0, 20, 'Plenum'));
+  if ($('#pWallsFollow')) $('#pWallsFollow').onclick = () => { const own = ownHeightWalls(ed.plan); ed.edit(() => { for (const w of own) delete w.sections; }); toast(`${own.length} walls now follow the ceiling and plenum.`); renderProps(); queue3D(); };
   if ($('#pRoof')) $('#pRoof').onchange = e => ed.edit(Pl => { Pl.roof = Object.assign({ pitch: 6, overhang: 1 }, Pl.roof || {}, { type: e.target.value }); });
   if ($('#pPitch')) $('#pPitch').onchange = e => { const v = parseFloat(e.target.value); if (v >= 0 && v <= 24) ed.edit(Pl => { Pl.roof.pitch = v; }); };
   bindLen('pOver', 'ft', v => ed.edit(Pl => { Pl.roof.overhang = Math.max(0, Math.min(4, v)); }));
