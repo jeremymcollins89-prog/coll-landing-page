@@ -603,7 +603,9 @@ function toIfc(plan, opts) {
     // own grid), only where there's ceiling
     // each tee: the 15/16″ face below the tiles and its web standing up 1½″ into the plenum
     const tees = [], TW = 15 / 16 / 12, tee = (x1, y1, x2, y2) => [seg(x1, y1, x2, y2, H - 0.035, H, TW, S.grid), seg(x1, y1, x2, y2, H + 0.052, H + 0.17, 0.028, S.grid)];
-    if (Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length) {
+    if (V.isBuilt && V.isBuilt(plan)) {
+      for (const q of V.builtLines(plan)) tees.push(...tee(q[0], q[1], q[2], q[3]));
+    } else if (Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length) {
       for (const q of (V.ceilingLines ? V.ceilingLines(plan, A) : plan.ceilingGrid)) tees.push(...tee(q[0], q[1], q[2], q[3]));
     } else if (footprint && A.hardAny) {
       const G = V.ceilingGrid(plan, A), B = A.bounds, step = footprint.cell / 2;

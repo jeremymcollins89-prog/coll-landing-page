@@ -15,6 +15,7 @@ const ed = new Editor($('#plan'), {
   onChange: () => { updateChrome(); queue3D(); if (builder && view === 'build') builder.refresh(); renderProps(); },
   onLive: () => queue3D(),
   onSelect: (d) => { renderProps(d); if (builder && view === 'build') builder.drawSel(); },
+  onTilesize: () => { if (ed.tool === 'grid') gridPalette(); },
   onTool: (t) => { $$('.tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; $('#itemPal').hidden = t !== 'item'; if (t === 'item') itemPalette(); $('#elecPal').hidden = t !== 'elec'; if (t === 'elec') elecPalette(); $('#gridPal').hidden = t !== 'grid'; if (t === 'grid') gridPalette(); if (t === 'piece') hideBanner(); toolHint(t); },
   onStatus: (m) => msg(m || toolHintText(ed.tool)),
   onCursor: (p) => { $('#sXY').textContent = fmt(p.x) + ', ' + fmt(p.y); $('#sZoom').textContent = Math.round(ed.view.s) + ' px/ft'; },
@@ -53,7 +54,7 @@ const HINTS = {
   open: 'Click on a wall to place a cased opening (no door).',
   pass: 'Click on a wall to place a 24″ × 24″ stainless pass-thru.',
   chase: 'Drag a rectangle to place a full-height air chase.',
-  grid: 'Grid tool. Pick what a click or drag does in the bar at the top: Rooms (click a room to put its ceiling on or take it off), Add area or Cut out (drag a box), Centre grid (click a room), Grid section (drag a box for a part on its own grid). The arrows slide the whole grid, FFUs and lights with it.',
+  grid: 'Grid tool. Pick what a click or drag does in the bar at the top: Rooms (click a room to put its ceiling on or take it off), Add area or Cut out (drag a box), Centre grid (click a room), Grid section (drag a box for a part on its own grid). The arrows slide the whole grid, FFUs and lights with it. Build piece by piece: Place piece (click to put a tile, FFU or light; it butts against its neighbours and is cut to fit at walls; click a piece to drag it) or Fill (drag a box to lay tiles in it). R turns the piece.',
   carea: 'Drag a rectangle over part of a room to give it its own ceiling height. Bulkhead panels fill the step where it meets the rest of the ceiling. To make that part of the room taller (walls and top too), tick Raise the walls in its panel. A whole room: set Ceiling on its room label.',
   room: 'Click inside a room to label it.',
   beam: 'Click both ends of a steel beam (I-beam). Over the cleanroom it spans wall to wall in the plenum, its top level with the top of the walls; otherwise it goes up under the roof. Pick it to change its size or height.',
@@ -82,13 +83,31 @@ function elecPalette() {
 }
 /* The Grid tool's bar: what a click or drag does, and nudges for the main grid */
 const GRID_MODES = [['room', 'Rooms', 'Click a room to put its ceiling on or take it off'], ['add', 'Add area', 'Drag a box to put ceiling there'], ['cut', 'Cut out', 'Drag a box to take ceiling (and its FFUs and lights) off'], ['center', 'Centre grid', 'Click a room to centre the grid in it'], ['section', 'Grid section', 'Drag a box for a part of the ceiling on its own grid (turned or shifted)']];
+const BUILD_MODES = [['place', 'Place piece', 'Click to put a tile, FFU or light down (it butts against the pieces and walls next to it, cut to fit at a wall); click a piece to drag it'], ['fill', 'Fill', 'Drag a box to lay tiles in it, cut to fit at its edges, walls and the pieces already there']];
 function gridPalette() {
   if (!ed.gridMode) ed.gridMode = 'room';
   const st = ed.gridStep || 1 / 12;
   $('#gridPal').innerHTML = `<div class="grp"><h5>Click or drag does</h5><div class="row">${GRID_MODES.map(([k, l, tip]) => `<button data-gm="${k}" class="${ed.gridMode === k ? 'on' : ''}" title="${esc(tip)}">${esc(l)}</button>`).join('')}</div></div>
     <div class="grp"><h5>Slide the grid</h5><div class="row"><button data-gs="-1,0" title="Left">←</button><button data-gs="1,0" title="Right">→</button><button data-gs="0,-1" title="Up">↑</button><button data-gs="0,1" title="Down">↓</button>
       <select id="gpStep" title="How far each click slides it">${[[1 / 12, '1″'], [0.5, '6″'], [1, '1′']].map(([v, l]) => `<option value="${v}" ${Math.abs(v - st) < 1e-6 ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>`;
-  $$('#gridPal [data-gm]').forEach(b => b.onclick = () => { ed.gridMode = b.dataset.gm; gridPalette(); msg(GRID_MODES.find(m => m[0] === ed.gridMode)[2] + '.'); $('#plan').focus(); });
+  // building the ceiling piece by piece
+  const built = ed.built(), w = ed.tileW || 2, hh = ed.tileH || 4, kind = ed.tileKind || 'tile';
+  const SIZES = [[2, 4, '2 × 4'], [4, 2, '4 × 2'], [2, 2, '2 × 2']];
+  $('#gridPal').innerHTML += `<div class="grp"><h5>Build piece by piece</h5><div class="row">${BUILD_MODES.map(([k, l, tip]) => `<button data-gm="${k}" class="${ed.gridMode === k ? 'on' : ''}" title="${esc(tip)}">${esc(l)}</button>`).join('')}
+      <select id="gpKind" title="What Place piece puts down">${[['tile', 'Tile'], ['ffu', 'FFU'], ['led', 'Light']].map(([k, l]) => `<option value="${k}" ${kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <select id="gpSize" title="Size, across × up and down (R turns it)">${SIZES.map(([a, c, l]) => `<option value="${a},${c}" ${Math.abs(a - w) < 1e-6 && Math.abs(c - hh) < 1e-6 ? 'selected' : ''}>${l}</option>`).join('')}${SIZES.some(([a, c]) => Math.abs(a - w) < 1e-6 && Math.abs(c - hh) < 1e-6) ? '' : `<option selected value="${w},${hh}">${esc(fmt(w))} × ${esc(fmt(hh))}</option>`}<option value="custom">Other size…</option></select></div>
+      <div class="row">${built ? '<button id="gpUnbuild" title="Drop the separate tiles and go back to a generated grid over the same area">Back to a generated grid</button>' : '<button id="gpBuild" title="Turn the ceiling that is there into separate tiles you can move one by one">Turn this ceiling into pieces</button>'}</div></div>`;
+  $$('#gridPal [data-gm]').forEach(b => b.onclick = () => { ed.gridMode = b.dataset.gm; gridPalette(); msg((GRID_MODES.concat(BUILD_MODES)).find(m => m[0] === ed.gridMode)[2] + '.'); $('#plan').focus(); });
+  $('#gpKind').onchange = (e) => { ed.tileKind = e.target.value; if (ed.tileKind !== 'tile' && Math.abs(ed.tileW * ed.tileH - 8) > 0.01 && Math.abs(ed.tileW * ed.tileH - 4) > 0.01) { ed.tileW = 2; ed.tileH = 4; } ed.gridMode = 'place'; gridPalette(); $('#plan').focus(); };
+  $('#gpSize').onchange = async (e) => {
+    if (e.target.value === 'custom') {
+      const r = await dialogOpen({ title: 'Piece size', body: fld('Across (left to right)', txt('tsW', fmt(ed.tileW || 2))) + fld('Up and down', txt('tsH', fmt(ed.tileH || 4))) + '<p class="note">For a cut tile you want to place by hand, a 2 × 2, or an odd-size fixture.</p>', buttons: [{ label: 'Cancel', ret: null }, { label: 'Use it', primary: true, value: () => [parseLen($('#tsW').value, 'ft'), parseLen($('#tsH').value, 'ft')] }] });
+      if (r && r[0] > 0.1 && r[1] > 0.1) { ed.tileW = r[0]; ed.tileH = r[1]; }
+    } else { const [a, c] = e.target.value.split(',').map(Number); ed.tileW = a; ed.tileH = c; }
+    if (ed.gridMode !== 'fill') ed.gridMode = 'place'; gridPalette(); $('#plan').focus();
+  };
+  if ($('#gpBuild')) $('#gpBuild').onclick = () => { if (ed.buildFromCeiling()) { ed.gridMode = 'place'; gridPalette(); } $('#plan').focus(); };
+  if ($('#gpUnbuild')) $('#gpUnbuild').onclick = () => { ed.unbuild(); ed.gridMode = 'room'; gridPalette(); $('#plan').focus(); };
   $$('#gridPal [data-gs]').forEach(b => b.onclick = () => { const [a, c] = b.dataset.gs.split(',').map(Number), d = ed.gridStep || 1 / 12; ed.shiftGrid(a * d, c * d); $('#plan').focus(); });
   $('#gpStep').onchange = (e) => { ed.gridStep = +e.target.value; $('#plan').focus(); };
 }
@@ -212,7 +231,7 @@ function renderProps(opt) {
   const box = $('#props'), P = ed.plan, s = ed.sel, o = ed.selected();
   let h = '';
   if (ed.multi && ed.multi.length > 1) {
-    const M = ed.multi, cnt = {}, NAMES = { wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', gzone: 'grid section', fixture: 'FFUs and lights' };
+    const M = ed.multi, cnt = {}, NAMES = { tile: 'ceiling tile', wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', gzone: 'grid section', fixture: 'FFUs and lights' };
     M.forEach(r => { cnt[r.kind] = (cnt[r.kind] || 0) + 1; });
     const grouped = M.every(r => { const x = ed.find(r); return x && x.gid && x.gid === ed.find(M[0]).gid; });
     box.innerHTML = `<div class="hd"><span class="kind">${M.length} pieces selected${grouped ? ' (a group)' : ''}</span><button class="btn small danger" id="mDel">Delete</button></div>
@@ -388,6 +407,28 @@ function renderProps(opt) {
     $('#pDel').onclick = () => ed.deleteSel();
     return;
   }
+  if (s && o && s.kind === 'tile') {
+    const whole = (Math.abs(o.w - 2) < 0.01 && Math.abs(o.h - 4) < 0.01) || (Math.abs(o.w - 4) < 0.01 && Math.abs(o.h - 2) < 0.01);
+    h = `<div class="hd"><span class="kind">Ceiling tile${whole ? '' : ', cut'}</span><button class="btn small danger" id="pDel">Delete</button></div>
+      ${fld('Across', txt('pTw', fmt(o.w)))}
+      ${fld('Up and down', txt('pTh', fmt(o.h)))}
+      <div class="row"><button class="btn small" id="pTTurn">Turn 90° (R)</button><button class="btn small" id="pTFit">Fit to the space</button><button class="btn small" id="pTDup">Copy next to it</button></div>
+      <p class="note">One piece of a ceiling built piece by piece. Drag it: its edges catch on the tiles, FFUs, lights and walls next to it (Alt moves it freely; arrow keys nudge 1″). <b>Fit to the space</b> stretches it to fill the gap it's in, up to a full 2′ × 4′. The parts list counts it as a full tile or a cut one at this size.</p>`;
+    box.innerHTML = h;
+    const setSize = (k, v) => { if (!(v > 0.1)) return; ed.edit(() => { const x0 = o.x - o.w / 2, y0 = o.y - o.h / 2; o[k] = Math.min(8, v); o.x = x0 + o.w / 2; o.y = y0 + o.h / 2; }); };
+    bindLen('pTw', 'ft', v => setSize('w', v)); bindLen('pTh', 'ft', v => setSize('h', v));
+    $('#pTTurn').onclick = () => { ed.turnTile(o); renderProps(); };
+    $('#pTFit').onclick = () => {
+      // grow from its corner up to 2 × 4 (or 4 × 2, the way it lies), then trim to what's free around it
+      const lw = o.w >= o.h ? 4 : 2, lh = o.w >= o.h ? 2 : 4, r = [o.x - o.w / 2 - (lw - o.w), o.y - o.h / 2 - (lh - o.h), o.x + o.w / 2 + (lw - o.w), o.y + o.h / 2 + (lh - o.h)];
+      const f = ed.freePart(r, { x: o.x, y: o.y }, new Set([o.id])); if (!f) return;
+      const nw = Math.min(lw, f[2] - f[0]), nh = Math.min(lh, f[3] - f[1]), cx = Math.max(f[0] + nw / 2, Math.min(f[2] - nw / 2, o.x)), cy = Math.max(f[1] + nh / 2, Math.min(f[3] - nh / 2, o.y));
+      ed.edit(() => { o.w = nw; o.h = nh; o.x = cx; o.y = cy; }); renderProps();
+    };
+    $('#pTDup').onclick = () => { const n = { ...o, id: Plan3DEditor.uid(), x: o.x + o.w }; delete n.gid; const f = ed.freePart([n.x - n.w / 2, n.y - n.h / 2, n.x + n.w / 2, n.y + n.h / 2], { x: n.x, y: n.y }); if (!f) { toast('No room next to it.'); return; } n.x = (f[0] + f[2]) / 2; n.y = (f[1] + f[3]) / 2; n.w = f[2] - f[0]; n.h = f[3] - f[1]; ed.edit(Pl => Pl.ceilTiles.push(n)); ed.sel = { kind: 'tile', id: n.id }; ed.emit('select'); };
+    $('#pDel').onclick = () => ed.deleteSel();
+    return;
+  }
   if (s && o && s.kind === 'fixture') {
     h = `<div class="hd"><span class="kind">${o.type === 'ffu' ? 'Fan filter unit' : 'LED light'}</span><button class="btn small danger" id="pDel">Delete</button></div>
       ${fld('Type', `<select id="pFx"><option value="led" ${o.type !== 'ffu' ? 'selected' : ''}>LED light, 2×4</option><option value="ffu" ${o.type === 'ffu' ? 'selected' : ''}>Fan filter unit, 2×4</option></select>`)}
@@ -407,7 +448,7 @@ function renderProps(opt) {
       ${fld('Length', txt('pBmL', fmt(len)))}
       ${fld('Bottom of beam at', txt('pBmB', o.bot ? fmt(o.bot) : '', 'Auto (' + fmt(auto) + ')'))}
       <div class="row"><button class="btn small" id="pBmDup">Add another 8′ over</button></div>
-      <p class="note">Auto: over the cleanroom it spans from wall to wall in the plenum, its top level with the top of the walls (the plan shows where it lands); otherwise up under the roof. Beams go on the parts list (length and weight) and into the Revit export. Drag to move; Shift-drag a box to move a set of them.</p>`;
+      <p class="note">Auto: over the cleanroom it spans from wall to wall in the plenum, its top level with the top of the walls (the plan shows where it lands); otherwise up under the roof. Beams go on the parts list (length and weight) and into the Revit export. Drag it to move it: an end catches on a stud of a cleanroom wall (the H-studs every 48″ and the posts, shown as small squares) when it comes near one. Drag either round end to move just that end. Hold Alt for anywhere. Shift-drag a box to move a set of them.</p>`;
     box.innerHTML = h;
     $('#pBmS').onchange = e => ed.edit(() => { o.size = e.target.value; ed.beamSize = o.size; });
     bindLen('pBmL', 'ft', v => ed.edit(() => { const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1, ux = (o.x2 - o.x1) / L, uy = (o.y2 - o.y1) / L; o.x2 = o.x1 + ux * Math.max(0.5, v); o.y2 = o.y1 + uy * Math.max(0.5, v); }));
@@ -784,7 +825,7 @@ async function generateCeilingDialog() {
   if (!opts) return;
   const R = Plan3DViewer.generateCeiling(P, opts);
   if (!R || !R.rooms.length) { await dialogOpen({ title: 'No closed-in rooms found', body: '<p>Generate ceiling only puts grid where the cleanroom walls close a room in, so it never runs out into the warehouse. None of the rooms here are closed in: a wall is missing or stops short somewhere (gaps up to 10′ are closed for it).</p><p>Pick the <b>Grid</b> tool (T), choose <b>Add area</b> and drag a box over each room, then Generate ceiling again to fill them with FFUs and lights. Or close the gaps in the walls.</p>', buttons: [{ label: 'Use the Grid tool', primary: true, ret: 'grid' }, { label: 'Close', ret: null }] }).then(a => { if (a === 'grid') { setView(view === '3d' || view === 'build' ? 'split' : view); ed.setTool('grid'); ed.gridMode = 'add'; gridPalette(); } }); return; }
-  ed.edit(Q => { Q.ceilGrid = R.ceilGrid; if (R.gridZones) { if (R.gridZones.length) Q.gridZones = R.gridZones; else delete Q.gridZones; } if (R.keep && R.snapped && R.snapped.length) { const m = new Map(R.snapped.map(q => [q.id, q])); for (const f of Q.fixtures || []) { const q = m.get(f.id); if (q) { f.x = q.x; f.y = q.y; } } } Q.fixtures = R.keep ? (Q.fixtures || []).concat(R.fixtures) : R.fixtures; Q.ceilRects = R.ceilRects; Q.ceilingMode = 'manual'; Q.ceilingSource = 'Generated'; delete Q.ceilingGrid; delete Q.ceilingImage; delete Q.fixturesFinal; });
+  ed.edit(Q => { delete Q.ceilTiles; Q.ceilGrid = R.ceilGrid; if (R.gridZones) { if (R.gridZones.length) Q.gridZones = R.gridZones; else delete Q.gridZones; } if (R.keep && R.snapped && R.snapped.length) { const m = new Map(R.snapped.map(q => [q.id, q])); for (const f of Q.fixtures || []) { const q = m.get(f.id); if (q) { f.x = q.x; f.y = q.y; } } } Q.fixtures = R.keep ? (Q.fixtures || []).concat(R.fixtures) : R.fixtures; Q.ceilRects = R.ceilRects; Q.ceilingMode = 'manual'; Q.ceilingSource = 'Generated'; delete Q.ceilingGrid; delete Q.ceilingImage; delete Q.fixturesFinal; });
   updateChrome(); renderProps();
   const short = R.rooms.filter(r => r.ffu < r.need);
   await dialogOpen({
@@ -939,7 +980,7 @@ function cadCeilingDialog(data) {
   }).then(ok => {
     $('#dlg').classList.remove('wide-xl');
     if (ok !== 'ok' || !placed) return;
-    ed.edit(P => { P.ceilingGrid = placed.grid; P.fixtures = placed.fixtures; P.ceilingMode = 'manual'; delete P.ceilRects; P.ceilingSource = data.name; delete P.ceilingImage; });
+    ed.edit(P => { P.ceilingGrid = placed.grid; P.fixtures = placed.fixtures; P.ceilingMode = 'manual'; delete P.ceilRects; delete P.ceilTiles; P.ceilingSource = data.name; delete P.ceilingImage; });
     ceilingApplied(`Ceiling added: ${placed.fixtures.length} fixtures and ${placed.grid.length} grid lines.`);
   });
 }
@@ -1194,7 +1235,7 @@ function sheetExtrasToPlan(data, o, walls, bld, p) {
   if (g) {
     const al = IMP.alignToWalls(g.lines, walls, inBld);
     if (al.score >= 0.35) { dx = al.dx; dy = al.dy; target = { x0: g.box.x0 + dx, y0: g.box.y0 + dy, x1: g.box.x1 + dx, y1: g.box.y1 + dy }; }
-    p.ceilingGrid = g.lines.map(q => [q[0] + dx, q[1] + dy, q[2] + dx, q[3] + dy]);
+    p.ceilingGrid = g.lines.map(q => [q[0] + dx, q[1] + dy, q[2] + dx, q[3] + dy]); delete p.ceilTiles;
     p.ceilingMode = 'manual'; delete p.ceilRects; p.ceilingSource = data.name; p.fixtures = p.fixtures || [];
     said.push(target ? 'The ceiling grid is laid on the cleanroom' : 'The ceiling grid couldn\'t be matched to the walls; use Edit ceiling → Move or turn to line it up');
   }
@@ -1500,7 +1541,7 @@ async function saveGroupDialog() {
   toast(`Saved “${e.name}” to the library.`);
 }
 async function saveCeilingDialog() {
-  const P = ed.plan, has = (P.ceilingGrid && P.ceilingGrid.length) || P.ceilingImage || (P.ceilingMode === 'manual' && (P.fixtures || []).length);
+  const P = ed.plan, has = (P.ceilingGrid && P.ceilingGrid.length) || (P.ceilTiles && P.ceilTiles.length) || P.ceilingImage || (P.ceilingMode === 'manual' && (P.fixtures || []).length);
   if (!has) { toast('This plan has no ceiling of its own to save yet. Add a ceiling drawing or place FFUs and lights first.'); return; }
   const A = Plan3DViewer.analyze(P), ox = A.empty ? 0 : A.bounds.minX, oy = A.empty ? 0 : A.bounds.minZ;
   const r = await dialogOpen({ title: 'Save this ceiling to the library', body: `<p>Saves the ceiling grid, FFUs and lights (and a ceiling picture, if there is one), measured from the building's corner, so you can lay it on another plan from <b>Library → Insert from the library</b>.</p>${fld('Name', txt('cName', (P.ceilingSource || P.name || 'Ceiling').replace(/\.(dwg|dxf|png|jpe?g)$/i, '') + ' ceiling'))}`,
@@ -1508,6 +1549,7 @@ async function saveCeilingDialog() {
   if (r == null) return;
   const C = { source: P.ceilingSource || '', grid: (P.ceilingGrid || []).map(q => [q[0] - ox, q[1] - oy, q[2] - ox, q[3] - oy]), fixtures: (P.ceilingMode === 'manual' ? P.fixtures || [] : []).map(f => ({ ...f, x: f.x - ox, y: f.y - oy })) };
   if (P.ceilingImage) C.image = { ...P.ceilingImage, x: P.ceilingImage.x - ox, y: P.ceilingImage.y - oy };
+  if ((P.ceilTiles || []).length) C.tiles = P.ceilTiles.map(t => ({ ...t, x: t.x - ox, y: t.y - oy }));
   const e = await saveToLib('ceiling', r || 'Ceiling', { ceiling: C });
   toast(`Saved “${e.name}” to the library.`);
 }
@@ -1518,6 +1560,7 @@ function applyCeiling(e) {
     if (C.image) P.ceilingImage = { ...C.image, x: C.image.x + ox, y: C.image.y + oy }; else delete P.ceilingImage;
     P.fixtures = (C.fixtures || []).map(f => ({ ...f, id: Plan3DEditor.uid(), x: f.x + ox, y: f.y + oy }));
     P.ceilingMode = 'manual'; delete P.ceilRects; P.ceilingSource = e.name;
+    if ((C.tiles || []).length) { P.ceilTiles = C.tiles.map(t => ({ ...t, id: Plan3DEditor.uid(), x: t.x + ox, y: t.y + oy })); P.ceilRects = Plan3DViewer.builtRects(P); } else delete P.ceilTiles;
   });
   updateChrome(); queue3D();
   showBanner(`Laid “${e.name}” on this plan from its corner. Move or turn it if it needs lining up.`, [{ label: 'Move or turn it', primary: true, fn: () => { hideBanner(); moveCeilingDialog(); } }]);

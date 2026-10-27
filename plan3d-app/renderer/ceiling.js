@@ -137,10 +137,12 @@ function shiftCeiling(P, dx, dy, rot) {
   if (P.ceilingGrid) P.ceilingGrid = P.ceilingGrid.map(g => { const a1 = T(g[0], g[1]), b1 = T(g[2], g[3]); return [a1[0], a1[1], b1[0], b1[1]]; });
   if (P.ceilingSource && P.fixtures) P.fixtures.forEach(f => { const [x, y] = T(f.x, f.y); f.x = x; f.y = y; if (rot % 180 && f.w) { const t = f.w; f.w = f.h; f.h = t; } });
   if (P.ceilingImage) { const I = P.ceilingImage, [x, y] = T(I.x, I.y); I.x = x; I.y = y; I.rot = ((I.rot || 0) + (rot || 0)) % 360; }
+  for (const t of P.ceilTiles || []) { const [x, y] = T(t.x, t.y); t.x = x; t.y = y; if (rot % 180) { const w = t.w; t.w = t.h; t.h = w; } }
+  if ((P.ceilTiles || []).length) P.ceilRects = V.builtRects(P);
 }
 
 function removeCeiling(P) {
-  delete P.ceilingGrid; delete P.ceilingImage; delete P.ceilingSource; delete P.ceilRects; delete P.gridZones; delete P.ceilSkip; delete P.ceilForce;
+  delete P.ceilingGrid; delete P.ceilingImage; delete P.ceilingSource; delete P.ceilRects; delete P.ceilTiles; delete P.gridZones; delete P.ceilSkip; delete P.ceilForce;
   P.fixtures = []; P.ceilingMode = 'auto';
 }
 

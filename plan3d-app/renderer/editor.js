@@ -51,7 +51,7 @@ const DEFAULT_W = { door: 3, door2: 6, glass: 4, open: 3, pass: 2, window: 3, ov
 // houses: 2′-8″ doors, 5′ pairs, 3′ windows, 6′-8″ heads
 const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2, overhead: 16 };
 const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass', 'overhead']);
-const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas', gzone: 'gridZones' };
+const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas', gzone: 'gridZones', tile: 'ceilTiles' };
 const COL = {
   bg: '#1a2024', gridMinor: 'rgba(255,255,255,.035)', gridMajor: 'rgba(255,255,255,.08)', axis: 'rgba(255,255,255,.14)',
   wall: '#e9eef0', wallLine: '#8e9aa1', sp: '#f2d06b', chase: '#59666d', chaseLine: '#b7c2c7', grille: '#9fdbe8',
@@ -92,6 +92,8 @@ class Editor {
   snapshot() { return JSON.stringify(this.plan); }
   commit(before) {
     this.hist.push(before); if (this.hist.length > 200) this.hist.shift(); this.fut = []; this.dirty = true;
+    // a built ceiling's outline is its pieces
+    const V0 = global.Plan3DViewer; if (V0 && V0.isBuilt && V0.isBuilt(this.plan)) this.plan.ceilRects = V0.builtRects(this.plan);
     this._chk = undefined; this._seats = null; this._lights = null; this._gridKey = null; this.emit('change'); this.render();
   }
   /* the cleanroom check (airflow per room, pressure across doors), worked out once per change */
@@ -181,6 +183,115 @@ class Editor {
     const turned = V2.fixtureTurned ? V2.fixtureTurned(o, G) : false;
     this.status(turned ? 'Turned across the grid. Tees frame it on all four sides and the tiles around it are cut to fit.' : 'Back in line with the grid.');
   }
+  /* ---------- Build grid: the ceiling laid piece by piece (tiles, FFUs and lights) ---------- */
+  built() { const V = global.Plan3DViewer; return !!(V && V.isBuilt && V.isBuilt(this.plan)); }
+  // back to a generated grid over the same outline (the tiles go; FFUs and lights stay)
+  unbuild() { if (!this.built()) return; this.edit(Q => { const V = global.Plan3DViewer; Q.ceilRects = V.builtRects(Q); delete Q.ceilTiles; Q.ceilingSource = 'Generated'; }); this.status('Back to a generated grid over the same area. Generate ceiling lays it out fresh.'); }
+  // every piece of a built ceiling as a box, except those in skip (a Set of ids)
+  pieceBoxes(skip) {
+    const out = [], nom = (v) => (Math.abs(v - Math.round(v)) < 0.2 ? Math.round(v) : v);
+    for (const t of this.plan.ceilTiles || []) if (!(skip && skip.has(t.id))) out.push({ x0: t.x - t.w / 2, y0: t.y - t.h / 2, x1: t.x + t.w / 2, y1: t.y + t.h / 2, id: t.id });
+    for (const f of this.plan.fixtures || []) if (!(skip && skip.has(f.id))) { const w = nom(f.w || 2), h = nom(f.h || 4); out.push({ x0: f.x - w / 2, y0: f.y - h / 2, x1: f.x + w / 2, y1: f.y + h / 2, id: f.id }); }
+    return out;
+  }
+  // straight walls as boxes (their full thickness); tiles stop at their faces
+  wallBoxes() {
+    const out = [];
+    for (const w of this.plan.walls) { const h = (w.t || 0.25) / 2; if (Math.abs(w.x1 - w.x2) < 1e-3 || Math.abs(w.y1 - w.y2) < 1e-3) out.push({ x0: Math.min(w.x1, w.x2) - h, y0: Math.min(w.y1, w.y2) - h, x1: Math.max(w.x1, w.x2) + h, y1: Math.max(w.y1, w.y2) + h }); }
+    for (const k of this.plan.chases || []) out.push({ x0: Math.min(k.x0, k.x1), y0: Math.min(k.y0, k.y1), x1: Math.max(k.x0, k.x1), y1: Math.max(k.y0, k.y1) });
+    return out;
+  }
+  // a piece w × h centred near (cx, cy): its edges catch on the edges of the pieces and wall faces around it
+  // (within 10 px), so pieces butt up against each other and the walls; otherwise it moves on the snap grid
+  snapBox(cx, cy, w, h, skip, free) {
+    if (free) return { x: cx, y: cy, cx: false, cy: false };
+    const tol = 10 / this.view.s, near = (b) => b.x0 < cx + w / 2 + 2 && b.x1 > cx - w / 2 - 2 && b.y0 < cy + h / 2 + 2 && b.y1 > cy - h / 2 - 2;
+    const B = this.pieceBoxes(skip).concat(this.wallBoxes()).filter(near);
+    let bx = null, by = null, dx = tol, dy = tol;
+    for (const b of B) {
+      for (const e of [b.x0, b.x1]) for (const m of [cx - w / 2, cx + w / 2]) { const d = e - m; if (Math.abs(d) < dx) { dx = Math.abs(d); bx = d; } }
+      for (const e of [b.y0, b.y1]) for (const m of [cy - h / 2, cy + h / 2]) { const d = e - m; if (Math.abs(d) < dy) { dy = Math.abs(d); by = d; } }
+    }
+    const g = this.snapIn / 12 || 1 / 48;
+    return { x: bx != null ? cx + bx : Math.round(cx / g) * g, y: by != null ? cy + by : Math.round(cy / g) * g, cx: bx != null, cy: by != null };
+  }
+  // what's left of a box once the walls, chases and other pieces are taken out of it: the part under pt, or
+  // the biggest part (so a 2 × 4 dropped against a wall comes out as the cut tile that fits); null if nothing
+  // useful (under 1½″) is left
+  freePart(r, pt, skip, needPt) {
+    const V = global.Plan3DViewer, obs = this.pieceBoxes(skip).concat(this.wallBoxes()).filter(b => b.x0 < r[2] && b.x1 > r[0] && b.y0 < r[3] && b.y1 > r[1]).map(b => [b.x0, b.y0, b.x1, b.y1]);
+    const parts = (obs.length ? V.rectsMinus([r], obs) : [r]).filter(q => q[2] - q[0] >= 1.5 / 12 - 1e-6 && q[3] - q[1] >= 1.5 / 12 - 1e-6);
+    if (!parts.length) return null;
+    // the pieces subtractRects leaves can be split oddly: join neighbours that make a straight-sided rectangle
+    let L = parts.slice(), merged = true;
+    while (merged) { merged = false; for (let i = 0; i < L.length && !merged; i++) for (let j = i + 1; j < L.length && !merged; j++) { const a = L[i], b = L[j]; if (Math.abs(a[1] - b[1]) < 1e-6 && Math.abs(a[3] - b[3]) < 1e-6 && (Math.abs(a[2] - b[0]) < 1e-6 || Math.abs(b[2] - a[0]) < 1e-6)) { L[i] = [Math.min(a[0], b[0]), a[1], Math.max(a[2], b[2]), a[3]]; L.splice(j, 1); merged = true; } else if (Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[2] - b[2]) < 1e-6 && (Math.abs(a[3] - b[1]) < 1e-6 || Math.abs(b[3] - a[1]) < 1e-6)) { L[i] = [a[0], Math.min(a[1], b[1]), a[2], Math.max(a[3], b[3])]; L.splice(j, 1); merged = true; } } }
+    const under = pt && L.find(q => pt.x >= q[0] && pt.x <= q[2] && pt.y >= q[1] && pt.y <= q[3]);
+    if (needPt) return under || null;
+    return under || L.sort((a, b) => (b[2] - b[0]) * (b[3] - b[1]) - (a[2] - a[0]) * (a[3] - a[1]))[0];
+  }
+  // the piece the Build palette would put at (x, y): { kind, x0, y0, x1, y1, cut }
+  pieceAt(x, y) {
+    const kind = this.tileKind || 'tile', w = this.tileW || 2, h = this.tileH || 4, q = this.snapBox(x, y, w, h, null, false);
+    const r = [q.x - w / 2, q.y - h / 2, q.x + w / 2, q.y + h / 2];
+    if (kind !== 'tile') {
+      // an FFU or light goes in whole or not at all
+      const hit = this.pieceBoxes().concat(this.wallBoxes()).some(b => b.x0 < r[2] - 1e-3 && b.x1 > r[0] + 1e-3 && b.y0 < r[3] - 1e-3 && b.y1 > r[1] + 1e-3);
+      return { kind, x0: r[0], y0: r[1], x1: r[2], y1: r[3], blocked: hit };
+    }
+    const f = this.freePart(r, { x, y }, null, true); if (!f) return null;
+    return { kind, x0: f[0], y0: f[1], x1: f[2], y1: f[3], cut: Math.abs(f[2] - f[0] - w) > 1e-3 || Math.abs(f[3] - f[1] - h) > 1e-3 };
+  }
+  // start building from the ceiling that's there: its grid's openings become tiles (FFUs and lights stay)
+  buildFromCeiling(quiet) {
+    const V = global.Plan3DViewer, P = this.plan;
+    if (this.built()) return true;
+    let O = null;
+    if (Array.isArray(P.ceilRects) && P.ceilRects.length && !(P.ceilingGrid && P.ceilingGrid.length)) { try { O = V.tileOpenings(P); } catch (e) { O = null; } }
+    const tiles = [];
+    for (const q of O || []) for (const r of q.notch ? q.parts : [[q.x0, q.z0, q.x1, q.z1]]) { const w = r[2] - r[0], h = r[3] - r[1]; if (w >= 1.5 / 12 && h >= 1.5 / 12) tiles.push({ id: uid(), x: (r[0] + r[2]) / 2, y: (r[1] + r[3]) / 2, w, h }); }
+    if (!tiles.length && !quiet) { this.status(P.ceilingGrid && P.ceilingGrid.length ? 'This ceiling came from a drawing. Use Generate ceiling first, or start building from scratch: place tiles or drag a box to fill.' : 'No ceiling to start from: place tiles, or drag a box with Fill to lay them.'); }
+    if (!tiles.length) return false;
+    this.edit(Q => { Q.ceilTiles = tiles; Q.ceilingMode = 'manual'; Q.ceilingSource = 'Built'; delete Q.ceilingGrid; delete Q.ceilingImage; delete Q.fixturesFinal; Q.fixtures = Q.fixtures || []; });
+    if (!quiet) this.status('The ceiling is now ' + tiles.length + ' separate tiles. Move, turn (R), resize or delete any of them; place new ones or drag a box to fill.');
+    return true;
+  }
+  placePiece(x, y) {
+    const pc = this.pieceAt(x, y); if (!pc) { this.status('No room for a tile there.'); return; }
+    if (pc.blocked) { this.status('It overlaps a wall or another piece there. FFUs and lights go in whole: clear a spot first.'); return; }
+    if (!this.built()) this.buildFromCeiling(true);
+    const o = { id: uid(), x: (pc.x0 + pc.x1) / 2, y: (pc.y0 + pc.y1) / 2, w: pc.x1 - pc.x0, h: pc.y1 - pc.y0 };
+    this.edit(Q => {
+      Q.ceilingMode = 'manual'; Q.ceilingSource = 'Built'; delete Q.ceilingGrid; delete Q.ceilingImage;
+      if (pc.kind === 'tile') (Q.ceilTiles = Q.ceilTiles || []).push(o); else (Q.fixtures = Q.fixtures || []).push({ ...o, type: pc.kind });
+    });
+    this.status((pc.kind === 'tile' ? (pc.cut ? 'Cut tile ' : 'Tile ') : pc.kind === 'ffu' ? 'FFU ' : 'Light ') + fmtIn(o.w) + ' × ' + fmtIn(o.h) + ' placed. R turns the next one; click a piece to move it.');
+  }
+  // fill a box with tiles of the chosen size, laid from the box's first corner; walls, chases and the pieces
+  // already there are left out, and the tiles at the edges are cut to fit
+  fillBox(r) {
+    const w = this.tileW || 2, h = this.tileH || 4, V = global.Plan3DViewer;
+    if (!this.built()) this.buildFromCeiling(true);
+    const obs = this.pieceBoxes().concat(this.wallBoxes()).map(b => [b.x0, b.y0, b.x1, b.y1]), add = [];
+    for (let x = r[0]; x < r[2] - 1e-6; x += w) for (let y = r[1]; y < r[3] - 1e-6; y += h) {
+      const c = [x, y, Math.min(x + w, r[2]), Math.min(y + h, r[3])], hit = obs.filter(b => b[0] < c[2] && b[2] > c[0] && b[1] < c[3] && b[3] > c[1]);
+      for (const q of hit.length ? V.rectsMinus([c], hit) : [c]) if (q[2] - q[0] >= 1.5 / 12 - 1e-6 && q[3] - q[1] >= 1.5 / 12 - 1e-6) add.push({ id: uid(), x: (q[0] + q[2]) / 2, y: (q[1] + q[3]) / 2, w: q[2] - q[0], h: q[3] - q[1] });
+    }
+    if (!add.length) { this.status('Nothing to fill there: it is all walls or pieces already.'); return; }
+    this.edit(Q => { (Q.ceilTiles = Q.ceilTiles || []).push(...add); Q.ceilingMode = 'manual'; Q.ceilingSource = 'Built'; delete Q.ceilingGrid; delete Q.ceilingImage; });
+    const full = add.filter(t => Math.abs(t.w - w) < 1e-3 && Math.abs(t.h - h) < 1e-3).length;
+    this.status('Filled with ' + add.length + ' tiles: ' + full + ' whole, ' + (add.length - full) + ' cut to fit.');
+  }
+  turnTile(o) {
+    this.edit(() => { const w = o.w; o.w = o.h; o.h = w; });
+    const q = this.snapBox(o.x, o.y, o.w, o.h, new Set([o.id]), false); if (Math.abs(q.x - o.x) + Math.abs(q.y - o.y) > 1e-6) this.edit(() => { o.x = q.x; o.y = q.y; });
+  }
+  /* beams sit on the studs of the cleanroom walls: the H-studs every 48″ and the posts at the ends */
+  studs() {
+    const V = global.Plan3DViewer, key = this.plan.walls.length + '|' + this.hist.length + '|' + this.fut.length;
+    if (!this._studs || this._studsKey !== key) { this._studs = V && V.studPoints ? V.studPoints(this.plan) : []; this._studsKey = key; }
+    return this._studs;
+  }
+  studSnap(x, y) { const tol = 12 / this.view.s; let best = null, bd = tol; for (const p of this.studs()) { const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = p; } } return best ? { x: best.x, y: best.y, stud: true } : null; }
   /* the ceiling lights (not FFUs) a switch can work, from the ceiling as laid out; worked out once per change */
   lights() {
     const V2 = global.Plan3DViewer;
@@ -449,6 +560,7 @@ class Editor {
     }
     const h = this.wallAt(x, y, 7); if (h) return { kind: 'wall', id: h.w.id };
     if (P.ceilingMode === 'manual' && this.showCeil !== false) for (let i = (P.fixtures || []).length - 1; i >= 0; i--) { const f = P.fixtures[i]; if (f.id && Math.abs(x - f.x) < (f.w || 2) / 2 && Math.abs(y - f.y) < (f.h || 4) / 2) return { kind: 'fixture', id: f.id }; }
+    if (this.showCeil !== false) for (let i = (P.ceilTiles || []).length - 1; i >= 0; i--) { const t = P.ceilTiles[i]; if (t.id && Math.abs(x - t.x) < t.w / 2 && Math.abs(y - t.y) < t.h / 2) return { kind: 'tile', id: t.id }; }
     for (let i = (P.inserts || []).length - 1; i >= 0; i--) { const b = this.insBox(P.inserts[i]); if (x >= b.x0 - tol && x <= b.x1 + tol && y >= b.y0 - tol && y <= b.y1 + tol) return { kind: 'insert', id: P.inserts[i].id }; }
     return null;
   }
@@ -494,6 +606,12 @@ class Editor {
             this.drag = { kind: 'end', w: s, end, before: this.snapshot(), linked, other: end === 1 ? { x: s.x2, y: s.y2 } : { x: s.x1, y: s.y1 } };
             this.c.setPointerCapture(e.pointerId); return;
           }
+        }
+      }
+      if (this.sel && this.sel.kind === 'beam' && s) {
+        for (const end of [1, 2]) {
+          const ex = end === 1 ? s.x1 : s.x2, ey = end === 1 ? s.y1 : s.y2;
+          if (Math.hypot(ex - p.x, ey - p.y) < 8 / this.view.s) { this.drag = { kind: 'bend', b: s, end, before: this.snapshot(), other: end === 1 ? { x: s.x2, y: s.y2 } : { x: s.x1, y: s.y1 } }; this.c.setPointerCapture(e.pointerId); return; }
         }
       }
       const hit = this.hitTest(p.x, p.y);
@@ -554,7 +672,7 @@ class Editor {
       return;
     }
     if (T === 'beam') {
-      const s = this.snap(p.x, p.y, this.beamA || null, { free: e.altKey });
+      const s = (!e.altKey && this.studSnap(p.x, p.y)) || this.snap(p.x, p.y, this.beamA || null, { free: e.altKey });
       if (!this.beamA) { this.beamA = { x: s.x, y: s.y }; this.status('Click the other end of the beam. Esc to stop.'); }
       else { const b = { id: uid(), x1: this.beamA.x, y1: this.beamA.y, x2: s.x, y2: s.y, size: this.beamSize || 'W12x26' }; if (Math.hypot(b.x2 - b.x1, b.y2 - b.y1) > 0.5) this.edit(P => { (P.beams = P.beams || []).push(b); }); this.beamA = null; this.status('Beam placed. Click to start another.'); }
       this.render(); return;
@@ -579,6 +697,23 @@ class Editor {
       const it = { id: uid(), type: q.type, x: q.x, y: q.y, a: q.a, w: q.w, d: q.d };
       this.edit(P => { (P.items = P.items || []).push(it); }); return;
     }
+    if (T === 'grid' && this.gridMode === 'place') {
+      // on a piece: pick it up and move it; on empty ceiling: put the chosen piece there
+      const hit = this.hitTest(p.x, p.y);
+      if (hit && (hit.kind === 'tile' || hit.kind === 'fixture')) {
+        if (!this.built()) this.buildFromCeiling(true);
+        const obj = this.find(hit); if (!obj) return;
+        this.sel = hit; this.emit('select');
+        this.drag = { kind: 'move', sel: hit, obj, sx: p.x, sy: p.y, before: this.snapshot(), orig: JSON.parse(JSON.stringify(obj)), moved: false };
+        this.c.setPointerCapture(e.pointerId); this.render(); return;
+      }
+      this.placePiece(p.x, p.y); this.render(); return;
+    }
+    if (T === 'grid' && this.gridMode === 'fill') {
+      const q = this.snapBox(p.x, p.y, 0, 0, null, e.altKey);
+      this.drag = { kind: 'tfill', x0: q.x, y0: q.y, x1: q.x, y1: q.y }; this.c.setPointerCapture(e.pointerId); return;
+    }
+    if (T === 'grid' && this.built()) { this.status('This ceiling is built piece by piece, so the Grid tool works on its pieces: pick Place piece or Fill in the Grid bar. To go back to a generated grid, use Generate ceiling (or Back to a generated grid in the bar).'); return; }
     if (T === 'grid') {
       const s = this.snap(p.x, p.y, null);
       this.drag = { kind: 'gzone', mode: this.gridMode || 'room', x0: s.x, y0: s.y, x1: s.x, y1: s.y, px: p.x, py: p.y }; this.c.setPointerCapture(e.pointerId); return;
@@ -622,6 +757,13 @@ class Editor {
       this.emit('live'); this.render(); return;
     }
     if (D && D.kind === 'box') { D.x1 = p.x; D.y1 = p.y; this.render(); return; }
+    if (D && D.kind === 'tfill') { const q = this.snapBox(p.x, p.y, 0, 0, null, e.altKey); D.x1 = q.x; D.y1 = q.y; this.status('Fill ' + fmt(Math.abs(D.x1 - D.x0)) + ' × ' + fmt(Math.abs(D.y1 - D.y0)) + ' with ' + fmtIn(this.tileW || 2) + ' × ' + fmtIn(this.tileH || 4) + ' tiles'); this.render(); return; }
+    if (D && D.kind === 'bend') {
+      const st = !e.altKey && this.studSnap(p.x, p.y), q = st || this.snap(p.x, p.y, D.other, { free: e.altKey });
+      if (D.end === 1) { D.b.x1 = q.x; D.b.y1 = q.y; } else { D.b.x2 = q.x; D.b.y2 = q.y; }
+      this.status('Beam ' + fmt(Math.hypot(D.b.x2 - D.b.x1, D.b.y2 - D.b.y1)) + (st ? ' · on a stud' : '') + ' (Alt: anywhere)');
+      this.emit('live'); this.render(); return;
+    }
     if (D && D.kind === 'linkbox') { D.x1 = p.x; D.y1 = p.y; this.render(); return; }
     if (D && D.kind === 'gmove') {
       let dx = p.x - D.sx, dy = p.y - D.sy;
@@ -632,7 +774,9 @@ class Editor {
       if (!e.altKey) for (const it of D.items) if (it.r.kind === 'wall') for (const [ex, ey] of [[it.O.x1 + dx, it.O.y1 + dy], [it.O.x2 + dx, it.O.y2 + dy]]) for (const w of this.plan.walls) { if (moving.has(w)) continue; for (const [px, py] of [[w.x1, w.y1], [w.x2, w.y2]]) { const d = Math.hypot(px - ex, py - ey); if (d < bd) { bd = d; best = [px - ex, py - ey]; } } }
       if (best) { dx += best[0]; dy += best[1]; } else { const g = this.snapIn / 12 || 1 / 48; dx = Math.round(dx / g) * g; dy = Math.round(dy / g) * g; }
       // FFUs and lights moving together land in the ceiling grid's cells
-      const fx = D.items.find(it => it.r.kind === 'fixture');
+      const built = this.built(), tl = built ? D.items.find(it => it.r.kind === 'tile' || it.r.kind === 'fixture') : null;
+      if (tl && !best && !e.altKey) { const ids = new Set(D.items.map(it => it.o.id)), q = this.snapBox(tl.O.x + (p.x - D.sx), tl.O.y + (p.y - D.sy), tl.O.w || 2, tl.O.h || 4, ids, false); dx = q.x - tl.O.x; dy = q.y - tl.O.y; }
+      const fx = built ? null : D.items.find(it => it.r.kind === 'fixture');
       if (fx && !best && !e.altKey && global.Plan3DViewer) { const V = global.Plan3DViewer, q = V.snapFixture({ x: fx.O.x + dx, y: fx.O.y + dy, w: fx.O.w || 2, h: fx.O.h || 4 }, V.gridAt(this.plan, fx.O.x + dx, fx.O.y + dy)); dx = q.x - fx.O.x; dy = q.y - fx.O.y; }
       for (const it of D.items) this.shiftRef(it.r.kind, it.o, it.O, dx, dy);
       // and each one sits in a cell of its own (a layout drawn a hair off the grid still lands cleanly)
@@ -672,7 +816,15 @@ class Editor {
           let s = hit.p.tc * wl; s = Math.round(s / g) * g; s = Math.max(len / 2, Math.min(wl - len / 2, s));
           o.x1 = w.x1 + wx * (s - len / 2); o.y1 = w.y1 + wy * (s - len / 2); o.x2 = w.x1 + wx * (s + len / 2); o.y2 = w.y1 + wy * (s + len / 2); o.t = w.t;
         } else { const k = dx * ux + dy * uy; o.x1 = O.x1 + ux * k; o.y1 = O.y1 + uy * k; o.x2 = O.x2 + ux * k; o.y2 = O.y2 + uy * k; }
-      } else if (D.sel.kind === 'beam') { o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy; }
+      } else if (D.sel.kind === 'beam') {
+        // an end lands on a stud of a cleanroom wall when one is near (Alt: anywhere)
+        const rx = p.x - D.sx, ry = p.y - D.sy, tol = 12 / this.view.s; let best = null, bd = tol;
+        if (!e.altKey) for (const st of this.studs()) for (const [ex, ey] of [[O.x1 + rx, O.y1 + ry], [O.x2 + rx, O.y2 + ry]]) { const d = Math.hypot(st.x - ex, st.y - ey); if (d < bd) { bd = d; best = [st.x - ex + rx, st.y - ey + ry]; } }
+        if (best) { dx = best[0]; dy = best[1]; } else if (e.altKey) { dx = rx; dy = ry; }
+        o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy;
+        this.status('Moving the beam' + (best ? ' · on a stud' : '') + ' (Alt: anywhere)');
+      }
+      else if (D.sel.kind === 'tile' || (D.sel.kind === 'fixture' && this.built())) { const q = this.snapBox(O.x + (p.x - D.sx), O.y + (p.y - D.sy), O.w || 2, O.h || 4, new Set([o.id]), e.altKey); o.x = q.x; o.y = q.y; this.status((D.sel.kind === 'tile' ? 'Tile ' : 'Moving ') + fmtIn(O.w || 2) + ' × ' + fmtIn(O.h || 4) + (q.cx || q.cy ? ' · butted against the pieces and walls next to it' : '') + ' (Alt: no snapping)'); }
       else if (D.sel.kind === 'fixture' && e.altKey) { o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy); this.status('Moving freely (Alt): ' + fmt(Math.hypot(o.x - O.x, o.y - O.y))); }
       else if (D.sel.kind === 'fixture') { const V = global.Plan3DViewer, G = V.gridAt(this.plan, O.x + (p.x - D.sx), O.y + (p.y - D.sy)), q = V.snapFixture({ x: O.x + (p.x - D.sx), y: O.y + (p.y - D.sy), w: O.w || 2, h: O.h || 4 }, G); o.x = q.x; o.y = q.y; }
       else if (D.sel.kind === 'gzone') { this.shiftRef('gzone', o, O, dx, dy); }
@@ -714,6 +866,7 @@ class Editor {
     if (this.tool === 'elec') { const V = global.Plan3DViewer, q = this.devicePlace(p.x, p.y, this.deviceType || 'outlet'); this.status(q ? V.DEVICES[q.type].label + ' at ' + fmtIn(q.h) + ' to center. Click to place.' : 'Move onto a wall.'); }
     if (this.tool === 'item') { const q = this.itemPlace(p.x, p.y, this.itemType); this.status(q ? (global.Plan3DViewer.ITEMS[q.type].label + (q.wall ? ' — against the wall. Click to place.' : ' — R turns it. Click to place.')) : ''); }
     if (this.tool === 'select') this.hover = this.hitTest(p.x, p.y);
+    if (this.tool === 'grid' && this.gridMode === 'place') { const hit = this.hitTest(p.x, p.y); this.tileGhost = hit && (hit.kind === 'tile' || hit.kind === 'fixture') ? null : this.pieceAt(p.x, p.y); this.hover = hit && (hit.kind === 'tile' || hit.kind === 'fixture') ? hit : null; if (this.tileGhost) this.status((this.tileGhost.blocked ? 'No room: ' : '') + (this.tileGhost.kind === 'tile' ? (this.tileGhost.cut ? 'Cut tile ' : 'Tile ') : this.tileGhost.kind === 'ffu' ? 'FFU ' : 'Light ') + fmtIn(this.tileGhost.x1 - this.tileGhost.x0) + ' × ' + fmtIn(this.tileGhost.y1 - this.tileGhost.y0) + ' — click to place, R turns it'); } else this.tileGhost = null;
     this.render();
     this.emit('cursor', p);
   }
@@ -739,7 +892,12 @@ class Editor {
       this.render(); return;
     }
     if (D.kind === 'gmove') { if (D.moved) { this.commit(D.before); this.emit('select'); } this.status(''); this.render(); return; }
-    if (D.kind === 'end') { this.commit(D.before); this.emit('select'); }
+    if (D.kind === 'end' || D.kind === 'bend') { this.commit(D.before); this.emit('select'); }
+    else if (D.kind === 'tfill') {
+      const r = [Math.min(D.x0, D.x1), Math.min(D.y0, D.y1), Math.max(D.x0, D.x1), Math.max(D.y0, D.y1)];
+      if (r[2] - r[0] > 0.3 && r[3] - r[1] > 0.3) this.fillBox(r); else this.status('Drag a box over the area to fill with tiles.');
+      this.render(); return;
+    }
     else if (D.kind === 'move') { if (D.moved) { this.commit(D.before); this.emit('select'); } }
     else if (D.kind === 'run') {
       const P = this.cursor || { x: D.S.x1, y: D.S.y1 };
@@ -837,6 +995,9 @@ class Editor {
       if (this.cursor) this.pieceGhost = this.pieces.ghostAt({ x: this.cursor.x, y: this.cursor.y });
       this.render(); return true;
     }
+    if ((k === 'r' || k === 'R') && !e.ctrlKey && this.tool === 'grid' && (this.gridMode === 'place' || this.gridMode === 'fill') && !(this.sel && (this.sel.kind === 'tile' || this.sel.kind === 'fixture'))) { const w = this.tileW || 2; this.tileW = this.tileH || 4; this.tileH = w; if (this.cursor) this.tileGhost = this.pieceAt(this.cursor.x, this.cursor.y); this.emit('tilesize'); this.render(); return true; }
+    if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'tile') { const o = this.selected(); if (o) this.turnTile(o); return true; }
+    if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'fixture' && this.built()) { const o = this.selected(); if (o) { this.edit(() => { const w = o.w || 2; o.w = o.h || 4; o.h = w; }); } return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'fixture') { const o = this.selected(); if (o) this.turnFixture(o); return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.tool === 'item') { this.itemRot = ((this.itemRot || 0) + 1) % 4; this.render(); return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'item') { const o = this.selected(); if (o) this.edit(() => { o.a = (o.a || 0) + Math.PI / 2 * (e.shiftKey ? -1 : 1); }); return true; }
@@ -1014,7 +1175,7 @@ class Editor {
     if (this.tool === 'beam' && this.beamA && this.cursor) { const q = this.snap(this.cursor.x, this.cursor.y, this.beamA, {}); g.save(); g.strokeStyle = COL.draft; g.setLineDash([7, 4]); g.lineWidth = 1.5; g.beginPath(); g.moveTo(this.sx(this.beamA.x), this.sy(this.beamA.y)); g.lineTo(this.sx(q.x), this.sy(q.y)); g.stroke(); g.restore(); this.status('Beam ' + fmt(Math.hypot(q.x - this.beamA.x, q.y - this.beamA.y)) + ' — click the other end.'); }
     // a generated ceiling: its T-grid, drawn over the rooms it was laid out in
     if (Array.isArray(P.ceilRects) && P.ceilRects.length && this.showCeil !== false && V2 && V2.ceilingGrid) {
-      const key = JSON.stringify([P.ceilRects.length, P.ceilRects[0], P.gridZones || [], P.ceilGrid || null, P.walls.length, (P.fixtures || []).map(f => [f.x, f.y, f.w, f.h])]);
+      const key = JSON.stringify([P.ceilRects.length, P.ceilRects[0], P.gridZones || [], P.ceilGrid || null, P.walls.length, (P.fixtures || []).map(f => [f.x, f.y, f.w, f.h]), (P.ceilTiles || []).map(t => [t.x, t.y, t.w, t.h])]);
       if (this._gridKey !== key) { try { this._gridLines = V2.generatedGridLines(P) || []; } catch (e) { this._gridLines = []; } this._gridKey = key; }
       g.save(); g.strokeStyle = 'rgba(127,211,227,.32)'; g.lineWidth = 1; g.beginPath();
       for (const q of this._gridLines) { g.moveTo(this.sx(q[0]), this.sy(q[1])); g.lineTo(this.sx(q[2]), this.sy(q[3])); }
@@ -1026,6 +1187,31 @@ class Editor {
       g.save(); g.strokeStyle = 'rgba(242,200,75,.85)'; g.lineWidth = 1.4; g.setLineDash([6, 4]); g.strokeRect(X, Y, W, H); g.setLineDash([]);
       g.font = '600 11px Consolas, monospace'; g.fillStyle = '#f2c84b'; g.textAlign = 'right'; g.textBaseline = 'top';
       g.fillText('GRID ' + (k.swap ? '4′ ↔' : '4′ ↕'), X + W - 5, Y + 4); g.restore();
+    }
+    // a built ceiling's tiles: a cut tile shows its size when there's room to read it
+    if ((P.ceilTiles || []).length && this.showCeil !== false) {
+      g.save(); g.fillStyle = 'rgba(127,211,227,.05)'; g.font = '10px Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      for (const t of P.ceilTiles) {
+        const X = this.sx(t.x - t.w / 2), Y = this.sy(t.y - t.h / 2); g.fillRect(X, Y, t.w * s, t.h * s);
+        const whole = (Math.abs(t.w - 2) < 0.01 && Math.abs(t.h - 4) < 0.01) || (Math.abs(t.w - 4) < 0.01 && Math.abs(t.h - 2) < 0.01) || (Math.abs(t.w - 2) < 0.01 && Math.abs(t.h - 2) < 0.01);
+        if (!whole && Math.min(t.w, t.h) * s > 26 && Math.max(t.w, t.h) * s > 56) { g.fillStyle = 'rgba(242,200,75,.85)'; g.fillText(fmtIn(t.w) + '×' + fmtIn(t.h), this.sx(t.x), this.sy(t.y)); g.fillStyle = 'rgba(127,211,227,.05)'; }
+      }
+      g.restore();
+    }
+    if (this.tool === 'grid' && this.gridMode === 'place' && this.tileGhost) {
+      const q = this.tileGhost; g.save(); g.fillStyle = q.blocked ? 'rgba(255,122,107,.25)' : 'rgba(242,200,75,.25)'; g.strokeStyle = q.blocked ? '#ff7a6b' : COL.draft; g.lineWidth = 1.5;
+      g.fillRect(this.sx(q.x0), this.sy(q.y0), (q.x1 - q.x0) * s, (q.y1 - q.y0) * s); g.strokeRect(this.sx(q.x0), this.sy(q.y0), (q.x1 - q.x0) * s, (q.y1 - q.y0) * s); g.restore();
+    }
+    if (this.drag && this.drag.kind === 'tfill') {
+      const D = this.drag, x0 = Math.min(D.x0, D.x1), y0 = Math.min(D.y0, D.y1), x1 = Math.max(D.x0, D.x1), y1 = Math.max(D.y0, D.y1), w = this.tileW || 2, h = this.tileH || 4;
+      g.save(); g.strokeStyle = COL.draft; g.setLineDash([5, 4]); g.lineWidth = 1.2; g.strokeRect(this.sx(x0), this.sy(y0), (x1 - x0) * s, (y1 - y0) * s); g.setLineDash([]); g.strokeStyle = 'rgba(242,200,75,.45)'; g.lineWidth = 1; g.beginPath();
+      for (let x = D.x0 <= D.x1 ? x0 + w : x1 - w; x > x0 + 1e-6 && x < x1 - 1e-6; x += D.x0 <= D.x1 ? w : -w) { g.moveTo(this.sx(x), this.sy(y0)); g.lineTo(this.sx(x), this.sy(y1)); }
+      for (let y = D.y0 <= D.y1 ? y0 + h : y1 - h; y > y0 + 1e-6 && y < y1 - 1e-6; y += D.y0 <= D.y1 ? h : -h) { g.moveTo(this.sx(x0), this.sy(y)); g.lineTo(this.sx(x1), this.sy(y)); }
+      g.stroke(); g.restore();
+    }
+    // studs on the cleanroom walls, where beams sit (shown with the Beam tool or a beam picked)
+    if (this.tool === 'beam' || (this.sel && this.sel.kind === 'beam') || (this.drag && this.drag.kind === 'bend')) {
+      g.save(); g.fillStyle = 'rgba(201,166,107,.85)'; for (const st of this.studs()) g.fillRect(this.sx(st.x) - 2.5, this.sy(st.y) - 2.5, 5, 5); g.restore();
     }
     // FFUs and lights from a drawn ceiling (drag them; they land in the grid's cells)
     if (P.ceilingMode === 'manual' && this.showCeil !== false && !(this.tool === 'piece' && this.pieces && (this.pieces.tool === 'led' || this.pieces.tool === 'ffu'))) {
@@ -1168,7 +1354,7 @@ class Editor {
       else if (sel.kind === 'device') { const r = Math.max(5, Math.min(9, this.view.s * 0.35)); g.beginPath(); g.arc(this.sx(o.x) + Math.cos(o.a || 0) * r * 1.1, this.sy(o.y) + Math.sin(o.a || 0) * r * 1.1, r + 4, 0, Math.PI * 2); g.stroke(); }
       else if (sel.kind === 'item') { const c = global.Plan3DViewer.itemCorners(o); g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.stroke(); }
       else if (sel.kind === 'beam') { quad(o.x1, o.y1, o.x2, o.y2, (global.Plan3DViewer ? global.Plan3DViewer.beamSize(o).bf / 12 : 0.5) + 6 / s); g.stroke(); }
-      else if (sel.kind === 'fixture') { const fw = o.w || 2, fh = o.h || 4; g.strokeRect(this.sx(o.x - fw / 2) - 2, this.sy(o.y - fh / 2) - 2, fw * s + 4, fh * s + 4); }
+      else if (sel.kind === 'fixture' || sel.kind === 'tile') { const fw = o.w || 2, fh = o.h || 4; g.strokeRect(this.sx(o.x - fw / 2) - 2, this.sy(o.y - fh / 2) - 2, fw * s + 4, fh * s + 4); }
       else if (sel.kind === 'insert') { const b = this.insBox(o); g.strokeRect(this.sx(b.x0) - 6, this.sy(b.y0) - 6, (b.x1 - b.x0) * s + 12, (b.y1 - b.y0) * s + 12); }
     };
     if (this.hover && this.tool === 'select' && !(this.sel && this.sel.id === this.hover.id) && !this.isMulti(this.hover)) outlineSel(this.hover, COL.hover, 1.5);
@@ -1182,6 +1368,7 @@ class Editor {
         for (const [x, y] of [[o.x1, o.y1], [o.x2, o.y2]]) { g.fillStyle = COL.bg; g.strokeStyle = COL.sel; g.lineWidth = 2; g.beginPath(); g.rect(this.sx(x) - 4.5, this.sy(y) - 4.5, 9, 9); g.fill(); g.stroke(); }
       }
       if (this.sel.kind === 'opening' && o) dimFor(o.x1, o.y1, o.x2, o.y2, (o.t || 0.25) + 0.6, COL.sel, true);
+      if (this.sel.kind === 'beam' && o) for (const [x, y] of [[o.x1, o.y1], [o.x2, o.y2]]) { g.fillStyle = COL.bg; g.strokeStyle = COL.sel; g.lineWidth = 2; g.beginPath(); g.arc(this.sx(x), this.sy(y), 5, 0, Math.PI * 2); g.fill(); g.stroke(); }
     }
     // tool previews
     const C = this.cursor;
