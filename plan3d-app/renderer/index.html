@@ -66,6 +66,7 @@
     <button data-tool="overhead" title="Overhead door, sectional (H)"><svg viewBox="0 0 24 24"><path d="M3 21V6h18v15M6 10h12M6 13h12M6 16h12M6 19h12" fill="none"/></svg><span>Overhead</span><kbd>H</kbd></button>
     <button data-tool="column" data-only="cleanroom" title="Building column, steel or concrete (U)"><svg viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="18" fill="none"/><path d="M8 3l8 18M16 3L8 21" fill="none"/></svg><span>Column</span><kbd>U</kbd></button>
     <button data-tool="beam" title="Steel beam, I-beam (B)"><svg viewBox="0 0 24 24"><path d="M3 6h18M3 18h18M12 6v12" fill="none"/></svg><span>Beam</span><kbd>B</kbd></button>
+    <button data-tool="header" data-only="cleanroom" title="Header panels over an open passage, ceiling to top of wall (J)"><svg viewBox="0 0 24 24"><path d="M3 4v16M21 4v16M3 6h18v6H3" fill="none"/></svg><span>Header</span><kbd>J</kbd></button>
     <button data-tool="chase" data-only="cleanroom" title="Air chase, full height (C)"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" fill="none"/><path d="M5 10l6-6M5 16l12-12M9 20l10-10M15 20l4-4" fill="none"/></svg><span>Chase</span><kbd>C</kbd></button>
     <button data-tool="grid" data-only="cleanroom" title="Grid: click a space to take its generated ceiling off or put it back; drag to make a grid section you can turn or shift (T)"><svg viewBox="0 0 24 24"><path d="M3 4h18v16H3zM3 12h18M9 4v16M15 4v16" fill="none"/></svg><span>Grid</span><kbd>T</kbd></button>
     <button data-tool="carea" data-only="cleanroom" title="Ceiling area: part of a room with its own ceiling height, raised or dropped (A)"><svg viewBox="0 0 24 24"><path d="M3 8h18M3 8v4M21 8v4" fill="none"/><path d="M7 12h10v5H7z" fill="none" stroke-dasharray="2 2"/></svg><span>Ceiling</span><kbd>A</kbd></button>
@@ -118,6 +119,7 @@
   <span class="grow"></span>
   <label class="chk"><input type="checkbox" id="optOrtho" checked> Ortho</label>
   <label class="chk"><input type="checkbox" id="optDims" checked> Dimensions</label>
+  <label class="chk" title="Show the wall posts on the plan: CP corner post, TP T-post, XP cross post, EC end cap, H H-stud"><input type="checkbox" id="optPosts" checked> Posts</label>
   <span id="sXY" class="mono">—</span>
   <span id="sZoom" class="mono"></span>
 </footer>

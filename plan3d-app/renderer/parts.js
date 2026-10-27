@@ -5,6 +5,9 @@
 'use strict';
 const FR = ['', '⅛', '¼', '⅜', '½', '⅝', '¾', '⅞'];
 function inch(ft) { const e = Math.round(Math.abs(ft) * 96), i = Math.floor(e / 8), r = e % 8; return i + FR[r] + '″'; }
+// a panel's width from its stud-to-stud length: H-studs are 3″ and sit 48″ on center, so a full panel is 45″
+// (the most a panel can be) and a cut panel is its length less the stud
+function panW(L) { const w = Math.min(45 / 12, L - 3 / 12); return w <= 0 ? inch(L) : Math.abs(w - 45 / 12) < 1 / 96 ? '45″' : inch(w); }
 function ftin(ft) { const e = Math.round(Math.abs(ft) * 96), f = Math.floor(e / 96), r = e - f * 96; return f + '′-' + Math.floor(r / 8) + FR[r % 8] + '″'; }
 const near = (a, b, tol) => Math.abs(a - b) <= (tol || 1 / 48);
 
@@ -199,7 +202,7 @@ function partsList(plan) {
     for (let i = 0; i + 1 < cuts.length; i++) {
       const L = cuts[i + 1] - cuts[i]; if (L < 1 / 12) continue;
       const R = panelRows(p.h || WH); hJoint += (R.length - 1) * L;
-      R.forEach((ht, k) => add('Wall panels', (p.sp ? 'S.P. panel' : 'Wall panel') + (R.length > 1 ? (k === R.length - 1 ? ' (upper, stacked)' : ' (lower)') : ''), (Math.abs(L - 4) < 1 / 96 ? '48″' : inch(L)) + ' × ' + ftin(ht), 1, 'ea', 10)); n++;
+      R.forEach((ht, k) => add('Wall panels', (p.sp ? 'S.P. panel' : 'Wall panel') + (R.length > 1 ? (k === R.length - 1 ? ' (upper, stacked)' : ' (lower)') : ''), panW(L) + ' × ' + ftin(ht), 1, 'ea', 10)); n++;
     }
     hStuds += Math.max(0, n - 1);
   }
@@ -209,7 +212,7 @@ function partsList(plan) {
     let n = 0;
     for (let i = 0; i + 1 < cuts.length; i++) {
       const L = cuts[i + 1] - cuts[i]; if (L < 1 / 12) continue;
-      add('Wall panels', 'Transition panel (bulkhead over opening to lower ceiling)', (Math.abs(L - 4) < 1 / 96 ? '48″' : inch(L)) + ' × ' + ftin(q.y1 - q.y0), 1, 'ea', 11); n++;
+      add('Wall panels', 'Transition panel (bulkhead over opening to lower ceiling)', panW(L) + ' × ' + ftin(q.y1 - q.y0), 1, 'ea', 11); n++;
     }
     if (n > 1) add('Studs & posts', 'H-stud, 3″ with insert (transition panels)', '3″ × ' + ftin(q.y1 - q.y0), n - 1, 'ea', 20);
     // bottom edge: closure channel; ceiling track on both faces (the lower ceiling's grid on one side,
@@ -226,12 +229,22 @@ function partsList(plan) {
   for (const q of V.areaBulkheads ? V.areaBulkheads(plan, A) : []) {
     const cuts = [0]; for (let m = 4; m < q.len - 1e-6; m += 4) cuts.push(m); cuts.push(q.len);
     let n = 0;
-    for (let i = 0; i + 1 < cuts.length; i++) { const L = cuts[i + 1] - cuts[i]; if (L < 1 / 12) continue; add('Wall panels', 'Bulkhead panel (ceiling height change)', (Math.abs(L - 4) < 1 / 96 ? '48″' : inch(L)) + ' × ' + ftin(q.y1 - q.y0), 1, 'ea', 12); n++; }
+    for (let i = 0; i + 1 < cuts.length; i++) { const L = cuts[i + 1] - cuts[i]; if (L < 1 / 12) continue; add('Wall panels', 'Bulkhead panel (ceiling height change)', panW(L) + ' × ' + ftin(q.y1 - q.y0), 1, 'ea', 12); n++; }
     if (n > 1) add('Studs & posts', 'H-stud, 3″ with insert (bulkhead panels)', '3″ × ' + ftin(q.y1 - q.y0), n - 1, 'ea', 20);
     add('Trim', 'Closure channel, bottom of bulkhead panels', '', Math.ceil(q.len), 'lin ft', 53);
     tranTrack += q.len * 2;
   }
 
+  // Header panels over open passages: panels on the 48″ module (45″ max, H-studs make up the rest), H-studs
+  // between them, closure channel along the bottom and ceiling track both faces. Their ends land on the wall
+  // ends' posts, which run full height already.
+  for (const q of V.headerSegs ? V.headerSegs(plan, A) : []) {
+    const hh = ftin(q.y1 - q.y0), cuts = [0]; for (let m = 4; m < q.len - 1e-6; m += 4) cuts.push(m); cuts.push(q.len);
+    let n = 0; for (let i = 0; i + 1 < cuts.length; i++) { const L = cuts[i + 1] - cuts[i]; if (L < 1 / 12) continue; add('Wall panels', 'Header panel (over open passage)', panW(L) + ' × ' + hh, 1, 'ea', 13); n++; }
+    if (n > 1) add('Studs & posts', 'H-stud, 3″ with insert (header panels, 48″ on center)', '3″ × ' + hh, n - 1, 'ea', 20);
+    add('Trim', 'Closure channel, bottom of header panels', '', Math.ceil(q.len), 'lin ft', 53);
+    tranTrack += q.len * 2;
+  }
   // --- Joints: H-studs, corner posts, T-posts, end caps (from how wall ends meet).
   // Ends within a wall's thickness of each other are one joint, so walls that stop at a face
   // (drawn in Plan mode) count the same as panels that meet on centerlines (Build mode).
@@ -365,8 +378,14 @@ function partsList(plan) {
     if (DKs.length && V.deckSteps) {
       // the steps in the lid: wall panels by height, with a closure channel along the bottom and a cap on top
       const byH = new Map(); let ch = 0;
-      for (const q of V.deckSteps(plan, A, A.WH)) { if (q.y1 - q.y0 < 0.05) continue; const k = Math.ceil((q.y1 - q.y0) * 12 - 1e-6); byH.set(k, (byH.get(k) || 0) + Math.ceil(q.len / 4 - 1e-6)); ch += 2 * q.len; }
-      for (const [k, n] of [...byH.entries()].sort((a, b) => b[0] - a[0])) add('Ceiling', 'Wall panel, lid step (H-mold joints)', '4′ × ' + ftin(k / 12), n, 'ea', 67.1);
+      for (const q of V.deckSteps(plan, A, A.WH)) {
+        if (q.y1 - q.y0 < 0.05) continue;
+        const hh = ftin(q.y1 - q.y0), cuts = [0]; for (let m = 4; m < q.len - 1e-6; m += 4) cuts.push(m); cuts.push(q.len);
+        let n = 0; for (let i = 0; i + 1 < cuts.length; i++) { const L = cuts[i + 1] - cuts[i]; if (L < 1 / 12) continue; add('Ceiling', 'Wall panel, lid step', panW(L) + ' × ' + hh, 1, 'ea', 67.1); n++; }
+        if (n > 1) add('Ceiling', 'H-stud, 3″ with insert (lid step panels, 48″ on center)', '3″ × ' + hh, n - 1, 'ea', 67.15);
+        add('Ceiling', 'End cap (lid step panels)', hh, 2, 'ea', 67.16);
+        ch += 2 * q.len;
+      }
       if (ch > 0) add('Ceiling', 'Lid step closure channel and cap', '', Math.ceil(ch * 1.05), 'lin ft', 67.2);
     }
     if (!DKs.length && A.PL > 0) add('Ceiling', 'Plenum lid (top of the cleanroom)', ftin(A.PL) + ' plenum above the grid, top at ' + ftin(A.WH), Math.ceil(area), 'sq ft', 67);

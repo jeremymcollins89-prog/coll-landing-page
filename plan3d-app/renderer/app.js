@@ -42,6 +42,7 @@ function pickMode(m) {
 }
 function msg(t) { $('#sMsg').textContent = t || 'Ready'; }
 const HINTS = {
+  header: 'Header panels close the plenum over an open passage between walls. The orange dashes are open gaps: click one to fill it, or press F to fill them all. Or click one end and then the other (ends catch on wall ends and faces). They run from the ceiling up to the top of the walls, with H-studs at 48″ on center.',
   overhead: 'Click on a wall to put an overhead sectional door there (12′ wide, head 2′ below the top of the wall). Change its size in its properties.',
   column: 'Click to place a building column. Its size and steel or concrete are in its properties; it runs up to the roof structure.',
   elec: 'Pick a device above, then click on a wall: it goes on that face of the wall, facing the room you clicked in. Heights follow the usual mounting heights; change one in its properties.',
@@ -180,8 +181,9 @@ $$('.views button').forEach(b => b.addEventListener('click', () => setView(b.dat
 $$('.tools button').forEach(b => b.addEventListener('click', () => { ed.setTool(b.dataset.tool); $('#plan').focus(); }));
 $('#optOrtho').addEventListener('change', e => { ed.ortho = e.target.checked; });
 $('#optDims').addEventListener('change', e => { ed.showDims = e.target.checked; ed.render(); });
+$('#optPosts').addEventListener('change', e => { ed.showPosts = e.target.checked; ed.render(); });
 
-const TOOL_KEYS = { v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', b: 'beam', i: 'item', e: 'elec', h: 'overhead', u: 'column', a: 'carea', t: 'grid' };
+const TOOL_KEYS = { j: 'header', v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', b: 'beam', i: 'item', e: 'elec', h: 'overhead', u: 'column', a: 'carea', t: 'grid' };
 const HOUSE_ONLY = new Set(['item']), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase', 'column', 'carea', 'grid']);
 function inField(e) { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA'); }
 window.addEventListener('keydown', e => {
@@ -272,7 +274,7 @@ function renderProps(opt) {
   const box = $('#props'), P = ed.plan, s = ed.sel, o = ed.selected();
   let h = '';
   if (ed.multi && ed.multi.length > 1) {
-    const M = ed.multi, cnt = {}, NAMES = { lstep: 'lid step panel run', deck: 'lid piece', tile: 'ceiling tile', wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', gzone: 'grid section', fixture: 'FFUs and lights' };
+    const M = ed.multi, cnt = {}, NAMES = { header: 'header panel run', lstep: 'lid step panel run', deck: 'lid piece', tile: 'ceiling tile', wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', gzone: 'grid section', fixture: 'FFUs and lights' };
     M.forEach(r => { cnt[r.kind] = (cnt[r.kind] || 0) + 1; });
     const grouped = M.every(r => { const x = ed.find(r); return x && x.gid && x.gid === ed.find(M[0]).gid; });
     box.innerHTML = `<div class="hd"><span class="kind">${M.length} pieces selected${grouped ? ' (a group)' : ''}</span><button class="btn small danger" id="mDel">Delete</button></div>
@@ -446,6 +448,18 @@ function renderProps(opt) {
     bindLen('pCaH', 'ft', v => ed.edit(() => { o.ceiling = Math.max(6, Math.min(40, v)); }));
     $('#pCaR').onchange = (e) => { ed.edit(() => { if (e.target.checked) o.raise = true; else delete o.raise; }); renderProps(); };
     $('#pDel').onclick = () => ed.deleteSel();
+    return;
+  }
+  if (s && o && s.kind === 'header') {
+    const An = Plan3DViewer.analyze(P), q = Plan3DViewer.headerSegs(P, An).find(t => t.id === o.id), L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1), n = Math.ceil(L / 4 - 1e-6);
+    box.innerHTML = `<div class="hd"><span class="kind">Header panels</span><button class="btn small danger" id="pDel">Delete</button></div>
+      <div class="grp"><div class="stats"><span>Length</span><span>${fmt(L)}</span><span>Panels</span><span>${n} (45″ wide, H-studs 48″ on center)</span><span>Height</span><span>${q ? fmt(q.y0) + ' to ' + fmt(q.y1) + ' (' + fmt(q.y1 - q.y0) + ')' : '—'}</span></div></div>
+      ${fld('Bottom at', txt('pHB', o.bot > 0 ? fmt(o.bot) : '', 'The ceiling (' + (q ? fmt(q.y0) : '') + ')'))}
+      <div class="row"><button class="btn small" id="pHTool">Add more headers</button></div>
+      <p class="note">Wall panels across the gap from the bottom up to the top of the walls on either side, closure channel along the bottom and ceiling track on both faces. Leave Bottom blank to start at the ceiling, or set it (a door head height, say). Drag to move.</p>`;
+    $('#pHB').addEventListener('change', e => { if (!e.target.value.trim()) ed.edit(() => { delete o.bot; }); });
+    if ($('#pHB')) bindLen('pHB', 'ft', v => ed.edit(() => { if (v > 0) o.bot = Math.min(40, v); else delete o.bot; }));
+    $('#pHTool').onclick = () => ed.setTool('header'); $('#pDel').onclick = () => ed.deleteSel();
     return;
   }
   if (s && o && s.kind === 'lstep') {
