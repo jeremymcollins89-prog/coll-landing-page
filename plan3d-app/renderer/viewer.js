@@ -741,9 +741,46 @@ function builtLines(plan) {
   for (const [x0, z0, x1, z1] of builtBoxes(plan, true)) out.push([x0, z0, x1, z0], [x0, z1, x1, z1], [x0, z0, x0, z1], [x1, z0, x1, z1]);
   return joinLines(out);
 }
+/* Where an imported ceiling drawing actually has grid: every spot with a drawn tee within a tile's length on
+   each side, both ways (so the inside of each patch of grid, not the empty corners of its box), as rectangles. */
+const DRAWN_COVER = new WeakMap();
+function drawingCover(own, walls) {
+  if (!own || !own.length) return [];
+  const key = (walls || []).length, memo = DRAWN_COVER.get(own); if (memo && memo.key === key) return memo.out;
+  const V = [], H = [];
+  // the walls close a patch off too: the cut tiles between the last tee and a wall are ceiling
+  const wl = (walls || []).filter(w => Math.abs(w.x1 - w.x2) < 0.02 || Math.abs(w.y1 - w.y2) < 0.02).map(w => [w.x1, w.y1, w.x2, w.y2]);
+  for (const q of own.concat(wl)) { if (Math.abs(q[0] - q[2]) < 0.02) V.push([(q[0] + q[2]) / 2, Math.min(q[1], q[3]), Math.max(q[1], q[3])]); else if (Math.abs(q[1] - q[3]) < 0.02) H.push([(q[1] + q[3]) / 2, Math.min(q[0], q[2]), Math.max(q[0], q[2])]); }
+  V.sort((a, b) => a[0] - b[0]); H.sort((a, b) => a[0] - b[0]);
+  const lo = (L, v) => { let a = 0, b = L.length; while (a < b) { const m = (a + b) >> 1; if (L[m][0] < v) a = m + 1; else b = m; } return a; };
+  const R = 4.2, both = (L, at, along) => { let l = false, r = false; for (let i = lo(L, at - R); i < L.length && L[i][0] <= at + R; i++) { const q = L[i]; if (along < q[1] - 0.05 || along > q[2] + 0.05) continue; if (q[0] < at) l = true; else r = true; if (l && r) return true; } return false; };
+  let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; for (const q of own) { x0 = Math.min(x0, q[0], q[2]); x1 = Math.max(x1, q[0], q[2]); z0 = Math.min(z0, q[1], q[3]); z1 = Math.max(z1, q[1], q[3]); }
+  x0 -= R; z0 -= R; x1 += R; z1 += R;
+  const st = 0.5, nx = Math.max(1, Math.ceil((x1 - x0) / st)), nz = Math.max(1, Math.ceil((z1 - z0) / st)), out = [];
+  if (nx * nz > 4e6) { DRAWN_COVER.set(own, { key, out: [] }); return []; }
+  let prev = new Map();
+  for (let j = 0; j < nz; j++) {
+    const z = z0 + (j + 0.5) * st, runs = []; let s0 = -1;
+    for (let i = 0; i <= nx; i++) { const x = x0 + (i + 0.5) * st, on = i < nx && both(V, x, z) && both(H, z, x); if (on && s0 < 0) s0 = i; if (!on && s0 >= 0) { runs.push([s0, i]); s0 = -1; } }
+    // a run lined up with one in the row above grows that rectangle down
+    const next = new Map();
+    for (const [a, b] of runs) { const k = a + ',' + b, r = prev.get(k); if (r) { r[3] = z0 + (j + 1) * st; next.set(k, r); } else { const n = [x0 + a * st, z0 + j * st, x0 + b * st, z0 + (j + 1) * st]; out.push(n); next.set(k, n); } }
+    prev = next;
+  }
+  DRAWN_COVER.set(own, { key, out }); return out;
+}
 function ceilingRects(plan, FP, A) {
   if (isBuilt(plan)) return builtRects(plan);
   const R = plan && Array.isArray(plan.ceilRects) && plan.ceilRects.length ? plan.ceilRects : null;
+  const own = !R && plan && Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length ? plan.ceilingGrid : null;
+  if (own) {
+    // an imported ceiling drawing: the cleanroom, plus wherever the drawing has grid inside the building (a
+    // room the plan leaves open, a hall), so the ceiling goes where the drawing puts it
+    const base = FP ? FP.rects : [], all = A ? footprint(A, true) : null;
+    let extra = drawingCover(own, plan.walls); if (all) extra = [].concat(...all.rects.map(a => clipRects(extra, { x0: a[0], z0: a[1], x1: a[2], z1: a[3] })));
+    if (base.length && extra.length) extra = subtractRects(extra, base.map(r => ({ x0: r[0], z0: r[1], x1: r[2], z1: r[3] })));
+    return base.concat(extra.filter(r => r[2] - r[0] > 0.05 && r[3] - r[1] > 0.05));
+  }
   if (!R) return FP ? FP.rects : [];
   const all = A ? footprint(A, true) : null, base = all ? all.rects : FP ? FP.rects : [], out = [];
   for (const a of base) for (const b of R) { const r = [Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])]; if (r[0] < r[2] - 1e-6 && r[1] < r[3] - 1e-6) out.push(r); }
