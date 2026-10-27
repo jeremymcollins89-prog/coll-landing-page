@@ -952,6 +952,54 @@ function ceilingLines(plan, A) {
    4′ apart (12′ pieces, spliced), 4′ cross tees span between them every 2′ (a cut bay at a wall still takes
    a whole tee), a 2′ cross tee splits a cell for each 2 × 2 fixture, and hanger wires go every 4′ along the
    mains plus four at each light and FFU. The ceiling track on the walls is the perimeter support. */
+/* Ceiling tiles as the grid lays them: every grid opening that isn't an FFU or light, a wall or a chase. A whole
+   2′ × 4′ opening is a full tile; anything else is a cut tile, listed by its opening size (tee centre to tee
+   centre or to the wall), short side first, to the ¼″. Tiles to order: the full ones, plus one tile per cut,
+   except two small cuts are taken from one tile where they fit side by side. Not for an imported ceiling drawing. */
+function tileTakeoff(plan, A) {
+  A = A || analyze(plan);
+  if (Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length) return null;
+  const fp = footprint(A); if (!fp || !A.hardAny) return null;
+  const R = ceilingRects(plan, fp, A); if (!R.length) return null;
+  const nom = (v) => (Math.abs(v - Math.round(v)) < 0.2 ? Math.round(v) : v);
+  let FX = []; try { FX = ceilingFixtures(plan, A); } catch (e) { FX = []; }
+  const holes = FX.map(f => { const G = gridAt(plan, f.x, f.y, A), w = nom(f.w || (G.swap ? 4 : 2)), h = nom(f.h || (G.swap ? 2 : 4)); return { x0: f.x - w / 2, z0: f.y - h / 2, x1: f.x + w / 2, z1: f.y + h / 2 }; });
+  for (const p of A.pieces) if (Math.abs(p.x1 - p.x2) < 1e-3 || Math.abs(p.z1 - p.z2) < 1e-3) { const t = (p.t || 0.25) / 2; holes.push({ x0: Math.min(p.x1, p.x2) - t, z0: Math.min(p.z1, p.z2) - t, x1: Math.max(p.x1, p.x2) + t, z1: Math.max(p.z1, p.z2) + t }); }
+  for (const b of A.boxes || []) holes.push({ x0: b.x0, z0: b.z0, x1: b.x1, z1: b.z1 });
+  const q4 = (v) => Math.round(v * 48) / 48; // to the ¼″
+  let full = 0, slivers = 0; const cuts = new Map();
+  for (const gp of gridPieces(plan, R)) {
+    const G = gp.G; let bx0 = 1e9, bz0 = 1e9, bx1 = -1e9, bz1 = -1e9;
+    for (const r of gp.rects) { bx0 = Math.min(bx0, r[0]); bz0 = Math.min(bz0, r[1]); bx1 = Math.max(bx1, r[2]); bz1 = Math.max(bz1, r[3]); }
+    for (let x = G.ox + Math.floor((bx0 - G.ox) / G.cw) * G.cw; x < bx1 - 1e-6; x += G.cw) for (let z = G.oz + Math.floor((bz0 - G.oz) / G.cl) * G.cl; z < bz1 - 1e-6; z += G.cl) {
+      const cell = { x0: x, z0: z, x1: x + G.cw, z1: z + G.cl };
+      let parts = clipRects(gp.rects, cell); if (!parts.length) continue;
+      const near = holes.filter(h => h.x0 < cell.x1 && h.x1 > cell.x0 && h.z0 < cell.z1 && h.z1 > cell.z0);
+      if (near.length) parts = subtractRects(parts, near);
+      parts = parts.filter(r => r[2] - r[0] > 1e-3 && r[3] - r[1] > 1e-3);
+      // what's left in the opening, in touching groups: each group is one tile
+      const grp = parts.map((_, i) => i), find = (i) => (grp[i] === i ? i : (grp[i] = find(grp[i])));
+      for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) { const a = parts[i], b = parts[j]; if (a[0] <= b[2] + 1e-4 && b[0] <= a[2] + 1e-4 && a[1] <= b[3] + 1e-4 && b[1] <= a[3] + 1e-4 && (Math.min(a[2], b[2]) - Math.max(a[0], b[0]) > 1e-3 || Math.min(a[3], b[3]) - Math.max(a[1], b[1]) > 1e-3)) grp[find(i)] = find(j); }
+      const boxes = new Map();
+      parts.forEach((r, i) => { const k = find(i), q = boxes.get(k) || { x0: 1e9, z0: 1e9, x1: -1e9, z1: -1e9, area: 0 }; q.x0 = Math.min(q.x0, r[0]); q.z0 = Math.min(q.z0, r[1]); q.x1 = Math.max(q.x1, r[2]); q.z1 = Math.max(q.z1, r[3]); q.area += (r[2] - r[0]) * (r[3] - r[1]); boxes.set(k, q); });
+      for (const q of boxes.values()) {
+        const w = q4(q.x1 - q.x0), d = q4(q.z1 - q.z0);
+        if (Math.min(w, d) < 1.5 / 12) { slivers++; continue; } // under 1½″: closed with the wall angle, no tile
+        if (Math.abs(w - G.cw) < 0.03 && Math.abs(d - G.cl) < 0.03) { full++; continue; }
+        const a = Math.min(w, d), b = Math.max(w, d), notch = q.area < (q.x1 - q.x0) * (q.z1 - q.z0) - 0.01, key = a.toFixed(4) + 'x' + b.toFixed(4) + (notch ? 'n' : '');
+        const e = cuts.get(key) || { a, b, notch, n: 0 }; e.n++; cuts.set(key, e);
+      }
+    }
+  }
+  const list = [...cuts.values()].sort((p, q) => q.n - p.n || q.a * q.b - p.a * p.b);
+  // tiles to order: two cuts share one 2′ × 4′ where they fit side by side (notched cuts get a tile each)
+  const pcs = []; for (const c of list) for (let i = 0; i < c.n; i++) pcs.push(c);
+  pcs.sort((p, q) => q.a * q.b - p.a * p.b);
+  const used = new Array(pcs.length).fill(false); let cutStock = 0;
+  const pair = (p, q) => !p.notch && !q.notch && ((p.b + q.b <= 4 + 1e-6 && p.a <= 2 + 1e-6 && q.a <= 2 + 1e-6) || (p.a + q.a <= 2 + 1e-6 && p.b <= 4 + 1e-6 && q.b <= 4 + 1e-6));
+  for (let i = 0; i < pcs.length; i++) { if (used[i]) continue; used[i] = true; cutStock++; for (let j = pcs.length - 1; j > i; j--) if (!used[j] && pair(pcs[i], pcs[j])) { used[j] = true; break; } }
+  return { full, cuts: list, cutPcs: pcs.length, cutStock, slivers, order: full + cutStock, fixtures: FX.length };
+}
 function gridTakeoff(plan, A) {
   A = A || analyze(plan);
   const fp = footprint(A); if (!fp || !A.hardAny) return null;
@@ -1614,9 +1662,12 @@ function generateCeiling(plan, opts) {
   // are set into their cells, so the grid doesn't get extra tees framing them
   const snapped = [];
   if (keep) for (const f of EX) {
-    const g = gridFor(f.x, f.y), ox = g.ox, oz = g.oz, cw = g.cw, cl = g.cl;
-    if (!(Math.abs(f.w - cw) < 0.25 && Math.abs(f.h - cl) < 0.25)) continue;
-    const cx = ox + Math.round((f.x - ox - cw / 2) / cw) * cw + cw / 2, cz = oz + Math.round((f.y - oz - cl / 2) / cl) * cl + cl / 2;
+    // a 2×4 lying the grid's way goes into its cell; one turned across the grid (or a 2×2) onto the lines a
+    // half cell apart, so its frame tees fall exactly between whole cells and leave whole 2×2 tiles beside it
+    const g = gridFor(f.x, f.y), ox = g.ox, oz = g.oz, w = Math.round(f.w), h = Math.round(f.h);
+    if (!((w === 2 || w === 4) && (h === 2 || h === 4) && Math.abs(f.w - w) < 0.25 && Math.abs(f.h - h) < 0.25)) continue;
+    const sx = Math.min(g.cw, w), sz = Math.min(g.cl, h);
+    const cx = ox + Math.round((f.x - w / 2 - ox) / sx) * sx + w / 2, cz = oz + Math.round((f.y - h / 2 - oz) / sz) * sz + h / 2;
     const dx = cx - f.x, dz = cz - f.y;
     if ((Math.abs(dx) > 1e-3 || Math.abs(dz) > 1e-3) && Math.abs(dx) <= 0.5 && Math.abs(dz) <= 0.5) snapped.push({ id: f.id, x: cx, y: cz });
   }
@@ -2625,13 +2676,16 @@ function buildScene(THREE, plan, A) {
       continue;
     }
     let geo = fg;
-    if (f.w > 0 && f.h > 0 && !(Math.abs(f.w - 2) < 0.06 && Math.abs(f.h - 4) < 0.06)) { const key = f.w.toFixed(2) + 'x' + f.h.toFixed(2); geo = fgs[key] || (fgs[key] = new THREE.BoxGeometry(Math.max(0.3, f.w - 0.1), 0.08, Math.max(0.3, f.h - 0.1))); }
+    // drawn at its nominal size (a 23.6″ × 47.6″ FFU fills its 2′ × 4′ cell, its edges on the tees), so no
+    // strip of tile edge shows round it and reads as a doubled tee
+    const nomv = (v) => (Math.abs(v - Math.round(v)) < 0.2 ? Math.round(v) : v), nw = f.w > 0 ? nomv(f.w) : 0, nh = f.h > 0 ? nomv(f.h) : 0;
+    if (nw > 0 && nh > 0 && !(Math.abs(nw - 2) < 0.06 && Math.abs(nh - 4) < 0.06)) { const key = nw.toFixed(2) + 'x' + nh.toFixed(2); geo = fgs[key] || (fgs[key] = new THREE.BoxGeometry(Math.max(0.3, nw - 0.1), 0.08, Math.max(0.3, nh - 0.1))); }
     const fh = ceilingAt(CA, H, f.x, f.y), m = new THREE.Mesh(geo, f.type === 'ffu' ? ffu : led); m.position.set(f.x, fh - 0.04, f.y);
     if (f.id) m.userData.ref = { kind: 'fixture', id: f.id };
     if (f.type !== 'ffu') m.userData.light = lightKey(f);
     fixtures.add(m);
     // its housing above the grid (seen in the Plenum view)
-    const fw = Math.max(0.3, (f.w || 2) - 0.12), fd = Math.max(0.3, (f.h || 4) - 0.12), hh = f.type === 'ffu' ? 0.9 : 0.28;
+    const fw = Math.max(0.3, (nw || 2) - 0.08), fd = Math.max(0.3, (nh || 4) - 0.08), hh = f.type === 'ffu' ? 0.9 : 0.28;
     const hs = new THREE.Mesh(new THREE.BoxGeometry(fw, hh, fd), f.type === 'ffu' ? M.white : housingMat); hs.position.set(f.x, fh + 0.005 + hh / 2, f.y); outline(hs); fixtures.add(hs);
   }
   // the extras never stop the model from showing
@@ -3416,5 +3470,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, tileTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);

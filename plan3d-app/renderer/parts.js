@@ -343,7 +343,14 @@ function partsList(plan) {
     // a generated ceiling covers only the rooms it was laid out in
     const CRs = plan.ceilRects && plan.ceilRects.length && V.ceilingRects ? V.ceilingRects(plan, fpr, A) : null;
     const area = CRs ? CRs.reduce((t, r) => t + (r[2] - r[0]) * (r[3] - r[1]), 0) : fpr ? fpr.area : A.bounds.w * A.bounds.d, tiles = Math.max(0, Math.ceil(area / 8) - nLed - nFfu);
-    add('Ceiling', 'Ceiling tile, 2×4 (approx.)', '2′ × 4′', tiles, 'ea', 62);
+    // tiles as the grid lays them: full ones, each cut size, and how many to order
+    let TT = null; try { TT = V.tileTakeoff ? V.tileTakeoff(plan, A) : null; } catch (e) { TT = null; }
+    if (TT) {
+      const inch = (ft) => { const e = Math.round(ft * 48), n = Math.floor(e / 4), r = e % 4; return n + ['', '¼', '½', '¾'][r] + '″'; };
+      add('Ceiling', 'Ceiling tile, full 2′ × 4′', '2′ × 4′', TT.full, 'ea', 62);
+      for (const c of TT.cuts) add('Ceiling', 'Ceiling tile, cut' + (c.notch ? ' and notched' : ''), inch(c.a) + ' × ' + inch(c.b) + ' opening', c.n, 'ea', 62.1);
+      add('Ceiling', `Ceiling tiles to order, 2′ × 4′ (${TT.full} full + ${TT.cutStock} for ${TT.cutPcs} cut${TT.cutPcs === 1 ? '' : 's'}, two small cuts from one tile where they fit, +5% spare)`, '2′ × 4′', Math.ceil((TT.full + TT.cutStock) * 1.05), 'ea', 62.2);
+    } else add('Ceiling', 'Ceiling tile, 2×4 (approx.)', '2′ × 4′', tiles, 'ea', 62);
     if (A.PL > 0) add('Ceiling', 'Plenum lid (top of the cleanroom)', ftin(A.PL) + ' plenum above the grid, top at ' + ftin(A.WH), Math.ceil(area), 'sq ft', 67);
     if (!(plan.ceilingGrid && plan.ceilingGrid.length)) {
       add('Ceiling', 'Ceiling grid (area, approx.)', '', Math.ceil(area), 'sq ft', 63);
