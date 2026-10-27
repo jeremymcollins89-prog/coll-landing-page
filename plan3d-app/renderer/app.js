@@ -58,15 +58,19 @@ const HINTS = {
   beam: 'Click both ends of a steel beam (I-beam). Over the cleanroom it spans wall to wall in the plenum, its top level with the top of the walls; otherwise it goes up under the roof. Pick it to change its size or height.',
   measure: 'Click two points to measure between them. Snaps to wall ends and lines up with them; Alt for any angle. Esc clears.',
   calibrate: 'Click both ends of a dimension you know, like the 40′ overall.',
-  item: 'Pick an item above, then click near a wall: it backs up against the wall. R turns it. Island goes anywhere.',
+  item: 'Pick an item above, then click near a wall: it backs up against the wall. R turns it. Islands, tables, rugs, lights, cars and outdoor pieces go anywhere.',
   piece: 'Pick a piece above and click to place it, or drag to lay a whole run of panels. Drag a placed panel with Select to move it; its ends catch on nearby walls. Pieces snap to open ends and turn the corner toward the mouse. R turns a free piece. Right-drag pans.'
 };
 function itemPalette() {
+  // one group at a time, picked from a row of tabs, so the palette stays small over the plan
   const IT = Plan3DViewer.ITEMS, groups = {};
   for (const [k, v] of Object.entries(IT)) (groups[v.group] = groups[v.group] || []).push([k, v]);
-  if (!ed.itemType) ed.itemType = 'base';
-  $('#itemPal').innerHTML = Object.entries(groups).map(([g, list]) => `<div class="grp"><h5>${esc(g)}</h5><div class="row">${list.map(([k, v]) => `<button data-it="${k}" class="${ed.itemType === k ? 'on' : ''}">${esc(v.label)}</button>`).join('')}</div></div>`).join('');
-  $$('#itemPal button').forEach(b => b.onclick = () => { ed.itemType = b.dataset.it; itemPalette(); $('#plan').focus(); });
+  if (!ed.itemType || !IT[ed.itemType]) ed.itemType = 'base';
+  const names = Object.keys(groups); if (!ed.itemGroup || !groups[ed.itemGroup]) ed.itemGroup = IT[ed.itemType].group;
+  $('#itemPal').innerHTML = `<div class="grp"><div class="row">${names.map(g => `<button data-ig="${esc(g)}" class="${ed.itemGroup === g ? 'on' : ''}"><b>${esc(g)}</b></button>`).join('')}</div></div>`
+    + `<div class="grp"><div class="row">${groups[ed.itemGroup].map(([k, v]) => `<button data-it="${k}" class="${ed.itemType === k ? 'on' : ''}">${esc(v.label)}</button>`).join('')}</div></div>`;
+  $$('#itemPal button[data-ig]').forEach(b => b.onclick = () => { ed.itemGroup = b.dataset.ig; const first = groups[ed.itemGroup][0]; if (first && IT[ed.itemType].group !== ed.itemGroup) ed.itemType = first[0]; itemPalette(); $('#plan').focus(); });
+  $$('#itemPal button[data-it]').forEach(b => b.onclick = () => { ed.itemType = b.dataset.it; itemPalette(); $('#plan').focus(); });
 }
 function elecPalette() {
   const DV = Plan3DViewer.DEVICES, groups = {};
@@ -461,7 +465,12 @@ function renderProps(opt) {
       ${R.type && R.type !== 'none' && R.type !== 'flat' ? fld('Pitch (rise in 12)', txt('pPitch', String(R.pitch == null ? 6 : R.pitch))) : ''}
       ${R.type && R.type !== 'none' ? fld('Overhang', txt('pOver', fmt(R.overhang == null ? 1 : R.overhang))) : ''}
       ${fld('Floors', `<select id="pFloor">${Object.entries(Plan3DViewer.FLOORS).map(([k, l]) => `<option value="${k}" ${(P.floorType || 'lvp') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
-      <p class="note">Pick a room label to give that room its own floor. Pick a wall for its framing (wood or steel), stud size and exterior / interior.</p></div>` : ''}
+      <p class="note">Pick a room label to give that room its own floor. Pick a wall for its framing (wood or steel), stud size and exterior / interior.</p></div>
+    <div class="grp"><h3>Finishes</h3>
+      ${(() => { const FN = Plan3DViewer.FINISH, F = Plan3DViewer.finishOf(P), sel = (id, key, list) => `<select id="${id}">${Object.entries(list).map(([k, v]) => `<option value="${k}" ${F[key] === k ? 'selected' : ''}>${esc(Array.isArray(v) ? v[0] : v)}</option>`).join('')}</select>`;
+        return fld('Siding', sel('fSid', 'siding', FN.siding)) + fld('Siding color', sel('fSidC', 'sidingColor', FN.sidingColor)) + fld('Roofing', sel('fRoof', 'roof', FN.roof)) + fld('Roof color', sel('fRoofC', 'roofColor', FN.roofColor))
+          + fld('Wall paint', sel('fPaint', 'paint', FN.paint)) + fld('Cabinets', sel('fCab', 'cabinet', FN.cabinet)) + fld('Countertops', sel('fCtr', 'counter', FN.counter)); })()}
+      <p class="note">Shown in 3D and named on the parts list (siding or brick, roofing, paint in gallons, cabinets and countertops).</p></div>` : ''}
     ${fld('Snap to', `<select id="pSnap">${[[0, 'Off'], [0.125, '⅛″'], [0.25, '¼″'], [1, '1″'], [6, '6″'], [12, '1′']].map(([v, l]) => `<option value="${v}" ${ed.snapIn === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
     <div class="grp"><h3>Contents</h3><div class="stats">
       <span>Overall</span><span>${hasGeo ? fmt(ext.x1 - ext.x0) + ' × ' + fmt(ext.y1 - ext.y0) : '—'}</span>
@@ -502,6 +511,7 @@ function renderProps(opt) {
   if ($('#pPitch')) $('#pPitch').onchange = e => { const v = parseFloat(e.target.value); if (v >= 0 && v <= 24) ed.edit(Pl => { Pl.roof.pitch = v; }); };
   bindLen('pOver', 'ft', v => ed.edit(Pl => { Pl.roof.overhang = Math.max(0, Math.min(4, v)); }));
   if ($('#pFloor')) $('#pFloor').onchange = e => ed.edit(Pl => { Pl.floorType = e.target.value; });
+  for (const [id, key] of [['fSid', 'siding'], ['fSidC', 'sidingColor'], ['fRoof', 'roof'], ['fRoofC', 'roofColor'], ['fPaint', 'paint'], ['fCab', 'cabinet'], ['fCtr', 'counter']]) if ($('#' + id)) $('#' + id).onchange = e => ed.edit(Pl => { Pl.finish = Object.assign({}, Pl.finish || {}, { [key]: e.target.value }); });
   $('#pMode').onchange = e => { const m = e.target.value; ed.edit(Pl => { if (m === 'house') houseDefaults(Pl, true); else Pl.mode = 'cleanroom'; }); updateChrome(); renderProps(); };
   bindLen('pWT', 'in', v => { ed.plan.wallT = Math.max(1 / 48, v); renderProps(); });
   $('#pNK').onchange = e => { const k = e.target.value, K = Plan3DViewer.WALL_KINDS[k]; ed.plan.newKind = k === 'hardwall' && !house ? undefined : k; ed.plan.wallT = k === 'hardwall' ? 0.25 : K.t; ed.dirty = true; renderProps(); msg(k === 'hardwall' ? 'New walls: hardwall cleanroom panels.' : 'New walls: ' + K.label + ', ' + fmtIn(K.t) + ' thick. Draw them with the Wall tool (W).'); };

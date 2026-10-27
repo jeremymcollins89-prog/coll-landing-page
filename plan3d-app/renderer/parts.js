@@ -26,6 +26,7 @@ function floorTrackFt(plan, A) {
    trim and the kitchen / bath / laundry items. Estimates use common rules of thumb (studs at 16″ on centre,
    triple plates, 10% waste on sheet goods and shingles); check them against your supplier's takeoff. */
 function houseTakeoff(plan, A, add) {
+  const V0 = global.Plan3DViewer, FIN = V0.finishOf ? V0.finishOf(plan) : {}, FN = (k, v) => { const e = V0.FINISH && V0.FINISH[k] && V0.FINISH[k][v]; return Array.isArray(e) ? e[0] : (e || ''); };
   const V = global.Plan3DViewer, H = A.H, OC = 16 / 12, FPall = V.footprint(A, true);
   const outside = (x, z) => !FPall || !FPall.has(x, z);
   const walls = A.walls.filter(w => V.isFrame(w));
@@ -82,7 +83,11 @@ function houseTakeoff(plan, A, add) {
     add('Roof', RT + ' roof surface', (F.type === 'flat' ? 'low slope' : (R.pitch == null ? 6 : R.pitch) + '/12 pitch') + ', ' + ftin(F.ov) + ' overhang', Math.ceil(area), 'sq ft', 80);
     if (F.type === 'flat') add('Roof', 'Membrane roofing (TPO/EPDM)', '', Math.ceil(area * 1.1), 'sq ft', 81);
     else {
-      add('Roof', 'Architectural shingles', Math.ceil(area / 100 * 1.1 * 3) + ' bundles', Math.ceil(area / 100 * 1.1 * 10) / 10, 'squares', 81);
+      const rc = FN('roofColor', FIN.roofColor);
+      if (FIN.roof === 'metal') add('Roof', 'Standing-seam metal roofing, ' + rc, '+10% waste', Math.ceil(area * 1.1), 'sq ft', 81);
+      else if (FIN.roof === 'tile') add('Roof', 'Clay roof tile, ' + rc, '+10% waste', Math.ceil(area / 100 * 1.1 * 10) / 10, 'squares', 81);
+      else if (FIN.roof === 'slate') add('Roof', 'Slate roofing, ' + rc, '+10% waste', Math.ceil(area / 100 * 1.1 * 10) / 10, 'squares', 81);
+      else add('Roof', 'Architectural shingles' + (rc ? ', ' + rc : ''), Math.ceil(area / 100 * 1.1 * 3) + ' bundles', Math.ceil(area / 100 * 1.1 * 10) / 10, 'squares', 81);
       add('Roof', 'Synthetic underlayment', '10 squares per roll', Math.ceil(area * 1.1 / 1000), 'rolls', 82);
       add('Roof', 'Ridge' + (F.type === 'hip' ? ' & hip' : '') + ' cap (est.)', '', Math.ceil(F.type === 'hip' ? (long - short) + 4 * (short / 2) * Math.sqrt(2 + F.slope * F.slope) : long), 'lin ft', 84);
       add('Roof', (F.type === 'gable' ? 'Trusses, common' : 'Trusses / rafters (est.)') + ' at 24″ o.c.', ftin(short) + ' span', Math.ceil(long / 2) + 1, 'ea', 85);
@@ -98,7 +103,11 @@ function houseTakeoff(plan, A, add) {
   if (extArea + gableArea > 0) {
     add('Sheathing & wrap', 'Wall sheathing, OSB 7/16″ 4×8', '', sheets(extArea + gableArea), 'sheets', 90);
     add('Sheathing & wrap', 'House wrap', '', Math.ceil((extArea + gableArea) * 1.1), 'sq ft', 91);
-    add('Siding', 'Lap siding' + (gableArea > 0 ? ', walls and gable ends' : ''), Math.ceil((extArea + gableArea) / 100 * 1.1 * 10) / 10 + ' squares', Math.ceil((extArea + gableArea) * 1.1), 'sq ft', 95);
+    const sName = (V0.FINISH ? V0.FINISH.siding[FIN.siding] : 'Lap siding') || 'Lap siding', sCol = FIN.sidingColor && FIN.sidingColor !== 'natural' ? ', ' + FN('sidingColor', FIN.sidingColor) : '';
+    add('Siding', sName + sCol + (gableArea > 0 ? ', walls and gable ends' : ''), Math.ceil((extArea + gableArea) / 100 * 1.1 * 10) / 10 + ' squares', Math.ceil((extArea + gableArea) * 1.1), 'sq ft', 95);
+    if (FIN.siding === 'brick') add('Siding', 'Brick ties and mortar (est.)', '7 bricks per sq ft', Math.ceil((extArea + gableArea) * 7 * 1.05), 'bricks', 96);
+    if (FIN.siding === 'stucco') add('Siding', 'Stucco lath and three-coat system', '', Math.ceil((extArea + gableArea) * 1.1), 'sq ft', 96);
+    if ((FIN.siding === 'lap' || FIN.siding === 'board' || FIN.siding === 'shake') && FIN.sidingColor !== 'natural') add('Paint', 'Exterior paint, ' + FN('sidingColor', FIN.sidingColor) + ' (2 coats)', '300 sq ft per gallon', Math.ceil((extArea + gableArea) * 2 / 300), 'gal', 104);
   }
   if (ext2x6) add('Insulation', 'Batts R-21, 2×6 walls', '', Math.ceil(ext2x6), 'sq ft', 100);
   if (ext2x4) add('Insulation', 'Batts R-15, 2×4 walls', '', Math.ceil(ext2x4), 'sq ft', 100);
@@ -107,6 +116,9 @@ function houseTakeoff(plan, A, add) {
     add('Drywall', 'Drywall ½″, walls', '4×8 sheets', sheets(dryArea), 'sheets', 105);
     if (ceilArea) add('Drywall', 'Drywall ½″ ceiling board, ceilings', '4×8 sheets', sheets(ceilArea), 'sheets', 106);
     add('Drywall', 'Joint compound and tape (est.)', '1 box + 1 roll per 500 sq ft', Math.ceil((dryArea + ceilArea) / 500), 'sets', 107);
+    add('Paint', 'Primer, walls and ceilings', '350 sq ft per gallon', Math.ceil((dryArea + ceilArea) / 350), 'gal', 108);
+    add('Paint', 'Interior wall paint, ' + (FN('paint', FIN.paint) || 'warm white') + ' (2 coats)', '350 sq ft per gallon', Math.ceil(dryArea * 2 / 350), 'gal', 109);
+    if (ceilArea) add('Paint', 'Ceiling paint, flat white', '350 sq ft per gallon', Math.ceil(ceilArea / 350), 'gal', 109);
   }
   // floors by room (room labels can set a floor finish; the rest uses the house floor)
   if (FPall) {
@@ -136,15 +148,17 @@ function houseTakeoff(plan, A, add) {
   for (const it of plan.items || []) {
     const D = V.ITEMS[it.type]; if (!D) continue;
     const w = it.w || D.w, d = it.d || D.d;
-    add(D.group, D.label, D.wv ? inch(w) + ' wide' : inch(w) + ' × ' + inch(d), 1, 'ea', D.group === 'Kitchen' ? 130 : D.group === 'Bathroom' ? 140 : 150);
+    add(D.group, D.label, D.wv ? inch(w) + ' wide' : inch(w) + ' × ' + inch(d), 1, 'ea', ({ Kitchen: 130, Bathroom: 140, 'Laundry & utility': 150, 'Living room': 160, Dining: 165, Bedroom: 170, Lighting: 175, 'Outdoor & garage': 180 })[D.group] || 185);
     if (it.type === 'base' || it.type === 'sinkbase') { baseLf += w; counter += w * (d + 1 / 12); }
     if (it.type === 'island') counter += w * d;
-    if (it.type === 'dishwasher') counter += w * (d + 1 / 12);
+    if (it.type === 'dishwasher' || it.type === 'winefridge') counter += w * (d + 1 / 12);
+    if (it.type === 'pantrywall' || it.type === 'laundrycounter') counter += w * d;
     if (it.type === 'upper') upperLf += w;
   }
-  if (baseLf) add('Kitchen', 'Base cabinets, total run', '', Math.round(baseLf * 10) / 10, 'lin ft', 131);
-  if (upperLf) add('Kitchen', 'Upper cabinets, total run', '', Math.round(upperLf * 10) / 10, 'lin ft', 132);
-  if (counter) add('Kitchen', 'Countertop', '', Math.ceil(counter), 'sq ft', 133);
+  const cabN = FN('cabinet', FIN.cabinet), ctN = FN('counter', FIN.counter);
+  if (baseLf) add('Kitchen', 'Base cabinets, total run' + (cabN ? ', ' + cabN : ''), '', Math.round(baseLf * 10) / 10, 'lin ft', 131);
+  if (upperLf) add('Kitchen', 'Upper cabinets, total run' + (cabN ? ', ' + cabN : ''), '', Math.round(upperLf * 10) / 10, 'lin ft', 132);
+  if (counter) add('Kitchen', 'Countertop' + (ctN ? ', ' + ctN : ''), '', Math.ceil(counter), 'sq ft', 133);
 }
 
 function partsList(plan) {

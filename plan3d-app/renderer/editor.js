@@ -321,7 +321,8 @@ class Editor {
   itemPlace(x, y, type, keep) {
     const V = global.Plan3DViewer, D = V && V.ITEMS[type]; if (!D) return null;
     const w = (keep && keep.w) || D.w, d = (keep && keep.d) || D.d;
-    if (type !== 'island') {
+    // most items back up against a wall; free ones (an island, a table, a rug, a light) go anywhere
+    if (!D.free) {
       const hit = this.wallAt(x, y, 2.5 * this.view.s + 8);
       if (hit && hit.p.len > 0.5) {
         const W = hit.w, L = hit.p.len, ux = (W.x2 - W.x1) / L, uy = (W.y2 - W.y1) / L, nx = -uy, ny = ux;
@@ -775,8 +776,10 @@ class Editor {
     const w = it.w || D.w, d = it.d || D.d;
     g.save();
     g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath();
-    g.fillStyle = ghost ? 'rgba(242,200,75,.3)' : it.type === 'upper' ? 'rgba(160,175,182,.18)' : '#3a464c'; g.fill();
-    g.strokeStyle = ghost ? COL.draft : '#b9c4c9'; g.lineWidth = 1.1; if (it.type === 'upper') g.setLineDash([4, 3]); g.stroke(); g.setLineDash([]);
+    // things up on the wall or hung from the ceiling are drawn dashed, see-through
+    const up = it.type === 'upper' || !!D.ceil || (D.z || 0) > 3;
+    g.fillStyle = ghost ? 'rgba(242,200,75,.3)' : up ? 'rgba(160,175,182,.18)' : it.type === 'rug' ? 'rgba(160,150,130,.25)' : '#3a464c'; g.fill();
+    g.strokeStyle = ghost ? COL.draft : '#b9c4c9'; g.lineWidth = 1.1; if (up) g.setLineDash([4, 3]); g.stroke(); g.setLineDash([]);
     const circ = (u, v, r) => { const [X, Y] = P(u, v); g.beginPath(); g.arc(X, Y, Math.max(1, r * s), 0, Math.PI * 2); g.stroke(); };
     const rect = (u0, v0, u1, v1) => { const q = [P(u0, v0), P(u1, v0), P(u1, v1), P(u0, v1)]; g.beginPath(); q.forEach((pt, k) => k ? g.lineTo(pt[0], pt[1]) : g.moveTo(pt[0], pt[1])); g.closePath(); g.stroke(); };
     g.strokeStyle = ghost ? COL.draft : '#d5dde1';
@@ -787,7 +790,7 @@ class Editor {
     else if (it.type === 'shower') { const [a1, b1] = [P(-w / 2, -d / 2), P(w / 2, d / 2)]; g.beginPath(); g.moveTo(a1[0], a1[1]); g.lineTo(b1[0], b1[1]); g.stroke(); }
     else if (it.type === 'washer' || it.type === 'dryer') circ(0, 0.1, Math.min(w, d) * 0.32);
     else if (it.type === 'waterheater') circ(0, 0, w / 2 - 0.05);
-    if (s > 12) { const [X, Y] = P(0, 0); g.font = '10px Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = ghost ? COL.draft : '#e8edef'; const lbl = { base: 'BASE', sinkbase: 'SINK', upper: 'UPPER', tall: 'PANTRY', island: 'ISLAND', range: '', fridge: 'REF', dishwasher: 'DW', toilet: '', vanity: '', tub: 'TUB', shower: 'SHWR', washer: 'W', dryer: 'D', waterheater: 'WH', furnace: 'FURN' }[it.type]; if (lbl && Math.min(w, d) * s > 22) g.fillText(lbl, X, Y); }
+    if (s > 12) { const [X, Y] = P(0, 0); g.font = '10px Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = ghost ? COL.draft : '#e8edef'; const lbl = { base: 'BASE', sinkbase: 'SINK', upper: 'UPPER', tall: 'PANTRY', island: 'ISLAND', range: '', fridge: 'REF', dishwasher: 'DW', toilet: '', vanity: '', tub: 'TUB', shower: 'SHWR', washer: 'W', dryer: 'D', waterheater: 'WH', furnace: 'FURN' }[it.type] ?? D.label.toUpperCase().replace(/ \(.*\)| WITH .*| AND .*|, .*/g, ''); if (lbl && Math.min(w, d) * s > 22) g.fillText(lbl, X, Y); }
     g.restore();
   }
   /* chases, walls, openings and room labels of a plan (the main plan, or a placed building moved into place) */
