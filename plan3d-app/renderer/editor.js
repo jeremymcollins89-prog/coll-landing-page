@@ -51,7 +51,7 @@ const DEFAULT_W = { door: 3, door2: 6, glass: 4, open: 3, pass: 2, window: 3, ov
 // houses: 2′-8″ doors, 5′ pairs, 3′ windows, 6′-8″ heads
 const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2, overhead: 16 };
 const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass', 'overhead']);
-const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas', gzone: 'gridZones', tile: 'ceilTiles', deck: 'deckPieces' };
+const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas', gzone: 'gridZones', tile: 'ceilTiles', deck: 'deckPieces', lstep: 'lidSteps' };
 const COL = {
   bg: '#1a2024', gridMinor: 'rgba(255,255,255,.035)', gridMajor: 'rgba(255,255,255,.08)', axis: 'rgba(255,255,255,.14)',
   wall: '#e9eef0', wallLine: '#8e9aa1', sp: '#f2d06b', chase: '#59666d', chaseLine: '#b7c2c7', grille: '#9fdbe8',
@@ -203,6 +203,19 @@ class Editor {
   }
   // a piece w × h centred near (cx, cy): its edges catch on the edges of the pieces and wall faces around it
   // (within 10 px), so pieces butt up against each other and the walls; otherwise it moves on the snap grid
+  // a lid step panel's end: wall ends, lid corners and the ends of the automatic step runs first, then the
+  // usual snapping (wall faces, ortho from the first end)
+  snapStep(x, y, from, free) {
+    if (free) return { x, y };
+    const tol = 12 / this.view.s, pts = [];
+    for (const w of this.plan.walls) { const h = (w.t || 0.25) / 2; pts.push([w.x1, w.y1], [w.x2, w.y2]); if (Math.abs(w.y1 - w.y2) < 1e-3) pts.push([w.x1, w.y1 - h], [w.x1, w.y1 + h], [w.x2, w.y2 - h], [w.x2, w.y2 + h]); else if (Math.abs(w.x1 - w.x2) < 1e-3) pts.push([w.x1 - h, w.y1], [w.x1 + h, w.y1], [w.x2 - h, w.y2], [w.x2 + h, w.y2]); }
+    for (const d of this.plan.deckPieces || []) for (const q of d.outer || []) pts.push(q);
+    for (const q of this.autoSteps || []) pts.push([q.x1, q.z1], [q.x2, q.z2]);
+    let best = null, bd = tol; for (const [px, py] of pts) { const d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = { x: px, y: py }; } }
+    if (best) return best;
+    return this.snap(x, y, from || null, {});
+  }
+  refreshSteps() { const V = global.Plan3DViewer; try { const A = V.analyze(this.plan); this.autoSteps = V.deckSteps ? V.deckSteps(this.plan, A, A.WH).filter(q => q.auto) : []; } catch (e) { this.autoSteps = []; } return this.autoSteps; }
   snapBox(cx, cy, w, h, skip, free) {
     if (free) return { x: cx, y: cy, cx: false, cy: false };
     const tol = 10 / this.view.s, near = (b) => b.x0 < cx + w / 2 + 2 && b.x1 > cx - w / 2 - 2 && b.y0 < cy + h / 2 + 2 && b.y1 > cy - h / 2 - 2;
@@ -340,7 +353,7 @@ class Editor {
   // the points that place a piece (for box select and moving)
   refPts(r) {
     const o = this.find(r); if (!o) return [];
-    if (r.kind === 'wall' || r.kind === 'opening' || r.kind === 'beam') return [[o.x1, o.y1], [o.x2, o.y2]];
+    if (r.kind === 'wall' || r.kind === 'opening' || r.kind === 'beam' || r.kind === 'lstep') return [[o.x1, o.y1], [o.x2, o.y2]];
     if (r.kind === 'chase' || r.kind === 'carea' || r.kind === 'gzone') return [[o.x0, o.y0], [o.x1, o.y1]];
     if (r.kind === 'insert') { const b = this.insBox(o); return [[b.x0, b.y0], [b.x1, b.y1]]; }
     if (r.kind === 'deck') return o.outer.map(q => [q[0], q[1]]);
@@ -349,7 +362,7 @@ class Editor {
   // a piece moved by (dx, dy) from its original copy O
   shiftRef(kind, o, O, dx, dy) {
     if (kind === 'deck') { o.outer = O.outer.map(q => [q[0] + dx, q[1] + dy]); o.holes = (O.holes || []).map(h => h.map(q => [q[0] + dx, q[1] + dy])); return; }
-    if (kind === 'wall' || kind === 'opening' || kind === 'beam') { o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy; }
+    if (kind === 'wall' || kind === 'opening' || kind === 'beam' || kind === 'lstep') { o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy; }
     else if (kind === 'chase' || kind === 'carea' || kind === 'gzone') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; if (kind === 'gzone') { if (isFinite(O.ox)) o.ox = O.ox + dx; if (isFinite(O.oy)) o.oy = O.oy + dy; } }
     else { o.x = O.x + dx; o.y = O.y + dy; }
   }
@@ -427,7 +440,7 @@ class Editor {
 
   /* ---------- tools ---------- */
   setTool(t) {
-    this.tool = t; this.draft = null; this.cal = null; this.meas = null; this.beamA = null; this.typed = ''; this.drag = null;
+    this.tool = t; this.draft = null; this.cal = null; this.stepA = null; if (t === 'lstep') this.refreshSteps(); this.meas = null; this.beamA = null; this.typed = ''; this.drag = null;
     if (t !== 'select') { this.sel = null; this.multi = null; }
     this.emit('select'); this.emit('tool', t); this.render();
   }
@@ -554,6 +567,7 @@ class Editor {
   }
   hitTest(x, y) {
     const P = this.plan, tol = 7 / this.view.s;
+    for (let i = (P.lidSteps || []).length - 1; i >= 0; i--) { const q = P.lidSteps[i]; if (segProj(x, y, q.x1, q.y1, q.x2, q.y2).d < 0.2 + tol) return { kind: 'lstep', id: q.id }; }
     for (let i = (P.beams || []).length - 1; i >= 0; i--) { const b = P.beams[i], bw = (global.Plan3DViewer ? global.Plan3DViewer.beamSize(b).bf / 12 : 0.5) / 2 + tol; if (segProj(x, y, b.x1, b.y1, b.x2, b.y2).d < bw) return { kind: 'beam', id: b.id }; }
     for (let i = (P.columns || []).length - 1; i >= 0; i--) { const c = P.columns[i], r = (c.size || 0.67) / 2 + tol; if (Math.abs(x - c.x) < r && Math.abs(y - c.y) < r) return { kind: 'column', id: c.id }; }
     for (let i = (P.devices || []).length - 1; i >= 0; i--) { const dv = P.devices[i], r = Math.max(5, Math.min(9, this.view.s * 0.35)) / this.view.s; if (Math.hypot(x - (dv.x + Math.cos(dv.a || 0) * r * 1.1), y - (dv.y + Math.sin(dv.a || 0) * r * 1.1)) < r * 1.3) return { kind: 'device', id: dv.id }; }
@@ -692,6 +706,12 @@ class Editor {
       if (PC && PC.widths && g.mode !== 'replace') { this.drag = { kind: 'run', S: g, px: p.px, py: p.py }; this.c.setPointerCapture(e.pointerId); return; }
       if (this.pieces.place(g)) { this.pieceGhost = this.pieces.ghostAt({ x: p.x, y: p.y }); this.render(); }
       return;
+    }
+    if (T === 'lstep') {
+      const s = this.snapStep(p.x, p.y, this.stepA, e.altKey);
+      if (!this.stepA) { this.stepA = { x: s.x, y: s.y }; this.status('Click the other end of the step panels. Esc to stop.'); }
+      else { const q = { id: uid(), x1: this.stepA.x, y1: this.stepA.y, x2: s.x, y2: s.y }; if (Math.hypot(q.x2 - q.x1, q.y2 - q.y1) > 0.3) { this.edit(P => { (P.lidSteps = P.lidSteps || []).push(q); }); this.emit('lid'); } this.stepA = null; this.status('Step panels placed: ' + fmt(Math.hypot(q.x2 - q.x1, q.y2 - q.y1)) + '. Click to start another, Esc when done.'); }
+      this.render(); return;
     }
     if (T === 'beam') {
       const s = (!e.altKey && this.studSnap(p.x, p.y)) || this.snap(p.x, p.y, this.beamA || null, { free: e.altKey });
@@ -1036,6 +1056,7 @@ class Editor {
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'item') { const o = this.selected(); if (o) this.edit(() => { o.a = (o.a || 0) + Math.PI / 2 * (e.shiftKey ? -1 : 1); }); return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'insert') { const o = this.selected(); if (o) this.edit(() => { o.rot = (((o.rot || 0) + (e.shiftKey ? 3 : 1)) % 4); }); return true; }
     if (k === 'Escape' && this.multi) { this.multi = null; this.emit('select'); this.render(); return true; }
+    if (k === 'Escape' && this.stepA) { this.stepA = null; this.status(''); this.render(); return true; }
     if (k === 'Escape' && this.beamA) { this.beamA = null; this.status(''); this.render(); return true; }
     if (k === 'Escape' && this.meas) { this.meas = null; this.status(''); this.render(); return true; }
     if (k === 'Escape') { if (this.draft) this.endChain(); else if (this.cal) { this.cal = null; this.render(); } else if (this.tool !== 'select') this.setTool('select'); else { this.sel = null; this.emit('select'); this.render(); } return true; }
@@ -1229,6 +1250,16 @@ class Editor {
       g.fill('evenodd'); g.stroke(); g.setLineDash([]);
       const L = this.deckLabel(d); g.font = '600 11px Consolas, monospace'; g.fillStyle = '#c9a6ff'; g.textBaseline = 'top'; g.fillText('LID' + ((P.deckPieces || []).length > 1 ? ' ' + ((P.deckPieces || []).indexOf(d) + 1) : ''), this.sx(L.x), this.sy(L.y)); g.restore();
     }
+    // lid steps: the wall panels closing a step in the lid. Drawn by hand: solid; found automatically: dotted
+    if ((P.deckPieces || []).length) {
+      g.save(); g.lineCap = 'round';
+      if (this.tool === 'lstep') { g.strokeStyle = 'rgba(127,211,227,.75)'; g.lineWidth = 3; g.setLineDash([2, 5]); for (const q of this.autoSteps || []) { g.beginPath(); g.moveTo(this.sx(q.x1), this.sy(q.z1)); g.lineTo(this.sx(q.x2), this.sy(q.z2)); g.stroke(); } g.setLineDash([]); }
+      g.strokeStyle = '#7fd3e3'; g.lineWidth = 4; g.font = '600 10px Consolas, monospace'; g.fillStyle = '#7fd3e3'; g.textBaseline = 'bottom';
+      for (const q of P.lidSteps || []) { g.beginPath(); g.moveTo(this.sx(q.x1), this.sy(q.y1)); g.lineTo(this.sx(q.x2), this.sy(q.y2)); g.stroke(); if (Math.hypot(q.x2 - q.x1, q.y2 - q.y1) * s > 50) g.fillText('STEP', this.sx((q.x1 + q.x2) / 2) + 4, this.sy((q.y1 + q.y2) / 2) - 3); }
+      if (this.tool === 'lstep' && this.stepA && this.cursor) { const q = this.snapStep(this.cursor.x, this.cursor.y, this.stepA, false); g.setLineDash([7, 4]); g.strokeStyle = COL.draft; g.lineWidth = 2; g.beginPath(); g.moveTo(this.sx(this.stepA.x), this.sy(this.stepA.y)); g.lineTo(this.sx(q.x), this.sy(q.y)); g.stroke(); this.status('Step panels ' + fmt(Math.hypot(q.x - this.stepA.x, q.y - this.stepA.y)) + ' — click the other end.'); }
+      g.restore();
+      if (this.tool === 'lstep' && !this.stepA && this.cursor) this.crosshair(this.snapStep(this.cursor.x, this.cursor.y, null, false));
+    }
     // a built ceiling's tiles: a cut tile shows its size when there's room to read it
     if ((P.ceilTiles || []).length && this.showCeil !== false) {
       g.save(); g.fillStyle = 'rgba(127,211,227,.05)'; g.font = '10px Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -1394,6 +1425,7 @@ class Editor {
       else if (sel.kind === 'column') { const r = (o.size || 0.67) / 2; g.strokeRect(this.sx(o.x - r) - 4, this.sy(o.y - r) - 4, 2 * r * s + 8, 2 * r * s + 8); }
       else if (sel.kind === 'device') { const r = Math.max(5, Math.min(9, this.view.s * 0.35)); g.beginPath(); g.arc(this.sx(o.x) + Math.cos(o.a || 0) * r * 1.1, this.sy(o.y) + Math.sin(o.a || 0) * r * 1.1, r + 4, 0, Math.PI * 2); g.stroke(); }
       else if (sel.kind === 'item') { const c = global.Plan3DViewer.itemCorners(o); g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.stroke(); }
+      else if (sel.kind === 'lstep') { quad(o.x1, o.y1, o.x2, o.y2, 0.25 + 6 / s); g.stroke(); }
       else if (sel.kind === 'beam') { quad(o.x1, o.y1, o.x2, o.y2, (global.Plan3DViewer ? global.Plan3DViewer.beamSize(o).bf / 12 : 0.5) + 6 / s); g.stroke(); }
       else if (sel.kind === 'deck') { g.beginPath(); o.outer.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.stroke(); }
       else if (sel.kind === 'fixture' || sel.kind === 'tile') { const fw = o.w || 2, fh = o.h || 4; g.strokeRect(this.sx(o.x - fw / 2) - 2, this.sy(o.y - fh / 2) - 2, fw * s + 4, fh * s + 4); }

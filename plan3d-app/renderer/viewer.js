@@ -2099,6 +2099,66 @@ function deckLevels(plan, A, d, WH) {
 }
 /* The highest point a lid piece sits at (parts list). */
 function deckBase(plan, A, d, WH) { return Math.max(WH, ...deckLevels(plan, A, d, WH).map(l => l.h)); }
+/* Lid steps: where the lid steps from one height up to another and no wall reaches the higher lid, a run of
+   wall panels (4′ wide, H-mold at the joints) closes the step, from the top of the lower lid up to the higher
+   one. Found automatically between the lid's parts, plus any drawn by hand (plan.lidSteps: {id, x1, y1, x2, y2}).
+   Returns [{x1, z1, x2, z2, y0, y1, t, len, id?}]. */
+function deckSteps(plan, A, WH) {
+  const DK = deckShapes(plan); if (!DK.length) return [];
+  const T = 0.17, inPoly = (P, x, z) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, zi] = P[i], [xj, zj] = P[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; };
+  const R = [];
+  for (const d of DK) for (const l of deckLevels(plan, A, d, WH)) for (const r of l.rects) R.push({ r, h: l.h, d });
+  const inside = (q, x, z) => x >= q.r[0] - 1e-6 && x <= q.r[2] + 1e-6 && z >= q.r[1] - 1e-6 && z <= q.r[3] + 1e-6 && inPoly(q.d.outer, x, z) && !q.d.holes.some(hh => inPoly(hh, x, z));
+  // the lid's height at a point (null: no lid there)
+  const lidAt = (x, z) => { let h = null; for (const q of R) if (inside(q, x, z)) h = h == null ? q.h : Math.max(h, q.h); return h; };
+  const walls = (A.pieces || []).filter(p => p.hard);
+  const walled = (x, z, hi) => walls.some(p => p.h >= hi - 0.05 && segDist(x, z, p.x1, p.z1, p.x2, p.z2) < (p.t || 0.25) / 2 + 0.25);
+  const out = [], st = 0.25, seen = new Set();
+  // every edge between two parts of the lid at different heights
+  for (let i = 0; i < R.length; i++) for (let j = 0; j < R.length; j++) {
+    if (i === j || R[i].h >= R[j].h - 0.05) continue;
+    const a = R[i].r, b = R[j].r; // a lower, b higher
+    const edges = [];
+    for (const [ea, eb, ax] of [[a[2], b[0], 0], [a[0], b[2], 0], [a[3], b[1], 1], [a[1], b[3], 1]]) {
+      if (Math.abs(ea - eb) > 0.02) continue;
+      const lo = Math.max(ax ? a[0] : a[1], ax ? b[0] : b[1]), hi = Math.min(ax ? a[2] : a[3], ax ? b[2] : b[3]);
+      if (hi - lo > 0.2) edges.push({ v: ea, ax, lo, hi, dir: (ea === a[2] || ea === a[3]) ? 1 : -1 });
+    }
+    for (const E of edges) {
+      const key = E.ax + ':' + E.v.toFixed(2) + ':' + E.lo.toFixed(2) + ':' + E.hi.toFixed(2); if (seen.has(key)) continue; seen.add(key);
+      const n = Math.max(1, Math.round((E.hi - E.lo) / st)), pt = (u, off) => E.ax ? [u, E.v + off] : [E.v + off, u];
+      let run = null;
+      const flush = (u) => { if (run && u - run.a > 0.3) { const p1 = pt(run.a, 0), p2 = pt(u, 0); out.push({ x1: p1[0], z1: p1[1], x2: p2[0], z2: p2[1], y0: run.lo + T, y1: run.hi, t: 0.25, len: u - run.a, auto: true }); } run = null; };
+      for (let k = 0; k < n; k++) {
+        const u = E.lo + (E.hi - E.lo) * (k + 0.5) / n, [lx, lz] = pt(u, -0.12 * E.dir), [hx, hz] = pt(u, 0.12 * E.dir), [mx, mz] = pt(u, 0);
+        const hl = lidAt(lx, lz), hh = lidAt(hx, hz);
+        const need = hl != null && hh != null && hh - hl > 0.05 && !walled(mx, mz, hh);
+        const u0 = E.lo + (E.hi - E.lo) * k / n;
+        if (need && run && (Math.abs(run.lo - hl) > 0.01 || Math.abs(run.hi - hh) > 0.01)) flush(u0);
+        if (need && !run) run = { a: u0, lo: hl, hi: hh };
+        if (!need) flush(u0);
+      }
+      flush(E.hi);
+    }
+  }
+  // one run where two come out side by side (either side of a wall's line): keep the first
+  for (let i = out.length - 1; i >= 0; i--) {
+    const a = out[i], ha = Math.abs(a.z1 - a.z2) < 0.01;
+    if (out.some((b, j) => j < i && (Math.abs(b.z1 - b.z2) < 0.01) === ha && (ha ? Math.abs(a.z1 - b.z1) : Math.abs(a.x1 - b.x1)) < 0.4 &&
+      Math.min(ha ? Math.max(a.x1, a.x2) : Math.max(a.z1, a.z2), ha ? Math.max(b.x1, b.x2) : Math.max(b.z1, b.z2)) - Math.max(ha ? Math.min(a.x1, a.x2) : Math.min(a.z1, a.z2), ha ? Math.min(b.x1, b.x2) : Math.min(b.z1, b.z2)) > a.len * 0.5)) out.splice(i, 1);
+  }
+  // drawn by hand: from the lower lid beside it up to the higher one (or, with the lid the same height on both
+  // sides, from the ceiling up under the lid)
+  for (const s of plan.lidSteps || []) {
+    const L = Math.hypot(s.x2 - s.x1, s.y2 - s.y1); if (L < 0.2) continue;
+    const nx = -(s.y2 - s.y1) / L, nz = (s.x2 - s.x1) / L, hs = [];
+    for (const t of [0.25, 0.5, 0.75]) for (const sd of [1, -1]) { const x = s.x1 + (s.x2 - s.x1) * t + nx * sd * 0.3, z = s.y1 + (s.y2 - s.y1) * t + nz * sd * 0.3, h = lidAt(x, z); if (h != null) hs.push(h); }
+    const hi = hs.length ? Math.max(...hs) : WH, lo = hs.length ? Math.min(...hs) : WH;
+    const y0 = hi - lo > 0.05 ? lo + T : Math.min(A.H, hi - 0.5), y1 = hi;
+    out.push({ x1: s.x1, z1: s.y1, x2: s.x2, z2: s.y2, y0, y1, t: 0.25, len: L, id: s.id });
+  }
+  return out;
+}
 /* A polygon clipped to a rectangle (Sutherland–Hodgman). */
 function clipPolyRect(P, r) {
   let out = P;
@@ -2837,6 +2897,18 @@ function buildScene(THREE, plan, A) {
         const g = new THREE.ExtrudeGeometry(sh, { depth: 0.17, bevelEnabled: false }), m = new THREE.Mesh(g, dm);
         m.rotation.x = Math.PI / 2; m.position.y = pt.h + 0.17; outline(m); if (d.id) m.userData.ref = { kind: 'deck', id: d.id }; pick.push(m); lid.add(m);
       }
+    }
+    // the steps in the lid: wall panels from the lower lid up to the higher one, seams (H-mold) every 4′
+    for (const q of deckSteps(plan, A, WH)) {
+      if (q.y1 - q.y0 < 0.05) continue;
+      const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(q.len / 4, 1);
+      const face = new THREE.MeshPhongMaterial({ map: tex, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 });
+      curRef = q.id ? { kind: 'lstep', id: q.id } : null;
+      const m = localSegBox(lid, q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); if (curRef) m.userData.ref = curRef; outline(m); pick.push(m);
+      // closure channel along the bottom, cap along the top
+      localSegBox(lid, q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
+      localSegBox(lid, q.x1, q.z1, q.x2, q.z2, q.y1 - 0.04, q.y1, q.t + 0.03, M.white);
+      curRef = null;
     }
   } else if (A.PL > 0 && FP) {
     const lm = new THREE.MeshLambertMaterial({ color: 0xeef0f0, side: THREE.DoubleSide }), LR = ceilingRects(plan, FP, A);
@@ -3796,5 +3868,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, deckShapes, deckBase, deckLevels };
+global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, deckShapes, deckBase, deckLevels, deckSteps };
 })(typeof window !== 'undefined' ? window : this);
