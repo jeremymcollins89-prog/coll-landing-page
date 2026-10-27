@@ -372,6 +372,7 @@ function renderProps(opt) {
       ${isPass ? fld('Height', txt('pPH', fmtIn((o.head || 5) - sill))) + fld('Bottom at', txt('pSill', fmt(sill))) + fld('Depth', txt('pDepth', fmtIn(o.depth || 2))) : fld(o.type === 'glass' || o.type === 'window' ? 'Top' : 'Head height', txt('pHead', fmt(o.head || 7)))}
       ${o.type === 'glass' || o.type === 'window' ? fld('Sill height', txt('pSill', fmt(sill))) : ''}
       ${o.type === 'overhead' ? `<div class="row"><button class="btn small" id="pSwing">Flip inside face</button></div>` : ''}
+      ${o.type === 'door' || o.type === 'door2' ? `${fld('Build', `<label class="chk"><input type="checkbox" id="pStd" ${o.style === 'cr' ? 'checked' : ''}> Standard door (frame, 84″ leaves, vision lite, lever)</label>`)}${o.style === 'cr' ? fld('Leaf width', txt('pLeafW', fmtIn(o.leafW || 3))) : ''}` : ''}
       ${o.type === 'door' || o.type === 'door2' ? `<div class="row"><button class="btn small" id="pSwing">Flip swing side</button>${o.type === 'door' ? '<button class="btn small" id="pHinge">Swap hinge side</button>' : ''}</div>` : ''}
       <p class="note">${isPass ? 'Stainless box with a door on each face. Depth is front to back through the wall. ' : ''}Drag along the wall to slide it. Drag it onto another wall to move it there.</p>`;
     box.innerHTML = h;
@@ -384,6 +385,8 @@ function renderProps(opt) {
     bindLen('pPH', 'in', v => ed.edit(() => { o.head = Math.min(P.ceiling - 0.25, (o.sill == null ? 3 : o.sill) + Math.max(0.5, v)); }));
     bindLen('pDepth', 'in', v => ed.edit(() => { o.depth = Math.max(o.t || 0.25, v); }));
     if ($('#pSwing')) $('#pSwing').onclick = () => ed.edit(() => { o.swing = o.swing === -1 ? 1 : -1; });
+    if ($('#pStd')) $('#pStd').onchange = (e) => ed.edit(() => { if (e.target.checked) { o.style = 'cr'; o.head = 86 / 12; } else { delete o.style; delete o.leafW; o.head = 7; } });
+    bindLen('pLeafW', 'in', v => ed.edit(() => { o.leafW = Math.max(1.5, Math.min(5, v)); }));
     if ($('#pHinge')) $('#pHinge').onclick = () => ed.edit(() => { [o.x1, o.y1, o.x2, o.y2] = [o.x2, o.y2, o.x1, o.y1]; o.swing = o.swing === -1 ? 1 : -1; });
     $('#pDel').onclick = () => ed.deleteSel();
     return;

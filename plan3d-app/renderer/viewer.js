@@ -371,9 +371,28 @@ function transformPlanKeepInserts(P, T) {
   const out = transformPlan(P, T, ''); out.inserts = ins; return out;
 }
 
+/* A door built like the standard cleanroom door drawings (o.style === 'cr'): leaves o.leafW wide (36″ to
+   start) and 84″ tall, a 7½″ meeting strip between the leaves of a pair, the frame (jambs and posts) taking up
+   the rest of the opening, the head at 86″ with the header panel above. Vision glass 24″ × 34″ in a 26″ × 36″
+   frame, centred on the leaf, its bottom 41¾″ up; lever 38″ up. */
+function doorSpec(o, len) {
+  if (!o || o.style !== 'cr' || (o.type !== 'door' && o.type !== 'door2')) return null;
+  const n = o.type === 'door2' ? 2 : 1, mull = n === 2 ? 7.5 / 12 : 0;
+  let leafW = o.leafW > 0 ? +o.leafW : 3, jamb = (len - n * leafW - mull) / 2;
+  if (jamb < 1.5 / 12) { jamb = 1.5 / 12; leafW = (len - mull - 2 * jamb) / n; }
+  return { n, leafW, jamb, mull, leafH: 7, head: 86 / 12, vis: { w: 26 / 12, h: 36.12 / 12, y0: 41.75 / 12 }, lever: 38 / 12 };
+}
 /* ---------- Pure geometry analysis (no three.js) ---------- */
 function leavesFor(i) {
   const o = i.o, sw = o.swing === -1 ? -1 : 1, nx = -i.uz, nz = i.ux, out = [];
+  const S = doorSpec(o, i.len);
+  if (S) {
+    // leaves inside the frame: one from the first jamb, a pair from both jambs toward the meeting strip
+    const leaf = (bx, bz, dir) => { const sx = bx + nx * sw * (i.t / 2 + 0.07), sz = bz + nz * sw * (i.t / 2 + 0.07); out.push({ x1: sx, z1: sz, x2: sx + i.ux * dir * S.leafW, z2: sz + i.uz * dir * S.leafW, w: S.leafW, leafSw: sw, tx: nx * sw, tz: nz * sw }); };
+    leaf(o.x1 + i.ux * S.jamb, o.y1 + i.uz * S.jamb, 1);
+    if (S.n === 2) leaf(o.x2 - i.ux * S.jamb, o.y2 - i.uz * S.jamb, -1);
+    return out;
+  }
   if (o.type === 'door') {
     const w = Math.max(0.5, i.len - 0.22);
     const bx = o.x1 + i.ux * 0.1, bz = o.y1 + i.uz * 0.1;
@@ -2887,6 +2906,35 @@ function buildScene(THREE, plan, A) {
       const osw = o.swing === -1 ? -1 : 1, inX = nx * osw * (t / 2 + 0.55), inZ = nz * osw * (t / 2 + 0.55);
       if (top - head > 1.2) { const hb = segBox(ax + inX, az + inZ, bx + inX, bz + inZ, head + 0.1, head + 1.4, 1.0, M.steel); outline(hb); }
       shadow((ax + bx) / 2, (az + bz) / 2, i.len, t, Math.atan2(-i.uz, i.ux), 0.6);
+    } else if (doorSpec(o, i.len)) {
+      // standard cleanroom door: jambs and the meeting strip inside the opening, the frame head, then the leaves
+      const S = doorSpec(o, i.len), hd = Math.min(head, S.head), fr = M.frame;
+      const [k1x, k1z] = along(S.jamb), [k2x, k2z] = along(i.len - S.jamb);
+      for (const [p, q] of [[[ax, az], [k1x, k1z]], [[k2x, k2z], [bx, bz]]]) { const j = segBox(p[0], p[1], q[0], q[1], 0, hd, t + 0.06, fr); outline(j); pick.push(j); }
+      if (S.mull > 0) { const [m1x, m1z] = along(i.len / 2 - S.mull / 2), [m2x, m2z] = along(i.len / 2 + S.mull / 2); const ms = segBox(m1x, m1z, m2x, m2z, 0, S.leafH, t + 0.02, fr); outline(ms); pick.push(ms); }
+      const hb = segBox(ax, az, bx, bz, S.leafH, hd, t + 0.06, fr); outline(hb);
+      // the header panel over the door, up to the head the opening was given (the wall above that is drawn already)
+      if (head > hd + 0.01) { const hp = segBox(ax, az, bx, bz, hd, head, t, i.hard ? M.white : hm); outline(hp); pick.push(hp); segBox(ax, az, bx, bz, hd, hd + 0.25, t + 0.012, M.white); }
+      for (const l of i.leaves) {
+        const baseAngle = Math.atan2(-(l.z2 - l.z1), l.x2 - l.x1), ldx = l.x2 - l.x1, ldz = l.z2 - l.z1;
+        const swingDir = (l.tx != null ? (ldz * l.tx - ldx * l.tz) : l.leafSw) >= 0 ? 1 : -1;
+        const doorGroup = new THREE.Group(); doorGroup.position.set(l.x1, 0, l.z1); doorGroup.rotation.y = baseAngle;
+        doorGroup.userData = { isDoor: true, isOpen: false, baseRotation: baseAngle, openAngle: 0, swingDir, side: [l.tx, l.tz] };
+        root.add(doorGroup); doors.push(doorGroup); doorObs.push({ x1: l.x1, z1: l.z1, x2: l.x2, z2: l.z2, r: 0.07, doorGroup });
+        const L = Math.hypot(ldx, ldz) || 1, top = S.leafH - 0.02, lm = new THREE.Group(); doorGroup.add(lm);
+        const g0 = (L - S.vis.w) / 2, g1 = g0 + S.vis.w, v0 = S.vis.y0, v1 = v0 + S.vis.h, gl = 1 / 12;
+        const parts = [[0, L, 0.03, v0], [0, L, v1, top], [0, g0, v0, v1], [g1, L, v0, v1]].map(([u0, u1, y0, y1]) => localSegBox(lm, u0, 0, u1, 0, y0, y1, 0.145, M.leaf));
+        parts.forEach(m => { outline(m); pick.push(m); });
+        // vision frame (26″ × 36″) and the 24″ × 34″ glass
+        localSegBox(lm, g0, 0, g0 + gl, 0, v0, v1, 0.18, fr); localSegBox(lm, g1 - gl, 0, g1, 0, v0, v1, 0.18, fr);
+        localSegBox(lm, g0, 0, g1, 0, v0, v0 + gl, 0.18, fr); localSegBox(lm, g0, 0, g1, 0, v1 - gl, v1, 0.18, fr);
+        localSegBox(lm, g0 + gl, 0, g1 - gl, 0, v0 + gl, v1 - gl, 0.06, M.lite);
+        // lever on the latch edge, both faces
+        localSegBox(lm, L - 0.42, 0, L - 0.12, 0, S.lever - 0.04, S.lever + 0.04, 0.4, M.closer);
+        // closer arm at the top, on the swing side
+        localSegBox(lm, L * 0.08, 0.13, L * 0.45, 0.13, top - 0.42, top - 0.2, 0.13, M.closer);
+        shadow((l.x1 + l.x2) / 2, (l.z1 + l.z2) / 2, l.w, 0.14, Math.atan2(-(l.z2 - l.z1), l.x2 - l.x1), 0.45);
+      }
     } else {
       const [j1x, j1z] = along(-0.14), [j2x, j2z] = along(i.len + 0.14);
       segBox(j1x, j1z, ax, az, 0, head, t + 0.06, M.frame);
@@ -4085,5 +4133,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, deckShapes, deckBase, deckLevels, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, deckShapes, deckBase, deckLevels, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
