@@ -877,8 +877,16 @@ class Editor {
         // its corners catch on wall ends (within 12 px), so a lid drops onto the walls it covers
         const rx = p.x - D.sx, ry = p.y - D.sy, tol = 12 / this.view.s; let best = null, bd = tol;
         if (!e.altKey) for (const q of O.outer) for (const w of this.plan.walls) for (const [px, py] of [[w.x1, w.y1], [w.x2, w.y2]]) { const d0 = Math.hypot(px - (q[0] + rx), py - (q[1] + ry)); if (d0 < bd) { bd = d0; best = [px - q[0], py - q[1]]; } }
+        // its edges also butt up against the other lid pieces' edges, so two pieces meet with no gap or overlap
+        let butt = false;
+        if (!best && !e.altKey) {
+          let bx = null, by = null, ex = tol, ey = tol;
+          const xs = new Set(O.outer.map(q => q[0])), ys = new Set(O.outer.map(q => q[1]));
+          for (const d of this.plan.deckPieces || []) { if (d.id === o.id) continue; for (const q of d.outer) { for (const x of xs) { const k = q[0] - (x + rx); if (Math.abs(k) < ex) { ex = Math.abs(k); bx = rx + k; } } for (const y of ys) { const k = q[1] - (y + ry); if (Math.abs(k) < ey) { ey = Math.abs(k); by = ry + k; } } } }
+          if (bx != null || by != null) { best = [bx != null ? bx : rx, by != null ? by : ry]; butt = true; }
+        }
         if (best) { dx = best[0]; dy = best[1]; } else if (e.altKey) { dx = rx; dy = ry; }
-        this.shiftRef('deck', o, O, dx, dy); this.status('Moving the lid piece' + (best ? ' · a corner is on a wall end' : '') + ' (Alt: no snapping; R turns it)');
+        this.shiftRef('deck', o, O, dx, dy); this.status('Moving the lid piece' + (best ? (butt ? ' · butted against the next piece' : ' · a corner is on a wall end') : '') + ' (Alt: no snapping; R turns it)');
       }
       else if (D.sel.kind === 'chase' || D.sel.kind === 'carea') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
       else if (D.sel.kind === 'room') { o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy); }

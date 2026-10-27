@@ -2068,11 +2068,14 @@ function deckLevels(plan, A, d, WH) {
     const near = hits.filter(h => h.length).map(h => h.sort((a, b) => a[0] - b[0])[0]);
     if (!near.length) return WH;
     // standing on a wall: that wall's own top
-    const on = near.find(n => n[0] < 0.2); if (on) return on[1];
+    const on = near.find(n => n[0] < 0.2); if (on) return -on[1]; // on a wall's top: marked, settled below
     return Math.min(...near.map(n => n[1]));
   };
+  const FPo = footprint(A) || footprint(A, true);
   const at = (x, z) => {
-    let t = wallTop(x, z);
+    let t = wallTop(x, z); if (t < 0) return t;
+    // lid hanging out past the cleanroom's walls: settled below from the lid beside it
+    if (FPo && !FPo.has(x, z)) return -t;
     for (const B of beams) {
       const q = B.q, L = Math.hypot(q.x2 - q.x1, q.y2 - q.y1); if (L < 0.2 || B.top <= t + 0.01) continue;
       // a beam over this room (its seat at this wall top, or anywhere within the span when it sits on top of the walls)
@@ -2086,8 +2089,34 @@ function deckLevels(plan, A, d, WH) {
   };
   // each cell's height, then cells merged into rectangles per height
   const nI = X.length - 1, nJ = Z.length - 1, H = [];
-  for (let i = 0; i < nI; i++) { H.push([]); for (let j = 0; j < nJ; j++) H[i].push(Math.round(at((X[i] + X[i + 1]) / 2, (Z[j] + Z[j + 1]) / 2) * 50) / 50); }
-  const used = H.map(r => r.map(() => false)), lv = new Map();
+  const inPoly = (R, x, z) => { let c = false; for (let a = 0, b = R.length - 1; a < R.length; b = a++) { const [xa, za] = R[a], [xb, zb] = R[b]; if ((za > z) !== (zb > z) && x < (xb - xa) * (z - za) / (zb - za) + xa) c = !c; } return c; };
+  const onLid = (x, z) => inPoly(P, x, z) && !(d.holes || []).some(hh => inPoly(hh, x, z));
+  // cells off the piece (outside its outline, or in a hole) have no height
+  for (let i = 0; i < nI; i++) { H.push([]); for (let j = 0; j < nJ; j++) { const cx = (X[i] + X[i + 1]) / 2, cz = (Z[j] + Z[j + 1]) / 2; H[i].push(onLid(cx, cz) ? Math.round(at(cx, cz) * 50) / 50 : null); } }
+  // a strip of lid over a wall's top sits at the height of the lid beside it (the higher side, where the wall
+  // parts a tall room from a short one), not at the wall's own top: a short room's lid ending over a tall wall
+  // stays down with the room
+  for (let pass = 0; pass < 40; pass++) {
+    let left = false;
+    for (let i = 0; i < nI; i++) for (let j = 0; j < nJ; j++) {
+      const v = H[i][j]; if (v == null || v >= 0) continue;
+      const nb = [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]].map(([a, b]) => a >= 0 && b >= 0 && a < nI && b < nJ ? H[a][b] : null).filter(t => t != null && t >= 0);
+      if (nb.length) H[i][j] = Math.max(...nb); else left = true;
+    }
+    if (!left) break;
+  }
+  for (let i = 0; i < nI; i++) for (let j = 0; j < nJ; j++) if (H[i][j] != null && H[i][j] < 0) H[i][j] = -H[i][j];
+  // hair-thin strips (under 2″, where cut lines fall close together) take the height of the wider cell beside
+  // them, so the lid has no slivers standing proud of it
+  const thin = 2 / 12;
+  for (let i = 0; i < nI; i++) for (let j = 0; j < nJ; j++) {
+    if (H[i][j] == null) continue;
+    const wx = X[i + 1] - X[i], wz = Z[j + 1] - Z[j], cand = [];
+    if (wx < thin) for (const a of [i - 1, i + 1]) if (a >= 0 && a < nI && H[a][j] != null) cand.push([X[a + 1] - X[a], H[a][j]]);
+    if (wz < thin) for (const b of [j - 1, j + 1]) if (b >= 0 && b < nJ && H[i][b] != null) cand.push([Z[b + 1] - Z[b], H[i][b]]);
+    if (cand.length) H[i][j] = cand.sort((p, q) => q[0] - p[0])[0][1];
+  }
+  const used = H.map(r => r.map(v => v == null)), lv = new Map();
   for (let i = 0; i < nI; i++) for (let j = 0; j < nJ; j++) {
     if (used[i][j]) continue;
     const h = H[i][j]; let j2 = j; while (j2 + 1 < nJ && !used[i][j2 + 1] && H[i][j2 + 1] === h) j2++;
@@ -2095,7 +2124,29 @@ function deckLevels(plan, A, d, WH) {
     for (let a = i; a <= i2; a++) for (let k = j; k <= j2; k++) used[a][k] = true;
     (lv.get(h) || lv.set(h, []).get(h)).push([X[i], Z[j], X[i2 + 1], Z[j2 + 1]]);
   }
-  return [...lv.entries()].map(([h, rects]) => ({ h, rects }));
+  // each height's outline: the edges between its cells and any other cell, chained into loops (outlines
+  // anticlockwise, holes clockwise), so a level draws as one sheet with no seams across it
+  const loopsOf = (h) => {
+    const nxt = new Map(), K = (i, j) => i + ',' + j, edge = (a, b) => (nxt.get(K(a[0], a[1])) || nxt.set(K(a[0], a[1]), []).get(K(a[0], a[1]))).push(b);
+    const same = (i, j) => i >= 0 && j >= 0 && i < nI && j < nJ && H[i][j] === h;
+    for (let i = 0; i < nI; i++) for (let j = 0; j < nJ; j++) {
+      if (H[i][j] !== h) continue;
+      if (!same(i, j - 1)) edge([i + 1, j], [i, j]);
+      if (!same(i - 1, j)) edge([i, j], [i, j + 1]);
+      if (!same(i, j + 1)) edge([i, j + 1], [i + 1, j + 1]);
+      if (!same(i + 1, j)) edge([i + 1, j + 1], [i + 1, j]);
+    }
+    const loops = [];
+    for (const [k0] of nxt) while ((nxt.get(k0) || []).length) {
+      const L = []; let cur = k0, g = 0;
+      do { const [i, j] = cur.split(',').map(Number); L.push([X[i], Z[j]]); const n = nxt.get(cur); if (!n || !n.length) break; const b = n.pop(); cur = K(b[0], b[1]); } while (cur !== k0 && g++ < 100000);
+      // drop the points in the middle of straight runs
+      const T = L.filter((p, k) => { const a = L[(k + L.length - 1) % L.length], b = L[(k + 1) % L.length]; return Math.abs((p[0] - a[0]) * (b[1] - p[1]) - (p[1] - a[1]) * (b[0] - p[0])) > 1e-9; });
+      if (T.length >= 3) loops.push(T);
+    }
+    return loops;
+  };
+  return [...lv.entries()].map(([h, rects]) => ({ h, rects, loops: loopsOf(h) }));
 }
 /* The highest point a lid piece sits at (parts list). */
 function deckBase(plan, A, d, WH) { return Math.max(WH, ...deckLevels(plan, A, d, WH).map(l => l.h)); }
@@ -2889,7 +2940,15 @@ function buildScene(THREE, plan, A) {
     for (const d of DK) {
       const LV = deckLevels(plan, A, d, WH);
       // one height under the whole piece: the piece as drawn; otherwise each part of it at its own height
-      const parts = LV.length === 1 ? [{ h: LV[0].h, outer: d.outer, holes: d.holes }] : [].concat(...LV.map(l => l.rects.map(r => ({ h: l.h, outer: clipPolyRect(d.outer, r), holes: d.holes.map(hh => clipPolyRect(hh, r)).filter(hh => hh.length >= 3 && Math.abs(sarea(hh)) > 0.01) }))));
+      // straight-sided pieces (the usual) draw each height as one sheet from its outline; anything else is cut
+      // into the rectangles under each height
+      const square = [d.outer].concat(d.holes).every(R => R.every((q, k) => { const b = R[(k + 1) % R.length]; return Math.abs(q[0] - b[0]) < 1e-6 || Math.abs(q[1] - b[1]) < 1e-6; }));
+      const sheets = (l) => {
+        const L = l.loops || [], outs = L.filter(R => sarea(R) < 0), ins = L.filter(R => sarea(R) > 0);
+        const inP = (R, x, z) => { let c = false; for (let a = 0, b = R.length - 1; a < R.length; b = a++) { const [xa, za] = R[a], [xb, zb] = R[b]; if ((za > z) !== (zb > z) && x < (xb - xa) * (z - za) / (zb - za) + xa) c = !c; } return c; };
+        return outs.map(o => ({ h: l.h, outer: o, holes: ins.filter(hh => inP(o, hh[0][0] + 1e-4, hh[0][1] + 1e-4) || inP(o, (hh[0][0] + hh[1][0]) / 2, (hh[0][1] + hh[1][1]) / 2)) }));
+      };
+      const parts = LV.length === 1 ? [{ h: LV[0].h, outer: d.outer, holes: d.holes }] : square ? [].concat(...LV.map(sheets)) : [].concat(...LV.map(l => l.rects.map(r => ({ h: l.h, outer: clipPolyRect(d.outer, r), holes: d.holes.map(hh => clipPolyRect(hh, r)).filter(hh => hh.length >= 3 && Math.abs(sarea(hh)) > 0.01) }))));
       for (const pt of parts) {
         if (pt.outer.length < 3 || Math.abs(sarea(pt.outer)) < 0.01) continue;
         const sh = new THREE.Shape(pt.outer.map(([x, z]) => new THREE.Vector2(x, z)));
