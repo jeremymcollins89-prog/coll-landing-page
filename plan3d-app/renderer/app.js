@@ -1233,7 +1233,7 @@ function sheetExtrasToPlan(data, o, walls, bld, p) {
   let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9; walls.forEach(w => { if (bld && bld.has && bld.has(w.id)) { bx0 = Math.min(bx0, w.x1, w.x2); bx1 = Math.max(bx1, w.x1, w.x2); by0 = Math.min(by0, w.y1, w.y2); by1 = Math.max(by1, w.y1, w.y2); } });
   const inBld = bx0 < bx1 ? (a, b, c, d) => a >= bx0 - 1 && c <= bx1 + 1 && b >= by0 - 1 && d <= by1 + 1 : null;
   let target = null, dx = 0, dy = 0;
-  const g = ex.grids[0];
+  const g = (p.ceilingGrid || []).length ? null : ex.grids[0];
   if (g) {
     const al = IMP.alignToWalls(g.lines, walls, inBld);
     if (al.score >= 0.35) { dx = al.dx; dy = al.dy; target = { x0: g.box.x0 + dx, y0: g.box.y0 + dy, x1: g.box.x1 + dx, y1: g.box.y1 + dy }; }
@@ -1248,7 +1248,7 @@ function sheetExtrasToPlan(data, o, walls, bld, p) {
     if (fits) { mx = (target.x0 + target.x1) / 2 - (x0 + x1) / 2; my = (target.y0 + target.y1) / 2 - (y0 + y1) / 2; }
     else { const al = IMP.alignToWalls(ex.beams.map(b => [b.x1, b.y1, b.x2, b.y2]), walls, inBld); if (al.score >= 0.5) { mx = al.dx; my = al.dy; } }
     const q = (v) => Math.round(v * 48) / 48;
-    p.beams = ex.beams.map(b => ({ id: Plan3DEditor.uid(), x1: q(b.x1 + mx), y1: q(b.y1 + my), x2: q(b.x2 + mx), y2: q(b.y2 + my), size: 'W12x26' }));
+    p.beams = (p.beams || []).concat(ex.beams.map(b => ({ id: Plan3DEditor.uid(), x1: q(b.x1 + mx), y1: q(b.y1 + my), x2: q(b.x2 + mx), y2: q(b.y2 + my), size: 'W12x26' })));
     said.push(`${ex.beams.length} steel beam${ex.beams.length > 1 ? 's' : ''} ${fits || mx || my ? 'over the cleanroom' : 'where they are on the sheet'} (W12×26; pick one to change the size or height)`);
   }
   // FFUs and lights
@@ -1282,6 +1282,76 @@ function sheetExtrasToPlan(data, o, walls, bld, p) {
   }
   return said.length ? { text: 'Also from the sheet: ' + said.join('; ') + '.' } : null;
 }
+/* What a layer of a DWG / DXF can bring in, and a first guess from its name */
+const LAYER_ROLES = [['wall', 'Walls'], ['beam', 'Steel beams'], ['ffu', 'FFUs'], ['led', 'Lights'], ['column', 'Columns'], ['chase', 'Air chases'], ['grid', 'Ceiling grid'], ['ignore', 'Leave out']];
+const LAYER_GUESS = [['beam', /beam|s-?bm|girder|joist|\bw\d+x\d+/i], ['ffu', /ffu|hepa|fan.?filt/i], ['led', /light|lite|lumin|\bled\b|e-?lite|lght/i], ['column', /\bcol(umn)?s?\b|s-?col/i], ['chase', /chase/i], ['grid', /clg|ceil|rcp|t-?bar|tee.?grid|grid.?ceil/i]];
+/* The pieces on layers given a role other than walls, placed where they are on the drawing (the same frame as
+   its walls): beams (a centreline, or two flange lines, or a long thin outline), FFUs and lights (their
+   rectangles), columns (small outlines), air chases (outlines) and ceiling grid (its lines). Adds them to p;
+   returns a line saying what came in, or ''. */
+function layerPieces(data, o, p) {
+  const roles = o.roles || {}, by = {}; for (const [l, r] of Object.entries(roles)) (by[r] = by[r] || new Set()).add(l);
+  if (!Object.keys(by).length) return '';
+  const F = IMP.dxfFrame(data, o), k = o.unitFt, uid = Plan3DEditor.uid, said = [];
+  const segsOn = (S) => data.segs.filter(q => S.has(q[4])).map(q => { const a = F.P(q[0], q[1]), b = F.P(q[2], q[3]); return [a[0], a[1], b[0], b[1]]; });
+  const rectsOn = (S) => { const out = []; for (const r of data.rects || []) { if (!S.has(r.layer)) continue; const [x, y] = F.P(r.cx, r.cy), w = r.w * k, h = r.h * k; if (out.some(q => Math.abs(q.x - x) < 0.3 && Math.abs(q.y - y) < 0.3)) continue; out.push({ x, y, w, h }); } return out; };
+  // steel beams
+  if (by.beam) {
+    const S = segsOn(by.beam).filter(q => Math.hypot(q[2] - q[0], q[3] - q[1]) >= 3), used = new Set(), out = [];
+    const dir = (q) => { const L = Math.hypot(q[2] - q[0], q[3] - q[1]); return [(q[2] - q[0]) / L, (q[3] - q[1]) / L, L]; };
+    for (let i = 0; i < S.length; i++) {
+      if (used.has(i)) continue; const a = S[i], [ux, uy, La] = dir(a); let mate = -1, md = 1.3;
+      for (let j = i + 1; j < S.length; j++) {
+        if (used.has(j)) continue; const b = S[j], [vx, vy, Lb] = dir(b); if (Math.abs(ux * vy - uy * vx) > 0.03) continue;
+        const d = Math.abs((b[0] - a[0]) * -uy + (b[1] - a[1]) * ux); if (d < 0.05 || d > md) continue;
+        const t0 = (b[0] - a[0]) * ux + (b[1] - a[1]) * uy, t1 = (b[2] - a[0]) * ux + (b[3] - a[1]) * uy, ov = Math.min(La, Math.max(t0, t1)) - Math.max(0, Math.min(t0, t1));
+        if (ov > 0.7 * Math.min(La, Lb)) { md = d; mate = j; }
+      }
+      if (mate >= 0) { const b = S[mate], s2 = (b[0] - a[0]) * ux + (b[1] - a[1]) * uy > ((b[2] - a[0]) * ux + (b[3] - a[1]) * uy) ? [b[2], b[3], b[0], b[1]] : b; used.add(mate); out.push([(a[0] + s2[0]) / 2, (a[1] + s2[1]) / 2, (a[2] + s2[2]) / 2, (a[3] + s2[3]) / 2]); }
+      else out.push(a);
+      used.add(i);
+    }
+    // a beam drawn as a long thin closed outline
+    for (const r of rectsOn(by.beam)) { const lo = Math.min(r.w, r.h), hi = Math.max(r.w, r.h); if (hi >= 3 && hi / lo >= 4 && lo <= 2) out.push(r.w >= r.h ? [r.x - r.w / 2, r.y, r.x + r.w / 2, r.y] : [r.x, r.y - r.h / 2, r.x, r.y + r.h / 2]); }
+    const q = (v) => Math.round(v * 48) / 48;
+    p.beams = (p.beams || []).concat(out.map(b => ({ id: uid(), x1: q(b[0]), y1: q(b[1]), x2: q(b[2]), y2: q(b[3]), size: 'W12x26' })));
+    if (out.length) said.push(out.length + ' steel beam' + (out.length > 1 ? 's' : '') + ' (W12×26: pick one to change it)');
+  }
+  // FFUs and lights: their rectangles, at their own size
+  let nF = 0, nL = 0;
+  for (const [role, type] of [['ffu', 'ffu'], ['led', 'led']]) {
+    if (!by[role]) continue;
+    for (const r of rectsOn(by[role])) {
+      const lo = Math.min(r.w, r.h), hi = Math.max(r.w, r.h); if (lo < 0.9 || hi > 6.2) continue;
+      if ((p.fixtures || []).some(f => Math.abs(f.x - r.x) < 0.3 && Math.abs(f.y - r.y) < 0.3)) continue;
+      (p.fixtures = p.fixtures || []).push({ id: uid(), type, x: r.x, y: r.y, w: r.w, h: r.h }); if (type === 'ffu') nF++; else nL++;
+    }
+  }
+  if (nF || nL) {
+    // each layout (fixtures within 6′ of each other) is a group, to drag into its room as one
+    const F2 = p.fixtures, par = F2.map((_, i) => i), find = (i) => (par[i] === i ? i : (par[i] = find(par[i])));
+    for (let i = 0; i < F2.length; i++) for (let j = i + 1; j < F2.length; j++) if (Math.abs(F2[i].x - F2[j].x) < (F2[i].w + F2[j].w) / 2 + 6 && Math.abs(F2[i].y - F2[j].y) < (F2[i].h + F2[j].h) / 2 + 6) par[find(i)] = find(j);
+    const gids = new Map(); F2.forEach((f, i) => { const r = find(i); if (!f.gid) f.gid = gids.get(r) || (gids.set(r, uid()), gids.get(r)); });
+    p.ceilingMode = 'manual'; said.push([nF ? nF + ' FFU' + (nF > 1 ? 's' : '') : '', nL ? nL + ' light' + (nL > 1 ? 's' : '') : ''].filter(Boolean).join(' and ')); }
+  // columns
+  if (by.column) {
+    const C = rectsOn(by.column).filter(r => Math.max(r.w, r.h) <= 4 && Math.min(r.w, r.h) >= 0.2);
+    p.columns = (p.columns || []).concat(C.map(r => ({ id: uid(), x: r.x, y: r.y, size: Math.round(Math.max(r.w, r.h) * 12) / 12, kind: Math.max(r.w, r.h) > 1.1 ? 'concrete' : 'steel' })));
+    if (C.length) said.push(C.length + ' column' + (C.length > 1 ? 's' : ''));
+  }
+  // air chases
+  if (by.chase) {
+    const C = rectsOn(by.chase).filter(r => Math.min(r.w, r.h) >= 0.5);
+    p.chases = (p.chases || []).concat(C.map(r => ({ id: uid(), x0: r.x - r.w / 2, y0: r.y - r.h / 2, x1: r.x + r.w / 2, y1: r.y + r.h / 2 })));
+    if (C.length) said.push(C.length + ' air chase' + (C.length > 1 ? 's' : ''));
+  }
+  // ceiling grid
+  if (by.grid) {
+    const G = segsOn(by.grid).filter(q => Math.hypot(q[2] - q[0], q[3] - q[1]) >= 0.5);
+    if (G.length) { p.ceilingGrid = (p.ceilingGrid || []).concat(G); p.ceilingMode = 'manual'; p.ceilingSource = p.ceilingSource || data.name; delete p.ceilRects; p.fixtures = p.fixtures || []; said.push('the ceiling grid (' + G.length + ' lines)'); }
+  }
+  return said.length ? 'From the other layers: ' + said.join(', ') + '.' : '';
+}
 function dxfDialog(data, preset) {
   preset = preset || {};
   const opTypes = {};
@@ -1290,25 +1360,27 @@ function dxfDialog(data, preset) {
   const wallish = names.filter(n => /wall|partition|panel|a-wall|^wa/i.test(n) && !/detl|detail|path|walk|egress|patt/i.test(n));
   const notWall = /title|dim|text|anno|defpoints|border|logo|watermark|hatch|furn|grid|tag|note|symbol|xref|viewport|detl|detail|path|walk|egress|patt|^0$/i;
   const pre = new Set(preset.layers ? names.filter(n => preset.layers.includes(n)) : wallish.length ? wallish : names.filter(n => !notWall.test(n)).length ? names.filter(n => !notWall.test(n)) : names);
+  // what each layer brings in: walls, or another kind of piece, placed where it is on the drawing
+  const roleOf = (n) => pre.has(n) && !LAYER_GUESS.some(([r, rx]) => r !== 'wall' && rx.test(n)) ? 'wall' : (LAYER_GUESS.find(([, rx]) => rx.test(n)) || ['ignore'])[0];
   const iu = data.insunits;
   const unitOpts = [[1, 'Inches'], [2, 'Feet'], [4, 'Millimeters'], [5, 'Centimeters'], [6, 'Meters']];
   const defUnit = preset.unit || (IMP.UNIT_FT[iu] && iu ? iu : 1);
   dialogOpen({
     wide: true,
     title: 'Import ' + data.name,
-    body: `<p>Pick the layers that hold the walls. Turning off dimension, text and furniture layers gives a cleaner result.</p>
-      <div class="layers" id="dxLayers">${names.map(n => `<label><input type="checkbox" value="${esc(n)}" ${pre.has(n) ? 'checked' : ''}><span>${esc(n)}</span><small>${data.layers[n]} lines</small></label>`).join('')}</div>
-      <div class="row"><button type="button" class="btn small" id="dxAll">All</button><button type="button" class="btn small" id="dxNone">None</button></div>
+    body: `<p>Say what each layer holds. <b>Walls</b> become walls; steel beams, FFUs, lights, columns, air chases and ceiling grid come in as those pieces, right where they are on the drawing. Leave dimension, text and furniture layers on <b>Leave out</b> for a cleaner result.</p>
+      <div class="layers" id="dxLayers">${names.map(n => `<label style="grid-template-columns:132px 1fr auto"><select data-l="${esc(n)}">${LAYER_ROLES.map(([k, l]) => `<option value="${k}" ${roleOf(n) === k ? 'selected' : ''}>${l}</option>`).join('')}</select><span>${esc(n)}</span><small>${data.layers[n]} lines</small></label>`).join('')}</div>
+      <div class="row"><button type="button" class="btn small" id="dxAll">All walls</button><button type="button" class="btn small" id="dxNone">Leave all out</button></div>
       ${fld('Drawing units', `<select id="dxU">${unitOpts.map(([v, l]) => `<option value="${v}" ${v === defUnit ? 'selected' : ''}>${l}${v === iu ? ' (from file)' : ''}</option>`).join('')}</select>`)}
       ${fld('Walls drawn as', `<select id="dxM"><option value="double">Two parallel lines</option><option value="single">Single centerline</option></select>`)}
       ${fld('Wall thickness', '<input type="text" id="dxT" value="2&quot; to 8&quot;">')}
       ${fld('Separate drawings', `<select id="dxC"><option value="all">Everything on the sheet</option><option value="main">Only the main building (skip copies and loose bits off to the side)</option></select>`)}
-      ${fld('Also bring in', `<label class="chk"><input type="checkbox" id="dxX" checked> Ceiling grid, FFUs and lights, and steel beams drawn on the sheet, lined up on the cleanroom</label>`)}
+      ${fld('Also look for', `<label class="chk"><input type="checkbox" id="dxX" checked> Ceiling grid, FFU layouts and steel beams drawn elsewhere on the sheet (on layers left out above), lined up on the cleanroom</label>`)}
       ${fld('Outside walls', `<select id="dxB"><option value="auto">Building walls when a cleanroom stands inside them (warehouse)</option><option value="all">Always building walls</option><option value="none">Cleanroom hardwall</option></select>`)}
       ${fld('Building walls are', `<select id="dxBK"><option value="auto">Metal panel up to 6″, concrete if thicker</option><option value="metal">Metal panel</option><option value="concrete">Concrete</option><option value="cmu">Concrete block</option><option value="stud">Steel stud and drywall</option></select>`)}
       <p class="sizeline" id="dxSize"></p>
       <div id="dxOpsWrap"><h4 style="margin:12px 0 6px">Doors and windows in the drawing</h4><div class="layers" id="dxOps" style="max-height:150px"></div></div>`,
-    buttons: [{ label: 'Cancel', ret: null }, { label: 'Import walls', primary: true, value: () => readDx() }],
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Import', primary: true, value: () => readDx() }],
     onOpen: () => {
       const KINDS = [['door', 'Door'], ['door2', 'Pair of doors'], ['glass', 'Vision glass'], ['pass', 'Pass-thru'], ['none', 'Ignore']];
       const drawOps = () => {
@@ -1319,8 +1391,8 @@ function dxfDialog(data, preset) {
       };
       const upd = () => { const o = readDx(); const sz = IMP.dxfSize(data, o.layers, o.unitFt); $('#dxSize').textContent = sz ? `Size with these units: ${fmt(sz.w)} × ${fmt(sz.h)} · ${sz.n} lines` : 'No layers selected.'; drawOps(); };
       $('#dxLayers').addEventListener('change', upd); $('#dxU').addEventListener('change', upd);
-      $('#dxAll').onclick = () => { $$('#dxLayers input').forEach(i => i.checked = true); upd(); };
-      $('#dxNone').onclick = () => { $$('#dxLayers input').forEach(i => i.checked = false); upd(); };
+      $('#dxAll').onclick = () => { $$('#dxLayers select').forEach(i => i.value = 'wall'); upd(); };
+      $('#dxNone').onclick = () => { $$('#dxLayers select').forEach(i => i.value = 'ignore'); upd(); };
       $('#dxM').onchange = () => { $('#dxT').value = $('#dxM').value === 'single' ? '3"' : '2" to 8"'; };
       try { const c = localStorage.getItem('p3d.dxClusters'); if (c && $('#dxC')) $('#dxC').value = c; } catch (e) { /* no storage */ }
       upd();
@@ -1350,7 +1422,9 @@ function dxfDialog(data, preset) {
     const bld = IMP.buildingWalls ? eachDrawing(walls, ops.openings, o.bldMode) : new Set();
     for (const w of walls) if (bld.has(w.id)) w.kind = o.bldKind === 'auto' ? (w.t <= 0.5 + 1e-6 ? 'metal' : 'concrete') : o.bldKind;
     const p = Editor.blank(); p.name = data.name; p.walls = walls; p.openings = ops.openings; p.wallT = o.mode === 'single' ? o.tFt : 0.25;
-    const extra = o.extras && walls.length ? sheetExtrasToPlan(data, o, walls, bld, p) : null;
+    const rp = layerPieces(data, o, p);
+    let extra = o.extras && walls.length ? sheetExtrasToPlan(data, { ...o, layers: new Set([...o.layers, ...Object.keys(o.roles || {})]) }, walls, bld, p) : null;
+    if (rp && extra) extra.text = rp + ' ' + extra.text; else if (rp && !extra) extra = { text: rp };
     if (walls.length) { const t = walls.map(w => w.t).sort((a, b) => a - b); p.wallT = t[t.length >> 1]; }
     if (adoptImported(p, extra && extra.text)) return;
     projectPath = null; ed.setPlan(p); ed.dirty = true; updateChrome();
@@ -1362,14 +1436,16 @@ function dxfDialog(data, preset) {
     const bldText = bld.size ? ` The ${bld.size} outside walls are the building (${Plan3DViewer.WALL_KINDS[walls.find(w => bld.has(w.id)).kind].short.toLowerCase()}); pick one to change it.` : '';
     const skipText = !skipped ? '' : o.clusters === 'all' ? ` Left out ${skipped} loose wall bit${skipped === 1 ? '' : 's'} standing on ${skipped === 1 ? 'its' : 'their'} own (a curb or a sign on a wall layer).` : ` Left out ${skipped} wall${skipped === 1 ? '' : 's'} away from the main building (a copy off to the side, loose bits); import again with “Separate drawings: Everything on the sheet” to keep them.`;
     if (walls.length) showBanner(`Imported ${walls.length} walls${opsText}.${bldText}${skipText}${exText} Check them, then add chases and rooms.`, [{ label: 'View in 3D', primary: true, fn: () => { hideBanner(); setView('split'); } }]);
+    else if (rp) showBanner(rp + ' No walls came in (no layer set to Walls).', [{ label: 'View in 3D', primary: true, fn: () => { hideBanner(); setView('split'); } }]);
     else showBanner('No walls were found with these settings. Try "Single centerline", a wider thickness range, or other layers.', [{ label: 'Try again', primary: true, fn: () => dxfDialog(data, preset) }]);
   });
   function readDx() {
-    const layers = new Set($$('#dxLayers input').filter(i => i.checked).map(i => i.value));
+    const layers = new Set($$('#dxLayers select').filter(i => i.value === 'wall').map(i => i.dataset.l)), roles = {};
+    $$('#dxLayers select').forEach(i => { if (i.value !== 'wall' && i.value !== 'ignore') roles[i.dataset.l] = i.value; });
     const unitFt = IMP.UNIT_FT[+$('#dxU').value] || 1 / 12, mode = $('#dxM').value;
     const tv = $('#dxT').value.split(/to|-|–/i).map(s => parseLen(s.trim(), 'in')).filter(v => v > 0);
     const minT = tv.length > 1 ? Math.min(...tv) : (tv[0] || 0.25) * 0.6, maxT = tv.length > 1 ? Math.max(...tv) : (tv[0] || 0.25) * 1.5;
-    return { layers, unitFt, mode, minT, maxT, tFt: tv[0] || 0.25, minLen: 0.75, keepOrigin: !!preset.keepOrigin, bldMode: ($('#dxB') || {}).value || 'auto', bldKind: ($('#dxBK') || {}).value || 'auto', clusters: ($('#dxC') || {}).value || 'all', extras: !$('#dxX') || $('#dxX').checked };
+    return { layers, unitFt, mode, minT, maxT, tFt: tv[0] || 0.25, minLen: 0.75, keepOrigin: !!preset.keepOrigin, bldMode: ($('#dxB') || {}).value || 'auto', bldKind: ($('#dxBK') || {}).value || 'auto', clusters: ($('#dxC') || {}).value || 'all', extras: !$('#dxX') || $('#dxX').checked, roles };
   }
 }
 
@@ -1735,7 +1811,7 @@ function adoptImported(p, note) {
   if (!addMode) return false;
   addMode = false;
   const name = p.name || 'Imported plan', nW = (p.walls || []).length;
-  if (!nW && !(p.inserts || []).length) { toast('Nothing to add: no walls came in from that file.'); return true; }
+  if (!nW && !(p.inserts || []).length && !PIECE_LISTS.some(k => (p[k] || []).length) && !(p.ceilingGrid || []).length) { toast('Nothing to add: no walls came in from that file.'); return true; }
   (async () => {
     const a = await dialogOpen({ title: 'Add ' + name, body: `<p>${nW} wall${nW === 1 ? '' : 's'} from <b>${esc(name)}</b>. How should it go into this project?</p>
       <ul class="help"><li><b>As a separate building</b>: moved and turned as one (R turns it), with its own height, ceiling and section of the parts list. Good for another building on the site.</li>
@@ -1747,6 +1823,8 @@ function adoptImported(p, note) {
     // pieces: centred on their middle, put down at the middle of the screen, grouped and picked up
     const d = {}; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; const e = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
     (p.walls || []).forEach(w => { e(w.x1, w.y1); e(w.x2, w.y2); });
+    // nothing but other pieces (beams, FFUs …): their spread
+    if (!(x0 <= x1)) { for (const k of PIECE_LISTS) for (const o of p[k] || []) { if ('x0' in o && 'x1' in o) { e(o.x0, o.y0); e(o.x1, o.y1); } else if ('x2' in o) { e(o.x1, o.y1); e(o.x2, o.y2); } else if (isFinite(o.x)) e(o.x, o.y); } (p.ceilingGrid || []).forEach(q => { e(q[0], q[1]); e(q[2], q[3]); }); }
     const fx = p.ceilingMode === 'manual' ? p.fixtures || [] : [];
     for (const k of PIECE_LISTS) d[k] = JSON.parse(JSON.stringify(k === 'fixtures' ? fx : p[k] || []));
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
