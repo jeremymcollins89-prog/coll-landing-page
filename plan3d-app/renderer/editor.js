@@ -51,7 +51,7 @@ const DEFAULT_W = { door: 3, door2: 6, glass: 4, open: 3, pass: 2, window: 3, ov
 // houses: 2′-8″ doors, 5′ pairs, 3′ windows, 6′-8″ heads
 const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2, overhead: 16 };
 const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass', 'overhead']);
-const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas', gzone: 'gridZones', tile: 'ceilTiles', deck: 'deckPieces', lstep: 'lidSteps' };
+const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas', gzone: 'gridZones', tile: 'ceilTiles', deck: 'deckPieces', lstep: 'lidSteps', header: 'headers' };
 const COL = {
   bg: '#1a2024', gridMinor: 'rgba(255,255,255,.035)', gridMajor: 'rgba(255,255,255,.08)', axis: 'rgba(255,255,255,.14)',
   wall: '#e9eef0', wallLine: '#8e9aa1', sp: '#f2d06b', chase: '#59666d', chaseLine: '#b7c2c7', grille: '#9fdbe8',
@@ -67,7 +67,7 @@ class Editor {
     this.tool = 'select'; this.sel = null; this.hover = null;
     this.draft = null; this.drag = null; this.cal = null; this.typed = '';
     this.bgImg = null; this.cursor = null; this.snapPt = null;
-    this.hist = []; this.fut = []; this.showDims = true; this.ortho = true; this.snapIn = 0.25;
+    this.hist = []; this.fut = []; this.showDims = true; this.showPosts = true; this.ortho = true; this.snapIn = 0.25;
     this.spaceDown = false; this.dirty = false;
     this.bind();
     new ResizeObserver(() => this.resize()).observe(canvas.parentElement);
@@ -215,6 +215,8 @@ class Editor {
     if (best) return best;
     return this.snap(x, y, from || null, {});
   }
+  refreshHeaderGaps() { const V = global.Plan3DViewer; try { this.headerGapList = V.headerGaps ? V.headerGaps(this.plan) : []; } catch (e) { this.headerGapList = []; } return this.headerGapList; }
+  addHeaders(L) { if (!L.length) return 0; const add = L.map(q => ({ id: uid(), x1: q[0], y1: q[1], x2: q[2], y2: q[3] })); this.edit(P => { P.headers = (P.headers || []).concat(add); }); this.refreshHeaderGaps(); this.render(); return add.length; }
   refreshSteps() { const V = global.Plan3DViewer; try { const A = V.analyze(this.plan); this.autoSteps = V.deckSteps ? V.deckSteps(this.plan, A, A.WH).filter(q => q.auto) : []; } catch (e) { this.autoSteps = []; } return this.autoSteps; }
   snapBox(cx, cy, w, h, skip, free) {
     if (free) return { x: cx, y: cy, cx: false, cy: false };
@@ -353,7 +355,7 @@ class Editor {
   // the points that place a piece (for box select and moving)
   refPts(r) {
     const o = this.find(r); if (!o) return [];
-    if (r.kind === 'wall' || r.kind === 'opening' || r.kind === 'beam' || r.kind === 'lstep') return [[o.x1, o.y1], [o.x2, o.y2]];
+    if (r.kind === 'wall' || r.kind === 'opening' || r.kind === 'beam' || r.kind === 'lstep' || r.kind === 'header') return [[o.x1, o.y1], [o.x2, o.y2]];
     if (r.kind === 'chase' || r.kind === 'carea' || r.kind === 'gzone') return [[o.x0, o.y0], [o.x1, o.y1]];
     if (r.kind === 'insert') { const b = this.insBox(o); return [[b.x0, b.y0], [b.x1, b.y1]]; }
     if (r.kind === 'deck') return o.outer.map(q => [q[0], q[1]]);
@@ -362,7 +364,7 @@ class Editor {
   // a piece moved by (dx, dy) from its original copy O
   shiftRef(kind, o, O, dx, dy) {
     if (kind === 'deck') { o.outer = O.outer.map(q => [q[0] + dx, q[1] + dy]); o.holes = (O.holes || []).map(h => h.map(q => [q[0] + dx, q[1] + dy])); return; }
-    if (kind === 'wall' || kind === 'opening' || kind === 'beam' || kind === 'lstep') { o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy; }
+    if (kind === 'wall' || kind === 'opening' || kind === 'beam' || kind === 'lstep' || kind === 'header') { o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy; }
     else if (kind === 'chase' || kind === 'carea' || kind === 'gzone') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; if (kind === 'gzone') { if (isFinite(O.ox)) o.ox = O.ox + dx; if (isFinite(O.oy)) o.oy = O.oy + dy; } }
     else { o.x = O.x + dx; o.y = O.y + dy; }
   }
@@ -440,7 +442,7 @@ class Editor {
 
   /* ---------- tools ---------- */
   setTool(t) {
-    this.tool = t; this.draft = null; this.cal = null; this.stepA = null; if (t === 'lstep') this.refreshSteps(); this.meas = null; this.beamA = null; this.typed = ''; this.drag = null;
+    this.tool = t; this.draft = null; this.cal = null; this.stepA = null; this.hdrA = null; if (t === 'header') this.refreshHeaderGaps(); if (t === 'lstep') this.refreshSteps(); this.meas = null; this.beamA = null; this.typed = ''; this.drag = null;
     if (t !== 'select') { this.sel = null; this.multi = null; }
     this.emit('select'); this.emit('tool', t); this.render();
   }
@@ -567,6 +569,7 @@ class Editor {
   }
   hitTest(x, y) {
     const P = this.plan, tol = 7 / this.view.s;
+    for (let i = (P.headers || []).length - 1; i >= 0; i--) { const q = P.headers[i]; if (segProj(x, y, q.x1, q.y1, q.x2, q.y2).d < 0.25 + tol) return { kind: 'header', id: q.id }; }
     for (let i = (P.lidSteps || []).length - 1; i >= 0; i--) { const q = P.lidSteps[i]; if (segProj(x, y, q.x1, q.y1, q.x2, q.y2).d < 0.2 + tol) return { kind: 'lstep', id: q.id }; }
     for (let i = (P.beams || []).length - 1; i >= 0; i--) { const b = P.beams[i], bw = (global.Plan3DViewer ? global.Plan3DViewer.beamSize(b).bf / 12 : 0.5) / 2 + tol; if (segProj(x, y, b.x1, b.y1, b.x2, b.y2).d < bw) return { kind: 'beam', id: b.id }; }
     for (let i = (P.columns || []).length - 1; i >= 0; i--) { const c = P.columns[i], r = (c.size || 0.67) / 2 + tol; if (Math.abs(x - c.x) < r && Math.abs(y - c.y) < r) return { kind: 'column', id: c.id }; }
@@ -706,6 +709,14 @@ class Editor {
       if (PC && PC.widths && g.mode !== 'replace') { this.drag = { kind: 'run', S: g, px: p.px, py: p.py }; this.c.setPointerCapture(e.pointerId); return; }
       if (this.pieces.place(g)) { this.pieceGhost = this.pieces.ghostAt({ x: p.x, y: p.y }); this.render(); }
       return;
+    }
+    if (T === 'header') {
+      // a click on a suggested gap fills it; otherwise click one end, then the other
+      if (!this.hdrA && !e.altKey) { const tol = 10 / this.view.s, gap = (this.headerGapList || []).find(q => segProj(p.x, p.y, q[0], q[1], q[2], q[3]).d < Math.max(0.5, tol)); if (gap) { this.addHeaders([gap]); this.emit('header'); this.status('Header panels placed across the ' + fmt(Math.hypot(gap[2] - gap[0], gap[3] - gap[1])) + ' gap. Click another orange gap, F fills them all, Esc when done.'); this.render(); return; } }
+      const s = this.snapStep(p.x, p.y, this.hdrA, e.altKey);
+      if (!this.hdrA) { this.hdrA = { x: s.x, y: s.y }; this.status('Click the other end of the header. Esc to stop.'); }
+      else { const q = [this.hdrA.x, this.hdrA.y, s.x, s.y]; if (Math.hypot(q[2] - q[0], q[3] - q[1]) > 0.3) { this.addHeaders([q]); this.emit('header'); } this.hdrA = null; this.status('Header panels placed: ' + fmt(Math.hypot(q[2] - q[0], q[3] - q[1])) + '. Click an orange gap or draw another, Esc when done.'); }
+      this.render(); return;
     }
     if (T === 'lstep') {
       const s = this.snapStep(p.x, p.y, this.stepA, e.altKey);
@@ -1074,6 +1085,8 @@ class Editor {
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'item') { const o = this.selected(); if (o) this.edit(() => { o.a = (o.a || 0) + Math.PI / 2 * (e.shiftKey ? -1 : 1); }); return true; }
     if ((k === 'r' || k === 'R') && !e.ctrlKey && this.sel && this.sel.kind === 'insert') { const o = this.selected(); if (o) this.edit(() => { o.rot = (((o.rot || 0) + (e.shiftKey ? 3 : 1)) % 4); }); return true; }
     if (k === 'Escape' && this.multi) { this.multi = null; this.emit('select'); this.render(); return true; }
+    if (this.tool === 'header' && (k === 'f' || k === 'F') && !e.ctrlKey) { const n = this.addHeaders(this.refreshHeaderGaps().slice()); this.emit('header'); this.status(n ? `Filled ${n} gap${n === 1 ? '' : 's'} with header panels.` : 'No open gaps found. Click one end of a header, then the other.'); return true; }
+    if (k === 'Escape' && this.hdrA) { this.hdrA = null; this.status(''); this.render(); return true; }
     if (k === 'Escape' && this.stepA) { this.stepA = null; this.status(''); this.render(); return true; }
     if (k === 'Escape' && this.beamA) { this.beamA = null; this.status(''); this.render(); return true; }
     if (k === 'Escape' && this.meas) { this.meas = null; this.status(''); this.render(); return true; }
@@ -1282,6 +1295,33 @@ class Editor {
       g.fill('evenodd'); g.stroke(); g.setLineDash([]);
       const L = this.deckLabel(d); g.font = '600 11px Consolas, monospace'; g.fillStyle = '#c9a6ff'; g.textBaseline = 'top'; g.fillText('LID' + ((P.deckPieces || []).length > 1 ? ' ' + ((P.deckPieces || []).indexOf(d) + 1) : ''), this.sx(L.x), this.sy(L.y)); g.restore();
     }
+    // posts: corner, T and cross posts, end caps and H-studs (the 48″ module and where runs meet straight), as the
+    // parts list counts them, so they can be checked on the plan; H-mold joints along header panels too
+    if (this.showPosts !== false && s > 6 && global.Plan3DViewer && global.Plan3DViewer.wallJoints) {
+      const key = JSON.stringify(P.walls) + JSON.stringify(P.openings || []);
+      if (this._jKey !== key) { this._jKey = key; try { this._joints = global.Plan3DViewer.wallJoints(P); } catch (e) { this._joints = []; } }
+      g.save(); const lab = s > 13, r = Math.max(2.5, 0.17 * s);
+      g.font = '600 9px Consolas, monospace'; g.textAlign = 'left'; g.textBaseline = 'bottom';
+      const COLP = { corner: '#f0a35a', tee: '#e9b44c', cross: '#e9b44c', cap: '#c9a6ff', hstud: '#9fd4e0' }, TXT = { corner: 'CP', tee: 'TP', cross: 'XP', cap: 'EC', hstud: 'H' };
+      for (const j of this._joints || []) {
+        const X = this.sx(j.x), Y = this.sy(j.y);
+        g.fillStyle = COLP[j.kind]; g.strokeStyle = COLP[j.kind]; g.lineWidth = 2;
+        if (j.kind === 'hstud') { const c = Math.cos(j.a), sn = Math.sin(j.a), L = r * 1.3; g.beginPath(); g.moveTo(X - sn * L, Y + c * L); g.lineTo(X + sn * L, Y - c * L); g.stroke(); if (lab && !j.mod) g.fillText(TXT.hstud, X + r + 1, Y - r); }
+        else if (j.kind === 'cap') { g.strokeRect(X - r, Y - r, 2 * r, 2 * r); if (lab) g.fillText(TXT.cap, X + r + 2, Y - r); }
+        else { g.fillRect(X - r, Y - r, 2 * r, 2 * r); if (lab) g.fillText(TXT[j.kind], X + r + 2, Y - r); }
+      }
+      g.strokeStyle = '#9fd4e0'; g.lineWidth = 2;
+      for (const q of (P.headers || []).concat(P.lidSteps || [])) { const L = Math.hypot(q.x2 - q.x1, q.y2 - q.y1), ux = (q.x2 - q.x1) / L, uy = (q.y2 - q.y1) / L; for (let m = 4; m < L - 1e-6; m += 4) { const X = this.sx(q.x1 + ux * m), Y = this.sy(q.y1 + uy * m); g.beginPath(); g.moveTo(X + uy * r * 1.3, Y - ux * r * 1.3); g.lineTo(X - uy * r * 1.3, Y + ux * r * 1.3); g.stroke(); } }
+      g.restore();
+    }
+    // header panels: a solid bar with HDR; with the Header tool on, the open gaps it could fill in orange
+    {
+      g.save(); g.lineCap = 'butt';
+      if (this.tool === 'header') { g.strokeStyle = 'rgba(255,150,60,.85)'; g.lineWidth = 5; g.setLineDash([4, 4]); for (const q of this.headerGapList || []) { g.beginPath(); g.moveTo(this.sx(q[0]), this.sy(q[1])); g.lineTo(this.sx(q[2]), this.sy(q[3])); g.stroke(); } g.setLineDash([]); }
+      g.strokeStyle = '#e9b44c'; g.lineWidth = Math.max(3, 0.25 * s); g.font = '600 10px Consolas, monospace'; g.fillStyle = '#e9b44c'; g.textBaseline = 'bottom';
+      for (const q of P.headers || []) { g.beginPath(); g.moveTo(this.sx(q.x1), this.sy(q.y1)); g.lineTo(this.sx(q.x2), this.sy(q.y2)); g.stroke(); if (Math.hypot(q.x2 - q.x1, q.y2 - q.y1) * s > 34) g.fillText('HDR', this.sx((q.x1 + q.x2) / 2) + 5, this.sy((q.y1 + q.y2) / 2) - 4); }
+      if (this.tool === 'header' && this.cursor) { const q = this.snapStep(this.cursor.x, this.cursor.y, this.hdrA, false); if (this.hdrA) { g.setLineDash([7, 4]); g.strokeStyle = COL.draft; g.lineWidth = 2; g.beginPath(); g.moveTo(this.sx(this.hdrA.x), this.sy(this.hdrA.y)); g.lineTo(this.sx(q.x), this.sy(q.y)); g.stroke(); g.setLineDash([]); } g.restore(); this.crosshair(q); } else g.restore();
+    }
     // lid steps: the wall panels closing a step in the lid. Drawn by hand: solid; found automatically: dotted
     if ((P.deckPieces || []).length) {
       g.save(); g.lineCap = 'round';
@@ -1457,6 +1497,7 @@ class Editor {
       else if (sel.kind === 'column') { const r = (o.size || 0.67) / 2; g.strokeRect(this.sx(o.x - r) - 4, this.sy(o.y - r) - 4, 2 * r * s + 8, 2 * r * s + 8); }
       else if (sel.kind === 'device') { const r = Math.max(5, Math.min(9, this.view.s * 0.35)); g.beginPath(); g.arc(this.sx(o.x) + Math.cos(o.a || 0) * r * 1.1, this.sy(o.y) + Math.sin(o.a || 0) * r * 1.1, r + 4, 0, Math.PI * 2); g.stroke(); }
       else if (sel.kind === 'item') { const c = global.Plan3DViewer.itemCorners(o); g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.stroke(); }
+      else if (sel.kind === 'header') { quad(o.x1, o.y1, o.x2, o.y2, 0.25 + 6 / s); g.stroke(); }
       else if (sel.kind === 'lstep') { quad(o.x1, o.y1, o.x2, o.y2, 0.25 + 6 / s); g.stroke(); }
       else if (sel.kind === 'beam') { quad(o.x1, o.y1, o.x2, o.y2, (global.Plan3DViewer ? global.Plan3DViewer.beamSize(o).bf / 12 : 0.5) + 6 / s); g.stroke(); }
       else if (sel.kind === 'deck') { g.beginPath(); o.outer.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.stroke(); }

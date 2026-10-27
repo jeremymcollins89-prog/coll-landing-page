@@ -2239,6 +2239,82 @@ function deckSteps(plan, A, WH) {
     return !mine.some(m => { const mh = Math.abs(m.z1 - m.z2) < 0.01, mv = Math.abs(m.x1 - m.x2) < 0.01; if (hz ? !mh : !mv) return false; const off = hz ? Math.abs(m.z1 - q.z1) : Math.abs(m.x1 - q.x1); const [b0, b1] = along(m, hz); return off < 0.5 && Math.min(a1, b1) - Math.max(a0, b0) > (a1 - a0) * 0.5; });
   });
 }
+/* The posts and joints along the cleanroom walls, as the parts list counts them: where wall ends meet (a corner
+   post, a T-post, a cross post, an H-stud where two runs carry straight on, an end cap at a free end) and the
+   H-studs on the 48″ panel module along each run. [{ x, y, kind: 'corner'|'tee'|'cross'|'hstud'|'cap', a }]
+   (a: the wall's direction there, for drawing an H-stud across it). */
+function wallJoints(plan, A) {
+  A = A || analyze(plan);
+  const walls = (plan.walls || []).filter(w => isHard(w)), TOL = 0.3, nodes = [], out = [];
+  const dirOf = (w, st) => { const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L; return st ? [ux, uy] : [-ux, -uy]; };
+  const addDir = (n, d) => { if (!n.dirs.some(e => e[0] * d[0] + e[1] * d[1] > 0.99)) n.dirs.push(d); };
+  for (const w of walls) for (const [x, y, st] of [[w.x1, w.y1, true], [w.x2, w.y2, false]]) {
+    let n = nodes.find(n => Math.hypot(n.x - x, n.y - y) < TOL);
+    if (!n) { n = { x, y, dirs: [], ws: new Set() }; nodes.push(n); }
+    addDir(n, dirOf(w, st)); n.ws.add(w.id);
+  }
+  for (const n of nodes) for (const w of walls) {
+    if (n.ws.has(w.id)) continue;
+    const nearEnd = Math.hypot(n.x - w.x1, n.y - w.y1) < TOL || Math.hypot(n.x - w.x2, n.y - w.y2) < TOL;
+    if (!nearEnd && segDist(n.x, n.y, w.x1, w.y1, w.x2, w.y2) < (w.t || 0.25) / 2 + 0.06) { addDir(n, dirOf(w, true)); addDir(n, dirOf(w, false)); n.ws.add(w.id); }
+  }
+  for (const n of nodes) {
+    const k = n.dirs.length, a = Math.atan2(n.dirs[0][1], n.dirs[0][0]);
+    const kind = k === 1 ? 'cap' : k === 2 ? (n.dirs[0][0] * n.dirs[1][0] + n.dirs[0][1] * n.dirs[1][1] < -0.99 ? 'hstud' : 'corner') : k === 3 ? 'tee' : 'cross';
+    out.push({ x: n.x, y: n.y, kind, a });
+  }
+  // H-studs on the 48″ module along runs drawn as long walls (where the parts list cuts panels)
+  for (const p of A.pieces || []) {
+    if (!p.hard || p.len < 0.1) continue;
+    const w = (plan.walls || []).find(q => q.id === p.id); if (!w || w.piece) continue;
+    const ux = (p.x2 - p.x1) / p.len, uz = (p.z2 - p.z1) / p.len, a = Math.atan2(uz, ux);
+    for (let m = Math.floor(p.s0 / 4 + 1e-6) * 4 + 4; m < p.s0 + p.len - 1e-6; m += 4) { const t = m - p.s0; out.push({ x: p.x1 + ux * t, y: p.z1 + uz * t, kind: 'hstud', a, mod: true }); }
+  }
+  return out;
+}
+/* Header panels: wall panels across an open passage between walls, from the ceiling up to the top of the walls,
+   closing the plenum over the gap (plan.headers: {id, x1, y1, x2, y2, bot?}). bot is where the panel starts;
+   left out, it's the lower ceiling on either side of it. The top is the top of the walls it runs between. */
+function headerSegs(plan, A) {
+  const CA = ceilAreas(plan, A), WH = A.WH || A.H, hard = (A.pieces || []).filter(p => p.hard);
+  const topNear = (x, z) => { let t = null; for (const p of hard) if (segDist(x, z, p.x1, p.z1, p.x2, p.z2) < (p.t || 0.25) / 2 + 0.35) t = Math.max(t || 0, p.h); return t; };
+  const out = [];
+  for (const h of plan.headers || []) {
+    const L = Math.hypot(h.x2 - h.x1, h.y2 - h.y1); if (L < 0.2) continue;
+    const nx = -(h.y2 - h.y1) / L, nz = (h.x2 - h.x1) / L, mx = (h.x1 + h.x2) / 2, mz = (h.y1 + h.y2) / 2;
+    const tops = [topNear(h.x1, h.y1), topNear(h.x2, h.y2)].filter(v => v != null), y1 = tops.length ? Math.max(...tops) : WH;
+    const ceil = Math.min(ceilingAt(CA, A.H, mx + nx * 0.6, mz + nz * 0.6), ceilingAt(CA, A.H, mx - nx * 0.6, mz - nz * 0.6));
+    const y0 = Math.max(0, Math.min(y1 - 0.25, h.bot > 0 ? +h.bot : ceil));
+    out.push({ x1: h.x1, z1: h.y1, x2: h.x2, z2: h.y2, y0, y1, t: 0.25, len: L, id: h.id });
+  }
+  return out;
+}
+/* Open passages a header could close: two cleanroom wall ends in line with each other, 6″ to 16′ apart, with
+   nothing between them and cleanroom on both sides, and no header there yet. */
+function headerGaps(plan, A) {
+  A = A || analyze(plan);
+  const W = (plan.walls || []).filter(w => isHard(w) && Math.hypot(w.x2 - w.x1, w.y2 - w.y1) > 0.3), fp = footprint(A, true), out = [];
+  const have = plan.headers || [];
+  for (let i = 0; i < W.length; i++) for (let j = i + 1; j < W.length; j++) {
+    const a = W[i], b = W[j], la = Math.hypot(a.x2 - a.x1, a.y2 - a.y1), ux = (a.x2 - a.x1) / la, uz = (a.y2 - a.y1) / la, lb = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
+    if (Math.abs(ux * (b.y2 - b.y1) / lb - uz * (b.x2 - b.x1) / lb) > 0.02) continue;
+    if (Math.abs((b.x1 - a.x1) * -uz + (b.y1 - a.y1) * ux) > 0.15) continue;
+    let best = null, bd = 16.01;
+    for (const [ex, ez] of [[a.x1, a.y1], [a.x2, a.y2]]) for (const [fx, fz] of [[b.x1, b.y1], [b.x2, b.y2]]) {
+      const g = Math.hypot(fx - ex, fz - ez); if (g < 0.5 || g >= bd) continue;
+      const mx = (ex + fx) / 2, mz = (ez + fz) / 2;
+      if (segDist(mx, mz, a.x1, a.y1, a.x2, a.y2) < g / 2 - 0.05 || segDist(mx, mz, b.x1, b.y1, b.x2, b.y2) < g / 2 - 0.05) continue; // overlapping, not a gap
+      if (W.some(w => w !== a && w !== b && segDist(mx, mz, w.x1, w.y1, w.x2, w.y2) < (w.t || 0.25) / 2 + 0.05)) continue;
+      const nx = -(fz - ez) / g, nz = (fx - ex) / g;
+      if (fp && !(fp.has(mx + nx * 1, mz + nz * 1) && fp.has(mx - nx * 1, mz - nz * 1))) continue;
+      if (have.some(h => segDist(mx, mz, h.x1, h.y1, h.x2, h.y2) < 0.3)) continue;
+      bd = g; best = [ex, ez, fx, fz];
+    }
+    if (best) out.push(best);
+  }
+  // one per gap (the same gap can come from both walls' sides)
+  return out.filter((q, k) => !out.some((r, m) => m < k && Math.hypot((q[0] + q[2]) / 2 - (r[0] + r[2]) / 2, (q[1] + q[3]) / 2 - (r[1] + r[3]) / 2) < 0.3));
+}
 /* A polygon clipped to a rectangle (Sutherland–Hodgman). */
 function clipPolyRect(P, r) {
   let out = P;
@@ -2686,6 +2762,17 @@ function buildScene(THREE, plan, A) {
     // closure channel along the bottom edge, ceiling track for each side's ceiling
     segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
     if (H - q.y0 > 0.25) segBox(q.x1, q.z1, q.x2, q.z2, H - 0.17, H, q.t + 0.03, M.track);
+  }
+  // header panels over open passages: panels from the ceiling up to the top of the walls, a closure channel
+  // along the bottom and ceiling track on both sides
+  for (const q of headerSegs(plan, A)) {
+    const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(q.len / 4, 1);
+    const face = new THREE.MeshPhongMaterial({ map: tex, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 });
+    curRef = q.id ? { kind: 'header', id: q.id } : null;
+    const m = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); outline(m); pick.push(m);
+    segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
+    segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.17, q.y0, q.t + 0.03, M.track);
+    curRef = null;
   }
   // end caps where a wall steps up or down
   for (const st of A.steps || []) {
@@ -3980,5 +4067,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, deckShapes, deckBase, deckLevels, deckSteps };
+global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, deckShapes, deckBase, deckLevels, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
