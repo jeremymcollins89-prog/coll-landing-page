@@ -223,12 +223,12 @@ body[data-mode="house"] .modechip { background: rgba(127,211,227,.16); color: #9
 .wback { margin-top: 14px !important; font-size: 13px; }
 .wback a { color: var(--muted); }
 #itemPal { max-height: calc(100% - 20px); overflow-y: auto; }
-#itemPal, #elecPal, #gridPal { position: absolute; left: 70px; top: 10px; z-index: 6; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; max-width: min(560px, calc(100% - 90px)); display: flex; flex-wrap: wrap; gap: 6px 14px; }
-#itemPal .grp, #elecPal .grp, #gridPal .grp { display: flex; flex-direction: column; gap: 4px; }
+#itemPal, #elecPal, #gridPal, #grillePal { position: absolute; left: 70px; top: 10px; z-index: 6; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; max-width: min(560px, calc(100% - 90px)); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+#itemPal .grp, #elecPal .grp, #gridPal .grp, #grillePal .grp { display: flex; flex-direction: column; gap: 4px; }
 #itemPal h5, #elecPal h5, #gridPal h5 { margin: 0 0 2px; font: 600 11px var(--display, sans-serif); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 #itemPal .row, #elecPal .row, #gridPal .row { display: flex; flex-wrap: wrap; gap: 4px; }
-#itemPal button, #elecPal button, #gridPal button { font: 12px inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
-#itemPal button.on, #elecPal button.on, #gridPal button.on { border-color: #f2c84b; color: #f2c84b; }
+#itemPal button, #elecPal button, #gridPal button, #grillePal button { font: 12px inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+#itemPal button.on, #elecPal button.on, #gridPal button.on, #grillePal button.on { border-color: #f2c84b; color: #f2c84b; }
 
 /* update button in the top bar */
 .updbtn { margin-left: auto; white-space: nowrap; }
@@ -239,3 +239,4 @@ body[data-mode="house"] .modechip { background: rgba(127,211,227,.16); color: #9
 .ce-pad > div { display: flex; gap: 26px; }
 .ce-pad .btn { min-width: 30px; padding: 3px 0; }
 #cePrev:focus { outline: 2px solid #f2c84b; outline-offset: 2px; }
+#grillePal .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } #grillePal input[type=text] { padding: 3px 5px; }

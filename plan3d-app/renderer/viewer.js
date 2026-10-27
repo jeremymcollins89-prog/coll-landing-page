@@ -2774,6 +2774,15 @@ function buildScene(THREE, plan, A) {
     segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.17, q.y0, q.t + 0.03, M.track);
     curRef = null;
   }
+  // return grilles set into wall panels (plan.grilles): a louvred face on both sides of the panel, the damper
+  // behind it shown as a dark frame
+  for (const gr of plan.grilles || []) {
+    const w = Math.max(0.25, +gr.w || 20 / 12), h = Math.max(0.25, +gr.h || 20 / 12), sill = Math.max(0, gr.sill == null ? 0.5 : +gr.sill), a = gr.a || 0, c = Math.cos(a), sn = Math.sin(a), t = (gr.t || 0.25) + 0.03;
+    curRef = gr.id ? { kind: 'grille', id: gr.id } : null;
+    const m = segBox(gr.x - c * w / 2, gr.y - sn * w / 2, gr.x + c * w / 2, gr.y + sn * w / 2, sill, sill + h, t, [M.edge, M.edge, M.edge, M.edge, M.grille, M.grille]); outline(m); pick.push(m);
+    if (gr.damper) { const dm = M.damper || (M.damper = new THREE.MeshPhongMaterial({ color: 0x3c4348, specular: 0x666666, shininess: 40 })), e = 0.06; for (const [y0, y1, s0, s1] of [[sill - e, sill, -w / 2 - e, w / 2 + e], [sill + h, sill + h + e, -w / 2 - e, w / 2 + e], [sill, sill + h, -w / 2 - e, -w / 2], [sill, sill + h, w / 2, w / 2 + e]]) { const f = segBox(gr.x + c * s0, gr.y + sn * s0, gr.x + c * s1, gr.y + sn * s1, y0, y1, t + 0.01, dm); pick.push(f); } }
+    curRef = null;
+  }
   // end caps where a wall steps up or down
   for (const st of A.steps || []) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(0.1, st.y1 - st.y0, st.t + 0.03), M.white);
@@ -3341,6 +3350,15 @@ function airflowArrows(THREE, plan, A) {
     if (f.type !== 'ffu') continue;
     const w = f.w || 2, h = f.h || 4, n = Math.max(1, Math.round(Math.max(w, h) / 2)), alongZ = h >= w, len = Math.min(3.2, H * 0.4);
     for (let i = 0; i < n; i++) { const o = (i - (n - 1) / 2) * 1.6; arrow(f.x + (alongZ ? 0 : o), ceilingAt(CA, H, f.x, f.y) - 0.3, f.y + (alongZ ? o : 0), [0, -1, 0], len, 0.13, supply); }
+  }
+  // into each return grille in a wall panel, from the side it faces (both sides when it's a transfer grille)
+  for (const gr of plan.grilles || []) {
+    const w = +gr.w || 20 / 12, h = +gr.h || 20 / 12, sill = gr.sill == null ? 0.5 : +gr.sill, a = gr.a || 0, c = Math.cos(a), sn = Math.sin(a), nx = -sn, nz = c, y = sill + h / 2;
+    const n = Math.max(1, Math.round(w / 1.5)), len = 2, t = (gr.t || 0.25) / 2;
+    for (const sd of gr.side === 0 ? [1, -1] : [gr.side || 1]) for (let i = 0; i < n; i++) {
+      const o = (i - (n - 1) / 2) * Math.min(1.5, w / n), px = gr.x + c * o + nx * sd * (t + len + 0.05), pz = gr.y + sn * o + nz * sd * (t + len + 0.05);
+      arrow(px, y, pz, [-nx * sd, 0, -nz * sd], len, 0.11, ret);
+    }
   }
   // into each return grille, low on the chase face
   for (const b of A.boxes) {
