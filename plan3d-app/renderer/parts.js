@@ -148,6 +148,7 @@ function houseTakeoff(plan, A, add) {
   for (const it of plan.items || []) {
     const D = V.ITEMS[it.type]; if (!D) continue;
     const w = it.w || D.w, d = it.d || D.d;
+    if (it.type === 'machine') continue;
     add(D.group, D.label, D.wv ? inch(w) + ' wide' : inch(w) + ' × ' + inch(d), 1, 'ea', ({ Kitchen: 130, Bathroom: 140, 'Laundry & utility': 150, 'Living room': 160, Dining: 165, Bedroom: 170, Lighting: 175, 'Outdoor & garage': 180 })[D.group] || 185);
     if (it.type === 'base' || it.type === 'sinkbase') { baseLf += w; counter += w * (d + 1 / 12); }
     if (it.type === 'island') counter += w * d;
@@ -169,6 +170,8 @@ function partsList(plan) {
     const r = rows.get(k) || { cat, item, size, qty: 0, unit: unit || 'ea', order: order || 50 };
     r.qty += qty; rows.set(k, r);
   };
+  // machines brought in from drawings: one line each, by name and size
+  for (const it of plan.items || []) if (it.type === 'machine') add('Equipment', it.name || 'Machine', ftin(it.w || 0) + ' × ' + ftin(it.d || 0) + ' × ' + ftin(it.h || 8) + ' tall', 1, 'ea', 190);
   // hardwall (cleanroom) walls get panels, studs, posts, track and base; building walls get their own lines
   const walls = A.walls.filter(w => V.isHard(w)), built = new Set(walls.filter(w => w.piece).map(w => w.id));
   // panels and posts run the full wall height: up through the plenum when there is one

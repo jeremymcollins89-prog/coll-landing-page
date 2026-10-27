@@ -66,7 +66,7 @@ const HINTS = {
 function itemPalette() {
   // one group at a time, picked from a row of tabs, so the palette stays small over the plan
   const IT = Plan3DViewer.ITEMS, groups = {};
-  for (const [k, v] of Object.entries(IT)) (groups[v.group] = groups[v.group] || []).push([k, v]);
+  for (const [k, v] of Object.entries(IT)) if (!v.hidden) (groups[v.group] = groups[v.group] || []).push([k, v]);
   if (!ed.itemType || !IT[ed.itemType]) ed.itemType = 'base';
   const names = Object.keys(groups); if (!ed.itemGroup || !groups[ed.itemGroup]) ed.itemGroup = IT[ed.itemType].group;
   $('#itemPal').innerHTML = `<div class="grp"><div class="row">${names.map(g => `<button data-ig="${esc(g)}" class="${ed.itemGroup === g ? 'on' : ''}"><b>${esc(g)}</b></button>`).join('')}</div></div>`
@@ -542,6 +542,25 @@ function renderProps(opt) {
     $('#pDvT').onchange = e => ed.edit(() => { o.type = e.target.value; o.h = (DV[o.type] || D).h; });
     bindLen('pDvH', 'in', v => ed.edit(() => { o.h = Math.max(0.25, Math.min(12, v)); }));
     $('#pDvDup').onclick = () => { const c = Math.cos((o.a || 0) + Math.PI / 2), sn = Math.sin((o.a || 0) + Math.PI / 2); const q = ed.devicePlace(o.x + c * 6 - Math.cos(o.a || 0) * 0.3, o.y + sn * 6 - Math.sin(o.a || 0) * 0.3, o.type, o); if (!q) { msg('No wall 6′ along to put it on.'); return; } const n = { ...o, id: Plan3DEditor.uid(), x: q.x, y: q.y, a: q.a }; ed.edit(Pl => Pl.devices.push(n)); ed.sel = { kind: 'device', id: n.id }; ed.emit('select'); };
+    $('#pDel').onclick = () => ed.deleteSel();
+    return;
+  }
+  if (s && o && s.kind === 'item' && o.type === 'machine') {
+    box.innerHTML = `<div class="hd"><span class="kind">Machine</span><button class="btn small danger" id="pDel">Delete</button></div>
+      ${fld('Name', txt('pMName', o.name || 'Machine'))}
+      <div class="grp"><div class="stats"><span>Size</span><span>${fmt(o.w)} × ${fmt(o.d)}</span><span>Turned</span><span>${Math.round(((((o.a || 0) * 180 / Math.PI) % 360) + 360) % 360)}°</span><span>From</span><span>${esc(o.source || 'a drawing')}</span></div></div>
+      ${fld('Height', txt('pMH', fmt(o.h || 8)))}
+      ${fld('Left side at', txt('pMX', fmt(Plan3DViewer.itemCorners(o).reduce((t, q) => Math.min(t, q[0]), 1e9))))}
+      ${fld('Top side at', txt('pMY', fmt(Plan3DViewer.itemCorners(o).reduce((t, q) => Math.min(t, q[1]), 1e9))))}
+      <div class="row"><button class="btn small" id="pIL">⟲ Turn left</button><button class="btn small" id="pIR">⟳ Turn right</button><button class="btn small" id="pMDup">Place another</button></div>
+      <p class="note">Drag it on the plan to move it; its edges catch on wall faces (Alt moves it freely, arrow keys nudge). R turns it. It's in the Library under Machines for other projects, and on the parts list under Equipment.</p>`;
+    const nm = $('#pMName'); nm.onchange = () => ed.edit(() => { o.name = nm.value.trim() || 'Machine'; });
+    bindLen('pMH', 'ft', v => ed.edit(() => { o.h = Math.max(1, Math.min(40, v)); }));
+    bindLen('pMX', 'ft', v => ed.edit(() => { o.x += v - Plan3DViewer.itemCorners(o).reduce((t, q) => Math.min(t, q[0]), 1e9); }));
+    bindLen('pMY', 'ft', v => ed.edit(() => { o.y += v - Plan3DViewer.itemCorners(o).reduce((t, q) => Math.min(t, q[1]), 1e9); }));
+    $('#pIL').onclick = () => ed.edit(() => { o.a = (o.a || 0) - Math.PI / 2; });
+    $('#pIR').onclick = () => ed.edit(() => { o.a = (o.a || 0) + Math.PI / 2; });
+    $('#pMDup').onclick = () => { const n = { ...o, id: Plan3DEditor.uid(), x: o.x + Math.max(o.w, o.d) + 2 }; ed.edit(Pl => Pl.items.push(n)); ed.sel = { kind: 'item', id: n.id }; ed.emit('select'); };
     $('#pDel').onclick = () => ed.deleteSel();
     return;
   }
@@ -1188,8 +1207,10 @@ async function lidMenu() {
   if (!D.length) { importDeck(); return; }
   const An = Plan3DViewer.analyze(P), steps = Plan3DViewer.deckSteps(P, An, An.WH), auto = steps.filter(q => q.auto), stepFt = steps.reduce((t, q) => t + q.len, 0);
   const a = await dialogOpen({ title: 'Lid', body: `<p>The lid over the cleanroom is ${D.length} piece${D.length === 1 ? '' : 's'} from <b>${esc(P.deckSource || 'a deck drawing')}</b>. On the plan each piece is a dashed violet outline: drag it by its outline or its LID label (its corners catch on wall ends), R turns it, Delete removes it.</p>
-    <p>Where the lid steps up and no wall reaches the higher part, <b>wall panels</b> close the step (H-mold at each 4′ joint): ${auto.length ? `${auto.length} run${auto.length === 1 ? '' : 's'} found automatically` : 'none needed automatically'}${(P.lidSteps || []).length ? `, ${(P.lidSteps || []).length} drawn by hand` : ''}${stepFt ? `, ${Math.ceil(stepFt)} ft in all` : ''}. Use <b>Step panels</b> to add more.</p><p class="note">In 3D the <b>Lid</b> button turns the lid on in every view, Dollhouse too, or back off.</p>`,
-    buttons: [{ label: 'Remove the lid drawing', danger: true, ret: 'remove' }, { label: 'Use another drawing', ret: 'new' }, { label: 'Step panels', ret: 'step' }, { label: 'OK', primary: true, ret: null }] });
+    <p>Where the lid steps up and no wall reaches the higher part, <b>wall panels</b> close the step (H-mold at each 4′ joint): ${auto.length ? `${auto.length} run${auto.length === 1 ? '' : 's'} found automatically` : P.lidStepsAuto === false ? 'automatic ones are off' : 'none needed automatically'}${(P.lidSteps || []).length ? `, ${(P.lidSteps || []).length} drawn by hand` : ''}${stepFt ? `, ${Math.ceil(stepFt)} ft in all` : ''}. Use <b>Draw step panels</b> to add runs yourself, like drawing walls: click one end, then the other; the panels fill from the lower lid up to the higher one along the run.</p><p class="note">In 3D the <b>Lid</b> button turns the lid on in every view, Dollhouse too, or back off.</p>
+    <label class="chk"><input type="checkbox" id="lidAuto" ${P.lidStepsAuto !== false ? 'checked' : ''}> Put step panels in automatically where the lid steps up</label>`,
+    buttons: [{ label: 'Remove the lid drawing', danger: true, ret: 'remove' }, { label: 'Use another drawing', ret: 'new' }, { label: 'Draw step panels', ret: 'step' }, { label: 'OK', primary: true, ret: null }],
+    onOpen: () => { $('#lidAuto').onchange = (e) => { ed.edit(Q => { if (e.target.checked) delete Q.lidStepsAuto; else Q.lidStepsAuto = false; }); queue3D(); }; } });
   if (a === 'remove') { ed.edit(Q => { delete Q.deckPieces; delete Q.deckSource; delete Q.lidSteps; }); toast('Lid drawing removed. The cleanroom gets its own lid over the plenum again.'); queue3D(); }
   if (a === 'new') importDeck();
   if (a === 'step') stepPanelTool();
@@ -1787,7 +1808,7 @@ async function insertBuildingDialog() { return libraryDialog('building'); }
 /* ---------- The library: buildings, groups of pieces, ceilings ----------
    A group is any set of pieces (walls, doors, chases, devices, items …) saved together and placed as a
    group you can drag; a ceiling is a ceiling drawing's grid and fixtures, laid on a plan from its corner. */
-const LIB_TYPES = { building: 'Buildings', group: 'Groups of pieces', ceiling: 'Ceilings' };
+const LIB_TYPES = { building: 'Buildings', group: 'Groups of pieces', ceiling: 'Ceilings', machine: 'Machines' };
 const PIECE_LISTS = ['walls', 'openings', 'chases', 'rooms', 'devices', 'items', 'columns', 'beams', 'fixtures'];
 // the selected pieces (with the doors in their walls), copied and centred on 0,0
 function collectPieces(refs) {
@@ -1850,6 +1871,10 @@ let pieceClip = null;
 function copyPieces() { const refs = ed.multi || (ed.sel ? [ed.sel] : []); const d = refs.length ? collectPieces(refs) : null; if (d) { pieceClip = d; toast('Copied ' + refs.length + ' piece' + (refs.length > 1 ? 's' : '') + '. Ctrl+V pastes them.'); } }
 function pastePiecesHere() { if (!pieceClip) return; const C = ed.cursor || { x: ed.wx(ed.W / 2), y: ed.wy(ed.H / 2) }; const n = pastePieces(pieceClip, C.x, C.y, false); toast(`Pasted ${n} piece${n > 1 ? 's' : ''}. Drag them into place.`); }
 function libThumb(e) {
+  if (e.type === 'machine') {
+    const M = e.machine, pad = Math.max(M.w, M.d) * 0.06 + 0.3, sw = Math.max(M.w, M.d) / 160;
+    return `<svg viewBox="${(-M.w / 2 - pad).toFixed(2)} ${(-M.d / 2 - pad).toFixed(2)} ${(M.w + 2 * pad).toFixed(2)} ${(M.d + 2 * pad).toFixed(2)}" preserveAspectRatio="xMidYMid meet">` + (M.lines || []).map(q => `<line x1="${q[0].toFixed(2)}" y1="${q[1].toFixed(2)}" x2="${q[2].toFixed(2)}" y2="${q[3].toFixed(2)}" stroke="#c9d3d8" stroke-width="${sw.toFixed(3)}"/>`).join('') + (M.swings || []).map(P => `<polyline points="${P.map(q => q[0].toFixed(2) + ',' + q[1].toFixed(2)).join(' ')}" fill="none" stroke="#7d8a90" stroke-width="${sw.toFixed(3)}"/>`).join('') + '</svg>';
+  }
   if (e.type === 'group') return planThumb({ walls: e.pieces.walls || [], openings: [], chases: [], rooms: [] });
   if (e.type === 'ceiling') {
     const C = e.ceiling, L = C.grid || [], F = C.fixtures || []; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
@@ -1861,6 +1886,7 @@ function libThumb(e) {
   return planThumb(e.plan);
 }
 function libSub(e) {
+  if (e.type === 'machine') return `Machine · ${fmt(e.machine.w)} × ${fmt(e.machine.d)} · ${fmt(e.machine.h || 8)} tall${e.machine.source ? ' · from ' + esc(e.machine.source) : ''}`;
   if (e.type === 'group') { const p = e.pieces, n = PIECE_LISTS.reduce((t, k) => t + (p[k] || []).length, 0); return `${n} piece${n === 1 ? '' : 's'} · ${fmt(p.w || 0)} × ${fmt(p.h || 0)}`; }
   if (e.type === 'ceiling') { const C = e.ceiling, f = C.fixtures || []; return `${(C.grid || []).length ? 'Grid' : C.image ? 'Picture' : 'Grid'} · ${f.filter(x => x.type === 'ffu').length} FFUs · ${f.filter(x => x.type !== 'ffu').length} lights${C.source ? ' · from ' + esc(C.source) : ''}`; }
   return `${esc(e.size || bldSize(e.plan))} · ${esc(fmt(e.plan.ceiling || 8))} ceiling`;
@@ -1904,13 +1930,57 @@ function applyCeiling(e) {
   updateChrome(); queue3D();
   showBanner(`Laid “${e.name}” on this plan from its corner. Move or turn it if it needs lining up.`, [{ label: 'Move or turn it', primary: true, fn: () => { hideBanner(); moveCeilingDialog(); } }]);
 }
+/* ---------- Machines: equipment brought in from a drawing ----------
+   Its plan linework (lines, and door swings as arcs) is kept in feet about its centre, so it can be placed,
+   moved and turned like any item; in 3D the lines stand up as its enclosure. Saved in the Library. */
+function machineFromDxf(data) {
+  const k = IMP.UNIT_FT[data.insunits] || 1 / 12, F = (x, y) => [x * k, -y * k];
+  const lines = data.segs.map(q => [...F(q[0], q[1]), ...F(q[2], q[3])]).filter(q => Math.hypot(q[2] - q[0], q[3] - q[1]) > 0.01);
+  const swings = [];
+  const arcPts = (cx, cy, r, a0, a1, map) => { let A1 = a1; while (A1 <= a0) A1 += Math.PI * 2; const n = Math.max(6, Math.ceil((A1 - a0) / (Math.PI / 24))), P = []; for (let i = 0; i <= n; i++) { const t = a0 + (A1 - a0) * i / n; P.push(map(cx + r * Math.cos(t), cy + r * Math.sin(t))); } return P; };
+  for (const b of data.blocks || []) for (const a of b.arcs || []) { if (a.a0 == null) continue; const W = (x, y) => F(b.o[0] + b.u[0] * x + b.v[0] * y, b.o[1] + b.u[1] * x + b.v[1] * y); swings.push(arcPts(a.x, a.y, a.r, a.a0, a.a1, W)); }
+  for (const a of data.arcs || []) swings.push(arcPts(a.x, a.y, a.r, a.a0 * (Math.abs(a.a0) > 6.3 ? Math.PI / 180 : 1), a.a1 * (Math.abs(a.a1) > 6.3 ? Math.PI / 180 : 1), F));
+  if (!lines.length) return null;
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; const ext = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
+  lines.forEach(q => { ext(q[0], q[1]); ext(q[2], q[3]); }); swings.forEach(P => P.forEach(q => ext(q[0], q[1])));
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, r4 = (v) => Math.round(v * 1e4) / 1e4;
+  return { w: x1 - x0, d: y1 - y0, lines: lines.map(q => [q[0] - cx, q[1] - cy, q[2] - cx, q[3] - cy].map(r4)), swings: swings.map(P => P.map(q => [r4(q[0] - cx), r4(q[1] - cy)])) };
+}
+async function addMachineDialog() {
+  const r = await api.openFile('ceiling'); if (!r) return;
+  if (r.kind === 'error') { handleLoaded(r); return; }
+  if (r.kind !== 'dxf') { toast('Pick the machine drawing as a DWG or DXF.'); return; }
+  const M = machineFromDxf(r); if (!M) { toast('No lines in that drawing.'); return; }
+  // a name from the drawing's biggest block (the machine is often one block), else the file name
+  const blk = (r.blocks || []).slice().sort((a, b) => (b.sn || 0) - (a.sn || 0))[0];
+  let name = blk && blk.name ? blk.name.split(' - ')[0].replace(/^SPCL-/i, '').replace(/_/g, ' ').trim() : '';
+  if (!name || name.length > 60) name = (r.name || 'Machine').replace(/\.(dwg|dxf)$/i, '').replace(/_/g, ' ');
+  M.source = r.name; M.h = 8;
+  const thumb = libThumb({ type: 'machine', machine: M }).replace('<svg ', '<svg style="width:220px;height:180px;background:#1b2023;border-radius:8px" ');
+  const res = await dialogOpen({ title: 'Add a machine', body: `<div class="row" style="gap:14px;align-items:flex-start">${thumb}<div style="flex:1">
+      ${fld('Name', txt('mName', name))}${fld('Height', txt('mH', fmt(8)))}
+      <p class="note">${fmt(M.w)} × ${fmt(M.d)} on the plan, from ${esc(r.name)}. Its lines stand up as its walls in 3D; door swings show on the plan.</p></div></div>`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Save to the library', value: () => ({ go: false, name: $('#mName').value.trim(), h: parseLen($('#mH').value, 'ft') }) }, { label: 'Save and place it', primary: true, value: () => ({ go: true, name: $('#mName').value.trim(), h: parseLen($('#mH').value, 'ft') }) }] });
+  if (!res) return;
+  M.h = res.h > 0 ? Math.min(40, res.h) : 8;
+  const e = await saveToLib('machine', res.name || name, { machine: M });
+  if (res.go) placeMachine(e); else toast(`Saved “${e.name}” to the library under Machines. Library → Insert from the library to place it.`);
+}
+function placeMachine(e) {
+  if (view === '3d') setView('split');
+  const M = e.machine, cx = ed.W ? ed.wx(ed.W / 2) : 0, cy = ed.H ? ed.wy(ed.H / 2) : 0, g = 1 / 12;
+  const it = { id: Plan3DEditor.uid(), type: 'machine', name: e.name, libId: e.id, source: M.source, x: Math.round(cx / g) * g, y: Math.round(cy / g) * g, a: 0, w: M.w, d: M.d, h: M.h || 8, lines: M.lines, swings: M.swings };
+  ed.edit(P => { (P.items = P.items || []).push(it); });
+  ed.sel = { kind: 'item', id: it.id }; ed.emit('select'); ed.render(); queue3D();
+  toast(`Placed “${e.name}” in the middle of the view. Drag it where you want it (its edges catch on wall faces); R turns it.`);
+}
 async function libraryDialog(only) {
   const lib = await loadBldLib(); let tab = only || 'all';
   const list = () => {
     const L = lib.filter(e => tab === 'all' || (e.type || 'building') === tab);
-    if (!L.length) return `<div class="blib-empty">${tab === 'group' ? 'No saved groups yet. Select pieces on the plan (Shift-drag a box around them), then <b>Library → Save selected pieces</b>.' : tab === 'ceiling' ? 'No saved ceilings yet. Add a ceiling to a plan, then <b>Library → Save this ceiling</b>.' : 'Nothing saved yet. Use the Library menu to save a building, a group of pieces or a ceiling.'}</div>`;
-    return L.map(e => { const t = e.type || 'building', ok = t === 'group' ? 'Place' : t === 'ceiling' ? 'Use on this plan' : 'Insert';
-      return `<div class="blib-item">${libThumb(e)}<div><b>${esc(e.name)}</b><small>${({ building: 'Building', group: 'Group of pieces', ceiling: 'Ceiling' })[t]} · ${libSub(e)}</small><small>Saved ${esc(fmtDate(e.savedAt))}</small></div>
+    if (!L.length) return `<div class="blib-empty">${tab === 'machine' ? 'No machines yet. Use <b>Library → Add a machine from a drawing…</b> to bring one in from a DWG or DXF.' : tab === 'group' ? 'No saved groups yet. Select pieces on the plan (Shift-drag a box around them), then <b>Library → Save selected pieces</b>.' : tab === 'ceiling' ? 'No saved ceilings yet. Add a ceiling to a plan, then <b>Library → Save this ceiling</b>.' : 'Nothing saved yet. Use the Library menu to save a building, a group of pieces or a ceiling.'}</div>`;
+    return L.map(e => { const t = e.type || 'building', ok = t === 'group' || t === 'machine' ? 'Place' : t === 'ceiling' ? 'Use on this plan' : 'Insert';
+      return `<div class="blib-item">${libThumb(e)}<div><b>${esc(e.name)}</b><small>${t === 'machine' ? '' : ({ building: 'Building', group: 'Group of pieces', ceiling: 'Ceiling' })[t] + ' · '}${libSub(e)}</small><small>Saved ${esc(fmtDate(e.savedAt))}</small></div>
         <div class="row"><button class="btn small primary" data-use="${esc(e.id)}">${ok}</button><button class="btn small" data-ren="${esc(e.id)}">Rename</button><button class="btn small danger" data-del="${esc(e.id)}">Delete</button></div></div>`; }).join('');
   };
   let picked = null;
@@ -1942,6 +2012,7 @@ async function libraryDialog(only) {
   if (!picked) return;
   const t = picked.type || 'building';
   if (t === 'building') placeBuilding(picked.plan, picked.name, picked.id, picked.savedAt);
+  else if (t === 'machine') placeMachine(picked);
   else if (t === 'group') { if (view === '3d') setView('split'); const cx = ed.W ? ed.wx(ed.W / 2) : 0, cy = ed.H ? ed.wy(ed.H / 2) : 0; const n = pastePieces(picked.pieces, cx, cy, true); queue3D(); toast(`Placed “${picked.name}” (${n} pieces) as a group in the middle of the view. Drag it into place; its walls catch on wall ends.`); }
   else applyCeiling(picked);
 }
@@ -2197,7 +2268,7 @@ $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); btn.focus(); } });
   const item = (id, fn) => { $(id).onclick = () => { close(); fn(); }; };
   item('#bBldInsert', () => libraryDialog()); item('#bBldFile', insertFromFile); item('#bBldSave', saveBuildingDialog);
-  item('#bLibGroup', saveGroupDialog); item('#bLibCeil', saveCeilingDialog);
+  item('#bLibGroup', saveGroupDialog); item('#bLibCeil', saveCeilingDialog); item('#bLibMach', addMachineDialog);
 }
 $('#bCeiling').onclick = ceilingMenu; $('#bGenCeil').onclick = generateCeilingDialog; $('#bLid').onclick = lidMenu; $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
 $('#wCleanroom').onclick = () => pickMode('cleanroom'); $('#wHouse').onclick = () => pickMode('house');
