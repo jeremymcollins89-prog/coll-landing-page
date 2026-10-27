@@ -644,6 +644,21 @@ function subtractRects(rects, holes) {
   }
   return cur;
 }
+/* Where the ceiling is. A generated ceiling records its outline (plan.ceilRects, the rooms it was laid out in);
+   then the ceiling, its tees and the plenum lid stay inside that outline (and inside this area's walls) instead
+   of filling everything the walls enclose, which on a big plan can take in parts of the warehouse. */
+function ceilingRects(plan, FP, A) {
+  const R = plan && Array.isArray(plan.ceilRects) && plan.ceilRects.length ? plan.ceilRects : null;
+  if (!R) return FP ? FP.rects : [];
+  const all = A ? footprint(A, true) : null, base = all ? all.rects : FP ? FP.rects : [], out = [];
+  for (const a of base) for (const b of R) { const r = [Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])]; if (r[0] < r[2] - 1e-6 && r[1] < r[3] - 1e-6) out.push(r); }
+  return out;
+}
+function inCeiling(plan, FP, x, z) {
+  const R = plan && Array.isArray(plan.ceilRects) && plan.ceilRects.length ? plan.ceilRects : null;
+  if (!R) return !!(FP && FP.has(x, z));
+  return R.some(r => x >= r[0] && x <= r[2] && z >= r[1] && z <= r[3]);
+}
 const clipRects = (rects, h) => rects.map(([a, b, c, d]) => [Math.max(a, h.x0), Math.max(b, h.z0), Math.min(c, h.x1), Math.min(d, h.z1)]).filter(([a, b, c, d]) => a < c && b < d);
 // a line [x1, z1, x2, z2] cut where it crosses ceiling areas: [[x1, z1, x2, z2, ceiling], …]
 function splitByAreas(q, CA, H) {
@@ -870,7 +885,7 @@ function gridTakeoff(plan, A) {
   const scan = (fixed, lo, hi, alongX) => {
     let st = null;
     for (let v = lo; v <= hi + 1e-9; v += step) {
-      const inside = alongX ? fp.has(v, fixed) : fp.has(fixed, v);
+      const inside = alongX ? inCeiling(plan, fp, v, fixed) : inCeiling(plan, fp, fixed, v);
       if (inside && st === null) st = v;
       if ((!inside || v + step > hi + 1e-9) && st !== null) { const e = inside ? v : v - step; if (e - st > 0.3) runs.push({ fixed, a: st, b: e, alongX }); st = null; }
     }
@@ -971,14 +986,30 @@ function generateCeiling(plan, opts) {
     const R = roomRegions(A, P, true), G = R.grid; if (!G) return null;
     const comp = G.comp.slice(); let id = R.length;
     // a labelled room counts when it's inside the cleanroom walls (not a warehouse label)
-    const inHard = (cells) => { let n = 0; for (const k of cells) { const i = k % G.nx, j = (k - i) / G.nx; if (fp.has(G.x0 + i * G.cell, G.z0 + j * G.cell)) n++; } return n > cells.length * 0.6; };
-    R.forEach((r, i) => { if (inHard(r.cells)) spaces.push({ P, A, G, comp, id: i, room: r.room, cells: r.cells }); });
+    const inHard = (cells) => { let n = 0; for (const k of cells) { const i = k % G.nx, j = (k - i) / G.nx; if (fp.has(G.x0 + (i + 0.5) * G.cell, G.z0 + (j + 0.5) * G.cell)) n++; } return n > cells.length * 0.6; };
+    // how much of a space's edge is cleanroom hardwall (doors and glass in hardwall count), not the building's
+    // shell: a warehouse aisle is edged by the shell and the cleanroom's outside, a cleanroom room by hardwall
+    const edges = A.pieces.map(p => ({ x1: p.x1, z1: p.z1, x2: p.x2, z2: p.z2, r: (p.t || 0.25) / 2 + G.cell * 2, hard: p.hard !== false }))
+      .concat(A.opInfo.map(i => ({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, r: (i.t || 0.25) / 2 + G.cell * 2, hard: i.hard !== false })));
+    const hardShare = (cells) => {
+      let h = 0, n = 0;
+      for (const k of cells) {
+        const i = k % G.nx, j = (k - i) / G.nx;
+        if (![k - 1, k + 1, k - G.nx, k + G.nx].some(q => q < 0 || q >= G.wall.length || G.wall[q] || !G.inside[q])) continue;
+        const x = G.x0 + (i + 0.5) * G.cell, z = G.z0 + (j + 0.5) * G.cell;
+        let best = null, bd = 1e9; for (const e of edges) { const d = segDist(x, z, e.x1, e.z1, e.x2, e.z2) - e.r; if (d < bd) { bd = d; best = e; } }
+        if (best && bd < G.cell * 2) { n++; if (best.hard) h++; }
+      }
+      return n ? h / n : 0;
+    };
+    R.forEach((r, i) => { if (inHard(r.cells) && hardShare(r.cells) >= 0.5) spaces.push({ P, A, G, comp, id: i, room: r.room, cells: r.cells }); });
     for (let k = 0; k < comp.length; k++) {
       if (comp[k] >= 0 || !G.inside[k] || G.wall[k]) continue;
-      const i = k % G.nx, j = (k - i) / G.nx; if (!fp.has(G.x0 + i * G.cell, G.z0 + j * G.cell)) continue;
+      const i = k % G.nx, j = (k - i) / G.nx; if (!fp.has(G.x0 + (i + 0.5) * G.cell, G.z0 + (j + 0.5) * G.cell)) continue;
       const st = [k], cells = []; comp[k] = id;
       while (st.length) { const u = st.pop(), a = u % G.nx; cells.push(u); for (const v of [a > 0 ? u - 1 : -1, a < G.nx - 1 ? u + 1 : -1, u - G.nx, u + G.nx]) if (v >= 0 && v < comp.length && comp[v] < 0 && G.inside[v] && !G.wall[v]) { comp[v] = id; st.push(v); } }
-      if (cells.length * G.cell * G.cell >= 16) spaces.push({ P, A, G, comp, id, room: null, cells });
+      // an unlabelled space has to be walled in by hardwall all round (a warehouse aisle isn't)
+      if (cells.length * G.cell * G.cell >= 16 && hardShare(cells) >= 0.85) spaces.push({ P, A, G, comp, id, room: null, cells });
       id++;
     }
   }
@@ -987,17 +1018,17 @@ function generateCeiling(plan, opts) {
   // leaves the bigger cut tiles at the walls
   const big = spaces.reduce((a, b) => (b.cells.length > a.cells.length ? b : a));
   let bx0 = 1e9, bx1 = -1e9, bz0 = 1e9, bz1 = -1e9;
-  for (const k of big.cells) { const i = k % big.G.nx, j = (k - i) / big.G.nx, x = big.G.x0 + i * big.G.cell, z = big.G.z0 + j * big.G.cell; bx0 = Math.min(bx0, x); bx1 = Math.max(bx1, x); bz0 = Math.min(bz0, z); bz1 = Math.max(bz1, z); }
+  for (const k of big.cells) { const i = k % big.G.nx, j = (k - i) / big.G.nx, x = big.G.x0 + (i + 0.5) * big.G.cell, z = big.G.z0 + (j + 0.5) * big.G.cell; bx0 = Math.min(bx0, x); bx1 = Math.max(bx1, x); bz0 = Math.min(bz0, z); bz1 = Math.max(bz1, z); }
   const centre = (lo, hi, sp) => { const c = (lo + hi) / 2, cut = (o) => { const r = ((((lo - o) % sp) + sp) % sp); return r < 1e-6 ? sp : sp - r; }; return cut(c) >= cut(c + sp / 2) ? c : c + sp / 2; };
   const ox = centre(bx0, bx1, cw), oz = centre(bz0, bz1, cl);
   const G = { ox, oz, cw, cl, swap };
   const out = [], rooms = [], taken = new Set();
   for (const sp of spaces) {
     const { P, A, comp, id } = sp, g = sp.G, CA = ceilAreas(P, A);
-    const inSpace = (x, z) => { const i = Math.floor((x - g.x0) / g.cell + 0.5), j = Math.floor((z - g.z0) / g.cell + 0.5); return i >= 0 && j >= 0 && i < g.nx && j < g.nz && comp[j * g.nx + i] === id; };
+    const inSpace = (x, z) => { const i = Math.floor((x - g.x0) / g.cell), j = Math.floor((z - g.z0) / g.cell); return i >= 0 && j >= 0 && i < g.nx && j < g.nz && comp[j * g.nx + i] === id; };
     // whole grid cells in this space, clear of walls, chases and ceiling-area edges
     let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
-    for (const k of sp.cells) { const i = k % g.nx, j = (k - i) / g.nx; x0 = Math.min(x0, g.x0 + i * g.cell); x1 = Math.max(x1, g.x0 + i * g.cell); z0 = Math.min(z0, g.z0 + j * g.cell); z1 = Math.max(z1, g.z0 + j * g.cell); }
+    for (const k of sp.cells) { const i = k % g.nx, j = (k - i) / g.nx; x0 = Math.min(x0, g.x0 + i * g.cell); x1 = Math.max(x1, g.x0 + (i + 1) * g.cell); z0 = Math.min(z0, g.z0 + j * g.cell); z1 = Math.max(z1, g.z0 + (j + 1) * g.cell); }
     const cells = [];
     for (let x = ox + Math.floor((x0 - ox) / cw) * cw; x + cw <= x1 + 1; x += cw) for (let z = oz + Math.floor((z0 - oz) / cl) * cl; z + cl <= z1 + 1; z += cl) {
       const cx = x + cw / 2, cz = z + cl / 2, e = 0.15, pts = [[cx, cz], [x + e, z + e], [x + cw - e, z + e], [x + e, z + cl - e], [x + cw - e, z + cl - e]];
@@ -1022,7 +1053,20 @@ function generateCeiling(plan, opts) {
     for (const i of pickL) { const c = rest[i]; taken.add(c.key); out.push({ id: uid(), type: 'led', x: c.x, y: c.y, w: cw, h: cl }); }
     rooms.push({ name: sp.room ? (sp.room.name || 'Room') : 'Unlabelled space', area, iso, ach, ffu: nF, led: pickL.length, need, cells: cells.length, cfm: nF * cfm, achGot: area * H > 0 ? nF * cfm * 60 / (area * H) : 0 });
   }
-  return { ceilGrid: { ox: G.ox, oy: G.oz, swap }, fixtures: out, rooms };
+  const ceilRects = [];
+  for (const sp of spaces) {
+    const g = sp.G, rows = new Map();
+    for (const k of sp.cells) { const i = k % g.nx, j = (k - i) / g.nx; (rows.get(j) || rows.set(j, []).get(j)).push(i); }
+    const open = new Map(), js = [...rows.keys()].sort((a, b) => a - b);
+    const close = (key, r) => ceilRects.push([g.x0 + (r.a - 0.5) * g.cell, g.z0 + (r.j0 - 0.5) * g.cell, g.x0 + (r.b + 1.5) * g.cell, g.z0 + (r.j1 + 1.5) * g.cell].map(v => +v.toFixed(3)));
+    for (const j of js) {
+      const is = rows.get(j).sort((a, b) => a - b), now = new Set();
+      for (let q = 0; q < is.length;) { let e = q; while (e + 1 < is.length && is[e + 1] === is[e] + 1) e++; const key = is[q] + ',' + is[e]; now.add(key); const r = open.get(key); if (r && r.j1 === j - 1) r.j1 = j; else { if (r) close(key, r); open.set(key, { a: is[q], b: is[e], j0: j, j1: j }); } q = e + 1; }
+      for (const [key, r] of [...open]) if (!now.has(key)) { close(key, r); open.delete(key); }
+    }
+    for (const [key, r] of open) close(key, r);
+  }
+  return { ceilGrid: { ox: G.ox, oy: G.oz, swap }, fixtures: out, rooms, ceilRects };
 }
 // k points spread evenly over a set of cells: start nearest the middle, add the farthest, then even them out
 function spread(cells, k) {
@@ -1666,8 +1710,9 @@ function buildScene(THREE, plan, A) {
   if (FP) {
     cMap.repeat.set(1, 1);
     const CG = ceilingGrid(plan, A);
-    ceil = new THREE.Mesh(rectsGeometry(THREE, subtractRects(FP.rects, CA), H, true, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, CG.swap && !ownGrid), cMat);
-    for (const a of CA) ceil.add(new THREE.Mesh(rectsGeometry(THREE, clipRects(FP.rects, a), a.h, true, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, CG.swap && !ownGrid), cMat));
+    const CR = ceilingRects(plan, FP, A);
+    ceil = new THREE.Mesh(rectsGeometry(THREE, subtractRects(CR, CA), H, true, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, CG.swap && !ownGrid), cMat);
+    for (const a of CA) ceil.add(new THREE.Mesh(rectsGeometry(THREE, clipRects(CR, a), a.h, true, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, CG.swap && !ownGrid), cMat));
   } else if (A.hardAny || !A.shellTop) { ceil = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.d), cMat); ceil.rotation.x = Math.PI / 2; ceil.position.set(B.cx, H, B.cz); }
   // a house has a plain drywall ceiling, no grid
   if (ceil && A.house) ceil.material = new THREE.MeshLambertMaterial({ color: 0xf4f2ee, emissive: 0xa9a7a3, side: THREE.DoubleSide });
@@ -1683,8 +1728,9 @@ function buildScene(THREE, plan, A) {
     }));
     const tt = new THREE.CanvasTexture(topCanvas); tt.wrapS = tt.wrapT = THREE.RepeatWrapping; tt.anisotropy = ANISO;
     const topMat = new THREE.MeshLambertMaterial({ map: tt, color: 0xd8d8d8 });
-    ceiling.add(new THREE.Mesh(rectsGeometry(THREE, subtractRects(FP.rects, CA), H + 0.004, false, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, sw), topMat));
-    for (const a of CA) ceiling.add(new THREE.Mesh(rectsGeometry(THREE, clipRects(FP.rects, a), a.h + 0.004, false, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, sw), topMat));
+    const CR = ceilingRects(plan, FP, A);
+    ceiling.add(new THREE.Mesh(rectsGeometry(THREE, subtractRects(CR, CA), H + 0.004, false, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, sw), topMat));
+    for (const a of CA) ceiling.add(new THREE.Mesh(rectsGeometry(THREE, clipRects(CR, a), a.h + 0.004, false, 2, ownGrid ? 2 : 4, CG.ox, CG.oz, sw), topMat));
     // the tees: thin webs standing up along every grid line, only over the ceiling
     const lines = [];
     if (ownGrid) for (const q of ceilingLines(plan, A)) lines.push(q);
@@ -1692,7 +1738,7 @@ function buildScene(THREE, plan, A) {
       const step = FP.cell / 2, runs = (fixed, lo, hi, isX) => {
         let st = null;
         for (let v = lo; v <= hi + 1e-9; v += step) {
-          const inside = isX ? FP.has(fixed, v) : FP.has(v, fixed);
+          const inside = isX ? inCeiling(plan, FP, fixed, v) : inCeiling(plan, FP, v, fixed);
           if (inside && st === null) st = v;
           if ((!inside || v + step > hi + 1e-9) && st !== null) { const e = inside ? v : v - step; if (e - st > 0.3) lines.push(isX ? [fixed, st, fixed, e] : [st, fixed, e, fixed]); st = null; }
         }
@@ -1717,7 +1763,7 @@ function buildScene(THREE, plan, A) {
   const lid = new THREE.Group(); root.add(lid);
   if (A.PL > 0 && FP) {
     const lm = new THREE.MeshLambertMaterial({ color: 0xeef0f0, side: THREE.DoubleSide });
-    lid.add(new THREE.Mesh(rectsGeometry(THREE, FP.rects, WH, true, 4, 4, 0, 0), lm));
+    lid.add(new THREE.Mesh(rectsGeometry(THREE, ceilingRects(plan, FP, A), WH, true, 4, 4, 0, 0), lm));
   }
   // building walls: a metal roof deck at the top of the walls (hidden in Dollhouse, like the ceiling)
   if (A.shellTop > 0 && FPall) {
@@ -2652,5 +2698,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);

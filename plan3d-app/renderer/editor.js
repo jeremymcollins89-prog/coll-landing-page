@@ -904,6 +904,16 @@ class Editor {
       } else run(b, false);
     }
     if (this.tool === 'beam' && this.beamA && this.cursor) { const q = this.snap(this.cursor.x, this.cursor.y, this.beamA, {}); g.save(); g.strokeStyle = COL.draft; g.setLineDash([7, 4]); g.lineWidth = 1.5; g.beginPath(); g.moveTo(this.sx(this.beamA.x), this.sy(this.beamA.y)); g.lineTo(this.sx(q.x), this.sy(q.y)); g.stroke(); g.restore(); this.status('Beam ' + fmt(Math.hypot(q.x - this.beamA.x, q.y - this.beamA.y)) + ' — click the other end.'); }
+    // a generated ceiling: its T-grid, drawn over the rooms it was laid out in
+    if (Array.isArray(P.ceilRects) && P.ceilRects.length && this.showCeil !== false && V2 && V2.ceilingGrid) {
+      const G = V2.ceilingGrid(P);
+      g.save(); g.strokeStyle = 'rgba(127,211,227,.32)'; g.lineWidth = 1; g.beginPath();
+      for (const [x0, z0, x1, z1] of P.ceilRects) {
+        for (let x = G.ox + Math.ceil((x0 - G.ox) / G.cw - 1e-6) * G.cw; x <= x1 + 1e-6; x += G.cw) { g.moveTo(this.sx(x), this.sy(z0)); g.lineTo(this.sx(x), this.sy(z1)); }
+        for (let z = G.oz + Math.ceil((z0 - G.oz) / G.cl - 1e-6) * G.cl; z <= z1 + 1e-6; z += G.cl) { g.moveTo(this.sx(x0), this.sy(z)); g.lineTo(this.sx(x1), this.sy(z)); }
+      }
+      g.stroke(); g.restore();
+    }
     // FFUs and lights from a drawn ceiling (drag them; they land in the grid's cells)
     if (P.ceilingMode === 'manual' && this.showCeil !== false && !(this.tool === 'piece' && this.pieces && (this.pieces.tool === 'led' || this.pieces.tool === 'ffu'))) {
       g.save(); g.lineWidth = 1;

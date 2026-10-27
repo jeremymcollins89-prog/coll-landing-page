@@ -326,7 +326,9 @@ function partsList(plan) {
   }
   if (!A.empty && A.hardAny) {
     const fpr = V.footprint ? V.footprint(A) : null;
-    const area = fpr ? fpr.area : A.bounds.w * A.bounds.d, tiles = Math.max(0, Math.ceil(area / 8) - nLed - nFfu);
+    // a generated ceiling covers only the rooms it was laid out in
+    const CRs = plan.ceilRects && plan.ceilRects.length && V.ceilingRects ? V.ceilingRects(plan, fpr, A) : null;
+    const area = CRs ? CRs.reduce((t, r) => t + (r[2] - r[0]) * (r[3] - r[1]), 0) : fpr ? fpr.area : A.bounds.w * A.bounds.d, tiles = Math.max(0, Math.ceil(area / 8) - nLed - nFfu);
     add('Ceiling', 'Ceiling tile, 2×4 (approx.)', '2′ × 4′', tiles, 'ea', 62);
     if (A.PL > 0) add('Ceiling', 'Plenum lid (top of the cleanroom)', ftin(A.PL) + ' plenum above the grid, top at ' + ftin(A.WH), Math.ceil(area), 'sq ft', 67);
     if (!(plan.ceilingGrid && plan.ceilingGrid.length)) {

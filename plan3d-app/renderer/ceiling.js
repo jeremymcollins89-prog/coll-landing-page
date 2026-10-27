@@ -140,7 +140,7 @@ function shiftCeiling(P, dx, dy, rot) {
 }
 
 function removeCeiling(P) {
-  delete P.ceilingGrid; delete P.ceilingImage; delete P.ceilingSource;
+  delete P.ceilingGrid; delete P.ceilingImage; delete P.ceilingSource; delete P.ceilRects;
   P.fixtures = []; P.ceilingMode = 'auto';
 }
 

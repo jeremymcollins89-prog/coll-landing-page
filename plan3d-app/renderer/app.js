@@ -732,7 +732,7 @@ async function generateCeilingDialog() {
   if (!opts) return;
   const R = Plan3DViewer.generateCeiling(P, opts);
   if (!R || !R.rooms.length) { toast('No room inside cleanroom (hardwall) walls was found to put a ceiling in.'); return; }
-  ed.edit(Q => { Q.ceilGrid = R.ceilGrid; Q.fixtures = R.fixtures; Q.ceilingMode = 'manual'; Q.ceilingSource = 'Generated'; delete Q.ceilingGrid; delete Q.ceilingImage; delete Q.fixturesFinal; });
+  ed.edit(Q => { Q.ceilGrid = R.ceilGrid; Q.fixtures = R.fixtures; Q.ceilRects = R.ceilRects; Q.ceilingMode = 'manual'; Q.ceilingSource = 'Generated'; delete Q.ceilingGrid; delete Q.ceilingImage; delete Q.fixturesFinal; });
   updateChrome(); renderProps();
   const short = R.rooms.filter(r => r.ffu < r.need);
   await dialogOpen({
@@ -881,7 +881,7 @@ function cadCeilingDialog(data) {
   }).then(ok => {
     $('#dlg').classList.remove('wide-xl');
     if (ok !== 'ok' || !placed) return;
-    ed.edit(P => { P.ceilingGrid = placed.grid; P.fixtures = placed.fixtures; P.ceilingMode = 'manual'; P.ceilingSource = data.name; delete P.ceilingImage; });
+    ed.edit(P => { P.ceilingGrid = placed.grid; P.fixtures = placed.fixtures; P.ceilingMode = 'manual'; delete P.ceilRects; P.ceilingSource = data.name; delete P.ceilingImage; });
     ceilingApplied(`Ceiling added: ${placed.fixtures.length} fixtures and ${placed.grid.length} grid lines.`);
   });
 }
@@ -902,7 +902,7 @@ function imageCeilingDialog(r) {
     onOpen: () => { bindNudge(upd, () => { const I = placed && placed.image; if (!I) return []; const q = (I.rot || 0) % 180 ? [I.h, I.w] : [I.w, I.h]; const x0 = I.x - q[0] / 2, x1 = I.x + q[0] / 2, y0 = I.y - q[1] / 2, y1 = I.y + q[1] / 2; return [[x0, y0, x0, y1], [x1, y0, x1, y1], [x0, y0, x1, y0], [x0, y1, x1, y1]]; }); if (img.complete) upd(); }
   }).then(o => {
     if (!o || !placed) return;
-    ed.edit(P => { P.ceilingImage = placed.image; P.ceilingSource = r.name; delete P.ceilingGrid; if (o.hide) { P.ceilingMode = 'manual'; P.fixtures = []; } });
+    ed.edit(P => { P.ceilingImage = placed.image; delete P.ceilRects; P.ceilingSource = r.name; delete P.ceilingGrid; if (o.hide) { P.ceilingMode = 'manual'; P.fixtures = []; } });
     ceilingApplied('Ceiling picture added.');
   });
 }
@@ -1137,7 +1137,7 @@ function sheetExtrasToPlan(data, o, walls, bld, p) {
     const al = IMP.alignToWalls(g.lines, walls, inBld);
     if (al.score >= 0.35) { dx = al.dx; dy = al.dy; target = { x0: g.box.x0 + dx, y0: g.box.y0 + dy, x1: g.box.x1 + dx, y1: g.box.y1 + dy }; }
     p.ceilingGrid = g.lines.map(q => [q[0] + dx, q[1] + dy, q[2] + dx, q[3] + dy]);
-    p.ceilingMode = 'manual'; p.ceilingSource = data.name; p.fixtures = p.fixtures || [];
+    p.ceilingMode = 'manual'; delete p.ceilRects; p.ceilingSource = data.name; p.fixtures = p.fixtures || [];
     said.push(target ? 'The ceiling grid is laid on the cleanroom' : 'The ceiling grid couldn\'t be matched to the walls; use Edit ceiling → Move or turn to line it up');
   }
   if (ex.beams.length) {
@@ -1434,7 +1434,7 @@ function applyCeiling(e) {
     if ((C.grid || []).length) P.ceilingGrid = C.grid.map(q => [q[0] + ox, q[1] + oy, q[2] + ox, q[3] + oy]); else delete P.ceilingGrid;
     if (C.image) P.ceilingImage = { ...C.image, x: C.image.x + ox, y: C.image.y + oy }; else delete P.ceilingImage;
     P.fixtures = (C.fixtures || []).map(f => ({ ...f, id: Plan3DEditor.uid(), x: f.x + ox, y: f.y + oy }));
-    P.ceilingMode = 'manual'; P.ceilingSource = e.name;
+    P.ceilingMode = 'manual'; delete P.ceilRects; P.ceilingSource = e.name;
   });
   updateChrome(); queue3D();
   showBanner(`Laid “${e.name}” on this plan from its corner. Move or turn it if it needs lining up.`, [{ label: 'Move or turn it', primary: true, fn: () => { hideBanner(); moveCeilingDialog(); } }]);
