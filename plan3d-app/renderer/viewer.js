@@ -412,18 +412,30 @@ function analyze(plan) {
     for (const [a, b] of cuts) { if (a > c + 0.004) segs.push([c, a]); c = Math.max(c, b); }
     if (len > c + 0.004) segs.push([c, len]);
     const hard = isHard(w), frame = isFrame(w), kind = hard ? 'hardwall' : w.kind, wh = hard ? WH : frame ? Math.max(6, w.h || H) : shellHeight(plan, w);
-    const secs = hard && Array.isArray(w.sections) && w.sections.length ? w.sections : null;
+    // height sections: the wall's own, plus where it runs through a ceiling area set to raise the walls
+    // (a taller section of a room): there it goes up to that area's ceiling and plenum
+    let secs = hard && Array.isArray(w.sections) && w.sections.length ? w.sections.slice() : null;
+    if (hard) for (const c of plan.ceilAreas || []) {
+      if (!c || !c.raise || !(c.ceiling > 0)) continue;
+      const bx0 = Math.min(c.x0, c.x1) - t / 2 - 0.3, bx1 = Math.max(c.x0, c.x1) + t / 2 + 0.3, bz0 = Math.min(c.y0, c.y1) - t / 2 - 0.3, bz1 = Math.max(c.y0, c.y1) + t / 2 + 0.3;
+      // the part of the wall inside the area's box
+      let t0 = 0, t1 = 1; const dx = w.x2 - w.x1, dz = w.y2 - w.y1, P = [-dx, dx, -dz, dz], Q = [w.x1 - bx0, bx1 - w.x1, w.y1 - bz0, bz1 - w.y1]; let ok = true;
+      for (let k = 0; k < 4; k++) { if (Math.abs(P[k]) < 1e-12) { if (Q[k] < 0) ok = false; continue; } const r = Q[k] / P[k]; if (P[k] < 0) { if (r > t1) ok = false; else if (r > t0) t0 = r; } else { if (r < t0) ok = false; else if (r < t1) t1 = r; } }
+      if (!ok || (t1 - t0) * len < 0.1) continue;
+      (secs = secs || []).push({ a: t0 * len, b: t1 * len, h: Math.max(6, +c.ceiling) + PL });
+    }
+    const topAt = (s0, def) => { let h = null; for (const q of secs || []) if (q && q.h > 0 && s0 >= Math.min(q.a, q.b) - 1e-6 && s0 <= Math.max(q.a, q.b) + 1e-6) h = h === null ? +q.h : Math.max(h, +q.h); return h === null ? def : Math.max(1, h); };
     for (const [a0, b0] of segs) {
       // a hardwall with height sections is cut where its height changes
       const bk = [a0, b0]; if (secs) for (const q of secs) for (const v of [q.a, q.b]) if (v > a0 + 0.01 && v < b0 - 0.01) bk.push(+v);
       bk.sort((p, q) => p - q);
       for (let k = 0; k + 1 < bk.length; k++) {
         const a = bk[k], b = bk[k + 1]; if (b - a < 0.004) continue;
-        pieces.push({ id: w.id, piece: w.piece || null, x1: w.x1 + ux * a, z1: w.y1 + uz * a, x2: w.x1 + ux * b, z2: w.y1 + uz * b, t, sp: !!w.sp && hard, s0: a, len: b - a, kind, hard, frame, ceilw: hard || frame, h: secs ? sectionTop(w, (a + b) / 2, wh) : wh, ext: w.ext });
+        pieces.push({ id: w.id, piece: w.piece || null, x1: w.x1 + ux * a, z1: w.y1 + uz * a, x2: w.x1 + ux * b, z2: w.y1 + uz * b, t, sp: !!w.sp && hard, s0: a, len: b - a, kind, hard, frame, ceilw: hard || frame, h: secs ? topAt((a + b) / 2, wh) : wh, ext: w.ext });
       }
     }
-    ends.push({ x: w.x1, z: w.y1, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[0] < 0.01), w, h: hard ? sectionTop(w, 0, wh) : wh });
-    ends.push({ x: w.x2, z: w.y2, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[1] > len - 0.01), w, h: hard ? sectionTop(w, len, wh) : wh });
+    ends.push({ x: w.x1, z: w.y1, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[0] < 0.01), w, h: hard ? topAt(0, wh) : wh });
+    ends.push({ x: w.x2, z: w.y2, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[1] > len - 0.01), w, h: hard ? topAt(len, wh) : wh });
   }
   // A wall end that meets another wall (a straight run drawn in pieces, or a tee) is a joint, not a free end:
   // it gets no end post, so runs don't sprout a post at every joint.
@@ -663,7 +675,7 @@ function ceilAreas(plan, A) {
   const top = (A.WH || A.H) - 0.25;
   return (plan.ceilAreas || []).filter(c => c && Math.abs(c.x1 - c.x0) > 0.5 && Math.abs(c.y1 - c.y0) > 0.5).map(c => ({
     c, x0: Math.min(c.x0, c.x1), x1: Math.max(c.x0, c.x1), z0: Math.min(c.y0, c.y1), z1: Math.max(c.y0, c.y1),
-    h: Math.max(6, Math.min(top, c.ceiling > 0 ? +c.ceiling : A.H))
+    h: Math.max(6, Math.min(c.raise ? 40 : top, c.ceiling > 0 ? +c.ceiling : A.H)), raise: !!c.raise
   }));
 }
 // the ceiling height at a point: the last area drawn over it, or the room's
@@ -1138,10 +1150,13 @@ function fixtureFrames(plan, A, R) {
   const fx = [], lines = [];
   for (const f of FX) {
     const G = gridAt(plan, f.x, f.y, A); if (!G || G.fromLines) continue;
-    const w = f.w || (G.swap ? 4 : 2), h = f.h || (G.swap ? 2 : 4), x0 = f.x - w / 2, x1 = f.x + w / 2, z0 = f.y - h / 2, z1 = f.y + h / 2;
+    // a fixture's nominal size (a 23.6″ × 47.6″ FFU is a 2′ × 4′ in the grid), so its frame sits on the grid lines
+    const nom = (v) => (Math.abs(v - Math.round(v)) < 0.2 ? Math.round(v) : v);
+    const w = nom(f.w || (G.swap ? 4 : 2)), h = nom(f.h || (G.swap ? 2 : 4)), x0 = f.x - w / 2, x1 = f.x + w / 2, z0 = f.y - h / 2, z1 = f.y + h / 2;
     if (!R.some(r => f.x > r[0] && f.x < r[2] && f.y > r[1] && f.y < r[3])) continue;
     fx.push([x0, z0, x1, z1]);
-    if (on(x0, G.ox, G.cw) && on(x1, G.ox, G.cw) && on(z0, G.oz, G.cl) && on(z1, G.oz, G.cl)) continue;
+    const on2 = (v, o, sp) => { const d = Math.abs(v - o) % sp; return Math.min(d, sp - d) < 0.06; };
+    if (on2(x0, G.ox, G.cw) && on2(x1, G.ox, G.cw) && on2(z0, G.oz, G.cl) && on2(z1, G.oz, G.cl)) continue;
     const ax0 = prev(x0, G.ox, G.cw), ax1 = next(x1, G.ox, G.cw), az0 = prev(z0, G.oz, G.cl), az1 = next(z1, G.oz, G.cl);
     for (const l of [[ax0, z0, ax1, z0], [ax0, z1, ax1, z1], [x0, az0, x0, az1], [x1, az0, x1, az1]]) lines.push(...clip(l));
   }
@@ -1561,12 +1576,21 @@ function generateCeiling(plan, opts) {
   let ox = centre(bx0, bx1, cw), oz = centre(bz0, bz1, cl);
   if (keep) {
     // the grid line most of the placed fixtures (lying the grid's way) have an edge on
-    const on = EX.filter(f => Math.abs(f.w - cw) < 0.1 && Math.abs(f.h - cl) < 0.1);
+    const on = EX.filter(f => Math.abs(f.w - cw) < 0.25 && Math.abs(f.h - cl) < 0.25);
     const vote = (vals, sp) => { let best = null, bn = 0; for (const v of vals) { const n = vals.filter(u => { const d = Math.abs(u - v) % sp; return Math.min(d, sp - d) < 0.1; }).length; if (n > bn) { bn = n; best = v; } } return best; };
     const md = (v, sp) => ((v % sp) + sp) % sp;
-    if (on.length) { ox = vote(on.map(f => md(f.x - f.w / 2, cw)), cw); oz = vote(on.map(f => md(f.y - f.h / 2, cl)), cl); }
+    if (on.length) { ox = vote(on.map(f => md(f.x - cw / 2, cw)), cw); oz = vote(on.map(f => md(f.y - cl / 2, cl)), cl); }
   }
   const G = { ox, oz, cw, cl, swap };
+  // FFUs and lights kept from before that sit a little off the grid (up to 6″, from an older grid or a drawing)
+  // are set into their cells, so the grid doesn't get extra tees framing them
+  const snapped = [];
+  if (keep) for (const f of EX) {
+    if (!(Math.abs(f.w - cw) < 0.25 && Math.abs(f.h - cl) < 0.25)) continue;
+    const cx = ox + Math.round((f.x - ox - cw / 2) / cw) * cw + cw / 2, cz = oz + Math.round((f.y - oz - cl / 2) / cl) * cl + cl / 2;
+    const dx = cx - f.x, dz = cz - f.y;
+    if ((Math.abs(dx) > 1e-3 || Math.abs(dz) > 1e-3) && Math.abs(dx) <= 0.5 && Math.abs(dz) <= 0.5) snapped.push({ id: f.id, x: cx, y: cz });
+  }
   const out = [], rooms = [], taken = new Set();
   for (const sp of spaces) {
     const { P, A, comp, id } = sp, g = sp.G, CA = ceilAreas(P, A);
@@ -1616,8 +1640,9 @@ function generateCeiling(plan, opts) {
   // FFUs and lights already placed that ended up with no ceiling over them (in a room that isn't closed in)
   const bare = keep ? EX.filter(f => !ceilRects.some(r => f.x > r[0] && f.x < r[2] && f.y > r[1] && f.y < r[3])).length : 0;
   // fixtures placed by hand that sit off the new grid (so the tees run across them)
-  const off = keep ? EX.filter(f => { const a = (v, o, sp) => { const d = Math.abs(v - o) % sp; return Math.min(d, sp - d) < 0.05; }; return !(a(f.x - f.w / 2, G.ox, Math.min(cw, f.w)) && a(f.y - f.h / 2, G.oz, Math.min(cl, f.h))); }).length : 0;
-  return { ceilGrid: { ox: G.ox, oy: G.oz, swap }, fixtures: out, rooms, ceilRects, keep, offGrid: off, bare, offices: skippedOffices, open: openRooms };
+  const sm = new Map(snapped.map(q => [q.id, q]));
+  const off = keep ? EX.filter(f => { const q = sm.get(f.id) || f, nom = (v) => (Math.abs(v - Math.round(v)) < 0.2 ? Math.round(v) : v), w = nom(f.w), h = nom(f.h), a = (v, o, sp) => { const d = Math.abs(v - o) % sp; return Math.min(d, sp - d) < 0.06; }; return !(a(q.x - w / 2, G.ox, Math.min(cw, w)) && a(q.y - h / 2, G.oz, Math.min(cl, h))); }).length : 0;
+  return { ceilGrid: { ox: G.ox, oy: G.oz, swap }, fixtures: out, rooms, ceilRects, keep, offGrid: off, bare, offices: skippedOffices, open: openRooms, snapped };
 }
 // k points spread evenly over a set of cells: start nearest the middle, add the farthest, then even them out
 function spread(cells, k) {
@@ -2413,8 +2438,26 @@ function buildScene(THREE, plan, A) {
   // plenum lid: the top of the cleanroom, over the plenum (hidden in Dollhouse and Plenum views)
   const lid = new THREE.Group(); root.add(lid);
   if (A.PL > 0 && FP) {
-    const lm = new THREE.MeshLambertMaterial({ color: 0xeef0f0, side: THREE.DoubleSide });
-    lid.add(new THREE.Mesh(rectsGeometry(THREE, ceilingRects(plan, FP, A), WH, true, 4, 4, 0, 0), lm));
+    const lm = new THREE.MeshLambertMaterial({ color: 0xeef0f0, side: THREE.DoubleSide }), LR = ceilingRects(plan, FP, A);
+    // a taller section (a ceiling area set to raise the walls): its own top, and panels closing the step
+    const up = ceilAreas(plan, A).filter(a => a.raise && a.h + A.PL > WH + 0.05);
+    lid.add(new THREE.Mesh(rectsGeometry(THREE, up.length ? subtractRects(LR, up) : LR, WH, true, 4, 4, 0, 0), lm));
+    for (const a of up) {
+      const T = a.h + A.PL;
+      lid.add(new THREE.Mesh(rectsGeometry(THREE, clipRects(LR, a), T, true, 4, 4, 0, 0), lm));
+      // the step from the lower top up to this one, along the area's edge where it isn't against a wall
+      const st = 0.25, pos = [];
+      for (const [ax, az, bx, bz, nx, nz] of [[a.x0, a.z0, a.x1, a.z0, 0, -1], [a.x0, a.z1, a.x1, a.z1, 0, 1], [a.x0, a.z0, a.x0, a.z1, -1, 0], [a.x1, a.z0, a.x1, a.z1, 1, 0]]) {
+        const L = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.round(L / st)); let s0 = null;
+        const need = (x, z) => inCeiling(plan, FP, x + nx * 0.3, z + nz * 0.3) && inCeiling(plan, FP, x - nx * 0.3, z - nz * 0.3) && !A.pieces.some(p => segDist(x, z, p.x1, p.z1, p.x2, p.z2) < (p.t || 0.25) / 2 + 0.1);
+        for (let k = 0; k <= n; k++) {
+          const tt = k / n, x = ax + (bx - ax) * tt, z = az + (bz - az) * tt, on = k < n && need(x + (bx - ax) / n / 2, z + (bz - az) / n / 2);
+          if (on && s0 === null) s0 = tt;
+          if (!on && s0 !== null) { const p1 = [ax + (bx - ax) * s0, az + (bz - az) * s0], p2 = [x, z]; pos.push(p1[0], WH, p1[1], p2[0], WH, p2[1], p2[0], T, p2[1], p1[0], WH, p1[1], p2[0], T, p2[1], p1[0], T, p1[1]); s0 = null; }
+        }
+      }
+      if (pos.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0xf4f6f6, side: THREE.DoubleSide })); outline(m); lid.add(m); }
+    }
   }
   // building walls: a metal roof deck at the top of the walls (hidden in Dollhouse, like the ceiling)
   if (A.shellTop > 0 && FPall) {
