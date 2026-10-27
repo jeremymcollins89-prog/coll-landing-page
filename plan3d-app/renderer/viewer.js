@@ -950,6 +950,98 @@ function cleanroomCheck(plan) {
   }
   return { rooms, doors, targets: ISO_TARGETS };
 }
+/* Generate a ceiling for the cleanroom (the main building, every ceiling height in it): a 2′ × 4′ grid centred
+   in the biggest room so the cut tiles at its two walls match, then per room enough FFUs for its cleanroom class
+   (air changes and FFU coverage, from the room's own class or opts.iso) and about one light per opts.sqftPerLight,
+   each spread evenly over the whole cells that are clear of walls, chases and ceiling-area edges.
+   opts: { iso, sqftPerLight, swap }. Returns { ceilGrid, fixtures, rooms: [{ name, area, iso, ffu, led, need, cells }] }. */
+function generateCeiling(plan, opts) {
+  opts = opts || {};
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  const swap = opts.swap != null ? !!opts.swap : !!(plan.ceilGrid && isFinite(plan.ceilGrid.ox) ? plan.ceilGrid.swap : plan.ceilSwap);
+  const cw = swap ? 4 : 2, cl = swap ? 2 : 4;
+  const FM = plan.ffuModel && Array.isArray(plan.ffuModel.sizes) && plan.ffuModel.sizes.length ? plan.ffuModel : null;
+  const z24 = FM ? (FM.sizes.find(q => q.nominal === '2x4') || FM.sizes[0]) : null, cfm = z24 && z24.cfm > 0 ? z24.cfm : 8 * 90;
+  // every space inside the cleanroom walls: labelled rooms, then any unlabelled space. Found on the whole plan
+  // (all its walls at once); each room's ceiling height comes from its label.
+  const spaces = [];
+  {
+    const P = plan, A = analyze(P); if (A.empty || !A.hardAny) return null;
+    const fp = footprint(A); if (!fp) return null;
+    const R = roomRegions(A, P, true), G = R.grid; if (!G) return null;
+    const comp = G.comp.slice(); let id = R.length;
+    // a labelled room counts when it's inside the cleanroom walls (not a warehouse label)
+    const inHard = (cells) => { let n = 0; for (const k of cells) { const i = k % G.nx, j = (k - i) / G.nx; if (fp.has(G.x0 + i * G.cell, G.z0 + j * G.cell)) n++; } return n > cells.length * 0.6; };
+    R.forEach((r, i) => { if (inHard(r.cells)) spaces.push({ P, A, G, comp, id: i, room: r.room, cells: r.cells }); });
+    for (let k = 0; k < comp.length; k++) {
+      if (comp[k] >= 0 || !G.inside[k] || G.wall[k]) continue;
+      const i = k % G.nx, j = (k - i) / G.nx; if (!fp.has(G.x0 + i * G.cell, G.z0 + j * G.cell)) continue;
+      const st = [k], cells = []; comp[k] = id;
+      while (st.length) { const u = st.pop(), a = u % G.nx; cells.push(u); for (const v of [a > 0 ? u - 1 : -1, a < G.nx - 1 ? u + 1 : -1, u - G.nx, u + G.nx]) if (v >= 0 && v < comp.length && comp[v] < 0 && G.inside[v] && !G.wall[v]) { comp[v] = id; st.push(v); } }
+      if (cells.length * G.cell * G.cell >= 16) spaces.push({ P, A, G, comp, id, room: null, cells });
+      id++;
+    }
+  }
+  if (!spaces.length) return null;
+  // the grid: centred in the biggest space, on whichever of "a line at the centre" or "a cell at the centre"
+  // leaves the bigger cut tiles at the walls
+  const big = spaces.reduce((a, b) => (b.cells.length > a.cells.length ? b : a));
+  let bx0 = 1e9, bx1 = -1e9, bz0 = 1e9, bz1 = -1e9;
+  for (const k of big.cells) { const i = k % big.G.nx, j = (k - i) / big.G.nx, x = big.G.x0 + i * big.G.cell, z = big.G.z0 + j * big.G.cell; bx0 = Math.min(bx0, x); bx1 = Math.max(bx1, x); bz0 = Math.min(bz0, z); bz1 = Math.max(bz1, z); }
+  const centre = (lo, hi, sp) => { const c = (lo + hi) / 2, cut = (o) => { const r = ((((lo - o) % sp) + sp) % sp); return r < 1e-6 ? sp : sp - r; }; return cut(c) >= cut(c + sp / 2) ? c : c + sp / 2; };
+  const ox = centre(bx0, bx1, cw), oz = centre(bz0, bz1, cl);
+  const G = { ox, oz, cw, cl, swap };
+  const out = [], rooms = [], taken = new Set();
+  for (const sp of spaces) {
+    const { P, A, comp, id } = sp, g = sp.G, CA = ceilAreas(P, A);
+    const inSpace = (x, z) => { const i = Math.floor((x - g.x0) / g.cell + 0.5), j = Math.floor((z - g.z0) / g.cell + 0.5); return i >= 0 && j >= 0 && i < g.nx && j < g.nz && comp[j * g.nx + i] === id; };
+    // whole grid cells in this space, clear of walls, chases and ceiling-area edges
+    let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+    for (const k of sp.cells) { const i = k % g.nx, j = (k - i) / g.nx; x0 = Math.min(x0, g.x0 + i * g.cell); x1 = Math.max(x1, g.x0 + i * g.cell); z0 = Math.min(z0, g.z0 + j * g.cell); z1 = Math.max(z1, g.z0 + j * g.cell); }
+    const cells = [];
+    for (let x = ox + Math.floor((x0 - ox) / cw) * cw; x + cw <= x1 + 1; x += cw) for (let z = oz + Math.floor((z0 - oz) / cl) * cl; z + cl <= z1 + 1; z += cl) {
+      const cx = x + cw / 2, cz = z + cl / 2, e = 0.15, pts = [[cx, cz], [x + e, z + e], [x + cw - e, z + e], [x + e, z + cl - e], [x + cw - e, z + cl - e]];
+      if (!pts.every(([px, pz]) => inSpace(px, pz))) continue;
+      if (fixtureHitsWall({ x: cx, y: cz, w: cw, h: cl }, A)) continue;
+      if (A.pieces.some(p => segDist(cx, cz, p.x1, p.z1, p.x2, p.z2) < Math.min(cw, cl) / 2 + (p.t || 0.25) / 2 - 0.05)) continue;
+      if (A.boxes.some(b => x < b.x1 && x + cw > b.x0 && z < b.z1 && z + cl > b.z0)) continue;
+      const hs = pts.map(([px, pz]) => ceilingAt(CA, roomKey(P, sp.room).H, px, pz)); if (hs.some(h => Math.abs(h - hs[0]) > 0.01)) continue;
+      const key = cx.toFixed(2) + ',' + cz.toFixed(2); if (taken.has(key)) continue;
+      cells.push({ x: cx, y: cz, key, h: hs[0] });
+    }
+    const area = sp.cells.length * g.cell * g.cell, H = cells.length ? cells.reduce((t, c) => t + c.h, 0) / cells.length : roomKey(P, sp.room).H;
+    const iso = sp.room && sp.room.iso ? +sp.room.iso : (opts.iso ? +opts.iso : 7), T = ISO_TARGETS[iso] || ISO_TARGETS[7];
+    const ach = sp.room && sp.room.ach > 0 ? +sp.room.ach : T.ach;
+    const need = Math.max(Math.ceil(ach * area * H / 60 / cfm), Math.ceil(T.cov / 100 * area / (cw * cl)), area > 30 && T.cov > 0 ? 1 : 0);
+    const nF = Math.min(need, cells.length);
+    const pickF = spread(cells, nF);
+    const rest = cells.filter((c, i) => !pickF.includes(i));
+    const nL = Math.min(rest.length, Math.max(area > 20 ? 1 : 0, Math.round(area / (opts.sqftPerLight > 0 ? opts.sqftPerLight : 64))));
+    const pickL = spread(rest, nL);
+    for (const i of pickF) { const c = cells[i]; taken.add(c.key); out.push({ id: uid(), type: 'ffu', x: c.x, y: c.y, w: cw, h: cl }); }
+    for (const i of pickL) { const c = rest[i]; taken.add(c.key); out.push({ id: uid(), type: 'led', x: c.x, y: c.y, w: cw, h: cl }); }
+    rooms.push({ name: sp.room ? (sp.room.name || 'Room') : 'Unlabelled space', area, iso, ach, ffu: nF, led: pickL.length, need, cells: cells.length, cfm: nF * cfm, achGot: area * H > 0 ? nF * cfm * 60 / (area * H) : 0 });
+  }
+  return { ceilGrid: { ox: G.ox, oy: G.oz, swap }, fixtures: out, rooms };
+}
+// k points spread evenly over a set of cells: start nearest the middle, add the farthest, then even them out
+function spread(cells, k) {
+  if (k <= 0) return []; if (k >= cells.length) return cells.map((_, i) => i);
+  const d2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+  const mx = cells.reduce((t, c) => t + c.x, 0) / cells.length, my = cells.reduce((t, c) => t + c.y, 0) / cells.length;
+  let first = 0; cells.forEach((c, i) => { if (d2(c, { x: mx, y: my }) < d2(cells[first], { x: mx, y: my })) first = i; });
+  const pick = [first], near = cells.map(c => d2(c, cells[first]));
+  while (pick.length < k) { let best = -1; near.forEach((v, i) => { if (!pick.includes(i) && (best < 0 || v > near[best])) best = i; }); pick.push(best); cells.forEach((c, i) => { near[i] = Math.min(near[i], d2(c, cells[best])); }); }
+  // a few rounds of moving each point to the middle of the cells nearest it
+  let ctr = pick.map(i => ({ x: cells[i].x, y: cells[i].y }));
+  for (let it = 0; it < 8; it++) {
+    const sum = ctr.map(() => ({ x: 0, y: 0, n: 0 }));
+    cells.forEach(c => { let b = 0; ctr.forEach((q, j) => { if (d2(c, q) < d2(c, ctr[b])) b = j; }); sum[b].x += c.x; sum[b].y += c.y; sum[b].n++; });
+    ctr = sum.map((q, j) => (q.n ? { x: q.x / q.n, y: q.y / q.n } : ctr[j]));
+  }
+  const used = new Set();
+  return ctr.map(q => { let b = -1; cells.forEach((c, i) => { if (!used.has(i) && (b < 0 || d2(c, q) < d2(cells[b], q))) b = i; }); used.add(b); return b; });
+}
 /* Grid steps for a fixture: its long side steps on 4′, its short side on 2′ (a 2 × 2 on 2′ both ways).
    On a turned grid the two axes trade places. */
 /* Is a fixture turned across the grid (its long side across the cells' long side)? Only on the app's own
@@ -2560,5 +2652,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
 })(typeof window !== 'undefined' ? window : this);

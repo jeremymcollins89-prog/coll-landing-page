@@ -710,6 +710,41 @@ async function openCadProject(r) {
   return true;
 }
 
+/* ---------- Generate ceiling: grid, FFUs and lights laid out inside the cleanroom walls ---------- */
+async function generateCeilingDialog() {
+  const P = ed.plan;
+  if (!P.walls.length) { toast('Draw or import the cleanroom walls first, then generate the ceiling inside them.'); return; }
+  const G0 = Plan3DViewer.ceilingGrid(P), has = P.ceilingSource || (P.ceilingGrid && P.ceilingGrid.length) || P.ceilingImage || (P.ceilingMode === 'manual' && (P.fixtures || []).length);
+  const nF0 = (P.fixtures || []).filter(f => f.type === 'ffu').length, nL0 = (P.fixtures || []).length - nF0;
+  const FM = P.ffuModel && P.ffuModel.sizes && P.ffuModel.sizes.length ? P.ffuModel : null;
+  const opts = await dialogOpen({
+    title: 'Generate ceiling',
+    body: `<p>Lays out a 2′ × 4′ grid centred in the biggest room (so the cut tiles at its two walls match), then in every room inside the cleanroom walls: enough fan filter units for the room's cleanroom class, and lights spread evenly in the cells left over. Cells against walls, chases and ceiling-area edges are skipped. Everything stays editable: drag, delete, add or turn (R) any FFU or light afterwards.</p>
+      ${fld('Class for rooms without one', `<select id="gcIso">${[5, 6, 7, 8, 9].map(n => `<option value="${n}" ${n === 7 ? 'selected' : ''}>ISO ${n} (${Plan3DViewer.ISO_TARGETS[n].ach} air changes, ${Plan3DViewer.ISO_TARGETS[n].cov}% FFU coverage)</option>`).join('')}</select>`)}
+      ${fld('Lights', `<select id="gcLt"><option value="48">Bright: one per 48 sq ft</option><option value="64" selected>Standard: one per 64 sq ft</option><option value="80">One per 80 sq ft</option><option value="100">Low: one per 100 sq ft</option></select>`)}
+      ${fld('Grid', `<select id="gcSw"><option value="0" ${!G0.swap ? 'selected' : ''}>4′ side of the tiles runs up and down the plan</option><option value="1" ${G0.swap ? 'selected' : ''}>4′ side of the tiles runs across the plan</option></select>`)}
+      <p class="note">FFU airflow: ${FM ? esc(FM.name) + ', ' + ((FM.sizes.find(q => q.nominal === '2x4') || FM.sizes[0]).cfm || '?') + ' CFM per 2×4 (pick another model in the Plan panel)' : 'no FFU model picked, so 720 CFM per 2×4 (90 fpm); pick a model in the Plan panel for its real airflow'}. A room's own class (set on its room label) wins over the one above.</p>
+      ${has ? `<p class="note" style="color:var(--warn)">This replaces the current ceiling${P.ceilingSource ? ' from ' + esc(P.ceilingSource) : ''} (${nF0} FFUs, ${nL0} lights). Ctrl+Z puts it back.</p>` : ''}`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Generate', primary: true, value: () => ({ iso: +$('#gcIso').value, sqftPerLight: +$('#gcLt').value, swap: $('#gcSw').value === '1' }) }]
+  });
+  if (!opts) return;
+  const R = Plan3DViewer.generateCeiling(P, opts);
+  if (!R || !R.rooms.length) { toast('No room inside cleanroom (hardwall) walls was found to put a ceiling in.'); return; }
+  ed.edit(Q => { Q.ceilGrid = R.ceilGrid; Q.fixtures = R.fixtures; Q.ceilingMode = 'manual'; Q.ceilingSource = 'Generated'; delete Q.ceilingGrid; delete Q.ceilingImage; delete Q.fixturesFinal; });
+  updateChrome(); renderProps();
+  const short = R.rooms.filter(r => r.ffu < r.need);
+  await dialogOpen({
+    title: 'Ceiling generated',
+    wide: true,
+    body: `<p>${R.fixtures.filter(f => f.type === 'ffu').length} FFUs and ${R.fixtures.filter(f => f.type !== 'ffu').length} lights in ${R.rooms.length} room${R.rooms.length === 1 ? '' : 's'}.</p>
+      <div class="layers"><label style="grid-template-columns:1.6fr .6fr .8fr .9fr .6fr .9fr;cursor:default"><b>Room</b><b>Class</b><b>Area</b><b>FFUs</b><b>Lights</b><b>Air changes</b></label>
+      ${R.rooms.map(r => `<label style="grid-template-columns:1.6fr .6fr .8fr .9fr .6fr .9fr;cursor:default"><span>${esc(r.name)}</span><span>ISO ${r.iso}</span><span>${Math.round(r.area)} sq ft</span><span${r.ffu < r.need ? ' style="color:var(--warn)"' : ''}>${r.ffu}${r.ffu < r.need ? ' of ' + r.need : ''}</span><span>${r.led}</span><span>${Math.round(r.achGot)} / ${r.ach}</span></label>`).join('')}</div>
+      ${short.length ? `<p class="note" style="color:var(--warn)">${short.map(r => esc(r.name)).join(', ')}: not enough whole ceiling cells for the FFUs that class needs. Pick a bigger FFU model, a lower class, or move a chase or wall.</p>` : ''}
+      <p class="note">Open the 3D view to walk under it. Move, delete or turn (R) any FFU or light in the plan; Edit ceiling has Snap to grid and Remove.</p>`,
+    buttons: [{ label: 'OK', primary: true, ret: true }]
+  });
+}
+
 /* ---------- Ceiling drawing ---------- */
 async function ceilingMenu() {
   if (!ed.plan.walls.length) { toast('Add or import the floor plan first, then add the ceiling on top of it.'); return; }
@@ -1644,7 +1679,7 @@ $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave
   item('#bBldInsert', () => libraryDialog()); item('#bBldFile', insertFromFile); item('#bBldSave', saveBuildingDialog);
   item('#bLibGroup', saveGroupDialog); item('#bLibCeil', saveCeilingDialog);
 }
-$('#bCeiling').onclick = ceilingMenu; $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
+$('#bCeiling').onclick = ceilingMenu; $('#bGenCeil').onclick = generateCeilingDialog; $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
 $('#wCleanroom').onclick = () => pickMode('cleanroom'); $('#wHouse').onclick = () => pickMode('house');
 $('#wBack').onclick = (e) => { e.preventDefault(); modePicked = false; updateChrome(); };
 $('#wDraw').onclick = () => { $('#welcome').hidden = true; ed.setTool('wall'); $('#plan').focus(); };
