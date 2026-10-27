@@ -179,7 +179,7 @@ class Editor {
     const V2 = global.Plan3DViewer; if (!V2) return;
     const G = V2.gridAt ? V2.gridAt(this.plan, o.x, o.y) : V2.ceilingGrid(this.plan), w = o.w || (G.swap ? 4 : 2), h = o.h || (G.swap ? 2 : 4);
     if (Math.abs(w - h) < 0.1) { this.status('A square fixture looks the same turned.'); return; }
-    this.edit(() => { const q = V2.snapFixture({ x: o.x, y: o.y, w: h, h: w }, G); o.w = h; o.h = w; o.x = q.x; o.y = q.y; });
+    this.edit(() => { const q = V2.placeFixture(this.plan, { x: o.x, y: o.y, w: h, h: w }); o.w = h; o.h = w; o.x = q.x; o.y = q.y; });
     const turned = V2.fixtureTurned ? V2.fixtureTurned(o, G) : false;
     this.status(turned ? 'Turned across the grid. Tees frame it on all four sides and the tiles around it are cut to fit.' : 'Back in line with the grid.');
   }
@@ -782,12 +782,15 @@ class Editor {
       const built = this.built(), tl = built ? D.items.find(it => it.r.kind === 'tile' || it.r.kind === 'fixture') : null;
       if (tl && !best && !e.altKey) { const ids = new Set(D.items.map(it => it.o.id)), q = this.snapBox(tl.O.x + (p.x - D.sx), tl.O.y + (p.y - D.sy), tl.O.w || 2, tl.O.h || 4, ids, false); dx = q.x - tl.O.x; dy = q.y - tl.O.y; }
       const fx = built ? null : D.items.find(it => it.r.kind === 'fixture');
-      if (fx && !best && !e.altKey && global.Plan3DViewer) { const V = global.Plan3DViewer, q = V.snapFixture({ x: fx.O.x + dx, y: fx.O.y + dy, w: fx.O.w || 2, h: fx.O.h || 4 }, V.gridAt(this.plan, fx.O.x + dx, fx.O.y + dy)); dx = q.x - fx.O.x; dy = q.y - fx.O.y; }
+      // (the one picked up leads: on an imported ceiling drawing it drops into the drawing's opening under it)
+      const lead = fx && (D.items.filter(it => it.r.kind === 'fixture').sort((a, b) => Math.hypot(a.O.x - D.sx, a.O.y - D.sy) - Math.hypot(b.O.x - D.sx, b.O.y - D.sy))[0]);
+      if (lead && !best && !e.altKey && global.Plan3DViewer) { const V = global.Plan3DViewer, q = V.placeFixture(this.plan, { x: lead.O.x + dx, y: lead.O.y + dy, w: lead.O.w || 2, h: lead.O.h || 4 }); dx = q.x - lead.O.x; dy = q.y - lead.O.y; }
       for (const it of D.items) this.shiftRef(it.r.kind, it.o, it.O, dx, dy);
       // and each one sits in a cell of its own (a layout drawn a hair off the grid still lands cleanly)
       if (fx && !best && !e.altKey && global.Plan3DViewer) {
         const V = global.Plan3DViewer, taken = new Set();
-        for (const it of D.items) if (it.r.kind === 'fixture') { const q = V.snapFixture({ x: it.o.x, y: it.o.y, w: it.o.w || 2, h: it.o.h || 4 }, V.gridAt(this.plan, it.o.x, it.o.y)), k = Math.round(q.x * 4) + ',' + Math.round(q.y * 4); if (!taken.has(k)) { taken.add(k); it.o.x = q.x; it.o.y = q.y; } }
+        const drawn = Array.isArray(this.plan.ceilingGrid) && this.plan.ceilingGrid.length;
+        for (const it of D.items) if (it.r.kind === 'fixture') { const f0 = { x: it.o.x, y: it.o.y, w: it.o.w || 2, h: it.o.h || 4 }, d0 = drawn ? V.snapToDrawn(this.plan, f0, 0.4) : null, q = drawn ? (d0 && d0.caught ? d0 : f0) : V.snapFixture(f0, V.gridAt(this.plan, it.o.x, it.o.y)), k = Math.round(q.x * 4) + ',' + Math.round(q.y * 4); if (!taken.has(k)) { taken.add(k); it.o.x = q.x; it.o.y = q.y; } }
       }
       this.status('Moving ' + this.multi.length + ' pieces: ' + fmt(Math.hypot(dx, dy)) + (best ? ' · caught on a wall end' : ''));
       this.emit('live'); this.render(); return;
@@ -831,7 +834,7 @@ class Editor {
       }
       else if (D.sel.kind === 'tile' || (D.sel.kind === 'fixture' && this.built())) { const q = this.snapBox(O.x + (p.x - D.sx), O.y + (p.y - D.sy), O.w || 2, O.h || 4, new Set([o.id]), e.altKey); o.x = q.x; o.y = q.y; this.status((D.sel.kind === 'tile' ? 'Tile ' : 'Moving ') + fmtIn(O.w || 2) + ' × ' + fmtIn(O.h || 4) + (q.cx || q.cy ? ' · butted against the pieces and walls next to it' : '') + ' (Alt: no snapping)'); }
       else if (D.sel.kind === 'fixture' && e.altKey) { o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy); this.status('Moving freely (Alt): ' + fmt(Math.hypot(o.x - O.x, o.y - O.y))); }
-      else if (D.sel.kind === 'fixture') { const V = global.Plan3DViewer, G = V.gridAt(this.plan, O.x + (p.x - D.sx), O.y + (p.y - D.sy)), q = V.snapFixture({ x: O.x + (p.x - D.sx), y: O.y + (p.y - D.sy), w: O.w || 2, h: O.h || 4 }, G); o.x = q.x; o.y = q.y; }
+      else if (D.sel.kind === 'fixture') { const V = global.Plan3DViewer, q = V.placeFixture(this.plan, { x: O.x + (p.x - D.sx), y: O.y + (p.y - D.sy), w: O.w || 2, h: O.h || 4 }); o.x = q.x; o.y = q.y; if (q.inHole) this.status('In the opening · Alt moves it freely, arrow keys nudge 1″'); }
       else if (D.sel.kind === 'gzone') { this.shiftRef('gzone', o, O, dx, dy); }
       else if (D.sel.kind === 'chase' || D.sel.kind === 'carea') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; }
       else if (D.sel.kind === 'room') { o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy); }

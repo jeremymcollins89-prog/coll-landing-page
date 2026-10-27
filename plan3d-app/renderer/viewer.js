@@ -1911,6 +1911,50 @@ function fixtureSteps(w, h, G) {
 }
 /* Snap a fixture into whole grid cells so it never straddles a tee: a 2′ × 4′ (or 2 × 2) fixture centres on
    its cell. Fixtures from an imported ceiling drawing follow that drawing's own grid instead. */
+/* An FFU or light dropped on an imported ceiling drawing: into the drawing's own opening under it. Each edge
+   catches on a drawn tee (one that runs along that edge), preferring a spot where both opposite edges sit on
+   tees (the fixture fills a hole); reach: how far it may move, in feet. Null when the plan has no drawing. */
+const DRAWN_IDX = new WeakMap();
+function snapToDrawn(plan, f, reach) {
+  const L = plan && Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length ? plan.ceilingGrid : null; if (!L) return null;
+  // the drawing's tees joined end to end (a line drawn in 2′ pieces is one tee), and the walls' faces: a hole at
+  // the edge of the drawing closes on a wall
+  let I = DRAWN_IDX.get(L); const wk = (plan.walls || []).length;
+  if (!I || I.wk !== wk) {
+    I = { V: [], H: [], wk }; const faces = [];
+    for (const w of plan.walls || []) { const t = (w.t || 0.25) / 2; if (Math.abs(w.x1 - w.x2) < 0.02) for (const s of [-t, t]) faces.push([w.x1 + s, w.y1, w.x2 + s, w.y2]); else if (Math.abs(w.y1 - w.y2) < 0.02) for (const s of [-t, t]) faces.push([w.x1, w.y1 + s, w.x2, w.y2 + s]); }
+    for (const q of joinLines(L.concat(faces))) { if (Math.abs(q[0] - q[2]) < 0.02) I.V.push([(q[0] + q[2]) / 2, Math.min(q[1], q[3]), Math.max(q[1], q[3])]); else if (Math.abs(q[1] - q[3]) < 0.02) I.H.push([(q[1] + q[3]) / 2, Math.min(q[0], q[2]), Math.max(q[0], q[2])]); }
+    DRAWN_IDX.set(L, I);
+  }
+  reach = reach || 1;
+  const nom = (v) => (Math.abs(v - Math.round(v)) < 0.2 ? Math.round(v) : v), w = nom(f.w || 2), h = nom(f.h || 4);
+  // along one axis: lines near the fixture's two edges that run along most of that edge
+  const axis = (lines, c, half, a0, a1) => {
+    const P = [];
+    for (const q of lines) if (q[0] > c - half - reach - 0.01 && q[0] < c + half + reach + 0.01 && Math.min(q[2], a1) - Math.max(q[1], a0) > 0.45 * (a1 - a0) && !P.some(p => Math.abs(p - q[0]) < 0.01)) P.push(q[0]);
+    let best = null;
+    for (const p of P) for (const sd of [-1, 1]) {
+      const d = p - (c + sd * half); if (Math.abs(d) > reach) continue;
+      const both = P.some(q => Math.abs(q - (c + d - sd * half)) < 0.08), score = (both ? 0 : 10) + Math.abs(d);
+      if (!best || score < best.score) best = { d, score };
+    }
+    return best;
+  };
+  let x = f.x, y = f.y, fx = null, fz = null;
+  for (let pass = 0; pass < 2; pass++) {
+    fx = axis(I.V, f.x, w / 2, y - h / 2, y + h / 2); if (fx) x = f.x + fx.d;
+    fz = axis(I.H, f.y, h / 2, x - w / 2, x + w / 2); if (fz) y = f.y + fz.d;
+  }
+  return { ...f, x, y, inHole: !!(fx && fz && fx.score < 10 && fz.score < 10), caught: !!(fx || fz) };
+}
+// where a fixture goes when it's dropped at (f.x, f.y): an imported drawing's own opening when there is one under
+// it, otherwise the grid's cells
+function placeFixture(plan, f, A) {
+  const d = !isBuilt(plan) ? snapToDrawn(plan, f, 1) : null;
+  if (d && d.caught) return d;
+  if (d) return { ...f };
+  return snapFixture(f, gridAt(plan, f.x, f.y, A));
+}
 function snapFixture(f, G) {
   const w = f.w || (G.swap ? 4 : 2), h = f.h || (G.swap ? 2 : 4);
   // an imported grid: step by its own line spacing (2 × 2, 2 × 4, or whatever it was drawn at)
@@ -3617,5 +3661,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist };
+global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture };
 })(typeof window !== 'undefined' ? window : this);

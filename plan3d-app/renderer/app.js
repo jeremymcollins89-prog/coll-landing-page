@@ -249,6 +249,19 @@ async function wallHeightDialog() {
   ed.edit(() => { for (const w of W) setWallHeight(P, w, v); });
   toast(`${W.length} wall${W.length === 1 ? '' : 's'} now ${fmt(v)} tall.`); renderProps(); queue3D();
 }
+/* FFUs and lights set into the ceiling's openings: the imported drawing's holes (each one moves up to 1′ to
+   the opening it's over), or the grid's cells. ids: just those fixtures (null: all of them). */
+function snapFixturesIn(ids) {
+  let moved = 0, holes = 0, n = 0; const drawn = Array.isArray(ed.plan.ceilingGrid) && ed.plan.ceilingGrid.length;
+  ed.edit(Q => { for (const f of Q.fixtures || []) {
+    if (ids && !ids.has(f.id)) continue; n++;
+    let q;
+    if (drawn) { const d = Plan3DViewer.snapToDrawn(Q, f, 1); q = d && d.caught ? d : f; if (d && d.inHole) holes++; }
+    else { const G = Plan3DViewer.gridAt(Q, f.x, f.y), w = f.w || (G.swap ? 4 : 2), h = f.h || (G.swap ? 2 : 4); q = Plan3DViewer.snapFixture({ ...f, w, h }, G); f.w = w; f.h = h; }
+    if (Math.hypot(q.x - f.x, q.y - f.y) > 0.004) { moved++; f.x = q.x; f.y = q.y; }
+  } });
+  toast(drawn ? `${holes} of ${n} FFUs and lights sit in an opening of the ceiling drawing${moved ? ` (${moved} moved into place)` : ''}.${holes < n ? ' The others are more than 1′ from an opening that fits them: drag them over one, or nudge them with the arrow keys.' : ''}` : moved ? `Moved ${moved} fixture${moved === 1 ? '' : 's'} into the grid cells.` : 'Everything already sits in the grid.');
+}
 function wallTopOf(P, w) {
   try { for (const z of Plan3DViewer.zones(P)) if ((z.plan.walls || []).includes(w)) return Math.max(6, z.plan.ceiling || 8) + Math.max(0, +z.plan.plenum || 0); } catch (e) { /* fall back to the building's */ }
   const K = Plan3DViewer.roomKey(P, null); return K.H + K.PL;
@@ -262,13 +275,13 @@ function renderProps(opt) {
     const grouped = M.every(r => { const x = ed.find(r); return x && x.gid && x.gid === ed.find(M[0]).gid; });
     box.innerHTML = `<div class="hd"><span class="kind">${M.length} pieces selected${grouped ? ' (a group)' : ''}</span><button class="btn small danger" id="mDel">Delete</button></div>
       <div class="grp"><div class="stats">${Object.entries(cnt).map(([k, n]) => `<span>${esc(NAMES[k] || k)}${n > 1 && k !== 'opening' && k !== 'fixture' ? 's' : ''}</span><span>${n}</span>`).join('')}</div></div>
-      <div class="row">${grouped ? '<button class="btn small" id="mUngroup">Ungroup</button>' : '<button class="btn small" id="mGroup">Group them</button>'}<button class="btn small" id="mCopy">Copy</button><button class="btn small" id="mSize">Resize…</button>${M.some(r => r.kind === 'wall') ? '<button class="btn small" id="mWH">Wall height…</button>' : ''}</div>
+      <div class="row">${grouped ? '<button class="btn small" id="mUngroup">Ungroup</button>' : '<button class="btn small" id="mGroup">Group them</button>'}<button class="btn small" id="mCopy">Copy</button><button class="btn small" id="mSize">Resize…</button>${M.some(r => r.kind === 'wall') ? '<button class="btn small" id="mWH">Wall height…</button>' : ''}${M.some(r => r.kind === 'fixture') ? '<button class="btn small" id="mSnapFx" title="Set the FFUs and lights picked into the ceiling grid\'s openings">Snap into the grid</button>' : ''}</div>
       <div class="row"><button class="btn small primary" id="mSave">Save to the library…</button></div>
       <p class="note">Drag any of them to move them all; their walls catch on nearby wall ends (hold Alt to move freely). Shift+click adds or takes out one piece; Shift-drag a box adds more. A group stays together: clicking one piece picks up the whole group. Ctrl+G groups, Ctrl+Shift+G ungroups, Ctrl+C / Ctrl+V copy and paste.</p>`;
     $('#mDel').onclick = () => ed.deleteSel();
     if ($('#mGroup')) $('#mGroup').onclick = () => { ed.groupSel(true); renderProps(); };
     if ($('#mUngroup')) $('#mUngroup').onclick = () => { ed.groupSel(false); renderProps(); };
-    $('#mCopy').onclick = copyPieces; $('#mSave').onclick = saveGroupDialog; $('#mSize').onclick = resizeSelection; if ($('#mWH')) $('#mWH').onclick = wallHeightDialog;
+    $('#mCopy').onclick = copyPieces; $('#mSave').onclick = saveGroupDialog; $('#mSize').onclick = resizeSelection; if ($('#mWH')) $('#mWH').onclick = wallHeightDialog; if ($('#mSnapFx')) $('#mSnapFx').onclick = () => snapFixturesIn(new Set(M.filter(r => r.kind === 'fixture').map(r => r.id)));
     return;
   }
   if (s && o && s.kind === 'wall') {
@@ -458,11 +471,11 @@ function renderProps(opt) {
   if (s && o && s.kind === 'fixture') {
     h = `<div class="hd"><span class="kind">${o.type === 'ffu' ? 'Fan filter unit' : 'LED light'}</span><button class="btn small danger" id="pDel">Delete</button></div>
       ${fld('Type', `<select id="pFx"><option value="led" ${o.type !== 'ffu' ? 'selected' : ''}>LED light, 2×4</option><option value="ffu" ${o.type === 'ffu' ? 'selected' : ''}>Fan filter unit, 2×4</option></select>`)}
-      <div class="row"><button class="btn small" id="pFxTurn">Turn 90° (R)</button></div>
+      <div class="row"><button class="btn small" id="pFxTurn">Turn 90° (R)</button><button class="btn small" id="pFxSnap">Snap into the grid</button></div>
       <p class="note">Sits in the 2′ × 4′ ceiling grid. Turned across the grid, it takes half of two cells side by side: the cross tee moves to its edge and the other half gets one 2′ × 4′ tile laid the same way.</p>`;
     box.innerHTML = h;
     $('#pFx').onchange = e => ed.edit(() => { o.type = e.target.value; });
-    $('#pFxTurn').onclick = () => ed.turnFixture(o);
+    $('#pFxTurn').onclick = () => ed.turnFixture(o); $('#pFxSnap').onclick = () => snapFixturesIn(new Set([o.id]));
     $('#pDel').onclick = () => ed.deleteSel();
     return;
   }
@@ -890,9 +903,7 @@ async function ceilingMenu() {
     if (a === 'remove') { ed.edit(Q => Plan3DCeiling.removeCeiling(Q)); updateChrome(); toast('Ceiling removed. The automatic light layout is back.'); return; }
     if (a === 'move') { moveCeilingDialog(); return; }
     if (a === 'snap') {
-      let moved = 0;
-      ed.edit(Q => { Q.fixtures = (Q.fixtures || []).map(f => { const G = Plan3DViewer.gridAt(Q, f.x, f.y), w = f.w || (G.swap ? 4 : 2), h = f.h || (G.swap ? 2 : 4), n = Plan3DViewer.snapFixture({ ...f, w, h }, G); if (Math.hypot(n.x - f.x, n.y - f.y) > 0.01) moved++; return { ...f, x: n.x, y: n.y, w, h }; }); });
-      toast(moved ? `Moved ${moved} fixture${moved === 1 ? '' : 's'} into the grid cells.` : 'Everything already sits in the grid.'); return;
+      snapFixturesIn(null); return;
     }
     if (a === 'place') { setView('build'); if (builder) builder.setTool('ffu'); toast('Click a ceiling cell to add an FFU; click one to take it out. Pick LED light in the pieces for lights.'); return; }
     if (a !== 'new') return;
