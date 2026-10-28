@@ -609,6 +609,16 @@ function toIfc(plan, opts) {
     // smaller pieces would meet.
     // names carry the heights, so they read in Revit's properties and schedules
     const cName = A.house ? 'Ceiling, drywall at ' + V.fmtFt(H) : 'Ceiling, grid at ' + V.fmtFt(H);
+    // ceiling areas (plan.ceilAreas, raised or dropped): each part of the ceiling at its own height, as the 3D view
+    // builds it, one covering per height (they were all exported at the main ceiling height before)
+    const CAx = !A.house && V.ceilAreas && V.subtractRects && V.clipRects ? V.ceilAreas(plan, A) : [], FPc = CAx.length && V.footprint ? V.footprint(A) : null;
+    if (CAx.length && FPc && FPc.rects.length) {
+      const byH = new Map(), addR = (h, rs) => { if (!rs.length) return; const k = h.toFixed(3); byH.set(k, (byH.get(k) || []).concat(rs)); };
+      addR(H, V.subtractRects(FPc.rects, CAx));
+      CAx.forEach((a, k) => addR(a.h, V.subtractRects(V.clipRects(FPc.rects, a), CAx.slice(k + 1))));
+      const rp = (r) => ({ outer: [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]], holes: [] });
+      for (const [k, rs] of byH) { const h = +k; put('IFCCOVERING', 'Ceiling, grid at ' + V.fmtFt(h), 'Coll cleanroom grid ceiling, 2×4 tiles', shape([].concat(...rs.map(r => [slab(rp(r), h, h + 0.04, S.ceiling), slab(rp(r), h + 0.04, h + 0.052, S.tileBack)]))), ',.CEILING.', S.ceiling); }
+    } else
     areas.forEach((ar, idx) => put('IFCCOVERING', areas.length > 1 ? `${cName} (${idx + 1})` : cName, A.house ? 'House ceiling' : 'Coll cleanroom grid ceiling, 2×4 tiles', shape(A.house ? [slab(ar, H, H + 0.052, S.ceiling)] : [slab(ar, H, H + 0.04, S.ceiling), slab(ar, H + 0.04, H + 0.052, S.tileBack)]), ',.CEILING.', S.ceiling));
     // the plenum lid: the top of the cleanroom, over the plenum
     // (a roof-type slab, so in Revit it hides with Roofs in Visibility/Graphics while the grid ceiling stays,
