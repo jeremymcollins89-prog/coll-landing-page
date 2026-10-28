@@ -2842,6 +2842,19 @@ async function exportGlb() {
     if (p) toast('3D model saved.', { label: 'Open it', fn: () => api.openPath(p) });
   } catch (e) { toast('Export failed: ' + e.message); }
 }
+async function exportTwinmotion() {
+  if (!ed.plan.walls.length) { toast('Add some walls first.'); return; }
+  const v = ensureViewer(); viewer.setPlan(clonePlan());
+  toast('Making the Twinmotion model…');
+  let buf; try { buf = await v.exportTwinmotion(); } catch (e) { toast('Export failed: ' + e.message); return; }
+  const p = await api.exportFile(buf, (ed.plan.name || 'Cleanroom') + ' for Twinmotion', 'glb'); if (!p) return;
+  dialogOpen({ title: 'Twinmotion model saved', body: `<ol style="margin:0 0 8px 18px;padding:0;line-height:1.6">
+    <li>In Twinmotion: <b>Import</b> → pick the .glb file. Leave <b>Collapse</b> off so the groups (Walls, Doors and glass, Ceiling, Fan filter units, Lights, Floor, Lid and structure) stay separate. Units are already metres, so it comes in at real size.</li>
+    <li>Every material has a name (<i>Wall panel, white</i>, <i>Ceiling grid, aluminum</i>, <i>Floor, cleanroom coating</i>…) and a starting finish. To make it photo-real, drag Twinmotion materials onto them: painted metal on the wall panels, brushed aluminum on the grid and track, glass on the glass, a glossy epoxy or vinyl on the floor.</li>
+    <li>Turn on <b>Path tracer</b>, set the camera at eye height (about 5′-6″) with a 24–35 mm lens, add a few people in gowns, and export the image or a video.</li></ol>
+    <p class="note">The light lenses glow on their own; for real light, add rectangle lights under them in Twinmotion. Saving a new version of the plan and exporting again gives you an updated model to re-import.</p>`,
+    buttons: [{ label: 'Show in folder', value: () => { api.showInFolder(p); return false; } }, { label: 'Done', primary: true, ret: true }] });
+}
 async function newPlan() { if (!(await guardUnsaved())) return; projectPath = null; modePicked = false; ed.setPlan(Editor.blank()); hideBanner(); updateChrome(); }
 
 function helpDialog() {
@@ -2879,7 +2892,7 @@ $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave
   });
   const item = (id, fn) => { $(id).onclick = () => { close(); fn(); }; };
   item('#bExportLink', linkDialog); item('#bExportHtml', exportHtml); item('#bSubm', submittalDialog); item('#bPOs', poDialog); item('#bSched', scheduleDialog); item('#bCert', certExport); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
-  item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportParts', exportParts);
+  item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportTm', exportTwinmotion); item('#bExportParts', exportParts);
 }
 // Ceiling dropdown: add / edit the ceiling drawing, or generate one
 {

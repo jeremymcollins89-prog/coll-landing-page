@@ -2857,12 +2857,12 @@ function machineMesh(THREE, it) {
     pos.push(A[0], h, A[1], B[0], h, B[1], C[0], h, C[1], A[0], h, A[1], C[0], h, C[1], D[0], h, D[1]);
   }
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.computeVertexNormals();
-  const m = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ color: 0x8e9ba3, specular: 0x444444, shininess: 30, side: THREE.DoubleSide })); g.add(m);
+  const m = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ color: 0x8e9ba3, specular: 0x444444, shininess: 30, side: THREE.DoubleSide, name: 'Equipment' })); g.add(m);
   // a dark line along the top and the foot of every panel, so the shape reads from any side
   const lp = []; for (const q of it.lines || []) { lp.push(q[0], h + 0.01, q[1], q[2], h + 0.01, q[3], q[0], 0.02, q[1], q[2], 0.02, q[3]); }
   const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3)); g.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x2c3438 })));
   // its top: a see-through cover over its footprint box, so it shows as one machine from above
-  if (it.w > 0 && it.d > 0) { const top = new THREE.Mesh(new THREE.BoxGeometry(it.w, 0.02, it.d), new THREE.MeshLambertMaterial({ color: 0x7d8c95, transparent: true, opacity: 0.6, depthWrite: false })); top.position.set(0, h, 0); g.add(top); }
+  if (it.w > 0 && it.d > 0) { const top = new THREE.Mesh(new THREE.BoxGeometry(it.w, 0.02, it.d), new THREE.MeshLambertMaterial({ color: 0x7d8c95, transparent: true, opacity: 0.6, depthWrite: false, name: 'Equipment outline (helper)' })); top.position.set(0, h, 0); g.add(top); }
   g.position.set(it.x, 0, it.y); g.rotation.y = -(it.a || 0);
   return g;
 }
@@ -3194,15 +3194,18 @@ function buildScene(THREE, plan, A) {
     ao: new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(aoCanvas), transparent: true, opacity: 0.34, depthWrite: false, color: 0x1c2428 })
   };
   M.fx = M.white.clone();   // FFU and light housings stay white whatever colour the panels are
+  // names for every material (they become the material names in an exported model: Twinmotion, Blender…)
+  Object.entries({ white: 'Wall panel trim', edge: 'Wall panel edge', base: 'Rubber base', track: 'Ceiling track, aluminum', frame: 'Door frame', closer: 'Door hardware, satin', leaf: 'Door leaf', kick: 'Kick plate, stainless', lite: 'Door vision glass', glass: 'Glass', grille: 'Return grille', steel: 'Stainless steel', steelDoor: 'Door, stainless', ao: 'Contact shadow', fx: 'Fixture housing, white' }).forEach(([k, n]) => { if (M[k]) M[k].name = n; });
   // panel colour: the plan's colour on every panel part; a wall with its own colour gets its own set
   const PCM = {};
   function panelMats(key) {
     if (PCM[key]) return PCM[key];
-    if (key === 'white') return (PCM.white = { face: 0xffffff, emissive: 0x141515, edge: M.edge, trim: M.white });
+    if (key === 'white') return (PCM.white = { face: 0xffffff, emissive: 0x141515, edge: M.edge, trim: M.white, label: 'White' });
     const c = new THREE.Color(PANEL_COLORS[key][1]), dark = c.getHSL({}).l < 0.3;
     const edge = M.edge.clone(), trim = M.white.clone(); edge.color.copy(c).multiplyScalar(0.94); trim.color.copy(c); edge.emissive.set(0); trim.emissive.set(0);
     edge.shininess = trim.shininess = dark ? 30 : 18;
-    return (PCM[key] = { face: c.getHex(), emissive: 0x000000, edge, trim });
+    edge.name = 'Wall panel edge, ' + PANEL_COLORS[key][0].toLowerCase(); trim.name = 'Wall panel trim, ' + PANEL_COLORS[key][0].toLowerCase();
+    return (PCM[key] = { face: c.getHex(), emissive: 0x000000, edge, trim, label: PANEL_COLORS[key][0] });
   }
   { const pm = panelMats(panelColorOf(plan)); if (pm.edge !== M.edge) { M.edge = pm.edge; M.white = pm.trim; } }
   const wallById = new Map((plan.walls || []).map(w => [w.id, w]));
@@ -3254,7 +3257,7 @@ function buildScene(THREE, plan, A) {
     const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO;
     tex.repeat.set(p.len / 4, 1); tex.offset.set(((p.s0 % 4) + 4) % 4 / 4, 0);
     const WP = wallPM(p.id);
-    const face = new THREE.MeshPhongMaterial({ map: tex, color: p.sp ? 0xf6dc80 : WP.face, emissive: p.sp ? 0x000000 : WP.emissive, specular: 0x1c1c1c, shininess: 16 });
+    const face = new THREE.MeshPhongMaterial({ map: tex, color: p.sp ? 0xf6dc80 : WP.face, emissive: p.sp ? 0x000000 : WP.emissive, specular: 0x1c1c1c, shininess: 16 }); face.name = p.sp ? 'Wall panel, S.P. yellow' : 'Wall panel, ' + WP.label.toLowerCase();
     // the other face runs its texture the other way along the wall: offset it so its seams land on the same
     // 48″ module (from the wall's start) as this face's, where the panels really join
     const tex2 = tex.clone(); tex2.offset.set(((-(p.len + p.s0) % 4) + 4) % 4 / 4, 0); tex2.needsUpdate = true;
@@ -3293,7 +3296,7 @@ function buildScene(THREE, plan, A) {
   // transition panels over a lower building that carries on through a gap in this one's wall
   for (const q of A.transitions || []) {
     const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(q.len / 4, 1);
-    const PP = panelMats(panelColorOf(plan)), face = new THREE.MeshPhongMaterial({ map: tex, color: PP.face, emissive: PP.emissive, specular: 0x1c1c1c, shininess: 16 });
+    const PP = panelMats(panelColorOf(plan)), face = new THREE.MeshPhongMaterial({ map: tex, color: PP.face, emissive: PP.emissive, specular: 0x1c1c1c, shininess: 16, name: 'Wall panel, ' + PP.label.toLowerCase() });
     const m = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); outline(m); pick.push(m);
     // closure channel along the bottom edge, ceiling track for each side's ceiling
     segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
@@ -3303,7 +3306,7 @@ function buildScene(THREE, plan, A) {
   // along the bottom and ceiling track on both sides
   for (const q of headerSegs(plan, A)) {
     const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(q.len / 4, 1);
-    const PP = panelMats(panelColorOf(plan)), face = new THREE.MeshPhongMaterial({ map: tex, color: PP.face, emissive: PP.emissive, specular: 0x1c1c1c, shininess: 16 });
+    const PP = panelMats(panelColorOf(plan)), face = new THREE.MeshPhongMaterial({ map: tex, color: PP.face, emissive: PP.emissive, specular: 0x1c1c1c, shininess: 16, name: 'Wall panel, ' + PP.label.toLowerCase() });
     curRef = q.id ? { kind: 'header', id: q.id } : null;
     const m = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); outline(m); pick.push(m);
     segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
@@ -3316,7 +3319,7 @@ function buildScene(THREE, plan, A) {
     const w = Math.max(0.25, +gr.w || 20 / 12), h = Math.max(0.25, +gr.h || 20 / 12), sill = Math.max(0, gr.sill == null ? 0.5 : +gr.sill), a = gr.a || 0, c = Math.cos(a), sn = Math.sin(a), t = (gr.t || 0.25) + 0.03;
     curRef = gr.id ? { kind: 'grille', id: gr.id } : null;
     const m = segBox(gr.x - c * w / 2, gr.y - sn * w / 2, gr.x + c * w / 2, gr.y + sn * w / 2, sill, sill + h, t, [M.edge, M.edge, M.edge, M.edge, M.grille, M.grille]); outline(m); pick.push(m);
-    if (gr.damper) { const dm = M.damper || (M.damper = new THREE.MeshPhongMaterial({ color: 0x3c4348, specular: 0x666666, shininess: 40 })), e = 0.06; for (const [y0, y1, s0, s1] of [[sill - e, sill, -w / 2 - e, w / 2 + e], [sill + h, sill + h + e, -w / 2 - e, w / 2 + e], [sill, sill + h, -w / 2 - e, -w / 2], [sill, sill + h, w / 2, w / 2 + e]]) { const f = segBox(gr.x + c * s0, gr.y + sn * s0, gr.x + c * s1, gr.y + sn * s1, y0, y1, t + 0.01, dm); pick.push(f); } }
+    if (gr.damper) { const dm = M.damper || (M.damper = new THREE.MeshPhongMaterial({ color: 0x3c4348, specular: 0x666666, shininess: 40, name: 'Damper' })), e = 0.06; for (const [y0, y1, s0, s1] of [[sill - e, sill, -w / 2 - e, w / 2 + e], [sill + h, sill + h + e, -w / 2 - e, w / 2 + e], [sill, sill + h, -w / 2 - e, -w / 2], [sill, sill + h, w / 2, w / 2 + e]]) { const f = segBox(gr.x + c * s0, gr.y + sn * s0, gr.x + c * s1, gr.y + sn * s1, y0, y1, t + 0.01, dm); pick.push(f); } }
     curRef = null;
   }
   // end caps where a wall steps up or down
@@ -3328,7 +3331,7 @@ function buildScene(THREE, plan, A) {
   const CA = ceilAreas(plan, A);
   for (const q of areaBulkheads(plan, A, CA)) {
     const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(q.len / 4, 1);
-    const PP = panelMats(panelColorOf(plan)), face = new THREE.MeshPhongMaterial({ map: tex, color: PP.face, emissive: PP.emissive, specular: 0x1c1c1c, shininess: 16 });
+    const PP = panelMats(panelColorOf(plan)), face = new THREE.MeshPhongMaterial({ map: tex, color: PP.face, emissive: PP.emissive, specular: 0x1c1c1c, shininess: 16, name: 'Wall panel, ' + PP.label.toLowerCase() });
     const m = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); outline(m); pick.push(m);
     if (q.area.c.id) m.userData.ref = { kind: 'carea', id: q.area.c.id };
     segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
@@ -3577,7 +3580,7 @@ function buildScene(THREE, plan, A) {
   const FP = footprint(A), FPall = footprint(A, true) || FP;
   const fTex = new THREE.CanvasTexture(floorCanvas); fTex.wrapS = fTex.wrapT = THREE.RepeatWrapping; fTex.anisotropy = ANISO;
   // a building with no cleanroom walls has a plain concrete slab; cleanrooms get the gray epoxy floor
-  const fMat = new THREE.MeshPhongMaterial({ map: fTex, color: A.hardAny ? 0x9ea2a3 : 0xb7b4ad, specular: 0x101010, shininess: A.hardAny ? 22 : 8 });
+  const fMat = new THREE.MeshPhongMaterial({ map: fTex, color: A.hardAny ? 0x9ea2a3 : 0xb7b4ad, specular: 0x101010, shininess: A.hardAny ? 22 : 8, name: A.hardAny ? 'Floor, cleanroom coating' : 'Floor, concrete' });
   let floor;
   // houses: a floor finish for the whole house (plan.floorType), and per room where a room label sets one
   const fl = A.house ? floorMat(THREE, plan.floorType || 'lvp') : null;
@@ -3589,7 +3592,7 @@ function buildScene(THREE, plan, A) {
     if (!r.room.floor || r.room.floor === (plan.floorType || 'lvp')) continue;
     const F = floorMat(THREE, r.room.floor); root.add(new THREE.Mesh(rectsGeometry(THREE, plan.__floorHoles ? subtractRects(r.rects, plan.__floorHoles) : r.rects, 0.035, false, F.su, F.sv, 0, 0), F.mat));
   }
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(B.w + 140, B.d + 140), new THREE.MeshLambertMaterial({ color: 0xc4c8c2 }));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(B.w + 140, B.d + 140), new THREE.MeshLambertMaterial({ color: 0xc4c8c2, name: 'Ground' }));
   // a house on a stem wall, crawlspace or basement sits up off the ground: the ground drops below the floor and the
   // foundation shows between them
   const gDrop = A.frameAny ? ((FOUNDATIONS[foundationOf(plan).type] || {}).exp || 0) : 0;
@@ -3605,7 +3608,7 @@ function buildScene(THREE, plan, A) {
     cMap = new THREE.CanvasTexture(plain); cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.repeat.set(B.w / 2, B.d / 2); cMap.anisotropy = ANISO;
   }
   // both sides, so the grid shows from above in the Plenum view
-  const cMat = new THREE.MeshLambertMaterial({ map: cMap, color: 0xbfc2c2, emissive: 0x9a9c9c, emissiveMap: cMap });
+  const cMat = new THREE.MeshLambertMaterial({ map: cMap, color: 0xbfc2c2, emissive: 0x9a9c9c, emissiveMap: cMap, name: 'Ceiling tile' });
   let ceil;
   if (FP) {
     cMap.repeat.set(1, 1);
@@ -3632,7 +3635,7 @@ function buildScene(THREE, plan, A) {
       if (!ownGrid) { g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, 0, w, 4); g.fillRect(0, 0, 4, h); g.fillStyle = '#f1f3f4'; g.fillRect(0, 0, w, 2.5); g.fillRect(0, 0, 2.5, h); }
     }));
     const tt = new THREE.CanvasTexture(topCanvas); tt.wrapS = tt.wrapT = THREE.RepeatWrapping; tt.anisotropy = ANISO;
-    const topMat = new THREE.MeshLambertMaterial({ map: tt, color: 0xd8d8d8 });
+    const topMat = new THREE.MeshLambertMaterial({ map: tt, color: 0xd8d8d8, name: 'Ceiling tile, back' });
     const CR = ceilingRects(plan, FP, A);
     for (const gp of gridPieces(plan, CR, CG)) {
       const G = gp.G, gsw = G.swap && !ownGrid;
@@ -3664,7 +3667,7 @@ function buildScene(THREE, plan, A) {
       for (const sd of [1, -1]) { const a = [q[0] + nx * sd, y0, q[1] + nz * sd], b = [q[2] + nx * sd, y0, q[3] + nz * sd], c = [q[2] + nx * sd, y1, q[3] + nz * sd], d = [q[0] + nx * sd, y1, q[1] + nz * sd]; tp.push(...a, ...b, ...c, ...a, ...c, ...d); }
       const a = [q[0] + nx, y1, q[1] + nz], b = [q[2] + nx, y1, q[3] + nz], c = [q[2] - nx, y1, q[3] - nz], d = [q[0] - nx, y1, q[1] - nz]; tp.push(...a, ...b, ...c, ...a, ...c, ...d);
     }
-    if (tp.length) { const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3)); tg.computeVertexNormals(); ceiling.add(new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ color: 0xf4f6f7, emissive: 0x303234, side: THREE.DoubleSide }))); }
+    if (tp.length) { const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3)); tg.computeVertexNormals(); ceiling.add(new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ color: 0xf4f6f7, emissive: 0x303234, side: THREE.DoubleSide, name: 'Ceiling, solid' }))); }
   }
   // the roof (houses): gable, hip or flat, over the outside walls with an overhang
   const roof = new THREE.Group(); root.add(roof);
@@ -3677,7 +3680,7 @@ function buildScene(THREE, plan, A) {
     // steel roof deck: galvanized, ribbed every 6″
     const dc = cachedCanvas('deck', () => makeCanvas(64, 64, (g, w, h) => { g.fillStyle = '#a9afb3'; g.fillRect(0, 0, w, h); for (let x = 0; x < w; x += 16) { g.fillStyle = 'rgba(255,255,255,.28)'; g.fillRect(x, 0, 5, h); g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x + 9, 0, 3, h); } }));
     const dtx = new THREE.CanvasTexture(dc); dtx.wrapS = dtx.wrapT = THREE.RepeatWrapping; dtx.repeat.set(0.5, 0.5); dtx.anisotropy = ANISO;
-    const dm = new THREE.MeshPhongMaterial({ map: dtx, color: 0xd5dadd, specular: 0x555555, shininess: 40, side: THREE.DoubleSide });
+    const dm = new THREE.MeshPhongMaterial({ map: dtx, color: 0xd5dadd, specular: 0x555555, shininess: 40, side: THREE.DoubleSide, name: 'Lid deck, galvanized' });
     const sarea = (R) => { let a = 0; for (let i = 0; i < R.length; i++) { const [x1, y1] = R[i], [x2, y2] = R[(i + 1) % R.length]; a += x1 * y2 - x2 * y1; } return a / 2; };
     for (const d of DK) {
       const parts = deckParts(plan, A, d, WH);
@@ -3693,7 +3696,7 @@ function buildScene(THREE, plan, A) {
     for (const q of deckSteps(plan, A, WH)) {
       if (q.y1 - q.y0 < 0.05) continue;
       const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(q.len / 4, 1);
-      const PP = panelMats(panelColorOf(plan)), face = new THREE.MeshPhongMaterial({ map: tex, color: PP.face, emissive: PP.emissive, specular: 0x1c1c1c, shininess: 16 });
+      const PP = panelMats(panelColorOf(plan)), face = new THREE.MeshPhongMaterial({ map: tex, color: PP.face, emissive: PP.emissive, specular: 0x1c1c1c, shininess: 16, name: 'Wall panel, ' + PP.label.toLowerCase() });
       curRef = q.id ? { kind: 'lstep', id: q.id } : null;
       const m = localSegBox(lid, q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); if (curRef) m.userData.ref = curRef; outline(m); pick.push(m);
       // closure channel along the bottom, cap along the top
@@ -3762,7 +3765,7 @@ function buildScene(THREE, plan, A) {
   for (const b of plan.beams || []) {
     const q = beamSeat(plan, A, b), L = Math.hypot(q.x2 - q.x1, q.y2 - q.y1); if (L < 0.2) continue;
     const S = beamSize(b), d = S.d / 12, bf = S.bf / 12, tf = Math.max(0.025, S.tf / 12), tw = Math.max(0.02, S.tw / 12), y0 = q.bot;
-    const stl = new THREE.MeshPhongMaterial({ color: 0x7d868b, specular: 0x444444, shininess: 30 }), g = new THREE.Group();
+    const stl = new THREE.MeshPhongMaterial({ color: 0x7d868b, specular: 0x444444, shininess: 30, name: 'Steel beam' }), g = new THREE.Group();
     for (const y of [tf / 2, d - tf / 2]) { const f = new THREE.Mesh(new THREE.BoxGeometry(L, tf, bf), stl); f.position.y = y; g.add(f); }
     const wb = new THREE.Mesh(new THREE.BoxGeometry(L, d - 2 * tf, tw), stl); wb.position.y = d / 2; g.add(wb);
     g.position.set((q.x1 + q.x2) / 2, y0, (q.y1 + q.y2) / 2); g.rotation.y = -Math.atan2(q.y2 - q.y1, q.x2 - q.x1);
@@ -3779,7 +3782,7 @@ function buildScene(THREE, plan, A) {
       pos.push(...a, ...c, ...b, ...a, ...d, ...c);
     }
     const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    ceiling.add(new THREE.Mesh(gg, new THREE.MeshBasicMaterial({ color: 0xd0d6d9, side: THREE.DoubleSide })));
+    ceiling.add(new THREE.Mesh(gg, new THREE.MeshBasicMaterial({ color: 0xd0d6d9, side: THREE.DoubleSide, name: 'Ceiling grid, aluminum' })));
   }
   if (plan.ceilingImage && plan.ceilingImage.dataUrl) {
     const I = plan.ceilingImage, q = (I.rot || 0) % 180 ? [I.h, I.w] : [I.w, I.h];
@@ -3789,7 +3792,7 @@ function buildScene(THREE, plan, A) {
     im.rotation.order = 'YXZ'; im.rotation.x = -Math.PI / 2; im.rotation.y = -(I.rot || 0) * Math.PI / 180;
     im.position.set(I.x, H - 0.006, I.y); ceiling.add(im);
   }
-  const led = new THREE.MeshBasicMaterial({ color: 0xffffff }), ffu = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(ffuCanvas) });
+  const led = new THREE.MeshBasicMaterial({ color: 0xffffff, name: 'Light lens (emissive)' }), ffu = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(ffuCanvas), name: 'FFU perforated face' });
   const fg = new THREE.BoxGeometry(1.9, 0.08, 3.9), fgs = {};
   const fixtures = new THREE.Group(); root.add(fixtures);
   const housingMat = new THREE.MeshPhongMaterial({ color: 0xc9ced1, specular: 0x666666, shininess: 40 });
@@ -3814,8 +3817,9 @@ function buildScene(THREE, plan, A) {
   const FM = plan.ffuModel && Array.isArray(plan.ffuModel.sizes) && plan.ffuModel.sizes.length ? plan.ffuModel : null;
   const ffuParts = {};
   const fin = FM ? ({ sst: M.steel, alum: new THREE.MeshPhongMaterial({ color: 0xc8ced2, specular: 0x8a8f93, shininess: 60 }) }[FM.finish] || new THREE.MeshPhongMaterial({ color: 0xf1f3f3, emissive: 0x101111, specular: 0x222222, shininess: 18 })) : null;
-  const dark = FM ? new THREE.MeshPhongMaterial({ color: 0x3a3f42, specular: 0x222222, shininess: 10 }) : null;
-  const galv = FM ? new THREE.MeshPhongMaterial({ color: 0xaeb4b8, specular: 0x777777, shininess: 45 }) : null;
+  const dark = FM ? new THREE.MeshPhongMaterial({ color: 0x3a3f42, specular: 0x222222, shininess: 10, name: 'FFU fan and electrical box' }) : null;
+  if (fin && !fin.name) fin.name = 'FFU housing';
+  const galv = FM ? new THREE.MeshPhongMaterial({ color: 0xaeb4b8, specular: 0x777777, shininess: 45, name: 'FFU galvanized steel' }) : null;
   function ffuUnit(sz) {
     const key = [sz.w, sz.d, sz.h, sz.overall, sz.hw, sz.hd, sz.ebox].map(v => v.toFixed(3)).join(',');
     if (ffuParts[key]) return ffuParts[key].clone();
@@ -3845,7 +3849,7 @@ function buildScene(THREE, plan, A) {
   // lines come with the tiles
   const FXL = ceilingFixtures(plan, A);
   try {
-    const teeMat = new THREE.MeshBasicMaterial({ color: 0xd0d6d9, side: THREE.DoubleSide }), tw = 15 / 16 / 12;
+    const teeMat = new THREE.MeshBasicMaterial({ color: 0xd0d6d9, side: THREE.DoubleSide, name: 'Ceiling grid, aluminum' }), tw = 15 / 16 / 12;
     for (const [x1, z1, x2, z2] of fixtureFrames(plan, A).lines) {
       const L = Math.hypot(x2 - x1, z2 - z1), hc = ceilingAt(CA, H, (x1 + x2) / 2, (z1 + z2) / 2), t = new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(x2 - x1) > 0.01 ? L + tw : tw, Math.abs(z2 - z1) > 0.01 ? L + tw : tw), teeMat);
       t.rotation.x = Math.PI / 2; t.position.set((x1 + x2) / 2, hc - 0.007, (z1 + z2) / 2); fixtures.add(t);
@@ -5106,6 +5110,7 @@ function mount(container, plan, opts) {
     st.pitch = 0;  // level flight: W straight ahead, Space / C up and down
     game = global.P3Game.start({
       THREE, scene, camera, drone, st, renderer, canvas, container, keys, touchy, bounds: A.bounds,
+      inside: (() => { const fp = footprint(A, true), top = Math.max(A.WH || 0, A.H || 0, ...(A.pieces || []).map(p => p.h || 0)) + 0.5; return (x, y, z) => !!fp && fp.has(x, z) && y < top; })(),
       isLocked, lock: () => { if (lockable && !isLocked() && !touchy) toggleLook(); }, unlock: () => { if (isLocked()) document.exitPointerLock(); },
       setBoost: (v) => { flyBoost = v; }, isPilot: () => pilot,
       ended: () => { game = null; flyBoost = 1; applyFlyCam(); }
@@ -5326,6 +5331,69 @@ function mount(container, plan, opts) {
     flyTo: (c) => flyTo(c), setMeasure: (on) => setMeasure(!!on), takeSnapshot: () => takeSnapshot(),
     // a picture of the view as it is now (JPEG data URL), or null when the 3D view isn't on screen
     snapshot: (q) => { if (canvas.width < 64 || canvas.height < 64) return null; const dv = drone.visible; drone.visible = false; try { renderer.render(scene, camera); return canvas.toDataURL('image/jpeg', q || 0.9); } catch (e) { return null; } finally { drone.visible = dv; } },
+    // a model for Twinmotion (or Enscape, Lumion, Blender, SketchUp): real size (metres), every material named
+    // for what it is with physically based starting values (painted steel, aluminum, stainless, glass, epoxy),
+    // parts grouped by kind; outlines, airflow arrows and helper shadows left out
+    exportTwinmotion: () => new Promise((resolve, reject) => {
+      if (!THREE.GLTFExporter) return reject(new Error('GLTF exporter missing'));
+      const fresh = buildStack(THREE, plan), drop = [];
+      fresh.root.traverse(o => {
+        const mn = o.material && !Array.isArray(o.material) ? o.material.name : '';
+        if (o.isLine || o.isLineSegments || o.isSprite || o.isPoints || (o.userData && o.userData.airflow) || mn === 'Contact shadow' || mn === 'Ground' || /\(helper\)/.test(mn)) drop.push(o);
+      });
+      drop.forEach(o => { if (o.parent) o.parent.remove(o); });
+      const conv = new Map(), byName = new Map();
+      const pbr = (m) => {
+        if (!m) return m; if (conv.has(m)) return conv.get(m);
+        const name = m.name || 'Material', n = name.toLowerCase();
+        // one material per name, so each finish is one drag-and-drop in Twinmotion
+        if (byName.has(name)) { conv.set(m, byName.get(name)); return byName.get(name); }
+        const plainPanel = /^wall panel, /.test(n);   // the joints are real geometry below, not painted on
+        const o = new THREE.MeshStandardMaterial({ name, color: m.color ? m.color.clone() : new THREE.Color(0xffffff), map: plainPanel ? null : (m.map || null), side: m.side, transparent: !!m.transparent, opacity: m.opacity == null ? 1 : m.opacity });
+        byName.set(name, o);
+        let r = 0.6, mt = 0;
+        if (/glass/.test(n)) { r = 0.05; o.transparent = true; o.opacity = 0.25; }
+        else if (/stainless|aluminum|galvanized|hardware|grid|damper|ffu galvanized/.test(n)) { r = 0.35; mt = 0.85; }
+        else if (/steel beam/.test(n)) { r = 0.55; mt = 0.6; }
+        else if (/wall panel|door leaf|door frame|fixture housing|ffu housing/.test(n)) r = 0.42;
+        else if (/floor/.test(n)) r = 0.28;
+        else if (/ceiling tile|ceiling, solid/.test(n)) r = 0.9;
+        else if (/rubber/.test(n)) r = 0.85;
+        if (/light lens/.test(n)) { o.emissive = new THREE.Color(0xffffff); o.emissiveIntensity = 1; r = 0.3; }
+        o.roughness = r; o.metalness = mt;
+        conv.set(m, o); return o;
+      };
+      const CATS = [['Walls', /wall panel|rubber base|ceiling track|return grille|damper/i], ['Doors and glass', /door|kick plate|glass/i], ['Fan filter units', /ffu/i], ['Lights', /light|fixture housing/i], ['Ceiling', /ceiling/i], ['Floor', /floor/i], ['Lid and structure', /lid|steel beam|stainless/i]];
+      const out = new THREE.Group(); out.name = (plan.name || 'Cleanroom') + ' (Coll Plan3D)';
+      const groups = {}, cat = (name) => { let k = 'Other'; for (const [label, re] of CATS) if (re.test(name)) { k = label; break; } if (!groups[k]) { const g = new THREE.Group(); g.name = k; out.add(g); groups[k] = g; } return groups[k]; };
+      fresh.root.updateMatrixWorld(true);
+      const meshes = []; fresh.root.traverse(o => { if (o.isMesh && o.visible !== false) meshes.push(o); });
+      const count = {};
+      for (const m of meshes) {
+        m.material = Array.isArray(m.material) ? m.material.map(pbr) : pbr(m.material);
+        const nm = (Array.isArray(m.material) ? (m.material.find(x => /wall panel,/i.test(x.name)) || m.material[0]) : m.material).name;
+        const g = cat(nm); count[nm] = (count[nm] || 0) + 1; m.name = nm + ' ' + count[nm];
+        g.attach(m);
+      }
+      // panel joints: a thin strip on both faces of every hardwall run at each 48″ module, where the panels meet
+      try {
+        const jm = new THREE.MeshStandardMaterial({ name: 'Wall panel joint', color: 0xb9c0c4, roughness: 0.5, metalness: 0.2 }), jw = 0.75 / 12, js = new THREE.BoxGeometry(1, 1, 1);
+        const jg = new THREE.Group(); jg.name = 'Wall panel joints'; (groups.Walls || out).add(jg);
+        for (const p of A.pieces || []) {
+          if (!p.hard) continue;
+          const L = p.len || Math.hypot(p.x2 - p.x1, p.z2 - p.z1); if (L < 0.5) continue;
+          const ux = (p.x2 - p.x1) / L, uz = (p.z2 - p.z1) / L, ang = Math.atan2(-uz, ux), s0 = p.s0 || 0;
+          for (let mm = Math.floor(s0 / 4 + 1e-6) * 4 + 4; mm < s0 + L - 0.2; mm += 4) {
+            if (mm - s0 < 0.2) continue;
+            const k = mm - s0, x = p.x1 + ux * k, z = p.z1 + uz * k, j = new THREE.Mesh(js, jm);
+            j.scale.set(jw, Math.max(0.1, p.h - 0.333), (p.t || 0.25) + 0.012); j.position.set(x, 0.333 + (p.h - 0.333) / 2, z); j.rotation.y = ang; j.name = 'Wall panel joint';
+            jg.add(j);
+          }
+        }
+      } catch (e) { /* joints are a nicety */ }
+      const top = new THREE.Group(); top.add(out); out.scale.setScalar(0.3048);  // feet → metres
+      new THREE.GLTFExporter().parse(top, (res) => resolve(res), { binary: true, onlyVisible: true, maxTextureSize: 2048 });
+    }),
     exportGLB: () => new Promise((resolve, reject) => {
       if (!THREE.GLTFExporter) return reject(new Error('GLTF exporter missing'));
       const fresh = buildStack(THREE, plan);
