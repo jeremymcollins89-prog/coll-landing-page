@@ -468,9 +468,12 @@ function partsList(plan) {
   if (devs.length || nFfu || nLed) {
     const recs = devs.filter(d => d.type === 'outlet' || d.type === 'gfci').length;
     const ded = devs.filter(d => d.type === 'dedicated' || d.type === 'r208' || d.type === 'jbox').length;
-    const cFfu = nFfu ? Math.ceil(nFfu / 6) : 0, cLed = nLed ? Math.ceil(nLed / 24) : 0, cRec = recs ? Math.ceil(recs / 8) : 0;
-    if (cFfu) add('Electrical', 'Branch circuits for FFUs, 20A (est., 6 FFUs per circuit)', '', cFfu, 'ea', 95);
-    if (cLed) add('Electrical', 'Branch circuits for lights, 20A (est., 24 fixtures per circuit)', '', cLed, 'ea', 96);
+    let cFfu = nFfu ? Math.ceil(nFfu / 6) : 0, cLed = nLed ? Math.ceil(nLed / 24) : 0, cRec = recs ? Math.ceil(recs / 8) : 0;
+    // the panel schedule's own count when it can be worked out (by load, room by room)
+    try { if (global.Plan3DLoads) { const SC = global.Plan3DLoads.schedule(plan).circuits; cFfu = SC.filter(c => c.kind === 'ffu').length; cLed = SC.filter(c => c.kind === 'light').length; } } catch (e) { /* keep the estimate */ }
+    if (cFfu) add('Electrical', 'Branch circuits for FFUs, 20A (by load, room by room)', '', cFfu, 'ea', 95);
+    if (cLed) add('Electrical', 'Branch circuits for lights, 20A (by load, room by room)', '', cLed, 'ea', 96);
+    { const zn = (plan.rooms || []).length && global.Plan3DLoads ? (() => { try { return global.Plan3DLoads.schedule(plan).zones.length; } catch (e) { return 0; } })() : 0; if (zn) add('Electrical', '0-10V dimmer (one per room)', '', zn, 'ea', 96.5); }
     if (cRec) add('Electrical', 'Branch circuits for receptacles, 20A (est., 8 per circuit)', '', cRec, 'ea', 97);
     if (ded) add('Electrical', 'Dedicated circuits (equipment)', '', ded, 'ea', 98);
   }
