@@ -100,5 +100,28 @@ function planSpec(model, fitKey, finishKey) {
   return { id: model.id, name: model.name, maker: model.maker, model: model.model, fit: fit.key, fitLabel: fit.label, finish: finish.key, finishLabel: finish.label, sizes };
 }
 
-global.Plan3DEquipment = { BUILT_IN, readRevitFamily, planSpec, lenFt };
+/* ---- Ceiling lights ----
+   A light model is { id, name, maker, model, kind: 'light', style, hh, finishes, source }: style is how the
+   fixture shows from the room ('flat' lay-in panel, 'troffer' sealed troffer with a recessed lens and a white
+   door frame, 'rss' room-side serviceable troffer with a deeper frame); hh is the housing height above the grid.
+   Each light takes one ceiling cell, the size placed (2×4, 2×2 …). The chosen model is copied into the plan
+   (plan.lightModel). */
+const FIN = [{ key: 'white', label: 'White' }, { key: 'sst', label: 'Stainless steel' }];
+const LIGHTS = [
+  { id: 'led-flat', name: 'LED flat panel, lay-in, gel-seal', maker: '', model: 'LED flat panel', kind: 'light', style: 'flat', hh: 2.5 * IN, finishes: FIN, source: 'Built in' },
+  { id: 'led-troffer-sealed', name: 'Sealed cleanroom LED troffer, recessed lens', maker: '', model: 'Sealed LED troffer', kind: 'light', style: 'troffer', hh: 5 * IN, finishes: FIN, source: 'Built in' },
+  { id: 'led-troffer-rss', name: 'Room-side serviceable cleanroom LED troffer', maker: '', model: 'RSS LED troffer', kind: 'light', style: 'rss', hh: 6 * IN, finishes: FIN, source: 'Built in' }
+];
+/* A light fixture Revit family: its sizes give the housing height; it shows as a lay-in panel. */
+function readLightFamily(xml, fileName) {
+  const m = readRevitFamily(xml, fileName), sizes = [].concat(...m.fits.map(f => f.sizes));
+  const hh = Math.max(1.5 * IN, Math.min(1, Math.max(...sizes.map(z => z.overall || z.h || 0.3))));
+  return { id: m.id.replace(/^rfa-/, 'rfa-light-'), name: m.name.replace(/^light fixture\s*/i, ''), maker: m.maker, model: m.model, kind: 'light', style: 'flat', hh, finishes: m.finishes.length ? m.finishes : FIN, source: m.source };
+}
+function lightSpec(model, finishKey) {
+  const fin = (model.finishes || FIN).find(f => f.key === finishKey) || (model.finishes || FIN)[0];
+  return { id: model.id, name: model.name, maker: model.maker || '', model: model.model || model.name, style: model.style || 'flat', hh: model.hh || 3 * IN, finish: fin.key, finishLabel: fin.label };
+}
+
+global.Plan3DEquipment = { BUILT_IN, LIGHTS, readRevitFamily, readLightFamily, planSpec, lightSpec, lenFt };
 })(window);

@@ -698,7 +698,10 @@ function toIfc(plan, opts) {
       else {
         // LED flat panel: white lens a hair below the grid inside a thin white frame, housing above
         const e = 0.06, inner = [[f.x - hw + e, f.y - hh + e], [f.x + hw - e, f.y - hh + e], [f.x + hw - e, f.y + hh - e], [f.x - hw + e, f.y + hh - e]];
-        put('IFCLIGHTFIXTURE', 'LED light', 'LED flat panel', shape([solid(pts, H - 0.03, H, S.frame), solid(pts, H + 0.052, H + 0.33, S.housing), solid(inner, H - 0.04, H - 0.03, S.led)]), ',.DIRECTIONSOURCE.', S.led);
+        const LM = plan.lightModel, band = LM ? (LM.style === 'rss' ? 2.5 / 12 : LM.style === 'troffer' ? 1.75 / 12 : 0.06) : 0.06, dep = LM ? (LM.style === 'rss' ? 0.09 : LM.style === 'troffer' ? 0.06 : 0.035) : 0.03;
+        const inr = [[f.x - hw + band, f.y - hh + band], [f.x + hw - band, f.y - hh + band], [f.x + hw - band, f.y + hh - band], [f.x - hw + band, f.y + hh - band]], fst = LM && LM.finish === 'sst' ? S.steel || S.frame : S.frame;
+        const lensZ = LM && LM.style !== 'flat' ? [H - 0.005, H + 0.005] : [H - 0.04, H - 0.03];
+        put('IFCLIGHTFIXTURE', LM ? (LM.maker ? LM.maker + ' ' : '') + LM.name : 'LED light', LM ? (LM.model || LM.name) + ', ' + (LM.finishLabel || '') : 'LED flat panel', shape([solid(pts, H - dep, H, fst), solid(pts, H + 0.052, H + (LM ? Math.max(0.1, LM.hh) : 0.33), S.housing), solid(inr, lensZ[0], lensZ[1], S.led)]), ',.DIRECTIONSOURCE.', S.led);
       }
     }
   }

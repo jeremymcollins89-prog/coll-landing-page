@@ -3693,9 +3693,20 @@ function buildScene(THREE, plan, A) {
     if (f.id) m.userData.ref = { kind: 'fixture', id: f.id };
     if (f.type !== 'ffu') m.userData.light = lightKey(f);
     fixtures.add(m);
+    // a light model picked in the Plan panel (plan.lightModel): its door frame round the lens, in its finish;
+    // a troffer's lens sits up inside the frame
+    const LMo = f.type !== 'ffu' && plan.lightModel ? plan.lightModel : null;
+    if (LMo) {
+      const lw = Math.max(0.3, (nw || 2) - 0.1), ld = Math.max(0.3, (nh || 4) - 0.1), fm = LMo.finish === 'sst' ? M.steel : M.white;
+      const band = LMo.style === 'rss' ? 2.5 / 12 : LMo.style === 'troffer' ? 1.75 / 12 : 0.75 / 12, dep = LMo.style === 'rss' ? 0.09 : LMo.style === 'troffer' ? 0.06 : 0.035;
+      const ring = [[0, -ld / 2 + band / 2, lw, band], [0, ld / 2 - band / 2, lw, band], [-lw / 2 + band / 2, 0, band, ld - 2 * band], [lw / 2 - band / 2, 0, band, ld - 2 * band]];
+      for (const [ox, oz, bw, bd] of ring) { const r = new THREE.Mesh(new THREE.BoxGeometry(bw, dep, bd), fm); r.position.set(f.x + ox, fh - dep / 2 - 0.004, f.y + oz); if (f.id) r.userData.ref = m.userData.ref; outline(r); fixtures.add(r); }
+      m.scale.set((lw - 2 * band) / lw, 1, (ld - 2 * band) / ld);
+      if (LMo.style !== 'flat') m.position.y = fh + 0.02;
+    }
     // its housing above the grid (seen in the Plenum view)
-    const fw = Math.max(0.3, (nw || 2) - 0.08), fd = Math.max(0.3, (nh || 4) - 0.08), hh = f.type === 'ffu' ? 0.9 : 0.28;
-    const hs = new THREE.Mesh(new THREE.BoxGeometry(fw, hh, fd), f.type === 'ffu' ? M.white : housingMat); hs.position.set(f.x, fh + 0.005 + hh / 2, f.y); outline(hs); fixtures.add(hs);
+    const fw = Math.max(0.3, (nw || 2) - 0.08), fd = Math.max(0.3, (nh || 4) - 0.08), hh = f.type === 'ffu' ? 0.9 : LMo ? Math.max(0.1, LMo.hh) : 0.28;
+    const hs = new THREE.Mesh(new THREE.BoxGeometry(fw, hh, fd), f.type === 'ffu' ? M.white : LMo && LMo.finish === 'sst' ? M.steel : housingMat); hs.position.set(f.x, fh + 0.005 + hh / 2, f.y); outline(hs); fixtures.add(hs);
   }
   // the extras never stop the model from showing
   try { root.add(airflowArrows(THREE, plan, A)); } catch (e) { console.error(e); }
