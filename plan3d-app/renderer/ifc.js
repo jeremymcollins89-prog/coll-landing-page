@@ -249,6 +249,13 @@ function toIfc(plan, opts) {
     styleMats.push([name, st]);
     return st;
   };
+  // the panel colour: the plan's on every panel, a wall's own where it has one
+  const PCOL = {}, panelStyle = (key) => {
+    if (key === 'white') return S.panelWhite || S.white;
+    if (PCOL[key]) return PCOL[key];
+    const [name, hex] = V.PANEL_COLORS[key], n = parseInt(hex.slice(1), 16);
+    return (PCOL[key] = style('Coll panel, ' + name.toLowerCase(), ((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 0, 0.1, 18));
+  };
   const S = {
     white: style('Coll panel, white', 0.97, 0.97, 0.97, 0, 0.08, 16),
     sp: style('Coll S.P. panel, yellow', 0.96, 0.86, 0.5, 0, 0.08, 16),
@@ -284,6 +291,7 @@ function toIfc(plan, opts) {
     lvp: style('Coll floor, luxury vinyl plank', 0.69, 0.53, 0.37, 0, 0.08, 16), hardwood: style('Coll floor, hardwood', 0.48, 0.31, 0.18, 0, 0.1, 20),
     carpet: style('Coll floor, carpet', 0.73, 0.68, 0.6, 0, 0, 4, 'MATT'), tile: style('Coll floor, ceramic tile', 0.85, 0.84, 0.81, 0, 0.2, 30)
   };
+  { S.panelWhite = S.white; const pk = V.panelColorOf(plan); if (pk !== 'white') S.white = panelStyle(pk); }  // every panel part in the plan's colour
   S.steel_frame = S.wood;
   const KIND_NAME = (k) => (V.WALL_KINDS && V.WALL_KINDS[k] ? V.WALL_KINDS[k].label : 'Building wall');
   S.ffuFace = S.face;
@@ -398,13 +406,14 @@ function toIfc(plan, opts) {
       put('IFCWALL', KIND_NAME(p.kind), 'House wall', shape(parts), ',.STANDARD.', S.wood); continue;
     }
     if (!p.hard) { put('IFCWALL', KIND_NAME(p.kind), 'Building wall', shape([seg(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, S[p.kind] || S.concrete)]), ',.STANDARD.', S[p.kind] || S.concrete); continue; }
-    const ux = (p.x2 - p.x1) / (p.len || 1), uz = (p.z2 - p.z1) / (p.len || 1), parts = [seg(p.x1, p.z1, p.x2, p.z2, 0, p.h || WH, p.t, p.sp ? S.sp : S.white), ...trim(p.x1, p.z1, p.x2, p.z2, p.t, true)];
+    const WS = panelStyle(V.panelColorOf(plan, (plan.walls || []).find(w => w.id === p.id)));
+    const ux = (p.x2 - p.x1) / (p.len || 1), uz = (p.z2 - p.z1) / (p.len || 1), parts = [seg(p.x1, p.z1, p.x2, p.z2, 0, p.h || WH, p.t, p.sp ? S.sp : WS), ...trim(p.x1, p.z1, p.x2, p.z2, p.t, true)];
     for (let m = Math.floor(p.s0 / 4 + 1e-6) * 4 + 4; m < p.s0 + p.len - 0.2; m += 4) {
       if (m - p.s0 < 0.2) continue;
       const k = m - p.s0, a = [p.x1 + ux * (k - 0.125), p.z1 + uz * (k - 0.125)], b = [p.x1 + ux * (k + 0.125), p.z1 + uz * (k + 0.125)];
       parts.push(seg(a[0], a[1], b[0], b[1], 0.333, (p.h || WH) > H ? (p.h || WH) : (p.h || WH) - 0.17, p.t + 0.012, S.batten));
     }
-    put('IFCWALL', p.sp ? 'S.P. panel wall' : 'Modular wall panel', 'Coll hardwall cleanroom wall', shape(parts), ',.STANDARD.', p.sp ? S.sp : S.white);
+    put('IFCWALL', p.sp ? 'S.P. panel wall' : 'Modular wall panel', 'Coll hardwall cleanroom wall', shape(parts), ',.STANDARD.', p.sp ? S.sp : WS);
   }
   // transition panels: the step above a lower building that carries on through a gap in this wall
   for (const q of A.transitions || []) {

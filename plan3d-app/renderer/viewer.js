@@ -351,6 +351,9 @@ function levelPlans(plan) {
   return out;
 }
 /* House finishes: picked in the Plan panel (plan.finish), shown in 3D and named on the parts list. */
+/* Cleanroom wall panel colours (plan.panelColor for the whole cleanroom, wall.color for one wall) */
+const PANEL_COLORS = { white: ['White', '#f7f8f8'], ltgray: ['Light gray', '#d6dadd'], gray: ['Gray', '#8f979c'], black: ['Black', '#25282c'], pink: ['Pink', '#f3a3c4'], red: ['Red', '#d33f3f'], orange: ['Orange', '#f28a2a'], yellow: ['Yellow', '#f4cf3f'], green: ['Green', '#4caa5a'], blue: ['Blue', '#3b7bd0'], ltblue: ['Light blue', '#9ccaf0'], purple: ['Purple', '#8858c4'] };
+const panelColorOf = (plan, w) => { const k = (w && w.color && PANEL_COLORS[w.color]) ? w.color : (plan && PANEL_COLORS[plan.panelColor]) ? plan.panelColor : 'white'; return k; };
 const FINISH = {
   siding: { lap: 'Lap siding', board: 'Board and batten', shake: 'Cedar shake', brick: 'Brick', stone: 'Stone veneer', stucco: 'Stucco' },
   sidingColor: { white: ['White', '#eceeec'], gray: ['Gray', '#b9bfc0'], greige: ['Greige', '#cbbfae'], sage: ['Sage', '#9fae98'], navy: ['Navy', '#3f4e66'], charcoal: ['Charcoal', '#4a4f55'], red: ['Barn red', '#8a3b32'], natural: ['Natural (brick / stone / cedar)', ''] },
@@ -3190,6 +3193,20 @@ function buildScene(THREE, plan, A) {
     line: new THREE.LineBasicMaterial({ color: 0x8a9398, transparent: true, opacity: 0.45 }),
     ao: new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(aoCanvas), transparent: true, opacity: 0.34, depthWrite: false, color: 0x1c2428 })
   };
+  M.fx = M.white.clone();   // FFU and light housings stay white whatever colour the panels are
+  // panel colour: the plan's colour on every panel part; a wall with its own colour gets its own set
+  const PCM = {};
+  function panelMats(key) {
+    if (PCM[key]) return PCM[key];
+    if (key === 'white') return (PCM.white = { face: 0xffffff, emissive: 0x141515, edge: M.edge, trim: M.white });
+    const c = new THREE.Color(PANEL_COLORS[key][1]), dark = c.getHSL({}).l < 0.3;
+    const edge = M.edge.clone(), trim = M.white.clone(); edge.color.copy(c).multiplyScalar(0.94); trim.color.copy(c); edge.emissive.set(0); trim.emissive.set(0);
+    edge.shininess = trim.shininess = dark ? 30 : 18;
+    return (PCM[key] = { face: c.getHex(), emissive: 0x000000, edge, trim });
+  }
+  { const pm = panelMats(panelColorOf(plan)); if (pm.edge !== M.edge) { M.edge = pm.edge; M.white = pm.trim; } }
+  const wallById = new Map((plan.walls || []).map(w => [w.id, w]));
+  const wallPM = (id) => panelMats(panelColorOf(plan, wallById.get(id)));
   const aoGeo = new THREE.PlaneGeometry(1, 1);
   const outline = (m) => m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 25), M.line));
   function shadow(cx, cz, len, wid, ang, spread) {
@@ -3236,12 +3253,13 @@ function buildScene(THREE, plan, A) {
     }
     const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO;
     tex.repeat.set(p.len / 4, 1); tex.offset.set(((p.s0 % 4) + 4) % 4 / 4, 0);
-    const face = new THREE.MeshPhongMaterial({ map: tex, color: p.sp ? 0xf6dc80 : 0xffffff, emissive: p.sp ? 0x000000 : 0x141515, specular: 0x1c1c1c, shininess: 16 });
+    const WP = wallPM(p.id);
+    const face = new THREE.MeshPhongMaterial({ map: tex, color: p.sp ? 0xf6dc80 : WP.face, emissive: p.sp ? 0x000000 : WP.emissive, specular: 0x1c1c1c, shininess: 16 });
     // the other face runs its texture the other way along the wall: offset it so its seams land on the same
     // 48″ module (from the wall's start) as this face's, where the panels really join
     const tex2 = tex.clone(); tex2.offset.set(((-(p.len + p.s0) % 4) + 4) % 4 / 4, 0); tex2.needsUpdate = true;
     const face2 = face.clone(); face2.map = tex2;
-    const m = segBox(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, [M.edge, M.edge, M.edge, M.edge, face, face2]);
+    const m = segBox(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, [WP.edge, WP.edge, WP.edge, WP.edge, face, face2]);
     outline(m); pick.push(m);
     segBox(p.x1, p.z1, p.x2, p.z2, 0, 0.333, p.t + 0.022, M.base);
     // the ceiling track: on the side with the ceiling (the room side), not across the outside face, which is one
@@ -3253,9 +3271,9 @@ function buildScene(THREE, plan, A) {
     }
     // panels come up to 12′ tall in one piece; a taller wall is a 12′ panel with a second one stacked on it,
     // joined with a horizontal H-channel
-    { let y = 0; const st = panelStack(p.h, wallCeil(plan, A, p)); for (let k = 0; k + 1 < st.length; k++) { y += st[k]; segBox(p.x1, p.z1, p.x2, p.z2, y - 0.06, y + 0.06, p.t + 0.02, M.white); } }
+    { let y = 0; const st = panelStack(p.h, wallCeil(plan, A, p)); for (let k = 0; k + 1 < st.length; k++) { y += st[k]; segBox(p.x1, p.z1, p.x2, p.z2, y - 0.06, y + 0.06, p.t + 0.02, WP.trim); } }
     // a section that stops short of (or runs past) the top of the cleanroom gets a cap along its top
-    if (Math.abs(p.h - WH) > 0.02) segBox(p.x1, p.z1, p.x2, p.z2, p.h - 0.03, p.h + 0.04, p.t + 0.03, M.white);
+    if (Math.abs(p.h - WH) > 0.02) segBox(p.x1, p.z1, p.x2, p.z2, p.h - 0.03, p.h + 0.04, p.t + 0.03, WP.trim);
     shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
   }
   curRef = null;
@@ -3275,7 +3293,7 @@ function buildScene(THREE, plan, A) {
   // transition panels over a lower building that carries on through a gap in this one's wall
   for (const q of A.transitions || []) {
     const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(q.len / 4, 1);
-    const face = new THREE.MeshPhongMaterial({ map: tex, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 });
+    const PP = panelMats(panelColorOf(plan)), face = new THREE.MeshPhongMaterial({ map: tex, color: PP.face, emissive: PP.emissive, specular: 0x1c1c1c, shininess: 16 });
     const m = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); outline(m); pick.push(m);
     // closure channel along the bottom edge, ceiling track for each side's ceiling
     segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
@@ -3285,7 +3303,7 @@ function buildScene(THREE, plan, A) {
   // along the bottom and ceiling track on both sides
   for (const q of headerSegs(plan, A)) {
     const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(q.len / 4, 1);
-    const face = new THREE.MeshPhongMaterial({ map: tex, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 });
+    const PP = panelMats(panelColorOf(plan)), face = new THREE.MeshPhongMaterial({ map: tex, color: PP.face, emissive: PP.emissive, specular: 0x1c1c1c, shininess: 16 });
     curRef = q.id ? { kind: 'header', id: q.id } : null;
     const m = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); outline(m); pick.push(m);
     segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
@@ -3310,7 +3328,7 @@ function buildScene(THREE, plan, A) {
   const CA = ceilAreas(plan, A);
   for (const q of areaBulkheads(plan, A, CA)) {
     const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(q.len / 4, 1);
-    const face = new THREE.MeshPhongMaterial({ map: tex, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 });
+    const PP = panelMats(panelColorOf(plan)), face = new THREE.MeshPhongMaterial({ map: tex, color: PP.face, emissive: PP.emissive, specular: 0x1c1c1c, shininess: 16 });
     const m = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); outline(m); pick.push(m);
     if (q.area.c.id) m.userData.ref = { kind: 'carea', id: q.area.c.id };
     segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
@@ -3358,13 +3376,13 @@ function buildScene(THREE, plan, A) {
     const o = i.o, t = i.t, nx = -i.uz, nz = i.ux;
     curRef = o.id ? { kind: 'opening', id: o.id } : null;
     const head = Math.min(i.hard ? H : (i.wallH || H), o.head || 7);
-    const top = i.wallH || H, hm = i.hard ? M.white : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head).mats : shellMat(i.kind, i.len, top - head, 0);
+    const IP = i.hard ? wallPM(i.host && i.host.id) : null, top = i.wallH || H, hm = i.hard ? IP.trim : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head).mats : shellMat(i.kind, i.len, top - head, 0);
     if (top - head > 0.01) { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); if (i.hard && H - head > 0.2) { if (top > H + 0.05) trackFaces(o.x1, o.y1, o.x2, o.y2, t, H); else segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); } }
     const ax = o.x1, az = o.y1, bx = o.x2, bz = o.y2;
     const along = (s) => [ax + i.ux * s, az + i.uz * s];
     if (o.type === 'pass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill)), D = Math.max(t + 0.1, o.depth || 2), ph = head - sill;
-      if (sill > 0.01) { const lw = segBox(ax, az, bx, bz, 0, sill, t, i.hard ? M.white : shellMat(i.kind, i.len, sill, 0)); outline(lw); pick.push(lw); if (i.hard) segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base); }
+      if (sill > 0.01) { const lw = segBox(ax, az, bx, bz, 0, sill, t, i.hard ? IP.trim : shellMat(i.kind, i.len, sill, 0)); outline(lw); pick.push(lw); if (i.hard) segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base); }
       const body = segBox(ax, az, bx, bz, sill, head, D, M.steel); outline(body); pick.push(body);
       const [f1x, f1z] = along(-0.1), [f2x, f2z] = along(i.len + 0.1);
       segBox(f1x, f1z, f2x, f2z, sill - 0.1, sill, t + 0.05, M.steel); segBox(f1x, f1z, f2x, f2z, head, head + 0.1, t + 0.05, M.steel);
@@ -3382,7 +3400,7 @@ function buildScene(THREE, plan, A) {
     } else if (o.type === 'window') {
       // house window: wall below, white vinyl frame with a meeting rail, glass, interior stool and casing
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill));
-      if (sill > 0.01) { const sw = segBox(ax, az, bx, bz, 0, sill, t, i.frame ? frameMats(ax, az, bx, bz, t, sill).mats : i.hard ? M.white : shellMat(i.kind, i.len, sill, 0)); outline(sw); pick.push(sw); }
+      if (sill > 0.01) { const sw = segBox(ax, az, bx, bz, 0, sill, t, i.frame ? frameMats(ax, az, bx, bz, t, sill).mats : i.hard ? IP.trim : shellMat(i.kind, i.len, sill, 0)); outline(sw); pick.push(sw); }
       const fw = 0.17, [p1x, p1z] = along(fw), [p2x, p2z] = along(i.len - fw);
       segBox(ax, az, bx, bz, sill, sill + fw, t * 0.7, M.frame); segBox(ax, az, bx, bz, head - fw, head, t * 0.7, M.frame);
       segBox(ax, az, p1x, p1z, sill, head, t * 0.7, M.frame); segBox(p2x, p2z, bx, bz, sill, head, t * 0.7, M.frame);
@@ -3398,7 +3416,7 @@ function buildScene(THREE, plan, A) {
       }
     } else if (o.type === 'glass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill));
-      if (sill > 0.01) { const s = segBox(ax, az, bx, bz, 0, sill, t, i.hard ? M.white : shellMat(i.kind, i.len, sill, 0)); outline(s); pick.push(s); if (i.hard) segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base); }
+      if (sill > 0.01) { const s = segBox(ax, az, bx, bz, 0, sill, t, i.hard ? IP.trim : shellMat(i.kind, i.len, sill, 0)); outline(s); pick.push(s); if (i.hard) segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base); }
       segBox(ax, az, bx, bz, sill, head, 0.05, M.glass);
       segBox(ax, az, bx, bz, sill, sill + 0.12, t + 0.06, M.frame);
       segBox(ax, az, bx, bz, head - 0.12, head, t + 0.06, M.frame);
@@ -3424,7 +3442,7 @@ function buildScene(THREE, plan, A) {
       if (S.mull > 0) { const [m1x, m1z] = along(i.len / 2 - S.mull / 2), [m2x, m2z] = along(i.len / 2 + S.mull / 2); const ms = segBox(m1x, m1z, m2x, m2z, 0, S.leafH, t + 0.02, fr); outline(ms); pick.push(ms); }
       const hb = segBox(ax, az, bx, bz, S.leafH, hd, t + 0.06, fr); outline(hb);
       // the header panel over the door, up to the head the opening was given (the wall above that is drawn already)
-      if (head > hd + 0.01) { const hp = segBox(ax, az, bx, bz, hd, head, t, i.hard ? M.white : hm); outline(hp); pick.push(hp); segBox(ax, az, bx, bz, hd, hd + 0.25, t + 0.012, M.white); }
+      if (head > hd + 0.01) { const hp = segBox(ax, az, bx, bz, hd, head, t, i.hard ? IP.trim : hm); outline(hp); pick.push(hp); segBox(ax, az, bx, bz, hd, hd + 0.25, t + 0.012, M.white); }
       for (const l of i.leaves) {
         const baseAngle = Math.atan2(-(l.z2 - l.z1), l.x2 - l.x1), ldx = l.x2 - l.x1, ldz = l.z2 - l.z1;
         const swingDir = (l.tx != null ? (ldz * l.tx - ldx * l.tz) : l.leafSw) >= 0 ? 1 : -1;
@@ -3675,7 +3693,7 @@ function buildScene(THREE, plan, A) {
     for (const q of deckSteps(plan, A, WH)) {
       if (q.y1 - q.y0 < 0.05) continue;
       const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(q.len / 4, 1);
-      const face = new THREE.MeshPhongMaterial({ map: tex, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 });
+      const PP = panelMats(panelColorOf(plan)), face = new THREE.MeshPhongMaterial({ map: tex, color: PP.face, emissive: PP.emissive, specular: 0x1c1c1c, shininess: 16 });
       curRef = q.id ? { kind: 'lstep', id: q.id } : null;
       const m = localSegBox(lid, q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); if (curRef) m.userData.ref = curRef; outline(m); pick.push(m);
       // closure channel along the bottom, cap along the top
@@ -3854,7 +3872,7 @@ function buildScene(THREE, plan, A) {
     // a troffer's lens sits up inside the frame
     const LMo = f.type !== 'ffu' && plan.lightModel ? plan.lightModel : null;
     if (LMo) {
-      const lw = Math.max(0.3, (nw || 2) - 0.1), ld = Math.max(0.3, (nh || 4) - 0.1), fm = LMo.finish === 'sst' ? M.steel : M.white;
+      const lw = Math.max(0.3, (nw || 2) - 0.1), ld = Math.max(0.3, (nh || 4) - 0.1), fm = LMo.finish === 'sst' ? M.steel : M.fx;
       const band = LMo.style === 'rss' ? 2.5 / 12 : LMo.style === 'troffer' ? 1.75 / 12 : LMo.style === 'blp' ? 0.5 / 12 : 0.75 / 12, dep = LMo.style === 'rss' ? 0.09 : LMo.style === 'troffer' ? 0.06 : 0.035;
       const ring = [[0, -ld / 2 + band / 2, lw, band], [0, ld / 2 - band / 2, lw, band], [-lw / 2 + band / 2, 0, band, ld - 2 * band], [lw / 2 - band / 2, 0, band, ld - 2 * band]];
       for (const [ox, oz, bw, bd] of ring) { const r = new THREE.Mesh(new THREE.BoxGeometry(bw, dep, bd), fm); r.position.set(f.x + ox, fh - dep / 2 - 0.004, f.y + oz); if (f.id) r.userData.ref = m.userData.ref; outline(r); fixtures.add(r); }
@@ -3863,7 +3881,7 @@ function buildScene(THREE, plan, A) {
     }
     // its housing above the grid (seen in the Plenum view)
     const fw = Math.max(0.3, (nw || 2) - 0.08), fd = Math.max(0.3, (nh || 4) - 0.08), hh = f.type === 'ffu' ? 0.9 : LMo ? Math.max(0.1, LMo.hh) : 0.28;
-    const hs = new THREE.Mesh(new THREE.BoxGeometry(fw, hh, fd), f.type === 'ffu' ? M.white : LMo && LMo.finish === 'sst' ? M.steel : housingMat); hs.position.set(f.x, fh + 0.005 + hh / 2, f.y); outline(hs); fixtures.add(hs);
+    const hs = new THREE.Mesh(new THREE.BoxGeometry(fw, hh, fd), f.type === 'ffu' ? M.fx : LMo && LMo.finish === 'sst' ? M.steel : housingMat); hs.position.set(f.x, fh + 0.005 + hh / 2, f.y); outline(hs); fixtures.add(hs);
     // a back-lit panel's driver / sensor base on its back, along one short end
     if (LMo && LMo.box) { const B = LMo.box, alongX = (nw || 2) >= (nh || 4), bx = new THREE.Mesh(new THREE.BoxGeometry(alongX ? B.w : B.l, B.h, alongX ? B.l : B.w), housingMat); bx.position.set(f.x + (alongX ? fw / 2 - B.w / 2 - 0.08 : 0), fh + 0.005 + hh + B.h / 2, f.y + (alongX ? 0 : fd / 2 - B.w / 2 - 0.08)); outline(bx); fixtures.add(bx); }
   }
@@ -4608,7 +4626,7 @@ function mount(container, plan, opts) {
   tourBtn.addEventListener('click', (e) => { e.stopPropagation(); if (tour) stopTour(); else startTour(); });
 
   // ---- Fly: a free camera that goes anywhere (through walls, into the plenum, outside and over the top).
-  // W A S D move the way you look (looking up and pressing W climbs), Space / R up, C / F down, Q / E turn,
+  // W / S forward and back, A / D slide (always level), arrow keys aim the camera, Space / R up, C / F down,
   // Shift faster; drag (or Mouse look) to look; on a phone the joystick flies and ▲ ▼ go up and down.
   const udEl = $('.p3v-ud'); let flyUD = 0;
   udEl.querySelectorAll('button').forEach(b => { const v = +b.dataset.ud; b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); flyUD = v; }); for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { flyUD = 0; }); });
@@ -4686,7 +4704,7 @@ function mount(container, plan, opts) {
     { const cp = Math.cos(st.pitch); st.x -= Math.sin(st.yaw) * cp * 3.2; st.z -= Math.cos(st.yaw) * cp * 3.2; st.y = Math.max(1.5, st.y - 0.95 + Math.sin(st.pitch) * 3.2); }
     controls.enabled = false; labelsEl.hidden = true; mode = 'fly';
     applyVis('fly'); setModeUI(); applyFlyCam();
-    hint.textContent = touchy ? 'Drone: joystick flies the way it looks · ▲ ▼ up and down · drag to look' : 'Drone: W / ↑ forward · S / ↓ back · ← → or Q / E turn · A / D slide · Space / R up · C / F down · Shift faster · V drone camera · M measure · P snapshot';
+    hint.textContent = touchy ? 'Drone: joystick flies the way it looks · ▲ ▼ up and down · drag to look' : 'Drone: W forward · S back · A / D slide · arrows aim the camera · Space / R up · C / F down · Shift faster · V drone camera · M measure · P snapshot';
     hint.classList.remove('gone'); hintGone = false; setTimeout(dismissHint, 6000);
   }
   // fly to a saved pose (a snapshot's camera)
@@ -4697,10 +4715,13 @@ function mount(container, plan, opts) {
     startTween({ pos, look, fov: c.fov || fov }, 900, () => { st.x = c.x; st.y = c.y; st.z = c.z; st.yaw = c.yaw || 0; st.pitch = c.pitch || 0; pilot = true; applyFlyCam(); });
     mode = 'fly'; setModeUI();
   }
+  // ↑ ↓ tilt the view up and down (the camera only: walking and flying stay level)
+  function lookKeys(dt) { let v = 0; if (keys.has('arrowup')) v += 1; if (keys.has('arrowdown')) v -= 1; if (v) st.pitch = Math.max(-1.25, Math.min(1.25, st.pitch + v * 1.1 * dt)); }
   function flyStep(dt) {
     let f = 0, s2 = 0, u = 0, turn = 0;
-    if (keys.has('w') || keys.has('arrowup')) f += 1; if (keys.has('s') || keys.has('arrowdown')) f -= 1;
+    if (keys.has('w')) f += 1; if (keys.has('s')) f -= 1;
     if (keys.has('d')) s2 += 1; if (keys.has('a')) s2 -= 1;
+    lookKeys(dt);
     if (keys.has(' ') || keys.has('r')) u += 1; if (keys.has('c') || keys.has('f')) u -= 1;
     if (keys.has('arrowleft') || keys.has('q')) turn += 1; if (keys.has('arrowright') || keys.has('e')) turn -= 1;
     if (turn) { turnHeld = Math.min(1, turnHeld + dt * 2.5); st.yaw += turn * (1.4 + 1.4 * turnHeld) * dt; } else turnHeld = 0;
@@ -4878,7 +4899,7 @@ function mount(container, plan, opts) {
   let hintGone = false; function dismissHint() { if (hintGone) return; hintGone = true; hint.classList.add('gone'); }
   const coarse = global.matchMedia && global.matchMedia('(pointer: coarse)').matches;
   if (coarse && lookBtn) lookBtn.hidden = true;
-  hint.textContent = coarse ? 'Drag to look · Tap the floor to walk · Tap doors to open' : 'Drag to look · L for mouse look · WASD to move, Shift to run · Q/E or ←/→ to turn · Click doors to open, switches for lights';
+  hint.textContent = coarse ? 'Drag to look · Tap the floor to walk · Tap doors to open' : 'W A S D to walk, Shift to run · arrow keys aim the camera (← → turn, ↑ ↓ look up and down) · Click doors to open, switches for lights';
   setTimeout(dismissHint, 7000);
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('pointerdown', e => {
@@ -5243,9 +5264,10 @@ function mount(container, plan, opts) {
       else if (tween) runTween(now);
       else if (mode === 'walk') {
         let f = 0, s = 0, turn = 0;
-        if (keys.has('w') || keys.has('arrowup')) f += 1; if (keys.has('s') || keys.has('arrowdown')) f -= 1;
+        if (keys.has('w')) f += 1; if (keys.has('s')) f -= 1;
         if (keys.has('d')) s += 1; if (keys.has('a')) s -= 1;
         if (keys.has('arrowleft') || keys.has('q')) turn += 1; if (keys.has('arrowright') || keys.has('e')) turn -= 1;
+        lookKeys(dt);
         // turning starts gentle for small corrections and speeds up while held
         if (turn) { turnHeld = Math.min(1, turnHeld + dt * 2.5); st.yaw += turn * (1.6 + 1.6 * turnHeld) * dt; } else turnHeld = 0;
         // the joystick: forward and back walk, side to side turns (so one thumb can walk a room)
@@ -5314,5 +5336,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
