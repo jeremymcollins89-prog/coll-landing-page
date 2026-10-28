@@ -4174,7 +4174,7 @@ function mount(container, plan, opts) {
       <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button>
       <button class="p3v-panel p3v-look p3v-lidb" aria-pressed="false" hidden title="Show the lid (the top of the cleanroom, or a roof deck you placed) in every view, or take it off again">Lid</button>
       <button class="p3v-panel p3v-look p3v-air" aria-pressed="true" hidden title="Show or hide the airflow: air down out of the FFUs, into the return grilles, and along the floor out through the doors and out of the building">Airflow</button>
-      <button class="p3v-panel p3v-look p3v-meas" aria-pressed="false" title="Measure: click two points (corners snap) for the distance between them; point at anything to see its size. M turns it on and off, Esc drops a half-done measurement">📏 Measure <kbd>M</kbd></button><button class="p3v-panel p3v-look p3v-mclear" hidden title="Take all the measurements off">✕ Clear</button>
+      <button class="p3v-panel p3v-look p3v-meas" aria-pressed="false" title="Measure: click two points for the distance between them. It snaps to corners, edges, the top of a filter, the ceiling grid and tiles, floors and walls (green dot = snapped). Shift: straight up/down from the first point; Ctrl: level with it. M turns it on and off, Esc drops a half-done measurement">📏 Measure <kbd>M</kbd></button><button class="p3v-panel p3v-look p3v-mclear" hidden title="Take all the measurements off">✕ Clear</button>
       <button class="p3v-panel p3v-look p3v-snap" title="Save a picture of this view with a note (and your measurements), to come back to later (P)">📷 Snapshot <kbd>P</kbd></button>
       <button class="p3v-panel p3v-look p3v-tour" hidden title="A guided walk along the gowning route, room by room">▶ Gowning tour</button>
       <button class="p3v-panel p3v-look p3v-srb" hidden title="A photo-real, path-traced picture of this view (light bounces, real glass and steel, soft shadows). Save it as an image.">✨ Super render</button><button class="p3v-panel p3v-cbtn" aria-pressed="false" hidden title="Click anything in the model to leave a comment on it">💬 Comment</button></div>
@@ -4715,7 +4715,7 @@ function mount(container, plan, opts) {
   }
   function dotAt(p) { const m = new THREE.Mesh(mDotG, mDot); m.position.copy(p); m.renderOrder = 21; mGroup.add(m); return m; }
   function lineOf(a, b) { const g = new THREE.BufferGeometry().setFromPoints([a, b]), l = new THREE.Line(g, mLine); l.renderOrder = 21; mGroup.add(l); return l; }
-  function setMeasure(on) { measureOn = on; measBtn.setAttribute('aria-pressed', String(on)); if (!on) { cancelPending(); mHover.hidden = true; } canvas.style.cursor = on ? 'crosshair' : ''; if (on) dismissHint(); }
+  function setMeasure(on) { measureOn = on; measBtn.setAttribute('aria-pressed', String(on)); if (!on) { cancelPending(); mHover.hidden = true; mSnapDot.visible = false; } canvas.style.cursor = on ? 'crosshair' : ''; if (on) dismissHint(); }
   function cancelPending() { if (!mPending) return; mGroup.remove(mPending.dot); if (mRubber) { mGroup.remove(mRubber.line); mRubber.el.remove(); mRubber = null; } mPending = null; }
   function refreshClear() { mClearBtn.hidden = !meas.length; }
   measBtn.addEventListener('click', (e) => { e.stopPropagation(); setMeasure(!measureOn); });
@@ -4727,38 +4727,87 @@ function mount(container, plan, opts) {
     const seen = (o) => { for (let q = o; q; q = q.parent) if (!q.visible || (q.userData && q.userData.airflow)) return false; return true; };
     return mRay.intersectObject(built.root, true).find(h => h.object.isMesh && !h.object.isSprite && seen(h.object)) || null;
   }
-  // the hit point, pulled onto the nearest corner of the face it's on when that's within 3″
-  function snapped(hit) {
-    const p = hit.point.clone(), pos = hit.object.geometry && hit.object.geometry.attributes.position;
-    if (hit.face && pos) { let best = null, bd = 0.25; for (const i of [hit.face.a, hit.face.b, hit.face.c]) { const v = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(hit.object.matrixWorld), d = v.distanceTo(p); if (d < bd) { bd = d; best = v; } } if (best) return best; }
-    return p;
-  }
   // what's under the pointer: the whole piece it belongs to (everything sharing its plan reference)
   function pieceOf(o) {
     let top = null, ref = null;
     for (let q = o; q && q !== built.root; q = q.parent) { const r2 = q.userData && q.userData.ref; if (r2 && (!ref || (r2.kind === ref.kind && r2.id === ref.id))) { ref = r2; top = q; } else if (ref) break; }
     return top ? { obj: top, ref } : { obj: o, ref: null };
   }
-  const KIND_NAMES = { wall: 'Wall', fixture: 'Ceiling fixture', item: 'Item', device: 'Device', chase: 'Air chase', opening: 'Door / opening', beam: 'Beam', column: 'Column', grille: 'Grille', deck: 'Lid piece' };
-  function measureHover(cx, cy) {
-    const now = performance.now(); if (now - mLast < 60) return; mLast = now;
-    const hit = surfaceAt(cx, cy), r = canvas.getBoundingClientRect();
-    if (!hit) { mHover.hidden = true; return; }
-    const p = snapped(hit);
-    if (mPending) {
-      if (!mRubber) { mRubber = { line: lineOf(mPending.p, p), el: document.createElement('div') }; mRubber.el.className = 'p3v-mlab'; mRubber.el.style.opacity = '0.8'; mLabels.appendChild(mRubber.el); }
-      mRubber.line.geometry.setFromPoints([mPending.p, p]); mRubber.b = p; mRubber.el.innerHTML = mLabelHTML(mPending.p, p);
-      mHover.hidden = true; return;
+  const KIND_NAMES = { wall: 'Wall', fixture: 'Ceiling fixture', item: 'Item', device: 'Device', chase: 'Air chase', opening: 'Door', beam: 'Beam', column: 'Column', grille: 'Grille', deck: 'Lid' };
+  // a name for what was hit: the piece's kind (an FFU, a light), else by where it is and which way it faces
+  function surfaceName(hit, pc) {
+    const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : new THREE.Vector3(0, 1, 0), y = hit.point.y, H0 = (A && A.H) || 9;
+    if (pc.ref) {
+      if (pc.ref.kind === 'fixture') { const f = ((plan && plan.fixtures) || []).find(q => q.id === pc.ref.id); return f && f.type === 'ffu' ? 'FFU' : 'Light'; }
+      if (pc.ref.kind === 'wall') return Math.abs(n.y) > 0.7 ? 'Top of wall' : 'Wall face';
+      return KIND_NAMES[pc.ref.kind] || 'Item';
     }
-    const pc = pieceOf(hit.object), box = new THREE.Box3().setFromObject(pc.obj), sz = box.getSize(new THREE.Vector3());
-    const w = Math.max(sz.x, sz.z), d = Math.min(sz.x, sz.z), name = (pc.obj.userData && pc.obj.userData.label) || (pc.ref && KIND_NAMES[pc.ref.kind]) || 'Size';
-    mHover.innerHTML = `<b>${name}</b><br>${fIn(w)} × ${fIn(d)} × ${fIn(sz.y)} high<br><span style="opacity:.7">top at ${fIn(box.max.y)} · click two points to measure</span>`;
-    mHover.style.left = (cx - r.left) + 'px'; mHover.style.top = (cy - r.top) + 'px'; mHover.hidden = false;
+    if (n.y > 0.7 && y < 0.15) return 'Floor';
+    if (n.y < -0.7 && Math.abs(y - H0) < 0.3) return 'Ceiling tile';
+    if (Math.abs(y - H0) < 0.25) return 'Ceiling grid';
+    if (n.y > 0.7 && y > H0 + 0.3) return 'Top';
+    return Math.abs(n.y) < 0.3 ? 'Face' : n.y > 0 ? 'Top surface' : 'Underside';
   }
-  function measureClick(cx, cy) {
-    const hit = surfaceAt(cx, cy); if (!hit) return;
-    const p = snapped(hit);
+  const scr = new THREE.Vector3();
+  function toScreen(p) { scr.copy(p).project(camera); const r = canvas.getBoundingClientRect(); return scr.z > 1 ? null : { x: r.left + (scr.x * 0.5 + 0.5) * r.width, y: r.top + (-scr.y * 0.5 + 0.5) * r.height }; }
+  // Smart snap: the point under the pointer, pulled to the nearest corner or edge of what it's on, or to the
+  // top (highest point) or bottom of the piece, when that's within a few pixels on screen; floors snap to
+  // the floor level exactly. Shift keeps the second point straight above or below the first, Ctrl / Alt keeps
+  // it level with the first.
+  function smartSnap(cx, cy, ev) {
+    const hit = surfaceAt(cx, cy); if (!hit) return null;
+    const pc = pieceOf(hit.object), name = surfaceName(hit, pc);
+    let best = { p: hit.point.clone(), label: name, d: 0, pri: 0 };
+    if (name === 'Floor') best.p.y = 0;
+    const consider = (p, label, pri, px) => { const s2 = toScreen(p); if (!s2) return; const d = Math.hypot(s2.x - cx, s2.y - cy); if (d <= px && (pri > best.pri || (pri === best.pri && d < best.d))) best = { p: p.clone(), label, d, pri }; };
+    // the hit mesh's own box: its 8 corners and the nearest point on each of its 12 edges
+    const g = hit.object.geometry; if (g) { if (!g.boundingBox) g.computeBoundingBox(); const bb = g.boundingBox, M2 = hit.object.matrixWorld;
+      const C = []; for (const x of [bb.min.x, bb.max.x]) for (const y of [bb.min.y, bb.max.y]) for (const z of [bb.min.z, bb.max.z]) C.push(new THREE.Vector3(x, y, z).applyMatrix4(M2));
+      C.forEach(c => consider(c, 'Corner · ' + name, 3, 16));
+      const E = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]], seg = new THREE.Line3(), q = new THREE.Vector3();
+      for (const [a, b] of E) { seg.set(C[a], C[b]); seg.closestPointToPoint(hit.point, true, q); consider(q, 'Edge · ' + name, 2, 10); }
+    }
+    // the whole piece: its highest point and its bottom, right above / below where you're pointing (and its
+    // top centre), so "top of the FFU" is one click
+    if (pc.obj) { const box = new THREE.Box3().setFromObject(pc.obj);
+      if (isFinite(box.max.y)) {
+        const cxz = (y) => new THREE.Vector3(Math.max(box.min.x, Math.min(box.max.x, hit.point.x)), y, Math.max(box.min.z, Math.min(box.max.z, hit.point.z)));
+        const ctr = box.getCenter(new THREE.Vector3());
+        consider(cxz(box.max.y), 'Highest point · ' + name, 2, 26); consider(new THREE.Vector3(ctr.x, box.max.y, ctr.z), 'Top centre · ' + name, 3, 22);
+        if (box.min.y > 0.05) consider(cxz(box.min.y), 'Bottom · ' + name, 2, 22);
+      }
+    }
+    // axis locks for the second point
+    if (mPending && ev) {
+      const a = mPending.p;
+      if (ev.shiftKey) { best.p.set(a.x, best.p.y, a.z); best.label = '↕ Straight up / down'; }
+      else if (ev.ctrlKey || ev.altKey) { best.p.y = a.y; best.label = '↔ Level'; }
+    }
+    return best;
+  }
+  const mSnapDot = new THREE.Mesh(new THREE.SphereGeometry(0.06, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.95 })); mSnapDot.renderOrder = 22; mSnapDot.visible = false; mGroup.add(mSnapDot);
+  function measureHover(cx, cy, ev) {
+    const now = performance.now(); if (now - mLast < 50) return; mLast = now;
+    const r = canvas.getBoundingClientRect(), sn = smartSnap(cx, cy, ev);
+    if (!sn) { mHover.hidden = true; mSnapDot.visible = false; return; }
+    mSnapDot.position.copy(sn.p); mSnapDot.visible = true; mSnapDot.material.color.set(sn.pri >= 2 ? 0x39ff88 : 0xffffff);
+    let html = `<b>${sn.label}</b>`;
+    if (mPending) {
+      if (!mRubber) { mRubber = { line: lineOf(mPending.p, sn.p), el: document.createElement('div') }; mRubber.el.className = 'p3v-mlab'; mRubber.el.style.opacity = '0.85'; mLabels.appendChild(mRubber.el); }
+      mRubber.line.geometry.setFromPoints([mPending.p, sn.p]); mRubber.b = sn.p; mRubber.el.innerHTML = mLabelHTML(mPending.p, sn.p);
+      html += `<br><span style="opacity:.75">click to finish · Shift straight up/down · Ctrl level · Esc cancel</span>`;
+    } else {
+      const hit = surfaceAt(cx, cy), pc = hit ? pieceOf(hit.object) : null;
+      if (pc && pc.obj) { const box = new THREE.Box3().setFromObject(pc.obj), sz = box.getSize(new THREE.Vector3()); html += `<br>${fIn(Math.max(sz.x, sz.z))} × ${fIn(Math.min(sz.x, sz.z))} × ${fIn(sz.y)} high · top at ${fIn(Math.max(0, box.max.y))}`; }
+      html += `<br><span style="opacity:.75">height here ${fIn(Math.max(0, sn.p.y))} · click to start measuring</span>`;
+    }
+    mHover.innerHTML = html; mHover.style.left = (cx - r.left) + 'px'; mHover.style.top = (cy - r.top) + 'px'; mHover.hidden = false;
+  }
+  function measureClick(cx, cy, ev) {
+    const sn = smartSnap(cx, cy, ev); if (!sn) return;
+    const p = sn.p;
     if (!mPending) { mPending = { p, dot: dotAt(p) }; return; }
+    if (p.distanceTo(mPending.p) < 0.01) return;
     const a = mPending.p, el = document.createElement('div'); el.className = 'p3v-mlab'; el.innerHTML = mLabelHTML(a, p); mLabels.appendChild(el);
     meas.push({ a, b: p, line: lineOf(a, p), da: mPending.dot, db: dotAt(p), el });
     if (mRubber) { mGroup.remove(mRubber.line); mRubber.el.remove(); mRubber = null; }
@@ -4850,7 +4899,7 @@ function mount(container, plan, opts) {
       else if (pts.size === 2 && pinch) { const [a, b] = [...pts.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); fov = Math.max(35, Math.min(85, pinch.fov * pinch.d / d)); camera.fov = fov; camera.updateProjectionMatrix(); }
       ring.visible = false; return;
     }
-    if (measureOn && !e.buttons && !tween) { measureHover(e.clientX, e.clientY); ring.visible = false; return; }
+    if (measureOn && !e.buttons && !tween) { measureHover(e.clientX, e.clientY, e); ring.visible = false; return; }
     if (e.pointerType === 'mouse' && !e.buttons && !tween && mode !== 'fly') {
       const p = pick(e.clientX, e.clientY);
       if (p) { ring.position.set(p.x, 0.03, p.z); ring.visible = true; } else ring.visible = false;
@@ -4865,7 +4914,7 @@ function mount(container, plan, opts) {
     if (isLocked()) { const r = canvas.getBoundingClientRect(); e = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; }
 
     if (commentMode) { placeComment(e.clientX, e.clientY); return; }
-    if (measureOn) { measureClick(e.clientX, e.clientY); return; }
+    if (measureOn) { measureClick(e.clientX, e.clientY, e); return; }
     if (checkSurpriseClick(e.clientX, e.clientY)) return;
     if (checkSwitchClick(e.clientX, e.clientY)) return;
     if (checkDoorClick(e.clientX, e.clientY)) return;
