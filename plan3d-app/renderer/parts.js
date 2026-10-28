@@ -333,6 +333,9 @@ function partsList(plan) {
     else if (o.type === 'overhead') add('Doors & glass', 'Overhead door, sectional steel (with tracks, opener)', ftin(W) + ' × ' + ftin(o.head || 12), 1, 'ea', 35);
   }
 
+  // differential pressure gauges: one per room held at a pressure, reading it against outside the cleanroom
+  { const pr = (plan.rooms || []).filter(r => r && r.pressure != null && r.pressure !== '' && +r.pressure !== 0);
+    if (pr.length) { const mx = Math.max(...pr.map(r => Math.abs(+r.pressure))) / 249.0889; add('Air chases', 'Differential pressure gauge (Magnehelic-type), wall mount, with tubing', '0–' + (mx <= 0.2 ? '0.25' : mx <= 0.4 ? '0.5' : '1.0') + '″ w.c.', pr.length, 'ea', 43); } }
   // --- Air chases
   for (const b of A.boxes) {
     const w = b.x1 - b.x0, d = b.z1 - b.z0;

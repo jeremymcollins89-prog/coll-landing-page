@@ -694,7 +694,9 @@ function renderProps(opt) {
     if ($('#pRGen')) $('#pRGen').onchange = e => ed.edit(() => { if (e.target.value) o.ceil = e.target.value; else delete o.ceil; });
     if ($('#pRIso')) $('#pRIso').onchange = e => { ed.edit(() => { if (e.target.value) o.iso = +e.target.value; else delete o.iso; }); renderProps(); };
     const numIn = (id, key, lo, hi) => { const el = $('#' + id); if (!el) return; el.onchange = () => { const raw = el.value.trim(); if (!raw) { ed.edit(() => { delete o[key]; }); renderProps(); return; } const v = parseFloat(raw.replace(/[^\d.+-]/g, '')); if (isFinite(v)) { ed.edit(() => { o[key] = Math.max(lo, Math.min(hi, v)); }); renderProps(); } }; };
-    numIn('pRPa', 'pressure', -200, 200); numIn('pRAch', 'ach', 0, 1000);
+    numIn('pRAch', 'ach', 0, 1000);
+    // pressure in Pa, or in inches of water as a gauge reads it (0.05″, .05 in, 0.05 wc)
+    { const el = $('#pRPa'); if (el) el.onchange = () => { const raw = el.value.trim(); if (!raw) { ed.edit(() => { delete o.pressure; }); renderProps(); return; } let v = parseFloat(raw.replace(/[^\d.+-]/g, '')); if (!isFinite(v)) return; if (/(″|"|in\b|inch|w\.?c)/i.test(raw)) v = Math.round(v / Plan3DViewer.PA_TO_INWC * 10) / 10; ed.edit(() => { o.pressure = Math.max(-200, Math.min(200, v)); }); renderProps(); }; }
     $('#pDel').onclick = () => ed.deleteSel();
     if (opt && opt.focusName) { nm.focus(); nm.select(); }
     return;
@@ -833,11 +835,13 @@ function renderProps(opt) {
 }
 
 /* ---------- Cleanroom check (ISO class, air changes, filter coverage, pressure) ---------- */
+// Pa → inches of water column, the way a pressure gauge reads (+0.050″ w.c.)
+const inWC = (pa) => (pa > 0 ? '+' : pa < 0 ? '−' : '') + (Math.abs(pa) * Plan3DViewer.PA_TO_INWC).toFixed(3) + '″ w.c.';
 function roomCheckHtml(P, o) {
   const C = (() => { try { return Plan3DViewer.cleanroomCheck(P); } catch (e) { return null; } })(), q = C && C.rooms.find(x => x.room === o);
   let h = `<div class="grp"><h3>Cleanroom class and pressure</h3>
     ${fld('ISO class', `<select id="pRIso"><option value="">Not set</option>${[5, 6, 7, 8, 9].map(k => `<option value="${k}" ${+o.iso === k ? 'selected' : ''}>ISO ${k}${k === 5 ? ' (Class 100)' : k === 6 ? ' (Class 1,000)' : k === 7 ? ' (Class 10,000)' : k === 8 ? ' (Class 100,000)' : ''}</option>`).join('')}</select>`)}
-    ${fld('Pressure', txt('pRPa', o.pressure != null && o.pressure !== '' ? String(o.pressure) : '', 'Pa, e.g. 15'))}
+    ${fld('Pressure', txt('pRPa', o.pressure != null && o.pressure !== '' ? String(o.pressure) : '', 'Pa, or inches: 12.5 or 0.05″'))}
     ${fld('Air changes target', txt('pRAch', o.ach > 0 ? String(o.ach) : '', q && q.iso ? 'ISO ' + q.iso + ' typical: ' + C.targets[q.iso].ach + '/hr' : 'per hour'))}`;
   if (q) {
     h += `<div class="stats">
@@ -845,7 +849,11 @@ function roomCheckHtml(P, o) {
       <span>Volume</span><span>${Math.round(q.volume).toLocaleString()} cu ft <small>(${esc(fmt(q.H))} ceiling)</small></span>
       <span>FFUs over it</span><span>${q.ffus} · ${Math.round(q.cfm).toLocaleString()} CFM</span>
       <span>Air changes</span><span${q.achTarget ? ` style="color:${q.ach >= q.achTarget ? '#6fd08c' : '#ff7a6b'}"` : ''}>${Math.round(q.ach)} /hr${q.achTarget ? ' <small>(needs ' + q.achTarget + ')</small>' : ''}</span>
-      <span>Filter coverage</span><span${q.covTarget ? ` style="color:${q.coverage >= q.covTarget ? '#6fd08c' : '#ff7a6b'}"` : ''}>${Math.round(q.coverage)}%${q.covTarget ? ' <small>(needs ' + q.covTarget + '%)</small>' : ''}</span></div>`;
+      <span>Filter coverage</span><span${q.covTarget ? ` style="color:${q.coverage >= q.covTarget ? '#6fd08c' : '#ff7a6b'}"` : ''}>${Math.round(q.coverage)}%${q.covTarget ? ' <small>(needs ' + q.covTarget + '%)</small>' : ''}</span>
+      <span>Return grilles</span><span${q.cfm > 0 ? ` style="color:${q.retWarn ? '#f2b84b' : '#6fd08c'}"` : ''}>${q.returns} · ${q.returnArea.toFixed(1)} sq ft${q.returnFpm != null ? ' <small>(' + Math.round(q.returnFpm) + ' fpm)</small>' : ''}</span>
+      <span>Return capacity</span><span>${Math.round(q.returnCap).toLocaleString()} CFM <small>of ${Math.round(q.cfm).toLocaleString()} supplied</small></span>
+      ${q.pressure != null ? `<span>Pressure</span><span>${q.pressure > 0 ? '+' : ''}${q.pressure} Pa <small>(${inWC(q.pressure)})</small></span>` : ''}</div>`;
+    if (q.retWarn) h += `<p class="note" style="color:#f2b84b">Air balance: ${esc(q.retWarn)}${q.retMore ? `; add about ${q.retMore} more 24″ × 24″ return grille${q.retMore === 1 ? '' : 's'} (Grille tool)` : ''}.</p>`;
     if (q.iso) h += `<p class="note" style="color:${q.ok ? '#6fd08c' : '#ff7a6b'}">${q.ok ? 'Meets typical ISO ' + q.iso + ' design airflow.' : 'Short for ISO ' + q.iso + ': ' + esc(q.short.join('; ')) + '.'}</p>`;
   } else h += `<p class="note">Put this label inside walls to see its airflow.</p>`;
   h += `<p class="note">Pressure is relative to outside the cleanroom (0 Pa). On the plan, arrows at doors show which way air flows; red means it flows from the less clean side or the difference is under 5 Pa. Targets are typical design ranges, not a certification.</p></div>`;
@@ -854,11 +862,11 @@ function roomCheckHtml(P, o) {
 function checkGroupHtml(P) {
   if (!(P.rooms || []).some(r => r.iso || (r.pressure != null && r.pressure !== ''))) return `<div class="grp"><h3>Cleanroom check</h3><p class="note">Pick a room label and set its ISO class and pressure to check air changes, filter coverage and the pressure cascade.</p></div>`;
   const C = (() => { try { return Plan3DViewer.cleanroomCheck(P); } catch (e) { return null; } })(); if (!C) return '';
-  const rows = C.rooms.filter(q => q.iso || q.pressure != null).map(q => `<div class="pl-row"><span>${esc(q.room.name || 'Room')}<small>${q.iso ? 'ISO ' + q.iso + ' · ' : ''}${Math.round(q.ach)} ACH${q.achTarget ? ' / ' + q.achTarget : ''} · ${Math.round(q.coverage)}% coverage${q.pressure != null ? ' · ' + (q.pressure > 0 ? '+' : '') + q.pressure + ' Pa' : ''}</small></span><b style="color:${!q.iso ? 'inherit' : q.ok ? '#6fd08c' : '#ff7a6b'}">${!q.iso ? '–' : q.ok ? '✓' : '✗'}</b></div>`).join('');
+  const rows = C.rooms.filter(q => q.iso || q.pressure != null).map(q => `<div class="pl-row"><span>${esc(q.room.name || 'Room')}<small>${q.iso ? 'ISO ' + q.iso + ' · ' : ''}${Math.round(q.ach)} ACH${q.achTarget ? ' / ' + q.achTarget : ''} · ${Math.round(q.coverage)}% coverage${q.pressure != null ? ' · ' + (q.pressure > 0 ? '+' : '') + q.pressure + ' Pa (' + inWC(q.pressure) + ')' : ''}${q.retWarn ? '<br><span style="color:#f2b84b">' + esc(q.retWarn) + '</span>' : q.returns ? ' · returns ' + Math.round(q.returnFpm) + ' fpm' : ''}</small></span><b style="color:${!q.iso ? 'inherit' : q.ok ? '#6fd08c' : '#ff7a6b'}">${!q.iso ? '–' : q.ok ? '✓' : '✗'}</b></div>`).join('');
   const nm = (r) => r ? esc(r.name || 'Room') : 'outside';
   const dw = C.doors.filter(d => d.warn).map(d => `<div class="pl-row"><span>${nm(d.a)} ↔ ${nm(d.b)}<small>${esc(d.warn)}</small></span><b style="color:#ff7a6b">!</b></div>`).join('');
   return `<div class="grp"><h3>Cleanroom check</h3><div class="pl">${rows}${dw ? '<div class="pl-cat">Doors</div>' + dw : ''}</div>
-    <p class="note">Air changes and filter coverage from the FFUs over each room, against typical ISO class design ranges. Pressure arrows on the plan show the cascade.</p></div>`;
+    <p class="note">Air changes and filter coverage from the FFUs over each room, against typical ISO class design ranges; return air through the room's return grilles (aim for 400 fpm or less through them). Pressure arrows on the plan show the cascade. 12.5 Pa = 0.05″ w.c.</p></div>`;
 }
 
 /* ---------- Customer comments (from the walkthrough page) ----------
@@ -950,6 +958,105 @@ async function exportParts() {
   if (!api.exportFile) return;
   const p = await api.exportFile(csv, ed.plan.name + ' parts list', 'csv');
   if (p) toast('Parts list saved.', { label: 'Open it', fn: () => api.openPath(p) });
+}
+
+/* ---------- Quote and proposal ----------
+   Prices live in a price book on this computer (one price per part, for every project); the customer, scope
+   and the job's own numbers (labor, freight, markup, tax) are saved in the plan (plan.quote). */
+const QS = { get(k, d) { try { const v = localStorage.getItem('p3.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('p3.' + k, JSON.stringify(v)); } catch (e) { /* full */ } } };
+const QDEF = { markup: 25, tax: 0, laborMode: 'sqft', laborRate: 0, laborLump: 0, freight: 0, showLines: false, validDays: 30,
+  terms: 'Prices are good for 30 days. 50% deposit to order, balance due on completion.\nIncludes the cleanroom shown: panels, doors, ceiling grid, fan filter units, lights and listed equipment, delivered and installed.\nNot included unless listed: HVAC and building tie-ins, electrical service to the cleanroom panel, permits, fire sprinkler work and cleanroom certification.' };
+function quoteDialog() {
+  const P = ed.plan; if (!P.walls.length && !(P.inserts || []).length) { toast('Add some walls first.'); return; }
+  const Q = Plan3DQuote, L = Q.lines(P), area = Q.floorArea(P), prices = QS.get('prices', {});
+  const co = QS.get('company', { name: 'Coll Business Solutions LLC', phone: '', email: 'collbusinesssolutions@gmail.com', web: 'collbusinesssolutions.com', logo: '' });
+  const d0 = QS.get('quoteDefaults', {}), pq = P.quote || {};
+  const S = { ...QDEF, ...d0, ...pq.money };
+  const cust = { name: '', company: '', address: '', project: P.name || '', scope: '', ...pq.cust };
+  const now = new Date(), pad = (v) => String(v).padStart(2, '0');
+  const number = pq.number || 'Q' + String(now.getFullYear()).slice(2) + pad(now.getMonth() + 1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes());
+  const sr = window.__p3sr && window.__p3sr.canvas, picOpts = [...(sr ? [['sr', 'Last Super render']] : []), ['view', 'The 3D view as it is now'], ['file', 'A picture file…'], ['none', 'No picture']];
+  let picFile = null;
+  let cat = '';
+  const rowsHtml = L.map((r, i) => { const h = (r.cat !== cat ? `<tr class="qc"><td colspan="4">${esc(cat = r.cat)}</td></tr>` : ''); return h + `<tr><td>${esc(r.item)}${r.size ? `<small>${esc(r.size)}</small>` : ''}</td><td class="n">${r.qty.toLocaleString()} ${r.unit === 'ea' ? '' : esc(r.unit)}</td><td class="n"><input type="text" inputmode="decimal" data-i="${i}" value="${prices[r.key] ? (+prices[r.key]).toFixed(2) : ''}" placeholder="0.00"></td><td class="n" id="qL${i}"></td></tr>`; }).join('');
+  const inp = (id, v, ph) => `<input type="text" id="${id}" value="${esc(v == null ? '' : v)}" ${ph ? `placeholder="${esc(ph)}"` : ''}>`;
+  dialogOpen({
+    title: 'Quote & proposal',
+    body: `<div class="qd">
+      <div class="qcol">
+        <h4>Customer and project</h4>
+        ${fld('Customer', inp('qCn', cust.name, 'Name'))}${fld('Company', inp('qCc', cust.company))}
+        ${fld('Address', `<textarea id="qCa" rows="2">${esc(cust.address)}</textarea>`)}${fld('Project', inp('qCp', cust.project))}
+        ${fld('Proposal no.', inp('qNo', number))}
+        ${fld('Scope', `<textarea id="qSc" rows="3" placeholder="A sentence or two on the job, for the customer">${esc(cust.scope)}</textarea>`)}
+        <h4>Labor, freight, markup</h4>
+        ${fld('Labor', `<select id="qLm"><option value="sqft" ${S.laborMode !== 'lump' ? 'selected' : ''}>Per sq ft of cleanroom (${area.toLocaleString()} sq ft)</option><option value="lump" ${S.laborMode === 'lump' ? 'selected' : ''}>One amount</option></select>`)}
+        ${fld('Labor rate', inp('qLr', S.laborMode === 'lump' ? S.laborLump : S.laborRate, S.laborMode === 'lump' ? '$ total' : '$ per sq ft'))}
+        ${fld('Freight', inp('qFr', S.freight || '', '$'))}${fld('Markup', inp('qMk', S.markup, '% on materials'))}${fld('Sales tax', inp('qTx', S.tax || '', '% on materials'))}
+        <div class="qtot" id="qTot"></div>
+        <h4>Proposal</h4>
+        ${fld('Picture', `<select id="qPic">${picOpts.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>`)}
+        <label class="chk"><input type="checkbox" id="qLines" ${S.showLines ? 'checked' : ''}> Show every line with its price (otherwise totals by category)</label>
+        ${fld('Terms', `<textarea id="qTe" rows="4">${esc(S.terms)}</textarea>`)}
+        <details class="qco"><summary>Your company on the proposal</summary>
+          ${fld('Name', inp('qKn', co.name))}${fld('Phone', inp('qKp', co.phone))}${fld('Email', inp('qKe', co.email))}${fld('Website', inp('qKw', co.web))}
+          ${fld('Logo', `<button class="btn small" id="qKl">${co.logo ? 'Change logo…' : 'Add logo…'}</button>${co.logo ? ' <button class="btn small" id="qKx">Remove</button>' : ''}`)}
+        </details>
+        <div class="row"><button class="btn small" id="qCsv">Export quote (.csv)</button></div>
+      </div>
+      <div class="qcol qprices"><h4>Prices <small>your cost per unit; saved for every project</small></h4>
+        <table class="qt"><thead><tr><th>Part</th><th class="n">Qty</th><th class="n">Unit cost</th><th class="n">Cost</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
+    </div>`,
+    buttons: [{ label: 'Close', ret: 'close' }, { label: 'Make proposal PDF', primary: true, ret: 'pdf' }],
+    onOpen: (dlg) => {
+      dlg.classList.add('wide-xl');
+      const num = (id) => { const v = parseFloat(($('#' + id).value || '').replace(/[^\d.-]/g, '')); return isFinite(v) ? v : 0; };
+      const read = () => {
+        Object.assign(S, { laborMode: $('#qLm').value, markup: num('qMk'), tax: num('qTx'), freight: num('qFr'), showLines: $('#qLines').checked, terms: $('#qTe').value });
+        if (S.laborMode === 'lump') S.laborLump = num('qLr'); else S.laborRate = num('qLr');
+        Object.assign(cust, { name: $('#qCn').value.trim(), company: $('#qCc').value.trim(), address: $('#qCa').value.trim(), project: $('#qCp').value.trim(), scope: $('#qSc').value.trim() });
+        Object.assign(co, { name: $('#qKn').value.trim(), phone: $('#qKp').value.trim(), email: $('#qKe').value.trim(), web: $('#qKw').value.trim() });
+      };
+      const show = () => {
+        read(); const T = Q.totals(L, prices, S, area);
+        T.rows.forEach((r, i) => { const c = $('#qL' + i); if (c) c.textContent = r.cost ? Q.money(r.cost) : ''; });
+        $('#qTot').innerHTML = `<div><span>Materials, your cost</span><b>${Q.money(T.material)}</b></div><div><span>Materials with ${S.markup || 0}% markup</span><b>${Q.money(T.materialSell)}</b></div>
+          <div><span>Labor</span><b>${Q.money(T.labor)}</b></div><div><span>Freight</span><b>${Q.money(T.freight)}</b></div>${T.tax ? `<div><span>Sales tax</span><b>${Q.money(T.tax)}</b></div>` : ''}
+          <div class="big"><span>Customer price</span><b>${Q.money(T.total)}</b></div><div><span>Markup earned</span><b>${Q.money(T.profit)}</b></div>
+          <p class="note">${T.priced} of ${L.length} parts priced.${T.priced < L.length ? ' Parts without a price count as $0.' : ''}</p>`;
+        return T;
+      };
+      dlg.querySelectorAll('.qt input').forEach(el => el.addEventListener('input', () => { const r = L[+el.dataset.i], v = parseFloat(el.value.replace(/[^\d.]/g, '')); if (isFinite(v) && v > 0) prices[r.key] = v; else delete prices[r.key]; QS.set('prices', prices); show(); }));
+      dlg.querySelectorAll('.qd .qcol:first-child input, .qd .qcol:first-child textarea, .qd .qcol:first-child select').forEach(el => el.addEventListener(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', show));
+      $('#qLm').addEventListener('change', () => { $('#qLr').value = (S.laborMode === 'lump' ? S.laborLump : S.laborRate) || ''; $('#qLr').placeholder = S.laborMode === 'lump' ? '$ total' : '$ per sq ft'; show(); });
+      const pickImg = (cb) => { const f = document.createElement('input'); f.type = 'file'; f.accept = 'image/*'; f.onchange = () => { const x = f.files && f.files[0]; if (!x) return; const rd = new FileReader(); rd.onload = () => cb(rd.result); rd.readAsDataURL(x); }; f.click(); };
+      $('#qPic').addEventListener('change', (e) => { if (e.target.value === 'file') pickImg(u => { picFile = u; }); });
+      $('#qKl').onclick = () => pickImg(u => { co.logo = u; QS.set('company', co); $('#qKl').textContent = 'Change logo…'; });
+      if ($('#qKx')) $('#qKx').onclick = () => { co.logo = ''; QS.set('company', co); $('#qKx').remove(); $('#qKl').textContent = 'Add logo…'; };
+      $('#qCsv').onclick = async () => { const T = show(); if (!api.exportFile) return; const p = await api.exportFile(Q.quoteCSV(P, T, S), (cust.project || P.name) + ' quote', 'csv'); if (p) toast('Quote saved.', { label: 'Open it', fn: () => api.openPath(p) }); };
+      dlg.__qshow = show;
+    }
+  }).then(async (r) => {
+    const dlg = $('#dlg'); const show = dlg.__qshow; dlg.classList.remove('wide-xl'); delete dlg.__qshow;
+    if (!show) return;
+    const T = show(), pic = $('#qPic') ? $('#qPic').value : 'none';
+    // keep it all: the job's numbers and customer with the plan, company and defaults on this computer
+    const { terms, markup, tax, laborMode, laborRate } = S; QS.set('quoteDefaults', { terms, markup, tax, laborMode, laborRate }); QS.set('company', co);
+    const no = ($('#qNo') && $('#qNo').value.trim()) || number;
+    ed.edit(Q2 => { Q2.quote = { number: no, cust: { ...cust }, money: { ...S } }; });
+    if (r !== 'pdf') return;
+    if (!api.exportPDF) return;
+    let picture = null;
+    if (pic === 'sr' && window.__p3sr && window.__p3sr.canvas) { try { picture = window.__p3sr.canvas.toDataURL('image/jpeg', 0.9); } catch (e) { picture = null; } }
+    else if (pic === 'view') { picture = viewer && viewer.snapshot ? viewer.snapshot() : null; if (!picture) toast('Open the 3D view and frame the shot to put a picture of it on the proposal.'); }
+    else if (pic === 'file') picture = picFile;
+    let sheetSvg = '';
+    try { if (P.walls.length) sheetSvg = Plan3DSheet.makeSheet(P, { page: 'letter', rotate: 'auto' }).svg; } catch (e) { console.error(e); }
+    const dt = new Date(), until = new Date(dt.getTime() + (+S.validDays || 30) * 864e5), f = (x) => x.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const html = Q.proposalHTML(P, { co, cust, opts: S, T, picture, sheetSvg, number: no, date: f(dt), valid: f(until) });
+    const p = await api.exportPDF(html, (cust.project || P.name || 'Cleanroom') + ' proposal ' + no, 8.5, 11);
+    if (p) toast('Proposal saved.', { label: 'Open it', fn: () => api.openPath(p) });
+  });
 }
 
 /* ---------- Plan sheet (PDF) ---------- */
@@ -2456,7 +2563,7 @@ $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave
     items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
   });
   const item = (id, fn) => { $(id).onclick = () => { close(); fn(); }; };
-  item('#bExportHtml', exportHtml); item('#bSheet', sheetDialog); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
+  item('#bExportHtml', exportHtml); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
   item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportParts', exportParts);
 }
 // Buildings dropdown

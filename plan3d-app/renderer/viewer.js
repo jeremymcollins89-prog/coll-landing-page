@@ -1381,6 +1381,8 @@ function gridTakeoff(plan, A) {
    changes per hour and filter coverage, against its ISO class; and for every door or opening between two
    rooms, which way the air goes (from higher to lower pressure) and whether that's from the cleaner side.
    Targets are typical industry design ranges (minimums), not a certification. */
+// return grilles: design face velocity (fpm) through the grille; Pa → inches of water column
+const RET_FPM = 400, PA_TO_INWC = 1 / 249.0889;
 const ISO_TARGETS = { 5: { ach: 240, cov: 35 }, 6: { ach: 150, cov: 25 }, 7: { ach: 60, cov: 15 }, 8: { ach: 20, cov: 5 }, 9: { ach: 10, cov: 0 } };
 function cleanroomCheck(plan) {
   const Z = zones(plan), rooms = [], grids = [];
@@ -1391,6 +1393,20 @@ function cleanroomCheck(plan) {
     const FM = z.plan.ffuModel && Array.isArray(z.plan.ffuModel.sizes) && z.plan.ffuModel.sizes.length ? z.plan.ffuModel : null;
     const fx = ceilingFixtures(z.plan, A), G = R.grid;
     const compAt = (x, y) => { const i = Math.floor((x - G.x0) / G.cell), j = Math.floor((y - G.z0) / G.cell); return i < 0 || j < 0 || i >= G.nx || j >= G.nz ? -1 : G.comp[j * G.nx + i]; };
+    // return air: the room-side face of each return grille, in a wall panel (Grille tool) or on an air chase.
+    // A grille is good for about RET_FPM through its face; transfer grilles (both sides) aren't counted.
+    const ret = new Map(), addRet = (x, y, w, h, kind) => { const ci = compAt(x, y); if (ci < 0) return; const e = ret.get(ci) || { n: 0, area: 0, kinds: {} }; e.n++; e.area += w * h; e.kinds[kind] = (e.kinds[kind] || 0) + 1; ret.set(ci, e); };
+    for (const gr of z.plan.grilles || []) {
+      if (gr.plenum || gr.flow === 'out' || gr.side === 0) continue;
+      const a = gr.a || 0, nx = -Math.sin(a), ny = Math.cos(a), sd = gr.side || 1, off = (gr.t || 0.25) / 2 + 1.2;
+      addRet(gr.x + nx * sd * off, gr.y + ny * sd * off, Math.max(0.25, +gr.w || 20 / 12), Math.max(0.25, +gr.h || 20 / 12), 'wall');
+    }
+    for (const b of A.boxes || []) {
+      if (!b.grille) continue;
+      const ns = b.grille === 'N' || b.grille === 'S', G = grilleSize(b.c, ns ? b.x1 - b.x0 : b.z1 - b.z0, A.H);
+      const px = b.grille === 'W' ? b.x0 - 1.2 : b.grille === 'E' ? b.x1 + 1.2 : (b.x0 + b.x1) / 2, py = b.grille === 'N' ? b.z0 - 1.2 : b.grille === 'S' ? b.z1 + 1.2 : (b.z0 + b.z1) / 2;
+      addRet(px, py, G.w, G.h, 'chase');
+    }
     R.forEach((q, ci) => {
       const r = q.room, area = q.area, vol = area * A.H;
       let n = 0, cfm = 0, face = 0;
@@ -1408,7 +1424,14 @@ function cleanroomCheck(plan) {
       if (achT && ach + 1e-6 < achT) short.push(`air changes ${Math.round(ach)}/hr, needs ${achT}`);
       if (T && T.cov && cov + 1e-6 < T.cov) short.push(`filter coverage ${Math.round(cov)}%, needs ${T.cov}%`);
       if (achT && vol > 0 && ach < achT) { const per = n ? cfm / n : (FM ? (FM.sizes[0].cfm || 650) : 630); short.push(`about ${Math.ceil((achT * vol / 60 - cfm) / per)} more FFU${Math.ceil((achT * vol / 60 - cfm) / per) === 1 ? '' : 's'}`); }
-      rooms.push({ room: r, zone: z, area, volume: vol, H: A.H, ffus: n, cfm, ach, coverage: cov, iso, achTarget: achT, covTarget: T ? T.cov : null, pressure: r.pressure != null && r.pressure !== '' ? +r.pressure : null, ok: !short.length, short });
+      // return air balance: the air the FFUs push in has to get back out through the return grilles
+      const rt = ret.get(ci) || { n: 0, area: 0, kinds: {} }, retCap = rt.area * RET_FPM, vel = rt.area > 0 ? cfm / rt.area : null;
+      let retWarn = null, retMore = 0;
+      if (cfm > 0 && !rt.n) { retWarn = 'no return grilles in this room'; retMore = Math.ceil(cfm / RET_FPM / 4); }
+      else if (vel != null && vel > RET_FPM * 1.1) { retMore = Math.ceil((cfm / RET_FPM - rt.area) / 4); retWarn = `returns too small: ${Math.round(vel)} fpm through them (aim for ${RET_FPM} or less)`; }
+      const pr = r.pressure != null && r.pressure !== '' ? +r.pressure : null;
+      rooms.push({ room: r, zone: z, area, volume: vol, H: A.H, ffus: n, cfm, ach, coverage: cov, iso, achTarget: achT, covTarget: T ? T.cov : null, pressure: pr, inWC: pr != null ? pr * PA_TO_INWC : null, ok: !short.length, short,
+        returns: rt.n, returnArea: rt.area, returnCap: retCap, returnFpm: vel, retWarn, retMore });
     });
   }
   // which room is at a point (any area), or null outside every labeled room
@@ -4728,6 +4751,8 @@ function mount(container, plan, opts) {
     setMode: (m) => { if (m === 'walk') goWalk(st.x, st.z, st.yaw); else goOrbit(m); },
     resize,
     get state() { return { x: st.x, z: st.z, yaw: st.yaw, pitch: st.pitch, mode }; },
+    // a picture of the view as it is now (JPEG data URL), or null when the 3D view isn't on screen
+    snapshot: (q) => { if (canvas.width < 64 || canvas.height < 64) return null; try { renderer.render(scene, camera); return canvas.toDataURL('image/jpeg', q || 0.9); } catch (e) { return null; } },
     exportGLB: () => new Promise((resolve, reject) => {
       if (!THREE.GLTFExporter) return reject(new Error('GLTF exporter missing'));
       const fresh = buildStack(THREE, plan);
@@ -4738,5 +4763,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
