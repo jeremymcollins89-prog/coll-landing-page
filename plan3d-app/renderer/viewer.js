@@ -4674,8 +4674,9 @@ function mount(container, plan, opts) {
     drone.visible = chase;
     drone.position.set(st.x, st.y, st.z); drone.rotation.set(droneTilt, st.yaw, droneRoll, 'YXZ');
     if (!chase) { camera.position.set(st.x, st.y, st.z); camera.rotation.set(st.pitch, st.yaw, 0, 'YXZ'); return; }
-    // a little behind and above the drone, looking the way it looks (fixed to it, so turns feel direct)
-    const cp = Math.cos(st.pitch); camOff.set(Math.sin(st.yaw) * cp * 3.2, 0.95 - Math.sin(st.pitch) * 3.2, Math.cos(st.yaw) * cp * 3.2);
+    // always the same spot: 3.2 ft behind the drone and a foot above it, facing the way the drone faces. Looking
+    // up or down only tilts the camera there; it never swings round the drone.
+    camOff.set(Math.sin(st.yaw) * 3.2, 0.95, Math.cos(st.yaw) * 3.2);
     camera.position.set(st.x + camOff.x, st.y + camOff.y, st.z + camOff.z); camera.rotation.set(st.pitch - 0.16, st.yaw, 0, 'YXZ');
   }
   function poseFromCamera() { const d = camera.getWorldDirection(new THREE.Vector3()); return { x: camera.position.x, y: camera.position.y, z: camera.position.z, yaw: Math.atan2(-d.x, -d.z), pitch: Math.max(-1.3, Math.min(1.3, Math.asin(Math.max(-1, Math.min(1, d.y))))) }; }
@@ -4685,7 +4686,7 @@ function mount(container, plan, opts) {
     { const cp = Math.cos(st.pitch); st.x -= Math.sin(st.yaw) * cp * 3.2; st.z -= Math.cos(st.yaw) * cp * 3.2; st.y = Math.max(1.5, st.y - 0.95 + Math.sin(st.pitch) * 3.2); }
     controls.enabled = false; labelsEl.hidden = true; mode = 'fly';
     applyVis('fly'); setModeUI(); applyFlyCam();
-    hint.textContent = touchy ? 'Drone: joystick flies the way it looks · ▲ ▼ up and down · drag to look' : 'Drone: W A S D fly the way it looks · Space / R up · C / F down · Shift faster · drag or L to look · V drone camera · M measure · P snapshot';
+    hint.textContent = touchy ? 'Drone: joystick flies the way it looks · ▲ ▼ up and down · drag to look' : 'Drone: W / ↑ forward · S / ↓ back · ← → or Q / E turn · A / D slide · Space / R up · C / F down · Shift faster · V drone camera · M measure · P snapshot';
     hint.classList.remove('gone'); hintGone = false; setTimeout(dismissHint, 6000);
   }
   // fly to a saved pose (a snapshot's camera)
@@ -4706,7 +4707,7 @@ function mount(container, plan, opts) {
     if (joy.id != null && Math.hypot(joy.f, joy.s) > 0.12) { f += joy.f; s2 += joy.s; }
     u += flyUD;
     const sp = (running || keys.has('shift') ? 26 : 9) * dt * flyBoost, cp = Math.cos(st.pitch);
-    const vx = -Math.sin(st.yaw) * cp * f + Math.cos(st.yaw) * s2, vy = Math.sin(st.pitch) * f + u, vz = -Math.cos(st.yaw) * cp * f - Math.sin(st.yaw) * s2, n = Math.hypot(vx, vy, vz);
+    void cp; const vx = -Math.sin(st.yaw) * f + Math.cos(st.yaw) * s2, vy = u, vz = -Math.cos(st.yaw) * f - Math.sin(st.yaw) * s2, n = Math.hypot(vx, vy, vz);
     if (n > 1e-4) { const k = sp * Math.min(1, n) / n; st.x += vx * k; st.y += vy * k; st.z += vz * k; }
     // leans into the way it's flying; props always spinning
     const lean = Math.min(1, Math.abs(f)) * Math.sign(f) * (running || keys.has('shift') ? 0.32 : 0.2), roll = -Math.max(-1, Math.min(1, s2 + turn * 0.6)) * 0.22;
