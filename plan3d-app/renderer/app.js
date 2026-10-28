@@ -752,7 +752,7 @@ function renderProps(opt) {
       ${hasGeo || (P.inserts || []).length ? (() => { const ft = Plan3DParts.projectParts(P).reduce((t, q) => t + q.floorFt, 0); return ft > 0 ? `<span>Floor track</span><span>${Math.ceil(ft)} lin ft <small>(${Plan3DParts.ftin(ft)})</small></span>` : ''; })() : ''}</div>
       ${hasGeo ? '<div class="row"><button class="btn small" id="pClearAuto">Clear all walls</button></div>' : ''}
     </div>
-    ${house ? '' : ffuPanelHtml(P)}
+    ${house ? '' : ffuPanelHtml(P) + lightPanelHtml(P)}
     ${house ? '' : checkGroupHtml(P)}
     ${commentsGroupHtml(P)}
     ${fld('Project type', `<select id="pMode"><option value="cleanroom" ${house ? '' : 'selected'}>Cleanroom</option><option value="house" ${house ? 'selected' : ''}>House</option></select>`)}`;
@@ -815,7 +815,7 @@ function renderProps(opt) {
   $('#pSnap').onchange = e => { ed.snapIn = +e.target.value; };
   bindParts();
   bindComments(P);
-  if (!house) bindFfuPanel(P);
+  if (!house) { bindFfuPanel(P); bindLightPanel(P); }
   if ($('#pClearAuto')) $('#pClearAuto').onclick = () => confirmDlg('Clear all walls?', 'This removes every wall, door, glass panel and chase. Room labels and the background stay. You can undo with Ctrl+Z.', 'Clear walls').then(ok => { if (ok) ed.edit(Pl => { Pl.walls = []; Pl.openings = []; Pl.chases = []; }); });
   if (B) {
     $('#pBgVis').onchange = e => ed.edit(() => { B.visible = e.target.checked; });
@@ -1521,7 +1521,8 @@ function ifcDialog(data) {
 /* ---------- Fan filter unit model (manufacturer data, Revit families) ---------- */
 let equipLib = [];
 if (api.equipLib) api.equipLib().then(l => { equipLib = Array.isArray(l) ? l : []; if (!ed.sel) renderProps(); });
-const allFfuModels = () => [...Plan3DEquipment.BUILT_IN, ...equipLib.filter(m => !Plan3DEquipment.BUILT_IN.some(b => b.id === m.id))];
+const allFfuModels = () => [...Plan3DEquipment.BUILT_IN, ...equipLib.filter(m => m.kind !== 'light' && !Plan3DEquipment.BUILT_IN.some(b => b.id === m.id))];
+const allLightModels = () => [...Plan3DEquipment.LIGHTS, ...equipLib.filter(m => m.kind === 'light' && !Plan3DEquipment.LIGHTS.some(b => b.id === m.id))];
 function ffuPanelHtml(P) {
   const cur = P.ffuModel, models = allFfuModels(), m = cur && models.find(x => x.id === cur.id);
   const n = Plan3DViewer.ceilingFixtures(P).filter(f => f.type === 'ffu').length;
@@ -1536,6 +1537,29 @@ function ffuPanelHtml(P) {
   } else h += `<p class="note">Pick a manufacturer model to see each FFU as the real unit in 3D and on the parts list.</p>`;
   return h + '</div>';
 }
+function lightPanelHtml(P) {
+  const cur = P.lightModel, models = allLightModels(), m = cur && models.find(x => x.id === cur.id);
+  const n = Plan3DViewer.ceilingFixtures(P).filter(f => f.type !== 'ffu').length;
+  let h = `<div class="grp"><h3>Lights</h3>
+    ${fld('Model', `<select id="pLtM"><option value="">Generic LED flat panel</option>${models.map(x => `<option value="${esc(x.id)}" ${cur && cur.id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}${cur && !m ? `<option value="${esc(cur.id)}" selected>${esc(cur.name)}</option>` : ''}<option value="+rfa">Add from Revit family (.rfa)…</option></select>`)}`;
+  if (cur) {
+    const fins = (m && m.finishes) || [{ key: cur.finish, label: cur.finishLabel }];
+    h += fld('Finish', `<select id="pLtF">${fins.map(f => `<option value="${f.key}" ${f.key === cur.finish ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}</select>`);
+    h += `<p class="note">${n} light${n === 1 ? '' : 's'} on this plan, each in its own ceiling cell, ${Math.round(cur.hh * 12 * 10) / 10}″ housing above the grid. Shown in 3D, on the parts list and in the Revit export.</p>`;
+  } else h += `<p class="note">Pick a light model to show every light as that fixture in 3D, on the parts list and in the Revit export. Place lights with the LED piece (key 8), like FFUs.</p>`;
+  return h + '</div>';
+}
+function bindLightPanel(P) {
+  const sel = $('#pLtM'); if (!sel) return;
+  sel.onchange = async () => {
+    const v = sel.value;
+    if (v === '+rfa') { await addRevitFamily('light'); renderProps(); return; }
+    if (!v) { ed.edit(Q => { delete Q.lightModel; }); return; }
+    const m = allLightModels().find(x => x.id === v); if (!m) return;
+    ed.edit(Q => { Q.lightModel = Plan3DEquipment.lightSpec(m, Q.lightModel && Q.lightModel.finish); });
+  };
+  if ($('#pLtF')) $('#pLtF').onchange = (e) => { const m = allLightModels().find(x => x.id === P.lightModel.id) || P.lightModel; ed.edit(Q => { Q.lightModel = Plan3DEquipment.lightSpec(m.finishes ? m : { ...m, finishes: [{ key: e.target.value, label: e.target.selectedOptions[0].textContent }] }, e.target.value); }); };
+}
 function bindFfuPanel(P) {
   const sel = $('#pFfuM'); if (!sel) return;
   sel.onchange = async () => {
@@ -1549,9 +1573,18 @@ function bindFfuPanel(P) {
   if ($('#pFfuF')) $('#pFfuF').onchange = (e) => re(P.ffuModel.fit, e.target.value);
   if ($('#pFfuG')) $('#pFfuG').onchange = (e) => re(e.target.value, P.ffuModel.finish);
 }
-async function addRevitFamily() {
+async function addRevitFamily(kind) {
   if (!api.readRfa) return;
   const r = await api.readRfa(); if (!r) return;
+  if (kind === 'light' && !r.error) {
+    let m;
+    try { m = Plan3DEquipment.readLightFamily(r.xml, r.name); }
+    catch (e) { dialogOpen({ title: 'Can’t use that family', body: `<p>${esc(e.message)}</p><p>Coll Plan3D reads a light family's sizes (width, depth, height) from its type table.</p>`, buttons: [{ label: 'OK', primary: true, ret: null }] }); return; }
+    equipLib = equipLib.filter(x => x.id !== m.id).concat([m]);
+    if (api.equipLibSave) await api.equipLibSave(equipLib);
+    ed.edit(Q => { Q.lightModel = Plan3DEquipment.lightSpec(m); });
+    toast(`Added ${m.name}. It's saved for your other projects too.`); return;
+  }
   if (r.error) { dialogOpen({ title: 'Can’t use that family', body: `<p>${esc(r.error)}</p>`, buttons: [{ label: 'OK', primary: true, ret: null }] }); return; }
   let m;
   try { m = Plan3DEquipment.readRevitFamily(r.xml, r.name); }
