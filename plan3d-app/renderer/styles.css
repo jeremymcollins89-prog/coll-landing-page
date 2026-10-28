@@ -262,3 +262,10 @@ body[data-mode="house"] .modechip { background: rgba(127,211,227,.16); color: #9
 .qtot .big b { color: var(--accent); }
 .qco summary { cursor: pointer; color: var(--muted); margin: 12px 0 6px; }
 .qd .qcol:focus, .qd .qcol:focus-visible { outline: none; }
+
+/* people and material flow chips */
+.flow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.fchip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 8px; border-radius: 999px; background: var(--raise); border: 1px solid var(--line); font-size: 12px; }
+.fchip button { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; font-size: 13px; }
+.fchip button:hover { color: var(--warn); }
+.flow select { width: auto; }

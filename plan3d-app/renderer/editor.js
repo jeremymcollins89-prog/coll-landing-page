@@ -94,7 +94,7 @@ class Editor {
     this.hist.push(before); if (this.hist.length > 200) this.hist.shift(); this.fut = []; this.dirty = true;
     // a built ceiling's outline is its pieces
     const V0 = global.Plan3DViewer; if (V0 && V0.isBuilt && V0.isBuilt(this.plan)) this.plan.ceilRects = V0.builtRects(this.plan);
-    this._chk = undefined; this._seats = null; this._lights = null; this._gridKey = null; this.emit('change'); this.render();
+    this._chk = undefined; this._flows = undefined; this._seats = null; this._lights = null; this._gridKey = null; this.emit('change'); this.render();
   }
   /* the cleanroom check (airflow per room, pressure across doors), worked out once per change */
   check() {
@@ -345,7 +345,7 @@ class Editor {
   edit(fn) { const b = this.snapshot(); fn(this.plan); this.commit(b); }
   undo() { if (!this.hist.length) return; this.fut.push(this.snapshot()); this.plan = JSON.parse(this.hist.pop()); this.afterRestore(); }
   redo() { if (!this.fut.length) return; this.hist.push(this.snapshot()); this.plan = JSON.parse(this.fut.pop()); this.afterRestore(); }
-  afterRestore() { this._chk = undefined; this._seats = null; this._lights = null; this.dirty = true; this.loadBg(); if (this.sel && !this.find(this.sel)) this.sel = null; if (this.multi) { this.multi = this.multi.filter(r => this.find(r)); if (this.multi.length < 2) this.multi = null; } this.emit('select'); this.emit('change'); this.render(); }
+  afterRestore() { this._chk = undefined; this._flows = undefined; this._seats = null; this._lights = null; this.dirty = true; this.loadBg(); if (this.sel && !this.find(this.sel)) this.sel = null; if (this.multi) { this.multi = this.multi.filter(r => this.find(r)); if (this.multi.length < 2) this.multi = null; } this.emit('select'); this.emit('change'); this.render(); }
   emit(ev, d) { const f = this.o['on' + ev[0].toUpperCase() + ev.slice(1)]; if (f) f(d); }
   find(sel) {
     if (!sel) return null;
@@ -1449,6 +1449,19 @@ class Editor {
     if (V2 && V2.DEVICES) for (const dv of P.devices || []) this.drawDevice(dv, false);
     // customer comments: numbered pins where they were left
     (P.comments || []).forEach((c, i) => { const X = this.sx(c.x), Y = this.sy(c.y); g.save(); g.fillStyle = c.done ? '#6fd08c' : '#f2c84b'; g.strokeStyle = '#1a1f22'; g.lineWidth = 2; g.beginPath(); g.arc(X, Y - 12, 9, 0, Math.PI * 2); g.moveTo(X - 4, Y - 5); g.lineTo(X, Y); g.lineTo(X + 4, Y - 5); g.fill(); g.stroke(); g.fillStyle = '#1a1f22'; g.font = 'bold 10px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i + 1), X, Y - 11.5); g.restore(); });
+    // people and material flow: arrows room to room through the doors
+    if (this._flows === undefined) { try { this._flows = V2 && V2.flowRoutes ? V2.flowRoutes(P) : null; } catch (e) { this._flows = null; } }
+    if (this._flows) for (const [k, col, dash] of [['material', '#f09a3a', [8, 5]], ['people', '#3fd07a', []]]) {
+      const F = this._flows[k]; if (!F) continue;
+      g.save(); g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 2.5; g.setLineDash(dash); g.lineJoin = 'round';
+      g.beginPath(); F.pts.forEach(([x, y], i) => { const X = this.sx(x) + (k === 'material' ? 4 : 0), Y = this.sy(y) + (k === 'material' ? 4 : 0); if (i) g.lineTo(X, Y); else g.moveTo(X, Y); }); g.stroke(); g.setLineDash([]);
+      for (let i = 0; i + 1 < F.pts.length; i++) {
+        const [x1, y1] = F.pts[i], [x2, y2] = F.pts[i + 1], L = Math.hypot(x2 - x1, y2 - y1); if (L < 1) continue;
+        const X = this.sx((x1 + x2) / 2) + (k === 'material' ? 4 : 0), Y = this.sy((y1 + y2) / 2) + (k === 'material' ? 4 : 0), a = Math.atan2(y2 - y1, x2 - x1);
+        g.beginPath(); g.moveTo(X + Math.cos(a) * 7, Y + Math.sin(a) * 7); g.lineTo(X + Math.cos(a + 2.5) * 7, Y + Math.sin(a + 2.5) * 7); g.lineTo(X + Math.cos(a - 2.5) * 7, Y + Math.sin(a - 2.5) * 7); g.closePath(); g.fill();
+      }
+      g.restore();
+    }
     // rooms
     for (const r of P.rooms) {
       g.font = '600 13px Bahnschrift, "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
