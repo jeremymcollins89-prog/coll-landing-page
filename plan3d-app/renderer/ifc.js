@@ -652,7 +652,9 @@ function toIfc(plan, opts) {
     // the T-grid just under the tiles: 15/16″ tees on the 2′ × 4′ layout (or the imported ceiling drawing's
     // own grid), only where there's ceiling
     // each tee: the 15/16″ face below the tiles and its web standing up 1½″ into the plenum
-    const tees = [], TW = 15 / 16 / 12, tee = (x1, y1, x2, y2) => [seg(x1, y1, x2, y2, H - 0.035, H, TW, S.grid), seg(x1, y1, x2, y2, H + 0.052, H + 0.17, 0.028, S.grid)];
+    // the ceiling height at a point: a ceiling area's own height there, else the room's
+    const CAf = V.ceilAreas ? V.ceilAreas(plan, A) : [], hAt = (x, z) => (CAf.length && V.ceilingAt ? V.ceilingAt(CAf, H, x, z) : H);
+    const tees = [], TW = 15 / 16 / 12, tee = (x1, y1, x2, y2) => { const h = hAt((x1 + x2) / 2, (y1 + y2) / 2); return [seg(x1, y1, x2, y2, h - 0.035, h, TW, S.grid), seg(x1, y1, x2, y2, h + 0.052, h + 0.17, 0.028, S.grid)]; };
     if (V.isBuilt && V.isBuilt(plan)) {
       for (const q of V.builtLines(plan)) tees.push(...tee(q[0], q[1], q[2], q[3]));
     } else if (Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length) {
@@ -681,6 +683,8 @@ function toIfc(plan, opts) {
       put(D.ifc[0], D.label, 'Coll electrical, ' + V.fmtFt(h) + ' to center', shape([solid(pts, h - D.hh / 2, h + D.hh / 2, st)]), ',' + D.ifc[1], st);
     }
     for (const f of V.ceilingFixtures(plan, A)) {
+      // each FFU and light sits in the ceiling where it is (a raised ceiling area puts it higher)
+      const H = hAt(f.x, f.y);
       const hw = (f.w || 1.9) / 2, hh = (f.h || 3.9) / 2, pts = [[f.x - hw, f.y - hh], [f.x + hw, f.y - hh], [f.x + hw, f.y + hh], [f.x - hw, f.y + hh]];
       const FM = plan.ffuModel && plan.ffuModel.sizes && plan.ffuModel.sizes.length ? plan.ffuModel : null;
       if (f.type === 'ffu' && FM) {
