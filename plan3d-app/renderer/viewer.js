@@ -205,27 +205,44 @@ function houseExtWalls(plan, A) {
 function foundationTakeoff(plan, A) {
   A = A || analyze(plan);
   const F = foundationOf(plan), FP = footprint(A, true), ext = houseExtWalls(plan, A);
-  const perim = ext.reduce((t, w) => t + Math.hypot(w.x2 - w.x1, w.y2 - w.y1), 0), area = FP ? FP.area : 0;
-  const cy = (cf) => cf / 27 * 1.05, L = [];
-  if (F.type === 'none' || !perim) return { F, perim, area, lines: L };
-  const footCF = perim * F.footW * F.footD;
-  if (F.type === 'slab') {
-    L.push(['Concrete', 'Concrete, monolithic slab ' + Math.round(F.slabT * 12) + '″ with thickened edge ' + Math.round(F.footW * 12) + '″ × ' + Math.round(F.footD * 12) + '″', '', cy(area * F.slabT + perim * F.footW * Math.max(0, F.footD - F.slabT)), 'cu yd']);
-  } else {
-    L.push(['Concrete', 'Concrete, footings ' + Math.round(F.footW * 12) + '″ × ' + Math.round(F.footD * 12) + '″', '', cy(footCF), 'cu yd']);
-    const wallH = F.type === 'basement' ? F.baseH : F.type === 'crawl' ? F.crawlH : F.stemH;
-    L.push(['Concrete', (F.type === 'basement' ? 'Concrete, basement walls ' : 'Concrete, stem walls ') + Math.round(F.stemT * 12) + '″ × ' + (wallH >= 1 ? fmtFt(wallH) : Math.round(wallH * 12) + '″'), '', cy(perim * F.stemT * wallH), 'cu yd']);
-    L.push(['Concrete', 'Wall forms (both faces)', '', perim * wallH * 2, 'sq ft']);
-    if (F.type !== 'crawl') L.push(['Concrete', 'Concrete, slab ' + Math.round(F.slabT * 12) + '″' + (F.type === 'basement' ? ' (basement floor)' : ''), '', cy(Math.max(0, area - perim * F.stemT) * F.slabT), 'cu yd']);
-    L.push(['Rebar', 'Rebar #4, wall verticals at 24″ (with hooks)', '', Math.ceil(perim / 2) * (wallH + F.footD + 1), 'lin ft']);
-    L.push(['Rebar', 'Rebar #4, wall horizontals (' + (wallH > 3 ? 'at 18″' : '2 bars') + ')', '', perim * (wallH > 3 ? Math.ceil(wallH / 1.5) : 2) * 1.1, 'lin ft']);
+  const len = (w) => Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+  const perim = ext.reduce((t, w) => t + len(w), 0), area = FP ? FP.area : 0;
+  if (F.type === 'none' || !perim) return { F, perim, area, lines: [] };
+  // over a basement floor (plan.__baseRects, from the levels): the part past it (an attached garage, a porch
+  // wing) sits on a stem wall and slab instead of basement walls
+  const BR = F.type === 'basement' && plan.__baseRects && plan.__baseRects.length ? plan.__baseRects : null;
+  if (BR) {
+    const inB = (x, z, m) => BR.some(r => x >= r[0] - m && x <= r[2] + m && z >= r[1] - m && z <= r[3] + m);
+    const eB = ext.filter(w => inB((w.x1 + w.x2) / 2, (w.y1 + w.y2) / 2, 1)), eS = ext.filter(w => !eB.includes(w));
+    let aS = 0; if (FP) for (let k = 0; k < FP.inside.length; k++) if (FP.inside[k]) { const i = k % FP.nx, j = (k - i) / FP.nx; if (!inB(FP.x0 + (i + 0.5) * FP.cell, FP.z0 + (j + 0.5) * FP.cell, 0)) aS += FP.cell * FP.cell; }
+    if (eS.length && aS > 1) {
+      const pB = plan.__basePerim || eB.reduce((t, w) => t + len(w), 0), pS = eS.reduce((t, w) => t + len(w), 0);
+      const lines = foundationLines(F, 'basement', pB, area - aS, eB.length, '').concat(foundationLines(F, 'stem', pS, aS, eS.length, ' (garage / wing on slab)'));
+      return { F, perim, area, ext, lines };
+    }
   }
-  L.push(['Rebar', 'Rebar #4, footing / edge, 2 continuous', '', perim * 2 * 1.1, 'lin ft']);
-  if (F.type !== 'crawl') {
-    if (F.mesh === 'rebar') L.push(['Rebar', 'Rebar #4 at 18″ each way, slab', '', area / 1.5 * 2 * 1.1, 'lin ft']);
-    else L.push(['Rebar', 'Welded wire mesh 6×6 W1.4, slab', '', area * 1.1, 'sq ft']);
-    L.push(['Concrete', 'Gravel base ' + Math.round(F.gravel * 12) + '″, compacted', '', area * F.gravel / 27 * 1.1, 'cu yd']);
-    L.push(['Concrete', 'Vapor barrier, 10 mil under slab', '', area * 1.15, 'sq ft']);
+  return { F, perim, area, ext, lines: foundationLines(F, F.type, perim, area, ext.length, '') };
+}
+function foundationLines(F, type, perim, area, nWalls, tag) {
+  const cy = (cf) => cf / 27 * 1.05, L = [];
+  const footCF = perim * F.footW * F.footD;
+  if (type === 'slab') {
+    L.push(['Concrete', 'Concrete, monolithic slab ' + Math.round(F.slabT * 12) + '″ with thickened edge ' + Math.round(F.footW * 12) + '″ × ' + Math.round(F.footD * 12) + '″' + tag, '', cy(area * F.slabT + perim * F.footW * Math.max(0, F.footD - F.slabT)), 'cu yd']);
+  } else {
+    L.push(['Concrete', 'Concrete, footings ' + Math.round(F.footW * 12) + '″ × ' + Math.round(F.footD * 12) + '″' + tag, '', cy(footCF), 'cu yd']);
+    const wallH = type === 'basement' ? F.baseH : type === 'crawl' ? F.crawlH : F.stemH;
+    L.push(['Concrete', (type === 'basement' ? 'Concrete, basement walls ' : 'Concrete, stem walls ') + Math.round(F.stemT * 12) + '″ × ' + (wallH >= 1 ? fmtFt(wallH) : Math.round(wallH * 12) + '″') + tag, '', cy(perim * F.stemT * wallH), 'cu yd']);
+    L.push(['Concrete', 'Wall forms (both faces)' + tag, '', perim * wallH * 2, 'sq ft']);
+    if (type !== 'crawl') L.push(['Concrete', 'Concrete, slab ' + Math.round(F.slabT * 12) + '″' + (type === 'basement' ? ' (basement floor)' : tag), '', cy(Math.max(0, area - perim * F.stemT) * F.slabT), 'cu yd']);
+    L.push(['Rebar', 'Rebar #4, wall verticals at 24″ (with hooks)' + tag, '', Math.ceil(perim / 2) * (wallH + F.footD + 1), 'lin ft']);
+    L.push(['Rebar', 'Rebar #4, wall horizontals (' + (wallH > 3 ? 'at 18″' : '2 bars') + ')' + tag, '', perim * (wallH > 3 ? Math.ceil(wallH / 1.5) : 2) * 1.1, 'lin ft']);
+  }
+  L.push(['Rebar', 'Rebar #4, footing / edge, 2 continuous' + tag, '', perim * 2 * 1.1, 'lin ft']);
+  if (type !== 'crawl') {
+    if (F.mesh === 'rebar') L.push(['Rebar', 'Rebar #4 at 18″ each way, slab' + tag, '', area / 1.5 * 2 * 1.1, 'lin ft']);
+    else L.push(['Rebar', 'Welded wire mesh 6×6 W1.4, slab' + tag, '', area * 1.1, 'sq ft']);
+    L.push(['Concrete', 'Gravel base ' + Math.round(F.gravel * 12) + '″, compacted' + tag, '', area * F.gravel / 27 * 1.1, 'cu yd']);
+    L.push(['Concrete', 'Vapor barrier, 10 mil under slab' + tag, '', area * 1.15, 'sq ft']);
   } else {
     L.push(['Concrete', 'Ground vapor barrier, 6 mil (crawlspace)', '', area * 1.15, 'sq ft']);
     L.push(['Concrete', 'Foundation vents', '1 per 150 sq ft', Math.ceil(area / 150), 'ea']);
@@ -233,15 +250,15 @@ function foundationTakeoff(plan, A) {
     L.push(['Framing', 'Subfloor ¾″ T&G OSB 4×8', '', Math.ceil(area / 32 * 1.1), 'sheets']);
     L.push(['Framing', 'Sill plate, pressure-treated 2×6', '', perim * 1.05, 'lin ft']);
   }
-  if (F.type === 'basement') {
+  if (type === 'basement') {
     L.push(['Concrete', 'Foundation waterproofing (basement walls)', '', perim * F.baseH, 'sq ft']);
     L.push(['Concrete', 'Perimeter drain tile, 4″ with gravel', '', perim * 1.05, 'lin ft']);
     L.push(['Framing', 'Floor joists over basement, 2×10 at 16″ (est.)', '', Math.ceil(area / 1.333 / 12 * 1.1), 'pcs (12′)']);
     L.push(['Framing', 'Subfloor ¾″ T&G OSB 4×8', '', Math.ceil(area / 32 * 1.1), 'sheets']);
   }
-  L.push(['Concrete', 'Anchor bolts ½″ × 10″ (6′ on center, 12″ from corners)', '', Math.ceil(perim / 6) + ext.length * 2, 'ea']);
-  L.push(['Concrete', 'Sill seal gasket', '', perim * 1.05, 'lin ft']);
-  return { F, perim, area, ext, lines: L };
+  L.push(['Concrete', 'Anchor bolts ½″ × 10″ (6′ on center, 12″ from corners)' + tag, '', Math.ceil(perim / 6) + nWalls * 2, 'ea']);
+  L.push(['Concrete', 'Sill seal gasket' + tag, '', perim * 1.05, 'lin ft']);
+  return L;
 }
 /* Where a wall taller than one 12′ panel is stacked: the first joint at the ceiling line when the room's ceiling
    (the higher of the two sides) leaves a plenum panel of 12′ or less above it, otherwise at 12′; then every 12′.
@@ -281,11 +298,17 @@ function levelPlans(plan) {
   for (let k = 0; k < L.length; k++) {
     const d = levelData(plan, k), lp = Object.assign({}, plan, JSON.parse(JSON.stringify(d)));
     delete lp.levels; lp.level = 0;
-    if (k < L.length - 1) lp.roof = { type: 'none' };
+    // a lower floor keeps the roof only where no floor sits on it (an attached garage, a one-story wing)
+    if (k < L.length - 1) {
+      const cover = [];
+      if (!L[k].below) for (let j = k + 1; j < L.length; j++) { const up = Object.assign({}, plan, JSON.parse(JSON.stringify(levelData(plan, j)))); delete up.levels; up.level = 0; const fu = footprint(analyze(up), true); if (fu) cover.push(...fu.rects); }
+      if (cover.length) lp.__roofCover = cover; else lp.roof = { type: 'none' };
+    }
     const grade = !L[k].below && (k === 0 || L[k - 1].below);
     if (!grade) { lp.foundation = { type: k === 0 ? 'none' : 'none' }; if (!L[k].below) lp.__floorBand = floorDepthOf(plan); lp.inserts = []; }
     if (L[k].below) { lp.roof = { type: 'none' }; lp.__below = true; }
     lp.__top = k === L.length - 1; lp.__grade = grade;
+    if (grade && k > 0) { const br = []; for (let j = 0; j < k; j++) if (L[j].below) { const dn = Object.assign({}, plan, JSON.parse(JSON.stringify(levelData(plan, j)))); delete dn.levels; dn.level = 0; const fd = footprint(analyze(dn), true); if (fd) { br.push(...fd.rects); let e = 0; for (let q = 0; q < fd.inside.length; q++) if (fd.inside[q]) { const i = q % fd.nx, jj = (q - i) / fd.nx; for (const [a2, b2] of [[i - 1, jj], [i + 1, jj], [i, jj - 1], [i, jj + 1]]) if (a2 < 0 || b2 < 0 || a2 >= fd.nx || b2 >= fd.nz || !fd.inside[b2 * fd.nx + a2]) e++; } lp.__basePerim = (lp.__basePerim || 0) + e * fd.cell; } } if (br.length) lp.__baseRects = br; }
     lp.__rise = stairRise(plan, k);
     const holes = (items) => (items || []).filter(it => it.type === 'stairs' || it.type === 'stairsL').map(it => { const c = itemCorners(it); return { x0: Math.min(...c.map(q => q[0])), z0: Math.min(...c.map(q => q[1])), x1: Math.max(...c.map(q => q[0])), z1: Math.max(...c.map(q => q[1])) }; });
     lp.__ceilHoles = holes(d.items);
@@ -2560,7 +2583,10 @@ function roomRegions(A, plan, closeGaps) {
 function roofField(A, plan, fp) {
   const R = plan.roof || {}, ov = Math.max(0, R.overhang == null ? 1 : R.overhang), slope = (R.pitch == null ? 6 : R.pitch) / 12, s = 0.5;
   const B = A.bounds, gx0 = B.minX - ov - 2, gz0 = B.minZ - ov - 2, nx = Math.ceil((B.w + 2 * ov + 4) / s), nz = Math.ceil((B.d + 2 * ov + 4) / s), N = nx * nz;
-  const ins = new Uint8Array(N); for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) ins[j * nx + i] = fp.has(gx0 + (i + 0.5) * s, gz0 + (j + 0.5) * s) ? 1 : 0;
+  // under a floor above (plan.__roofCover): no roof there, and the roof runs into that floor's wall
+  const cov = plan.__roofCover, cv = new Uint8Array(N);
+  if (cov) for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { const x = gx0 + (i + 0.5) * s, z = gz0 + (j + 0.5) * s; if (cov.some(r => x >= r[0] && x <= r[2] && z >= r[1] && z <= r[3])) cv[j * nx + i] = 1; }
+  const ins = new Uint8Array(N); for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) ins[j * nx + i] = !cv[j * nx + i] && fp.has(gx0 + (i + 0.5) * s, gz0 + (j + 0.5) * s) ? 1 : 0;
   const cheb = (seed, axis) => { // distance (cells) from each cell to the nearest seed cell
     const D = new Float32Array(N); for (let k = 0; k < N; k++) D[k] = seed[k] ? 0 : 1e9;
     const pass = (rev) => { for (let jj = 0; jj < nz; jj++) { const j = rev ? nz - 1 - jj : jj; for (let ii = 0; ii < nx; ii++) { const i = rev ? nx - 1 - ii : ii, k = j * nx + i; let d = D[k];
@@ -2569,9 +2595,24 @@ function roofField(A, plan, fp) {
       D[k] = d; } } };
     pass(false); pass(true); return D;
   };
-  const toIns = cheb(ins), roofed = new Uint8Array(N); for (let k = 0; k < N; k++) roofed[k] = toIns[k] * s <= ov + 1e-6 ? 1 : 0;
-  const outside = new Uint8Array(N); for (let k = 0; k < N; k++) outside[k] = roofed[k] ? 0 : 1;
-  const type = R.type || 'gable', axis = type === 'gable' ? (B.w >= B.d ? 'z' : 'x') : null;
+  const toIns = cheb(ins), roofed = new Uint8Array(N); for (let k = 0; k < N; k++) roofed[k] = !cv[k] && toIns[k] * s <= ov + 1e-6 ? 1 : 0;
+  let gAxis = B.w >= B.d ? 'z' : 'x';
+  if (cov) {
+    // a wing against a taller floor (an attached garage): its ridge runs straight out from that floor's wall, the
+    // gable end on the far side, and the overhang stops at that wall instead of running along it
+    let i0 = 1e9, i1 = -1, j0 = 1e9, j1 = -1, cx = 0, cz = 0; const side = { l: 0, r: 0, t: 0, b: 0 };
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { const k = j * nx + i; if (!ins[k]) continue; i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j); }
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { const k = j * nx + i; if (!ins[k]) continue;
+      if (i > 0 && cv[k - 1]) { cx++; if (i === i0) side.l++; } if (i < nx - 1 && cv[k + 1]) { cx++; if (i === i1) side.r++; }
+      if (j > 0 && cv[k - nx]) { cz++; if (j === j0) side.t++; } if (j < nz - 1 && cv[k + nx]) { cz++; if (j === j1) side.b++; } }
+    if (i1 >= 0) {
+      if (cx || cz) gAxis = cx >= cz ? 'z' : 'x';
+      const oc = Math.round(ov / s), a0 = i0 - (side.l ? 0 : oc), a1 = i1 + (side.r ? 0 : oc), b0 = j0 - (side.t ? 0 : oc), b1 = j1 + (side.b ? 0 : oc);
+      for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) if (i < a0 || i > a1 || j < b0 || j > b1) roofed[j * nx + i] = 0;
+    }
+  }
+  const outside = new Uint8Array(N); for (let k = 0; k < N; k++) outside[k] = roofed[k] || cv[k] ? 0 : 1;
+  const type = R.type || 'gable', axis = type === 'gable' ? gAxis : null;
   const D = cheb(outside, axis), H = A.H, Z = new Float32Array(N);
   for (let k = 0; k < N; k++) Z[k] = !roofed[k] ? 0 : type === 'flat' ? H + 0.6 : H + slope * (D[k] * s - s / 2 - ov);
   return { s, gx0, gz0, nx, nz, roofed, Z, H, ov, slope, type, at(x, z) { const i = Math.floor((x - gx0) / s), j = Math.floor((z - gz0) / s); if (i < 0 || j < 0 || i >= nx || j >= nz) return H; const k = j * nx + i; return roofed[k] ? Z[k] : H; } };
@@ -3776,7 +3817,7 @@ function pressureArrows(THREE, root, plan) {
 /* Roof structure over building (shell) walls: open-web steel joists across the short way, 5′ on center,
    24″ deep (30″ past a 50′ span), each running wall to wall inside the building. */
 function roofStructure(plan, A) {
-  A = A || analyze(plan); if (!(A.shellTop > 0)) return null;
+  A = A || analyze(plan); if (!(A.shellTop > 0) || plan.__below) return null;
   const fp = footprint(A, true); if (!fp) return null;
   const B = A.bounds, alongX = B.w <= B.d, sp = 5, step = 0.25, joists = [];
   const scan = (fixed, lo, hi) => {
@@ -3882,7 +3923,7 @@ function mount(container, plan, opts) {
   controls.minDistance = 8; controls.maxDistance = 400; controls.enabled = false;
   smartZoom(THREE, camera, controls, canvas, { objects: () => { const o = []; if (built) built.root.traverseVisible(m => { if (m.isMesh) o.push(m); }); return o; }, active: () => mode !== 'walk' && !tween });
 
-  const EYE = 5.3, R = 0.55;
+  const EYE0 = 5.3, R = 0.55; let EYE = EYE0; // eye height, raised to the floor being drawn on
   const st = { x: 0, z: 0, yaw: 0, pitch: -0.04 };
   let A = null, built = null, rooms = [], outside = null;
   let mode = 'walk', tween = null, target = null, stuck = 0, fov = 70, curRoom = undefined;
@@ -4246,6 +4287,7 @@ function mount(container, plan, opts) {
     A = analyzeAll(p);
     if (built) { scene.remove(built.root); built.root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     built = buildStack(THREE, p, A);
+    EYE = EYE0; try { if ((p.levels || []).length > 1) { const L = levelPlans(p).find(q => q.k === (p.level || 0)); if (L) EYE = EYE0 + L.elev; } } catch (e) { }
     for (const extra of [() => pressureArrows(THREE, built.root, p), () => floorFlow(THREE, built.root, p)]) { try { extra(); } catch (e) { console.error(e); } }
     scene.add(built.root);
     try { refreshAir(); applySwitches(); } catch (e) { console.error(e); }
