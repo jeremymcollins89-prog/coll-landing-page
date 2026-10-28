@@ -333,6 +333,14 @@ function wallTopOf(P, w) {
   try { for (const z of Plan3DViewer.zones(P)) if ((z.plan.walls || []).includes(w)) return Math.max(6, z.plan.ceiling || 8) + Math.max(0, +z.plan.plenum || 0); } catch (e) { /* fall back to the building's */ }
   const K = Plan3DViewer.roomKey(P, null); return K.H + K.PL;
 }
+// panel colour picker: a swatch dot by each name; first option is "the plan's colour" when picking for one wall
+function panelColorSelect(id, cur, planDefault) {
+  const PC = Plan3DViewer.PANEL_COLORS;
+  const opts = (planDefault ? [`<option value="" ${!cur ? 'selected' : ''}>Same as the plan (${esc(PC[planDefault][0])})</option>`] : [])
+    .concat(Object.entries(PC).map(([k, v]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${esc(v[0])}</option>`));
+  const sw = (PC[cur || planDefault] || PC.white)[1];
+  return `<div style="display:flex;gap:6px;align-items:center"><span id="${id}Sw" style="width:18px;height:18px;border-radius:4px;border:1px solid var(--line);flex:0 0 auto;background:${sw}"></span><select id="${id}" style="flex:1">${opts.join('')}</select></div>`;
+}
 function renderProps(opt) {
   const box = $('#props'), P = ed.plan, s = ed.sel, o = ed.selected();
   let h = '';
@@ -343,9 +351,11 @@ function renderProps(opt) {
     box.innerHTML = `<div class="hd"><span class="kind">${M.length} pieces selected${grouped ? ' (a group)' : ''}</span><button class="btn small danger" id="mDel">Delete</button></div>
       <div class="grp"><div class="stats">${Object.entries(cnt).map(([k, n]) => `<span>${esc(NAMES[k] || k)}${n > 1 && k !== 'opening' && k !== 'fixture' ? 's' : ''}</span><span>${n}</span>`).join('')}</div></div>
       <div class="row">${grouped ? '<button class="btn small" id="mUngroup">Ungroup</button>' : '<button class="btn small" id="mGroup">Group them</button>'}<button class="btn small" id="mCopy">Copy</button><button class="btn small" id="mSize">Resize…</button>${M.some(r => r.kind === 'wall') ? '<button class="btn small" id="mWH">Wall height…</button>' : ''}${M.some(r => r.kind === 'fixture') ? '<button class="btn small" id="mSnapFx" title="Set the FFUs and lights picked into the ceiling grid\'s openings">Snap into the grid</button>' : ''}</div>
+      ${M.some(r => r.kind === 'wall') ? `<div class="grp">${fld('Panel color', panelColorSelect('mPC', '', Plan3DViewer.panelColorOf(P)))}</div>` : ''}
       <div class="row"><button class="btn small primary" id="mSave">Save to the library…</button></div>
       <p class="note">Drag any of them to move them all; their walls catch on nearby wall ends (hold Alt to move freely). Shift+click adds or takes out one piece; Shift-drag a box adds more. A group stays together: clicking one piece picks up the whole group. Ctrl+G groups, Ctrl+Shift+G ungroups, Ctrl+C / Ctrl+V copy and paste.</p>`;
     $('#mDel').onclick = () => ed.deleteSel();
+    if ($('#mPC')) $('#mPC').onchange = e => { const v = e.target.value, W = M.filter(r => r.kind === 'wall').map(r => ed.find(r)).filter(Boolean); ed.edit(() => { W.forEach(w => { if (v) w.color = v; else delete w.color; }); }); toast(`${W.length} wall${W.length === 1 ? '' : 's'} ${v ? 'set to ' + Plan3DViewer.PANEL_COLORS[v][0].toLowerCase() : 'back to the plan color'}.`); renderProps(); queue3D(); };
     if ($('#mGroup')) $('#mGroup').onclick = () => { ed.groupSel(true); renderProps(); };
     if ($('#mUngroup')) $('#mUngroup').onclick = () => { ed.groupSel(false); renderProps(); };
     $('#mCopy').onclick = copyPieces; $('#mSave').onclick = saveGroupDialog; $('#mSize').onclick = resizeSelection; if ($('#mWH')) $('#mWH').onclick = wallHeightDialog; if ($('#mSnapFx')) $('#mSnapFx').onclick = () => snapFixturesIn(new Set(M.filter(r => r.kind === 'fixture').map(r => r.id)));
@@ -359,7 +369,7 @@ function renderProps(opt) {
       ${fld('Wall type', `<select id="pKind">${kindOrder.map(([k, v]) => `<option value="${k}" ${k === kind ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select>`)}
       ${fld('Length', txt('pLen', fmt(len)))}
       ${fld('Thickness', txt('pT', fmtIn(o.t || 0.25)))}
-      ${hard ? fld('S.P. panel', `<label class="chk"><input type="checkbox" id="pSP" ${o.sp ? 'checked' : ''}> Highlight yellow</label>`) : ''}${fld('Height', txt('pWH', fmt(wallHeightOf(P, o))))}
+      ${hard ? fld('S.P. panel', `<label class="chk"><input type="checkbox" id="pSP" ${o.sp ? 'checked' : ''}> Highlight yellow</label>`) : ''}${hard ? fld('Panel color', panelColorSelect('pPC', o.color || '', Plan3DViewer.panelColorOf(P))) : ''}${fld('Height', txt('pWH', fmt(wallHeightOf(P, o))))}
       ${KINDS[kind].frame ? fld('Studs', `<select id="pStud">${(kind === 'steel' ? [['', 'Auto (6″ outside, 3⅝″ inside)'], ['3⅝″', '3⅝″ steel'], ['6″', '6″ steel']] : [['', 'Auto (2×6 outside, 2×4 inside)'], ['2×4', '2×4'], ['2×6', '2×6']]).map(([v, l]) => `<option value="${v}" ${(o.stud || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`)
         + fld('Exterior wall', `<select id="pExt"><option value="" ${o.ext == null ? 'selected' : ''}>Auto (outside walls)</option><option value="1" ${o.ext === true ? 'selected' : ''}>Yes: sheathing, wrap, siding</option><option value="0" ${o.ext === false ? 'selected' : ''}>No: drywall both sides</option></select>`) : ''}
       ${hard ? (() => {
@@ -391,6 +401,7 @@ function renderProps(opt) {
     bindLen('pLen', 'ft', v => ed.edit(() => { const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1; const ux = (o.x2 - o.x1) / L, uy = (o.y2 - o.y1) / L; const linked = ed.linkedEnds(o.x2, o.y2, o); o.x2 = o.x1 + ux * v; o.y2 = o.y1 + uy * v; linked.forEach(l => { if (l.end === 1) { l.w.x1 = o.x2; l.w.y1 = o.y2; } else { l.w.x2 = o.x2; l.w.y2 = o.y2; } }); }));
     bindLen('pT', 'in', v => ed.edit(() => { o.t = Math.max(1 / 48, v); }));
     if ($('#pSP')) $('#pSP').onchange = e => ed.edit(() => { o.sp = e.target.checked; });
+    if ($('#pPC')) $('#pPC').onchange = e => { ed.edit(() => { if (e.target.value) o.color = e.target.value; else delete o.color; }); renderProps(); queue3D(); };
     if (hard) {
       const def = wallTopOf(P, o), secs = Array.isArray(o.sections) ? o.sections : [];
       secs.forEach((q, i) => {
@@ -728,6 +739,7 @@ function renderProps(opt) {
     ${fld('Name', txt('pPName', P.name))}
     ${fld(house ? 'Wall height' : 'Ceiling', txt('pCeil', fmt(P.ceiling)))}
     ${house ? '' : fld('Plenum above', txt('pPlen', fmt(P.plenum || 0))) + `<p class="note" style="margin-top:-4px">Plenum: the space between the grid ceiling and the top of the cleanroom. Walls are ${esc(fmt((P.ceiling || 8) + (P.plenum || 0)))} tall.</p>${ownHeightWalls(P).length ? `<p class="note" style="color:var(--warn)">${ownHeightWalls(P).length} walls have their own height set, so they don't follow this. <button class="btn small" id="pWallsFollow">Make them follow</button></p>` : ''}`}
+    ${house ? '' : fld('Panel color', panelColorSelect('pPCall', Plan3DViewer.panelColorOf(P), null))}
     ${fld('New wall type', `<select id="pNK">${kindList.map(([k, v]) => `<option value="${k}" ${(P.newKind || (house ? 'wood' : 'hardwall')) === k ? 'selected' : ''}>${esc(v.short)}</option>`).join('')}</select>`)}
     ${fld('New walls', txt('pWT', fmtIn(P.wallT || 0.25)))}
     ${(P.walls.some(w => !Plan3DViewer.isHard(w) && !Plan3DViewer.isFrame(w)) || shellNew) ? fld('Building wall height', txt('pSH', fmt(P.shellH || 20))) : ''}
@@ -830,6 +842,7 @@ function renderProps(opt) {
   for (const [id, key] of [['fSid', 'siding'], ['fSidC', 'sidingColor'], ['fRoof', 'roof'], ['fRoofC', 'roofColor'], ['fPaint', 'paint'], ['fCab', 'cabinet'], ['fCtr', 'counter']]) if ($('#' + id)) $('#' + id).onchange = e => ed.edit(Pl => { Pl.finish = Object.assign({}, Pl.finish || {}, { [key]: e.target.value }); });
   $('#pMode').onchange = e => { const m = e.target.value; ed.edit(Pl => { if (m === 'house') houseDefaults(Pl, true); else Pl.mode = 'cleanroom'; }); updateChrome(); renderProps(); };
   bindLen('pWT', 'in', v => { ed.plan.wallT = Math.max(1 / 48, v); renderProps(); });
+  if ($('#pPCall')) $('#pPCall').onchange = e => { const v = e.target.value, own = (P.walls || []).filter(w => w.color && w.color !== v).length; ed.edit(Q => { if (v === 'white') delete Q.panelColor; else Q.panelColor = v; }); toast(`Panels are ${Plan3DViewer.PANEL_COLORS[v][0].toLowerCase()}${own ? ` (${own} wall${own === 1 ? ' keeps its' : 's keep their'} own color)` : ''}.`); renderProps(); queue3D(); };
   $('#pNK').onchange = e => { const k = e.target.value, K = Plan3DViewer.WALL_KINDS[k]; ed.plan.newKind = k === 'hardwall' && !house ? undefined : k; ed.plan.wallT = k === 'hardwall' ? 0.25 : K.t; ed.dirty = true; renderProps(); msg(k === 'hardwall' ? 'New walls: hardwall cleanroom panels.' : 'New walls: ' + K.label + ', ' + fmtIn(K.t) + ' thick. Draw them with the Wall tool (W).'); };
   bindLen('pSH', 'ft', v => ed.edit(Pl => { Pl.shellH = Math.max(6, Math.min(80, v)); }));
   $('#pSnap').onchange = e => { ed.snapIn = +e.target.value; };
