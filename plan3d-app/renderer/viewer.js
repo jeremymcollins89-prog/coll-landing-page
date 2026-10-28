@@ -1245,9 +1245,9 @@ const CEIL_LINES = new WeakMap();
 function ceilingLines(plan, A) {
   const own = Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length ? plan.ceilingGrid : null;
   A = A || analyze(plan);
-  const memo = CEIL_LINES.get(A); if (memo && memo.src === own) return memo.lines;
+  const hk = JSON.stringify(hangRects(plan)), memo = CEIL_LINES.get(A); if (memo && memo.src === own && memo.hk === hk) return memo.lines;
   const FP = footprint(A), out = own ? own.slice() : [];
-  const save = (l) => { CEIL_LINES.set(A, { src: own, lines: l }); return l; };
+  const save = (l) => { CEIL_LINES.set(A, { src: own, hk, lines: l }); return l; };
   if (!FP || A.house) return save(out);
   const G = own ? gridFromLines(own) : ceilingGrid(plan, A);
   if (!G) return save(out);
@@ -1282,11 +1282,14 @@ function ceilingLines(plan, A) {
     if ([[.5, .5], [.15, .15], [.85, .15], [.15, .85], [.85, .85]].some(([a, b]) => inPatch(X(i) + a * cw, Z(j) + b * cl, 0.25))) return true;
     return (vDrawn(X(i), zm) + vDrawn(X(i + 1), zm) + hDrawn(Z(j), xm) + hDrawn(Z(j + 1), xm)) >= 3;
   };
-  const inCell = (i, j) => { const s = [[.5, .5], [.1, .1], [.9, .1], [.1, .9], [.9, .9], [.5, .1], [.5, .9], [.1, .5], [.9, .5]]; return s.filter(([a, b]) => FP.has(X(i) + a * cw, Z(j) + b * cl)).length >= 2; };
+  // hung grid sections (ceiling areas with no walls round them) have grid too
+  const HG = hangRects(plan), inHG = (x, z) => HG.some(r => x >= r[0] - 1e-6 && x <= r[2] + 1e-6 && z >= r[1] - 1e-6 && z <= r[3] + 1e-6);
+  const FPh = HG.length ? { cell: FP.cell, has: (x, z) => FP.has(x, z) || inHG(x, z) } : FP;
+  const inCell = (i, j) => { const s = [[.5, .5], [.1, .1], [.9, .1], [.1, .9], [.9, .9], [.5, .1], [.5, .9], [.1, .5], [.9, .5]]; return s.filter(([a, b]) => FPh.has(X(i) + a * cw, Z(j) + b * cl)).length >= 2; };
   const step = Math.min(0.25, FP.cell / 2);
   // one edge, clipped to where there is ceiling under it
   const edge = (x1, z1, x2, z2, F) => {
-    F = F || FP;
+    F = F || FPh;
     const L = Math.hypot(x2 - x1, z2 - z1), n = Math.max(1, Math.round(L / step)); let st = null;
     for (let k = 0; k <= n; k++) {
       const t = k / n, x = x1 + (x2 - x1) * t, z = z1 + (z2 - z1) * t, ins = F.has(x, z);
@@ -1299,7 +1302,7 @@ function ceilingLines(plan, A) {
   // (trimmed to the building, not just the closed-in cleanroom: a hall or a room left open in the plan still
   // keeps the grid drawn over it)
   out.length = 0;
-  const FPd = own ? footprint(A, true) || FP : FP;
+  const FPd0 = own ? footprint(A, true) || FP : FP, FPd = HG.length ? { has: (x, z) => FPd0.has(x, z) || inHG(x, z) } : FPd0;
   for (const q of own || []) edge(q[0], q[1], q[2], q[3], FPd);
   const need = new Set();
   for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) if (inCell(i, j) && !covered(i, j)) need.add(i + ',' + j);
