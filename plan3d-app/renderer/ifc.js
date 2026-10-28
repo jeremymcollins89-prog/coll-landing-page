@@ -273,7 +273,7 @@ function toIfc(plan, opts) {
     metal: style('Coll building wall, metal panel', 0.87, 0.89, 0.9, 0, 0.3, 30, 'METAL'),
     stud: style('Coll building wall, drywall', 0.94, 0.93, 0.91, 0, 0.04, 8),
     slab: style('Coll floor slab, concrete', 0.72, 0.71, 0.68, 0, 0.04, 8),
-    deck: style('Coll roof deck, metal', 0.66, 0.69, 0.71, 0, 0.3, 30, 'METAL'),
+    deck: style('Coll steel roof deck, galvanized', 0.55, 0.58, 0.6, 0, 0.45, 45, 'METAL'),
     wood: style('Coll house wall, painted drywall', 0.95, 0.94, 0.91, 0, 0.04, 8),
     siding: style('Coll lap siding', 0.84, 0.86, 0.85, 0, 0.05, 10),
     shingles: style('Coll asphalt shingles', 0.29, 0.31, 0.33, 0, 0.05, 8, 'MATT'),
@@ -288,6 +288,7 @@ function toIfc(plan, opts) {
   const KIND_NAME = (k) => (V.WALL_KINDS && V.WALL_KINDS[k] ? V.WALL_KINDS[k].label : 'Building wall');
   S.ffuFace = S.face;
   S.ohd = style('Coll overhead door, steel sections', 0.85, 0.87, 0.88, 0, 0.3, 30, 'METAL');
+  S.damper = style('Coll fire/smoke damper frame, steel', 0.24, 0.26, 0.28, 0, 0.4, 40, 'METAL');
   S.struct = style('Coll structural steel, gray primer', 0.54, 0.57, 0.59, 0, 0.25, 20, 'METAL');
   S.plate = style('Coll device cover plate, white', 0.96, 0.96, 0.96, 0, 0.2, 30);
   // the colors seen from above in the Plenum view: tile backs, LED housings, FFU inlet ring and pre-filter
@@ -588,6 +589,19 @@ function toIfc(plan, opts) {
     const Z = V.beamSize(bm), d = Z.d / 12, bf = Z.bf / 12, tf = Math.max(0.025, Z.tf / 12), tw = Math.max(0.02, Z.tw / 12), y0 = q.bot, nm = (bm.size || 'W12x26').replace('x', '×');
     put('IFCBEAM', 'Steel beam ' + nm + ', ' + V.fmtFt(L), 'Steel wide-flange beam (I-beam)', shape([seg(q.x1, q.y1, q.x2, q.y2, y0, y0 + tf, bf, S.struct), seg(q.x1, q.y1, q.x2, q.y2, y0 + d - tf, y0 + d, bf, S.struct), seg(q.x1, q.y1, q.x2, q.y2, y0 + tf, y0 + d - tf, tw, S.struct)]), ',.BEAM.', S.struct);
   }
+  // return grilles (and dampers) set into wall panels with the Grille tool: louvred faces on both sides of the
+  // panel at their own size and height, a damper frame round them when there is one
+  for (const gr of plan.grilles || []) {
+    const w = Math.max(0.25, +gr.w || 20 / 12), h = Math.max(0.25, +gr.h || 20 / 12), sill = Math.max(0, gr.sill == null ? 0.5 : +gr.sill), a = gr.a || 0, c = Math.cos(a), sn = Math.sin(a), t = (gr.t || 0.25) + 0.03;
+    const at = (s0, s1, y0, y1, tt, st) => seg(gr.x + c * s0, gr.y + sn * s0, gr.x + c * s1, gr.y + sn * s1, y0, y1, tt, st);
+    const parts = [at(-w / 2, w / 2, sill, sill + h, t, S.grille)];
+    // louvre blades every 2″ on each face, so the grille reads as a grille in Revit
+    for (let y = sill + 2 / 12; y < sill + h - 0.08; y += 2 / 12) parts.push(at(-w / 2 + 0.04, w / 2 - 0.04, y - 0.015, y + 0.015, t + 0.02, S.grille));
+    if (gr.damper) { const e = 0.06; parts.push(at(-w / 2 - e, w / 2 + e, sill - e, sill, t + 0.01, S.damper), at(-w / 2 - e, w / 2 + e, sill + h, sill + h + e, t + 0.01, S.damper), at(-w / 2 - e, -w / 2, sill, sill + h, t + 0.01, S.damper), at(w / 2, w / 2 + e, sill, sill + h, t + 0.01, S.damper)); }
+    const inch = (v) => Math.round(v * 12);
+    const nm = (gr.plenum ? 'Plenum grille' : 'Return grille') + ' ' + inch(w) + '″ × ' + inch(h) + '″' + (gr.damper ? ' with damper' : '') + (gr.plenum ? '' : ', bottom at ' + V.fmtFt(sill));
+    put('IFCAIRTERMINAL', nm, 'Coll ' + (gr.damper ? 'return grille with damper' : 'return grille'), shape(parts), ',.GRILLE.', S.grille);
+  }
   if (!A.empty && opts.ceiling !== false) {
     // One ceiling per connected area, traced around the room footprint, so Revit shows no seams where
     // smaller pieces would meet.
@@ -606,7 +620,19 @@ function toIfc(plan, opts) {
         const parts = V.deckParts(plan, A, d, WH); if (!parts.length) return;
         const top = Math.max(...parts.map(q => q.h)) + 0.17, low = Math.min(...parts.map(q => q.h)) + 0.17;
         const nm = (DK.length > 1 ? `Lid (roof deck) ${idx + 1}` : 'Lid (roof deck)') + ', top at ' + (Math.abs(top - low) < 0.01 ? V.fmtFt(top) : V.fmtFt(low) + ' to ' + V.fmtFt(top));
-        put('IFCSLAB', nm, 'Coll steel roof deck / lid, 2″', shape(parts.map(q => slab({ outer: q.outer, holes: q.holes || [] }, q.h, q.h + 0.17, S.deck))), ',.ROOF.', S.deck);
+        // B-deck: a 0.04′ sheet, then ribs 1¾″ wide and 1½″ tall every 6″ running along the plan's Y, cut to the piece
+        const items = [];
+        for (const q of parts) {
+          items.push(slab({ outer: q.outer, holes: q.holes || [] }, q.h, q.h + 0.045, S.deck));
+          const xs = q.outer.map(p => p[0]), x0 = Math.min(...xs), x1 = Math.max(...xs), rings = [q.outer].concat(q.holes || []);
+          for (let x = Math.ceil(x0 * 2) / 2 + 0.25; x < x1 - 0.05; x += 0.5) {
+            // where the line x = const is inside the piece (outline minus holes): pairs of crossings along y
+            const ys = []; for (const R of rings) for (let i = 0; i < R.length; i++) { const [ax, ay] = R[i], [bx, by] = R[(i + 1) % R.length]; if ((ax <= x) !== (bx <= x)) ys.push(ay + (x - ax) * (by - ay) / (bx - ax)); }
+            ys.sort((u, v) => u - v);
+            for (let k = 0; k + 1 < ys.length; k += 2) if (ys[k + 1] - ys[k] > 0.1) items.push(box(x - 0.073, ys[k], x + 0.073, ys[k + 1], q.h + 0.045, q.h + 0.17, S.deck));
+          }
+        }
+        put('IFCSLAB', nm, 'Coll steel roof deck / lid, 1½″ B-deck, galvanized', shape(items), ',.ROOF.', S.deck);
       });
       const steps = (V.deckSteps ? V.deckSteps(plan, A, WH) : []).filter(q => q.y1 - q.y0 >= 0.05);
       if (steps.length) put('IFCPLATE', 'Lid step panels', 'Coll hardwall panels closing the steps in the lid', shape(steps.map(q => seg(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t || 0.25, S.white))), ',.NOTDEFINED.', S.white);
