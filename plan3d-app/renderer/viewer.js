@@ -171,7 +171,7 @@ const ITEMS = {
   machine: { label: 'Machine', group: 'Equipment', w: 4, d: 4, h: 8, free: true, hidden: true },
   // stairs up to the floor above: risers 7¾″ max, treads 10″; d is the run (it's set from the floor-to-floor height
   // when placed). The floor above gets a stairwell opening over it.
-  stairs: { label: 'Stairs, straight run', group: 'Stairs', w: 3, d: 12, h: 9, free: true },
+  stairs: { label: 'Stairs, straight run', group: 'Stairs', w: 3, d: 12, h: 9, free: true, wv: true },
   stairsL: { label: 'Stairs with landing (L)', group: 'Stairs', w: 6.5, d: 10, h: 9, free: true }
 };
 /* ---------- House foundation (plan.foundation) ----------
@@ -275,17 +275,22 @@ const stairRise = (plan, k) => (levelData(plan, k).ceiling || plan.ceiling || 8)
 function levelPlans(plan) {
   const L = plan.levels || [];
   if (L.length < 2) return [{ k: 0, name: (L[0] && L[0].name) || '', plan, elev: 0, top: true }];
+  // a basement (level.below) sits below grade: the first floor above it is at 0
   const out = []; let elev = 0;
+  for (let k = 0; k < L.length && L[k].below; k++) elev -= stairRise(plan, k);
   for (let k = 0; k < L.length; k++) {
     const d = levelData(plan, k), lp = Object.assign({}, plan, JSON.parse(JSON.stringify(d)));
     delete lp.levels; lp.level = 0;
     if (k < L.length - 1) lp.roof = { type: 'none' };
-    if (k > 0) { lp.foundation = { type: 'none' }; lp.__floorBand = floorDepthOf(plan); lp.inserts = []; }
+    const grade = !L[k].below && (k === 0 || L[k - 1].below);
+    if (!grade) { lp.foundation = { type: k === 0 ? 'none' : 'none' }; if (!L[k].below) lp.__floorBand = floorDepthOf(plan); lp.inserts = []; }
+    if (L[k].below) { lp.roof = { type: 'none' }; lp.__below = true; }
+    lp.__top = k === L.length - 1; lp.__grade = grade;
     lp.__rise = stairRise(plan, k);
     const holes = (items) => (items || []).filter(it => it.type === 'stairs' || it.type === 'stairsL').map(it => { const c = itemCorners(it); return { x0: Math.min(...c.map(q => q[0])), z0: Math.min(...c.map(q => q[1])), x1: Math.max(...c.map(q => q[0])), z1: Math.max(...c.map(q => q[1])) }; });
     lp.__ceilHoles = holes(d.items);
     if (k > 0) lp.__floorHoles = holes(levelData(plan, k - 1).items);
-    out.push({ k, name: L[k].name || 'Floor ' + (k + 1), plan: lp, elev, top: k === L.length - 1 });
+    out.push({ k, name: L[k].name || 'Floor ' + (k + 1), plan: lp, elev, top: k === L.length - 1, grade });
     elev += stairRise(plan, k);
   }
   return out;
@@ -3573,7 +3578,7 @@ function buildStack(THREE, plan, M) {
   for (const L of LP) {
     const b = buildAll(THREE, L.plan);
     b.root.position.y = L.elev;
-    if (L.k > 0 || !b.ground) { if (b.ground && b.ground.parent) b.ground.parent.remove(b.ground); } else out.ground = b.ground;
+    if (!L.grade || !b.ground) { if (b.ground && b.ground.parent) b.ground.parent.remove(b.ground); } else out.ground = b.ground;
     for (const [grp, src] of [[ceiling, b.ceiling], [lid, b.lid], [roof, b.roof]]) if (src) { grp.add(src); src.position.y = L.elev; }
     root.add(b.root);
     out.pick.push(...b.pick); out.floors.push(b.floor); out.doors.push(...b.doors); out.doorObs.push(...b.doorObs);
