@@ -3402,7 +3402,11 @@ function buildScene(THREE, plan, A) {
         const L = Math.hypot(ldx, ldz) || 1, top = S.leafH - 0.02, lm = new THREE.Group(); doorGroup.add(lm);
         const g0 = (L - S.vis.w) / 2, g1 = g0 + S.vis.w, v0 = S.vis.y0, v1 = v0 + S.vis.h, gl = 1 / 12;
         const parts = [[0, L, 0.03, v0], [0, L, v1, top], [0, g0, v0, v1], [g1, L, v0, v1]].map(([u0, u1, y0, y1]) => localSegBox(lm, u0, 0, u1, 0, y0, y1, 0.145, M.leaf));
-        parts.forEach(m => { outline(m); pick.push(m); });
+        // one outline round the whole leaf (the leaf is built in four pieces round the glass; outlining each piece
+        // drew seams across the door at the top and bottom of the vision lite)
+        parts.forEach(m => pick.push(m));
+        { const ghost = localSegBox(lm, 0, 0, L, 0, 0.03, top, 0.145, M.leaf), ln = new THREE.LineSegments(new THREE.EdgesGeometry(ghost.geometry, 25), M.line);
+          ln.position.copy(ghost.position); ln.rotation.copy(ghost.rotation); ln.scale.copy(ghost.scale); lm.remove(ghost); lm.add(ln); }
         // vision frame (26″ × 36″) and the 24″ × 34″ glass
         localSegBox(lm, g0, 0, g0 + gl, 0, v0, v1, 0.18, fr); localSegBox(lm, g1 - gl, 0, g1, 0, v0, v1, 0.18, fr);
         localSegBox(lm, g0, 0, g1, 0, v0, v0 + gl, 0.18, fr); localSegBox(lm, g0, 0, g1, 0, v1 - gl, v1, 0.18, fr);
