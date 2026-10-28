@@ -320,7 +320,7 @@ function partsList(plan) {
     if (DS) {
       // standard cleanroom door (built like the door drawings): leaves, vision lites, levers, frame
       const lw = inch(DS.leafW);
-      add('Doors & glass', DS.n === 2 ? 'Door, pair (standard): two ' + lw + ' × 84″ leaves, 7½″ meeting strip' : 'Door, single (standard): ' + lw + ' × 84″ leaf', inch(W) + ' frame opening × 86″ head', 1, 'ea', DS.n === 2 ? 31 : 30);
+      add('Doors & glass', DS.n === 2 ? 'Door, pair (standard): two ' + lw + ' × 84″ leaves, no center post' : 'Door, single (standard): ' + lw + ' × 84″ leaf', inch(W) + ' frame opening × 86″ head', 1, 'ea', DS.n === 2 ? 31 : 30);
       add('Doors & glass', 'Vision lite in door, 24″ × 34″ glass (26″ × 36″ frame)', '', DS.n, 'ea', 32.5);
       add('Doors & glass', 'Lever lockset', '38″ to center', DS.n, 'ea', 32.6);
       add('Doors & glass', 'Door closer', '', DS.n, 'ea', 32.7);
