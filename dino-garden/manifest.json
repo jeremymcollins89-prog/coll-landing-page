@@ -1,0 +1,15 @@
+{
+  "name": "Dino Garden",
+  "short_name": "Dino Garden",
+  "description": "A calm learning and creativity game for little kids: marble runs, music, letters, numbers, coloring and more. Works offline.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#2e1a47",
+  "theme_color": "#2e1a47",
+  "icons": [
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

@@ -4,15 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Other projects · Coll Business Solutions LLC</title>
-<meta name="description" content="Smaller tools from Coll Business Solutions LLC, including Coll Plan3D for turning floor plans into 3D walkthroughs.">
+<meta name="description" content="Smaller things from Coll Business Solutions LLC: Coll Plan3D, which turns floor plans into 3D models, and Dino Garden, a calm learning game for little kids.">
 <link rel="icon" href="/brand/coll-icon.svg" type="image/svg+xml">
 <link rel="icon" href="/brand/coll-favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="/brand/coll-apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
 <style>
-:root{--ink:#1C1F1E;--body:#4B5250;--line:#E2E4E1;--bg:#FFFFFF;--soft:#F5F6F4;--amber:#F2C84B;--amber-deep:#D9A928;--char:#22272B}
+:root{--ink:#1C1F1E;--body:#4B5250;--line:#E2E4E1;--bg:#FFFFFF;--soft:#F5F6F4;--amber:#F2C84B;--amber-deep:#D9A928;--char:#22272B;
+  --dino:#2E1A47;--dino-2:#4A2A6E;--dino-pink:#F6B6D0;--dino-lilac:#B79AF0}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:"Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 a{color:inherit}
@@ -21,68 +22,152 @@ a{color:inherit}
 header .wrap{display:flex;justify-content:space-between;align-items:center;height:76px}
 .name{display:inline-flex;align-items:center;gap:12px;font-weight:800;font-size:18px;letter-spacing:-.01em;text-decoration:none}
 .name img{display:block;border-radius:9px}
-.name span{margin-left:-6px;font-weight:500;color:var(--body)}
+.name .llc{font-weight:500;color:var(--body);white-space:nowrap}
 header nav{display:flex;gap:28px;font-size:15px;color:var(--body)}
-header nav a{text-decoration:none}header nav a:hover{color:var(--ink)}
-.intro{padding:56px 0 32px}
-.intro h1{font-size:clamp(32px,4.2vw,48px);line-height:1.05;letter-spacing:-.03em;font-weight:800;margin:0 0 14px}
+header nav a{text-decoration:none}header nav a:hover,header nav a[aria-current]{color:var(--ink)}
+header nav a[aria-current]{font-weight:600}
+.intro{padding:56px 0 36px}
+.intro h1{font-size:clamp(34px,4.6vw,54px);line-height:1.04;letter-spacing:-.03em;font-weight:800;margin:0 0 14px}
 .intro p{font-size:18px;line-height:1.6;color:var(--body);max-width:620px;margin:0}
-.list{padding-bottom:88px;display:grid;gap:20px}
-.proj{display:grid;grid-template-columns:auto 1fr auto;gap:24px;align-items:center;background:var(--soft);border:1px solid var(--line);border-radius:20px;padding:28px 30px}
-.proj .ic{width:64px;height:64px;border-radius:14px;background:var(--char);display:grid;place-items:center}
-.proj .ic svg{width:40px;height:40px}
-.proj h2{margin:0 0 6px;font-size:24px;letter-spacing:-.02em}
-.proj p{margin:0 0 10px;font-size:16px;line-height:1.55;color:var(--body);max-width:640px}
-.proj .meta{font-size:13.5px;color:var(--body)}
-.dl{display:inline-block;text-decoration:none;font-weight:700;font-size:15.5px;padding:13px 22px;border-radius:12px;background:linear-gradient(180deg,#F8D978 0%,var(--amber) 55%,var(--amber-deep) 100%);color:var(--char);white-space:nowrap}
-.dl:hover{filter:brightness(.96)}
-.note{font-size:13.5px;color:var(--body);margin:14px 0 0}
+.list{padding-bottom:96px;display:grid;gap:28px}
+
+/* each project is a card with its own look */
+.proj{border-radius:24px;overflow:hidden;display:grid;grid-template-columns:1.05fr 1fr}
+.proj .info{padding:40px 40px 36px;display:flex;flex-direction:column}
+.proj .mark{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+.proj .mark .ic{width:56px;height:56px;border-radius:14px;flex:none;display:grid;place-items:center;overflow:hidden}
+.proj .mark .ic img{width:100%;height:100%;display:block}
+.proj .mark b{font-size:15px;font-weight:600;opacity:.75;display:block}
+.proj .mark h2{margin:2px 0 0;font-size:28px;letter-spacing:-.02em;line-height:1.1}
+.proj p{margin:0 0 18px;font-size:16.5px;line-height:1.6;max-width:520px}
+.proj ul{list-style:none;margin:0 0 26px;padding:0;font-size:15px;line-height:1.5}
+.proj li{padding:8px 0 8px 26px;position:relative}
+.proj li::before{content:"";position:absolute;left:2px;top:15px;width:10px;height:10px;border-radius:3px}
+.proj .act{margin-top:auto;display:flex;flex-wrap:wrap;align-items:center;gap:14px 18px}
+.proj .meta{font-size:13.5px;opacity:.8}
+.btn{display:inline-block;text-decoration:none;font-weight:700;font-size:15.5px;padding:14px 24px;border-radius:12px;white-space:nowrap}
+.btn:hover{filter:brightness(.96)}
+.proj .art{position:relative;min-height:340px}
+
+/* Plan3D: charcoal and amber, like a drawing sheet */
+.p3{background:var(--char);color:#E8ECEF}
+.p3 .mark .ic{background:#14181B;border:1px solid #3A4147}
+.p3 .mark .ic svg{width:36px;height:36px}
+.p3 p,.p3 ul{color:#BFC7CD}
+.p3 li{border-top:1px solid #343B40}
+.p3 li::before{background:var(--amber)}
+.p3 .btn{background:linear-gradient(180deg,#F8D978 0%,var(--amber) 55%,var(--amber-deep) 100%);color:var(--char)}
+.p3 .art{background:#171b1e}
+.p3 .art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 50%}
+.p3 .note{font-size:13px;color:#9AA4AB;margin:12px 0 0;max-width:520px}
+.p3 .note strong{color:#D7DDE1}
+
+/* Dino Garden: night-sky purple and pink, like the game */
+.dg{background:var(--dino);color:#F4ECFF;font-family:"Nunito","Inter",sans-serif}
+.dg .mark h2{font-weight:900;letter-spacing:-.01em;font-size:30px}
+.dg .mark .ic{border-radius:16px;box-shadow:0 6px 18px rgba(0,0,0,.3)}
+.dg p,.dg ul{color:#D9CBEF;font-family:"Inter",sans-serif}
+.dg li{border-top:1px solid rgba(255,255,255,.1)}
+.dg li::before{background:var(--dino-pink);border-radius:50%}
+.dg .btn{background:linear-gradient(180deg,#FFD0E3 0%,var(--dino-pink) 55%,#E98DB5 100%);color:var(--dino);border-radius:999px;font-family:"Nunito",sans-serif;font-weight:900;font-size:16.5px}
+.dg .meta a{color:#F4ECFF}
+.dg .art{background:radial-gradient(circle at 50% 58%,rgba(255,214,170,.35),transparent 46%),linear-gradient(180deg,#2E1A47 0%,#4A2A6E 62%,#8A4E8E 100%)}
+.dg .art img{position:absolute;left:50%;top:50%;width:min(300px,70%);height:auto;height:auto;transform:translate(-50%,-50%);border-radius:28px;box-shadow:0 18px 40px rgba(0,0,0,.35)}
+.dg .art i{position:absolute;width:4px;height:4px;border-radius:50%;background:#fff;opacity:.7}
+.dg details{margin:16px 0 0;font-family:"Inter",sans-serif;font-size:14px;color:#D9CBEF;max-width:540px}
+.dg summary{cursor:pointer;font-weight:600;color:#F4ECFF}
+.dg details ol{margin:10px 0 0;padding-left:20px;line-height:1.6}
+
 footer{border-top:1px solid var(--line)}
 .foot-brand{display:inline-flex;align-items:center;gap:10px}.foot-brand img{display:block;border-radius:5px}
 footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;padding-top:28px;padding-bottom:36px;font-size:14.5px;color:var(--body)}
-@media(max-width:860px){
+.foot-links{display:inline-flex;flex-wrap:wrap;gap:22px}
+@media(max-width:900px){
   .wrap{padding:0 20px}
   header nav a:not(:last-child){display:none}
-  .intro{padding:40px 0 24px}
-  .proj{grid-template-columns:1fr;padding:24px 22px}
-  .dl{justify-self:start}
+  .name{font-size:16px;gap:10px}
+  .intro{padding:40px 0 26px}
+  .proj{grid-template-columns:1fr}
+  .proj .art{min-height:0;aspect-ratio:16/10;order:-1}
+  .dg .art img{width:min(190px,52%);border-radius:22px}
+  .proj .info{padding:28px 22px 28px}
 }
 </style>
 </head>
 <body>
 <header>
   <div class="wrap">
-    <a class="name" href="/"><img src="/brand/coll-icon.svg" alt="" width="36" height="36">Coll Business Solutions <span>LLC</span></a>
-    <nav><a href="/timeclock.html">Coll Timeclock</a><a href="/cleanroom.html">Cleanroom Control</a><a href="mailto:collbusinesssolutions@gmail.com">Contact</a></nav>
+    <a class="name" href="/"><img src="/brand/coll-icon.svg" alt="" width="36" height="36"><span>Coll Business Solutions <span class="llc">LLC</span></span></a>
+    <nav><a href="/timeclock.html">Coll Timeclock</a><a href="/cleanroom.html">Cleanroom Control</a><a href="/projects.html" aria-current="page">Other projects</a><a href="mailto:collbusinesssolutions@gmail.com">Contact</a></nav>
   </div>
 </header>
 
 <main class="wrap">
   <section class="intro">
     <h1>Other projects</h1>
-    <p>Smaller tools we built for our own work and are sharing as they are.</p>
+    <p>Things we built for our own work and our own family, shared as they are and free to use.</p>
   </section>
 
   <section class="list" aria-label="Projects">
-    <article class="proj" id="plan3d">
-      <div class="ic" aria-hidden="true">
-        <svg viewBox="0 0 40 40"><rect x="7" y="7" width="26" height="4.5" fill="#F2C84B"/><rect x="7" y="7" width="4.5" height="26" fill="#F2C84B"/><rect x="7" y="28.5" width="26" height="4.5" fill="#E8EDEF"/><rect x="28.5" y="7" width="4.5" height="26" fill="#E8EDEF"/><rect x="17.5" y="11.5" width="3.5" height="11" fill="#E8EDEF"/></svg>
+    <article class="proj p3" id="plan3d">
+      <div class="info">
+        <div class="mark">
+          <div class="ic" aria-hidden="true"><svg viewBox="0 0 40 40"><rect x="7" y="7" width="26" height="4.5" fill="#F2C84B"/><rect x="7" y="7" width="4.5" height="26" fill="#F2C84B"/><rect x="7" y="28.5" width="26" height="4.5" fill="#E8EDEF"/><rect x="28.5" y="7" width="4.5" height="26" fill="#E8EDEF"/><rect x="17.5" y="11.5" width="3.5" height="11" fill="#E8EDEF"/></svg></div>
+          <div><b>For builders and planners</b><h2>Coll Plan3D</h2></div>
+        </div>
+        <p>Turns an AutoCAD drawing (DXF or DWG) or a photo of a plan sheet into a 3D model you can walk through. Lay out modular cleanrooms, warehouses and houses, then hand off a plan sheet and a parts list.</p>
+        <ul>
+          <li>Cleanrooms from snap-together panels, doors, pass-thrus, fan filter units and air returns</li>
+          <li>Houses from foundation to roof: several floors, stairs, a garage, kitchens and baths</li>
+          <li>Dimensioned plan sheets, parts lists, and walkthroughs anyone can open in a browser</li>
+        </ul>
+        <div class="act">
+          <a class="btn" href="https://github.com/jeremymcollins89-prog/coll-landing-page/releases/download/plan3d/Coll-Plan3D-Setup.exe">Download for Windows</a>
+          <span class="meta">Windows 10 and 11 · about 90 MB · updates itself</span>
+        </div>
+        <p class="note">If Windows says it protected your PC, click <strong>More info</strong>, then <strong>Run anyway</strong>. The installer comes from Coll Business Solutions LLC.</p>
       </div>
-      <div>
-        <h2>Coll Plan3D</h2>
-        <p>Turns AutoCAD drawings (DXF or DWG) or a photo of a plan sheet into a 3D walkthrough of a modular cleanroom. Build rooms from snap-together panels, doors, glass, pass-thrus and air chases, print a dimensioned plan sheet, and export a parts list or a walkthrough anyone can open in a browser.</p>
-        <div class="meta">Windows 10 and 11 · about 90 MB</div>
-      </div>
-      <a class="dl" href="https://github.com/jeremymcollins89-prog/coll-landing-page/releases/download/plan3d/Coll-Plan3D-Setup.exe">Download for Windows</a>
+      <div class="art"><picture><source media="(max-width:900px)" srcset="/img/plan3d-hero-wide.webp"><img src="/img/plan3d-hero.webp" alt="A cleanroom in Coll Plan3D, rising in 3D out of its floor plan: an ISO 5 core with fan filter units, viewing glass and process rooms" width="1300" height="1500" loading="lazy"></picture></div>
     </article>
-    <p class="note">If Windows says it protected your PC, click <strong>More info</strong>, then <strong>Run anyway</strong>. The installer comes from Coll Business Solutions LLC.</p>
+
+    <article class="proj dg" id="dino-garden">
+      <div class="info">
+        <div class="mark">
+          <div class="ic"><img src="/img/dino-garden.webp" alt="" width="56" height="56"></div>
+          <div><b>For little kids</b><h2>Dino Garden</h2></div>
+        </div>
+        <p>A calm game for toddlers and preschoolers, made for our own three-year-old. A friendly purple dino helps them play, make things and learn at their own pace.</p>
+        <ul>
+          <li>Build a marble run, make music, hatch eggs and play matching games</li>
+          <li>Learn colors, shapes, numbers, letters, adding and telling time</li>
+          <li>Paint and color by number, and fly a spaceship around the solar system</li>
+        </ul>
+        <div class="act">
+          <a class="btn" href="/dino-garden/" target="_blank" rel="noopener">Play Dino Garden</a>
+          <span class="meta">iPad, iPhone, Android and computers · free · no accounts, no ads · <a href="/dino-garden-privacy.html">Privacy</a></span>
+        </div>
+        <details>
+          <summary>Put it on your child's tablet</summary>
+          <ol>
+            <li>Open the game in Safari (iPad or iPhone) or Chrome (Android).</li>
+            <li>Tap Share, then Add to Home Screen (or ⋮, then Add to Home screen).</li>
+            <li>Open Dino Garden from the home screen. It works offline after that.</li>
+            <li>Tap the settings bubble at the top right to enter your child's name, so the dino can use it.</li>
+          </ol>
+        </details>
+      </div>
+      <div class="art" aria-hidden="true">
+        <i style="left:12%;top:16%"></i><i style="left:24%;top:70%;opacity:.4"></i><i style="left:80%;top:12%"></i><i style="left:88%;top:44%;opacity:.5"></i><i style="left:66%;top:84%;opacity:.4"></i><i style="left:40%;top:8%;opacity:.5"></i>
+        <img src="/dino-garden/icon-512.png" alt="" width="300" height="300" loading="lazy">
+      </div>
+    </article>
   </section>
 </main>
 
 <footer>
   <div class="wrap">
-    <span class="foot-brand"><img src="/brand/coll-icon.svg" alt="" width="22" height="22">© Coll Business Solutions LLC</span>
-    <a href="mailto:collbusinesssolutions@gmail.com">collbusinesssolutions@gmail.com</a>
+    <span class="foot-brand"><img src="/brand/coll-icon.svg" alt="" width="22" height="22">© Coll Business Solutions LLC · Built in Colorado</span>
+    <span class="foot-links"><a href="/">Home</a><a href="mailto:collbusinesssolutions@gmail.com">collbusinesssolutions@gmail.com</a></span>
   </div>
 </footer>
 </body>
