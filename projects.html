@@ -4,16 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Other projects · Coll Business Solutions LLC</title>
-<meta name="description" content="Smaller things from Coll Business Solutions LLC: Coll Plan3D, which turns floor plans into 3D models, and Dino Garden, a calm learning game for little kids.">
+<meta name="description" content="Smaller things from Coll Business Solutions LLC: Coll Plan3D, which turns floor plans into 3D models, Dino Garden, a calm learning game for little kids, and Marble Atelier, a 3D marble-run game for grown-ups.">
 <link rel="icon" href="/brand/coll-icon.svg" type="image/svg+xml">
 <link rel="icon" href="/brand/coll-favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="/brand/coll-apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;1,6..96,400&family=Inter:wght@400;500;600;700;800&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
 <style>
 :root{--ink:#1C1F1E;--body:#4B5250;--line:#E2E4E1;--bg:#FFFFFF;--soft:#F5F6F4;--amber:#F2C84B;--amber-deep:#D9A928;--char:#22272B;
-  --dino:#2E1A47;--dino-2:#4A2A6E;--dino-pink:#F6B6D0;--dino-lilac:#B79AF0}
+  --dino:#2E1A47;--dino-2:#4A2A6E;--dino-pink:#F6B6D0;--dino-lilac:#B79AF0;
+  --mist:#E6EBE8;--stone:#C3CCC8;--slate:#22313A;--slate-soft:#55656E;--brass:#B8925A;--brass-deep:#94713F}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:"Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 a{color:inherit}
@@ -80,6 +81,22 @@ header nav a[aria-current]{font-weight:600}
 .dg summary{cursor:pointer;font-weight:600;color:#F4ECFF}
 .dg details ol{margin:10px 0 0;padding-left:20px;line-height:1.6}
 
+/* Marble Atelier: mist, glass and brass, like the game */
+.ma{background:linear-gradient(160deg,#EEF2EF 0%,var(--mist) 45%,#D3DBD7 100%);color:var(--slate)}
+.ma .mark h2{font-family:"Bodoni Moda",Georgia,serif;font-weight:400;font-size:32px;letter-spacing:0}
+.ma .mark h2 em{color:var(--brass-deep)}
+.ma .mark .ic{border-radius:16px;box-shadow:0 6px 18px rgba(28,44,52,.18)}
+.ma p,.ma ul{color:#3F4E56}
+.ma li{border-top:1px solid rgba(34,49,58,.1)}
+.ma li::before{background:radial-gradient(circle at 35% 30%,#fff,#d9bd8d 50%,var(--brass-deep));border-radius:50%}
+.ma .btn{background:radial-gradient(circle at 30% 20%,#fff 0,#f1e6d2 22%,#d6b783 60%,var(--brass) 80%,var(--brass-deep) 100%);color:#2E2110;border-radius:999px;box-shadow:0 8px 18px -8px rgba(148,113,63,.8)}
+.ma .meta{color:var(--slate-soft);opacity:1}
+.ma .art{background:radial-gradient(circle at 50% 40%,#F6F8F6 0%,#E1E7E4 55%,#C9D2CE 100%)}
+.ma .art img{position:absolute;left:50%;top:50%;width:min(250px,52%);height:auto;transform:translate(-50%,-50%);border-radius:30px;box-shadow:0 24px 48px -16px rgba(28,44,52,.45),0 0 0 8px rgba(255,255,255,.7)}
+.ma details{margin:16px 0 0;font-size:14px;color:#3F4E56;max-width:540px}
+.ma summary{cursor:pointer;font-weight:600;color:var(--slate)}
+.ma details ol{margin:10px 0 0;padding-left:20px;line-height:1.6}
+
 footer{border-top:1px solid var(--line)}
 .foot-brand{display:inline-flex;align-items:center;gap:10px}.foot-brand img{display:block;border-radius:5px}
 footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;padding-top:28px;padding-bottom:36px;font-size:14.5px;color:var(--body)}
@@ -92,6 +109,8 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
   .proj{grid-template-columns:1fr}
   .proj .art{min-height:0;aspect-ratio:16/10;order:-1}
   .dg .art img{width:min(190px,52%);border-radius:22px}
+  .ma .art{aspect-ratio:4/5}
+  .ma .art img{width:min(172px,44%);border-radius:22px}
   .proj .info{padding:28px 22px 28px}
 }
 </style>
@@ -163,6 +182,34 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
         <i style="left:12%;top:16%"></i><i style="left:24%;top:70%;opacity:.4"></i><i style="left:80%;top:12%"></i><i style="left:88%;top:44%;opacity:.5"></i><i style="left:66%;top:84%;opacity:.4"></i><i style="left:40%;top:8%;opacity:.5"></i>
         <img src="/dino-garden/icon-512.png" alt="" width="300" height="300" loading="lazy">
       </div>
+    </article>
+
+    <article class="proj ma" id="marble-atelier">
+      <div class="info">
+        <div class="mark">
+          <div class="ic"><img src="/marble-atelier/icon-192.png" alt="" width="56" height="56"></div>
+          <div><b>For grown-ups</b><h2>Marble <em>Atelier</em></h2></div>
+        </div>
+        <p>A calm 3D marble-run game, made at home for our family. Snap glass tubes together, send marbles through loops, portals and chimes, then ride along inside them.</p>
+        <ul>
+          <li>Drag and snap tubes, loops, spirals, boosters and portals, at any height</li>
+          <li>Tune lessons teach you to build runs that play songs</li>
+          <li>Color-by-number pictures, including your own photos, and star challenges to find</li>
+        </ul>
+        <div class="act">
+          <a class="btn" href="/marble-atelier/" target="_blank" rel="noopener">Play Marble Atelier</a>
+          <span class="meta">Made for Android phones · also iPhone and computers · free · no accounts, no ads · everything stays on your phone</span>
+        </div>
+        <details>
+          <summary>Put it on your phone</summary>
+          <ol>
+            <li>Open the game in Chrome (Android) or Safari (iPhone).</li>
+            <li>Tap ⋮, then Install app or Add to Home screen (or Share, then Add to Home Screen).</li>
+            <li>Open Marble Atelier from the home screen once. It works offline after that.</li>
+          </ol>
+        </details>
+      </div>
+      <div class="art" aria-hidden="true"><img src="/img/marble-atelier.webp" alt="" width="620" height="1377" loading="lazy"></div>
     </article>
   </section>
 </main>
