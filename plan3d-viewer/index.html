@@ -47,6 +47,10 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)
 .empty{font-size:14px;color:var(--dim);padding:6px 2px}
 .err{margin-top:14px;padding:12px 14px;border-radius:12px;background:rgba(229,108,92,.12);border:1px solid rgba(229,108,92,.35);color:#F2B8AF;font-size:14px;line-height:1.45}
 .err[hidden]{display:none}
+.linkload{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#121719;color:#e8edef;font:600 16px system-ui,-apple-system,sans-serif;text-align:center;padding:24px}
+.linkload[hidden]{display:none}
+.linkload i{width:42px;height:42px;border-radius:50%;border:4px solid rgba(255,255,255,.15);border-top-color:#f2c84b;animation:p3spin .9s linear infinite}
+@keyframes p3spin{to{transform:rotate(360deg)}}
 details{margin-top:28px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
 summary{cursor:pointer;font-weight:600;font-size:15px}
 details ol{margin:10px 0 2px;padding-left:20px;color:var(--body);font-size:14px;line-height:1.6}
@@ -130,6 +134,7 @@ body.touch #v .p3v-right > .p3v-look:not(.p3v-lidb):not(.p3v-air){display:none}
   <input type="file" id="file" hidden>
   <p class="note">Opens .plan3d files saved from Coll Plan3D. Nothing is uploaded: the file stays on this phone.</p>
   <div class="err" id="err" hidden></div>
+  <div class="linkload" id="linkload" hidden><i></i><span>Opening the 3D walkthrough…</span></div>
 
   <h2>Recent</h2>
   <div class="list" id="recent"></div>
@@ -246,6 +251,23 @@ body.touch #v .p3v-right > .p3v-look:not(.p3v-lidb):not(.p3v-air){display:none}
   $('#back').onclick = () => { if (history.state && history.state.v) history.back(); else close(); };
   addEventListener('popstate', () => { if (document.body.classList.contains('viewing')) close(); });
   drawRecent();
+  // ---- a walkthrough link from the designer: ...plan3d-viewer/?w=<id> opens that plan straight away
+  const WALK = 'https://cleanroom-cloud-production.up.railway.app/api/plan3d/walkthroughs/';
+  const wid = (() => { try { const q = new URLSearchParams(location.search).get('w') || new URLSearchParams(location.hash.slice(1)).get('w'); return q && /^[A-Za-z0-9_-]{20,64}$/.test(q) ? q : null; } catch (e) { return null; } })();
+  async function openLink(id, tries) {
+    const L = $('#linkload'); L.hidden = false;
+    try {
+      const r = await fetch(WALK + encodeURIComponent(id), { cache: 'no-cache' });
+      if (!r.ok) { let m = ''; try { m = (await r.json()).error; } catch (e) {} throw new Error(m || 'That walkthrough link didn’t open.'); }
+      const json = await r.text(); let name = 'Walkthrough'; try { name = JSON.parse(json).name || name; } catch (e) {}
+      L.hidden = true; show(json, name);
+    } catch (e) {
+      // a weak signal on a job site: try a couple more times before giving up
+      if ((tries || 0) < 2 && !/available/.test(e.message || '')) { setTimeout(() => openLink(id, (tries || 0) + 1), 2500); return; }
+      L.hidden = true; err((e && e.message && !/fetch|network|load failed/i.test(e.message)) ? e.message : 'Couldn’t open the walkthrough. Check your internet connection and open the link again.');
+    }
+  }
+  if (wid) openLink(wid);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
 </script>

@@ -44,6 +44,7 @@ const CSS = `
 .p3v-chips button.on{border-color:#f2c84b;color:#f2c84b}
 .p3v-joy{position:absolute;left:16px;bottom:62px;width:124px;height:124px;border-radius:50%;background:rgba(18,23,25,.42);border:1px solid rgba(255,255,255,.22);z-index:6;touch-action:none;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);-webkit-user-select:none;user-select:none}.p3v-joy[hidden]{display:none}.p3v-joy i{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:rgba(255,255,255,.88);box-shadow:0 4px 14px rgba(0,0,0,.35);pointer-events:none}.p3v-joy b{position:absolute;left:0;right:0;top:-22px;text-align:center;font:600 11px system-ui,sans-serif;color:rgba(255,255,255,.75);letter-spacing:.04em;pointer-events:none}.p3v-hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;pointer-events:none;background:rgba(18,23,25,.86);border:1px solid rgba(255,255,255,.13);border-radius:999px;padding:9px 16px;font-size:14px;transition:opacity .6s;white-space:nowrap;max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis}
 .p3v-hint.gone{opacity:0}
+.p3v-nogl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:#e8edef;background:#121719;font:600 15px system-ui,sans-serif;z-index:9}
 .p3v-labels{position:absolute;inset:0;pointer-events:none;z-index:3}
 .p3v-rl{position:absolute;left:0;top:0;background:rgba(18,23,25,.86);border:1px solid rgba(255,255,255,.13);border-radius:6px;padding:3px 8px;text-align:center;white-space:nowrap}
 .p3v-rl b{display:block;font-size:12.5px;font-weight:600}
@@ -4253,8 +4254,13 @@ function mount(container, plan, opts) {
     return false;
   }
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: !!opts.preserve });
-  renderer.setPixelRatio(Math.min(2, global.devicePixelRatio || 1));
+  // phones and tablets: a lighter canvas (sharp enough on their small screens, and well inside the graphics
+  // memory iPhones and Android browsers give a page, so the 3D doesn't go black or reload)
+  const COARSE = !!(global.matchMedia && global.matchMedia('(pointer: coarse)').matches);
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ canvas, antialias: !COARSE || (global.devicePixelRatio || 1) < 2, preserveDrawingBuffer: !!opts.preserve, powerPreference: COARSE ? 'default' : 'high-performance' }); }
+  catch (e) { container.insertAdjacentHTML('beforeend', '<div class="p3v-nogl">This browser can’t show 3D (WebGL is turned off or not supported). Try Safari, Chrome, Edge or Firefox, or turn on hardware acceleration.</div>'); throw e; }
+  renderer.setPixelRatio(Math.min(COARSE ? 1.5 : 2, global.devicePixelRatio || 1));
   ANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 4);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xdde4e8);
@@ -4279,7 +4285,7 @@ function mount(container, plan, opts) {
     scene.traverse(o => { if (o.isLight) o.intensity *= GT.light; });
     renderer.shadowMap.enabled = !!GT.shadows; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     scene.fog.color.convertSRGBToLinear();
-    sun.castShadow = true; sun.shadow.mapSize.set(HQ ? 4096 : 2048, HQ ? 4096 : 2048); sun.shadow.bias = -0.0004; sun.shadow.normalBias = GT.nb; sun.shadow.radius = 3;
+    sun.castShadow = true; sun.shadow.mapSize.set(HQ ? 4096 : 1024, HQ ? 4096 : 1024); sun.shadow.bias = -0.0004; sun.shadow.normalBias = GT.nb; sun.shadow.radius = 3;
     scene.add(sun.target);
     // the environment: a sky dome, a pale horizon, a darker ground and a few big soft lights, blurred into
     // reflections and image-based light (what makes steel, glass and epoxy look real)
@@ -5160,6 +5166,18 @@ function mount(container, plan, opts) {
     [...rooms, outside].forEach(q => q.__btn && q.__btn.classList.toggle('on', q === r));
   }
 
+  // a phone can take the graphics back to save memory (the 3D goes blank): ask for it back and rebuild
+  let ctxLost = false;
+  canvas.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault(); ctxLost = true;
+    hint.textContent = 'The 3D paused to save memory. One moment…'; hint.classList.remove('gone');
+    setTimeout(() => { if (ctxLost) { hint.textContent = 'Reload the page to see the 3D again.'; hint.classList.remove('gone'); } }, 6000);
+  }, false);
+  canvas.addEventListener('webglcontextrestored', () => {
+    ctxLost = false; scene.environment = null;
+    try { setPlan(plan, true); } catch (e) { console.error(e); }
+    hint.classList.add('gone');
+  }, false);
   function setPlan(p, keep) {
     plan = p;
     A = analyzeAll(p);

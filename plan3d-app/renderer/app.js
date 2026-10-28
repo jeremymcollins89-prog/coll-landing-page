@@ -2677,8 +2677,40 @@ async function save(as) {
   if (!api.saveProject) return null;
   if (ed.plan.walls.length) ensureShare();
   const p = await api.saveProject(JSON.stringify(ed.plan), as ? null : projectPath, ed.plan.name);
-  if (p) { projectPath = p; ed.dirty = false; updateChrome(); trackJob(); toast('Saved', { label: 'Show in folder', fn: () => api.showInFolder(p) }); }
+  if (p) {
+    projectPath = p; ed.dirty = false; updateChrome(); trackJob();
+    // a plan sent as a link: the link now shows what was just saved
+    const pub = ed.plan.share && ed.plan.share.pub;
+    toast(pub ? 'Saved. Updating the walkthrough link…' : 'Saved', { label: 'Show in folder', fn: () => api.showInFolder(p) });
+    if (pub) publishLink().then(() => toast('Saved. The walkthrough link shows this version.', { label: 'Show in folder', fn: () => api.showInFolder(p) })).catch(() => toast('Saved. The walkthrough link couldn’t update (no connection?); it will next time you save.'));
+  }
   return p;
+}
+/* ---------- Walkthrough link: the plan goes up to Coll Business Solutions' server (without its private key)
+   and opens from collbusinesssolutions.com/plan3d-viewer/?w=… on any phone or browser: nothing to attach or
+   download. Saving the plan afterwards updates what the link shows. */
+const VIEWER_LINK = 'https://collbusinesssolutions.com/plan3d-viewer/?w=';
+async function publishLink() {
+  const S = ensureShare();
+  const put = async () => { await registerShare(); const plan = clonePlan(); plan.share = { id: S.id }; return fetch(PLAN3D_CLOUD + '/walkthroughs/' + encodeURIComponent(S.id), { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Plan3D-Key': S.key }, body: JSON.stringify({ plan }) }); };
+  let r = await put();
+  if (r.status === 404) { shareReg = ''; r = await put(); }  // the server didn't have this plan's key yet
+  if (!r.ok) { let m = ''; try { m = (await r.json()).error; } catch (e) { /* not json */ } throw new Error(m || 'The server said ' + r.status + '.'); }
+  if (!S.pub) { S.pub = true; ed.dirty = true; updateChrome(); }
+  return VIEWER_LINK + S.id;
+}
+async function linkDialog() {
+  if (!ed.plan.walls.length) { toast('Add some walls first.'); return; }
+  toast('Making the link…');
+  let url;
+  try { url = await publishLink(); } catch (e) { toast('Couldn’t make the link: ' + ((e && e.message && !/fetch/i.test(e.message)) ? e.message : 'check your internet connection.')); return; }
+  const copy = async () => { try { await navigator.clipboard.writeText(url); return true; } catch (e) { const i = $('#lnkUrl'); if (i) { i.select(); try { return document.execCommand('copy'); } catch (e2) { return false; } } return false; } };
+  const copied = await copy();
+  dialogOpen({ title: 'Walkthrough link', body: `<p>${copied ? '<b>Copied.</b> ' : ''}Paste it into a text or an email to your customer.</p>
+    <input id="lnkUrl" readonly value="${esc(url)}" style="width:100%;font:13px Consolas,ui-monospace,monospace;padding:8px;border-radius:8px">
+    <p class="note">It opens on any phone, tablet or computer, in Safari, Chrome, Edge or Firefox. There's nothing to download. Your customer can walk through it and leave comments; they show up under the 🔔. When you save changes to this plan, the link shows the new version (save first if you have unsaved changes).</p>`,
+    onOpen: () => { const i = $('#lnkUrl'); if (i) { i.focus(); i.select(); } },
+    buttons: [{ label: 'Open it', value: () => { if (api.openUrl) api.openUrl(url); return false; } }, { label: 'Copy link', value: () => { copy().then(ok => toast(ok ? 'Link copied.' : 'Select the link and press Ctrl+C.')); return false; } }, { label: 'Done', primary: true, ret: true }] });
 }
 async function exportHtml() {
   if (!ed.plan.walls.length) { toast('Add some walls first.'); return; }
@@ -2747,7 +2779,7 @@ $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave
     items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
   });
   const item = (id, fn) => { $(id).onclick = () => { close(); fn(); }; };
-  item('#bExportHtml', exportHtml); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
+  item('#bExportLink', linkDialog); item('#bExportHtml', exportHtml); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
   item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportParts', exportParts);
 }
 // Ceiling dropdown: add / edit the ceiling drawing, or generate one
