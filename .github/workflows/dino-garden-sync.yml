@@ -1,0 +1,41 @@
+# Keeps the copy of Dino Garden at /dino-garden/ in step with the game's own repository.
+# The game's repository is read from the GAME_REPO repository variable (owner/name), so it isn't written here.
+name: Sync Dino Garden
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    if: ${{ vars.GAME_REPO != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy the game's files
+        env:
+          SRC: ${{ vars.GAME_REPO }}
+        run: |
+          set -e
+          mkdir -p dino-garden
+          for f in index.html sw.js manifest.json apple-touch-icon.png icon-512.png; do
+            curl -fsSL "https://raw.githubusercontent.com/$SRC/HEAD/$f" -o "dino-garden/$f"
+          done
+      - name: Publish if it changed
+        id: commit
+        run: |
+          git add dino-garden
+          if git diff --cached --quiet; then echo "changed=no" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update Dino Garden"
+          git push
+          echo "changed=yes" >> "$GITHUB_OUTPUT"
+      - name: Rebuild the site
+        if: steps.commit.outputs.changed == 'yes'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds"
