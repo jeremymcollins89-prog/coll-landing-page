@@ -1103,6 +1103,16 @@ function quoteDialog() {
   });
 }
 
+/* ---------- Fabrication sheets (Plan3DFab): wall elevations, panel numbers, cut-outs, cut list ---------- */
+async function fabSheets() {
+  const P = ed.plan; if (!P.walls.length) { toast('Add some walls first.'); return; }
+  let R; try { R = Plan3DFab.html(P, { project: P.name || 'Cleanroom', company: (QS.get('company', {}) || {}).name || 'Coll Business Solutions LLC', date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) }); } catch (e) { console.error(e); toast('The fabrication sheets couldn’t be drawn for this plan.'); return; }
+  if (!R.S.W.walls.length) { toast('No cleanroom (hardwall) walls to draw.'); return; }
+  if (!api.exportPDF) return;
+  const p = await api.exportPDF(R.html, (P.name || 'Cleanroom') + ' fabrication sheets', 17, 11);
+  if (p) toast(`Fabrication sheets saved: ${R.S.W.walls.length} walls, ${R.S.rows.length} panels.`, { label: 'Open it', fn: () => api.openPath(p) });
+}
+
 /* ---------- Plan sheet (PDF) ---------- */
 let sheetPage = 'tabloid', sheetRot = 'auto';
 function sheetDialog() {
@@ -2607,7 +2617,7 @@ $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave
     items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
   });
   const item = (id, fn) => { $(id).onclick = () => { close(); fn(); }; };
-  item('#bExportHtml', exportHtml); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
+  item('#bExportHtml', exportHtml); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
   item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportParts', exportParts);
 }
 // Buildings dropdown

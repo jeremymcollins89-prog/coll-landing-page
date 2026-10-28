@@ -685,7 +685,7 @@ function analyze(plan) {
     if (best > 1.5) host = null;
     if (!t) t = host && host.t ? host.t : 0.25;
     const opTop = (hh, oo, tt) => opTopFor(plan, hh, oo, tt, WH, PL);
-    const hard = isHard(host), frame = isFrame(host), i = { o, len, ux: dx / len, uz: dz / len, t, hard, frame, ceilw: hard || frame, kind: hard ? 'hardwall' : host.kind, wallH: hard ? opTop(host, o, t) : frame ? Math.max(6, host.h || H) : shellHeight(plan, host) };
+    const hard = isHard(host), frame = isFrame(host), i = { host, o, len, ux: dx / len, uz: dz / len, t, hard, frame, ceilw: hard || frame, kind: hard ? 'hardwall' : host.kind, wallH: hard ? opTop(host, o, t) : frame ? Math.max(6, host.h || H) : shellHeight(plan, host) };
     i.leaves = leavesFor(i);
     opInfo.push(i);
   }
