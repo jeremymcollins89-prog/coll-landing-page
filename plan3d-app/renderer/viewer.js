@@ -5283,8 +5283,8 @@ function mount(container, plan, opts) {
         }
         applyWalkCam();
       } else if (mode === 'fly') { flyStep(dt); if (game) game.step(dt); }
+      else controls.update();   // orbit views only (Dollhouse, Plenum, Exterior, Plan); never in Walk or Drone
       if (game && mode !== 'fly') game.stop();
-      else controls.update();
 
       if (built && built.doors) {
         built.doors.forEach(doorGroup => {
@@ -5322,7 +5322,7 @@ function mount(container, plan, opts) {
     loadPlan: (p) => setPlan(p, false),
     setMode: (m) => { if (m === 'walk') goWalk(st.x, st.z, st.yaw); else goOrbit(m); },
     resize,
-    get state() { return { x: st.x, y: st.y, z: st.z, yaw: st.yaw, pitch: st.pitch, mode }; },
+    get state() { return { x: st.x, y: st.y, z: st.z, yaw: st.yaw, pitch: st.pitch, mode, cam: { x: camera.position.x, y: camera.position.y, z: camera.position.z } }; },
     flyTo: (c) => flyTo(c), setMeasure: (on) => setMeasure(!!on), takeSnapshot: () => takeSnapshot(),
     // a picture of the view as it is now (JPEG data URL), or null when the 3D view isn't on screen
     snapshot: (q) => { if (canvas.width < 64 || canvas.height < 64) return null; const dv = drone.visible; drone.visible = false; try { renderer.render(scene, camera); return canvas.toDataURL('image/jpeg', q || 0.9); } catch (e) { return null; } finally { drone.visible = dv; } },
