@@ -4940,7 +4940,7 @@ function mount(container, plan, opts) {
     else { const yaw = Math.atan2(-(p.x - camera.position.x), -(p.z - camera.position.z)); showPulse(p.x, p.z); goWalk(p.x, p.z, yaw); }
   }
   // ---- Comments: a customer clicks anything in the model and leaves a note on it. The notes stay in this
-  // browser and go back to the designer as a small file ("Send comments"); the app reads that file in.
+  // browser and "Send comments" sends them straight to the designer's app (a file only if asked for).
   // ---- Super render: the visible model goes to the path tracer (loaded on first use) with this exact view
   const srBtn = $('.p3v-srb'), srSrc = opts.superSrc === undefined ? 'https://collbusinesssolutions.com/plan3d-app/renderer/vendor/superrender.js' : opts.superSrc;
   srBtn.hidden = !(THREE.GLTFExporter && (global.P3Super || srSrc));
@@ -4983,29 +4983,48 @@ function mount(container, plan, opts) {
     cList.innerHTML = `<b>Comments${L.length ? ' (' + L.length + ')' : ''}</b>` + (L.length ? '<ol>' + L.map((c, i) => `<li>${esc2(c.text)}<br><small>${esc2(c.by || '')}${c.by ? ' · ' : ''}${esc2((c.at || '').slice(0, 10))}${c.done ? ' · done' : ''}</small>${!c.theirs && opts.comments ? ` <button class="x" data-del="${esc2(c.id)}" title="Delete">✕</button>` : ''}</li>`).join('') + '</ol>' : '<br><small>Turn on 💬 Comment, then click anything in the model.</small>')
       + (opts.comments && myComments.some(c => !c.sent) ? '<button class="p3v-csend">Send comments</button>' : opts.comments && myComments.length ? '<p><small>All sent to your designer ✓</small></p>' : '');
     cList.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { myComments = myComments.filter(c => c.id !== b.dataset.del); saveMine(); drawPins(); });
-    const sb = cList.querySelector('.p3v-csend'); if (sb) sb.onclick = sendComments;
+    const sb = cList.querySelector('.p3v-csend'); if (sb) sb.onclick = () => sendComments(false);
   }
   // with a share id (set by the app), comments go straight to the designer's app through the server;
   // without one, or with no connection, they're saved as a file to email back
   const COMMENTS_URL = opts.commentsUrl || 'https://cleanroom-cloud-production.up.railway.app/api/plan3d/comments/';
-  async function sendComments() {
+  // Comments that couldn't go out (no signal on a job site, say) stay marked unsent in this browser and are
+  // tried again on their own: every half minute while the page is open, as soon as it's back online, and
+  // the next time it's opened. A file is only made if the customer asks for one.
+  let sendBusy = false, retryT = null;
+  const setNote = (html) => { let n = cList.querySelector('.p3v-cnote'); if (!n) { n = document.createElement('p'); n.className = 'p3v-cnote'; cList.appendChild(n); } n.innerHTML = html; const fb = n.querySelector('.p3v-cfile'); if (fb) fb.onclick = () => saveFile(); };
+  async function sendComments(quiet) {
     const sid = plan && plan.share && plan.share.id, todo = myComments.filter(c => !c.sent);
-    if (sid && todo.length) {
-      const sb = cList.querySelector('.p3v-csend'); if (sb) { sb.disabled = true; sb.textContent = 'Sending…'; }
-      try {
-        const r = await fetch(COMMENTS_URL + encodeURIComponent(sid), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ comments: todo }) });
-        if (r.ok) { todo.forEach(c => { c.sent = true; }); saveMine(); drawPins(); cList.insertAdjacentHTML('beforeend', '<p><small>Sent. Your designer will see ' + (todo.length === 1 ? 'it' : 'them') + ' in Coll Plan3D.</small></p>'); return; }
-      } catch (e) { /* no connection: save a file instead */ }
-      if (sb) { sb.disabled = false; sb.textContent = 'Send comments'; }
-      cList.insertAdjacentHTML('beforeend', '<p><small>Couldn’t send right now, so they’re saved as a file too.</small></p>');
+    if (!todo.length || sendBusy) return;
+    if (!sid) {
+      // a plan saved before comments could be sent: the file is the only way back to the designer
+      if (!quiet) setNote('<small>This copy of the plan can’t send comments straight to your designer. Ask them for a new walkthrough link, or </small><button class="p3v-cfile">Save comments as a file</button>');
+      return;
     }
-    saveFile();
+    sendBusy = true; clearTimeout(retryT);
+    const sb = cList.querySelector('.p3v-csend'); if (sb) { sb.disabled = true; sb.textContent = 'Sending…'; }
+    let why = '';
+    try {
+      const r = await fetch(COMMENTS_URL + encodeURIComponent(sid), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ comments: todo, project: (plan && plan.name) || '' }) });
+      if (r.ok) { todo.forEach(c => { c.sent = true; }); saveMine(); drawPins(); setNote('<small>Sent ✓ Your designer will see ' + (todo.length === 1 ? 'it' : 'them') + ' in Coll Plan3D.</small>'); sendBusy = false; return; }
+      try { const d = await r.json(); why = (d && (d.error || d.message)) || ''; } catch (e) { /* not json */ }
+      if (!why) why = 'The server said ' + r.status + '.';
+    } catch (e) { why = navigator.onLine === false ? 'No internet connection right now.' : 'Couldn’t reach the server.'; }
+    sendBusy = false;
+    const sb2 = cList.querySelector('.p3v-csend'); if (sb2) { sb2.disabled = false; sb2.textContent = 'Send comments'; }
+    const esc3 = (t) => String(t).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+    setNote('<small>Not sent yet: ' + esc3(why) + ' Your comments are kept here and will send on their own when it can. </small><button class="p3v-cfile">Save as a file instead</button>');
+    retryT = setTimeout(() => sendComments(true), 30000);
+  }
+  if (opts.comments) {
+    global.addEventListener('online', () => sendComments(true));
+    setTimeout(() => sendComments(true), 4000);  // anything left unsent from last time
   }
   function saveFile() {
     const data = JSON.stringify({ kind: 'coll-plan3d-comments', project: plan && plan.name, sent: new Date().toISOString(), comments: myComments }, null, 1);
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' })); a.download = ((plan && plan.name) || 'project') + ' comments.json';
     document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
-    cList.insertAdjacentHTML('beforeend', '<p><small>Saved as a file. Email or text that file back to your designer.</small></p>');
+    setNote('<small>Saved as a file. Email or text that file back to your designer.</small>');
   }
   function placeComment(cx, cy) {
     if (!built) return;

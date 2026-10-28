@@ -970,6 +970,7 @@ async function checkComments(loud) {
   try {
     await registerShare();
     const r = await fetch(PLAN3D_CLOUD + '/comments/' + encodeURIComponent(S.id) + '?after=' + (S.seen || 0), { headers: { 'X-Plan3D-Key': S.key } });
+    if (r.status === 404) shareReg = '';  // the server doesn't have this plan's key: register again next time
     if (!r.ok) { if (loud) toast('Couldn’t check for comments right now.'); return; }
     const d = await r.json(), list = d.comments || [];
     if (d.last > (S.seen || 0)) { S.seen = d.last; ed.dirty = true; }
@@ -1040,7 +1041,13 @@ async function pollJobs() {
     for (const o of Object.values(J)) {
       if (!o || !o.id || !o.key) continue;
       try {
-        const r = await fetch(PLAN3D_CLOUD + '/comments/' + encodeURIComponent(o.id) + '?after=' + (o.notified || 0), { headers: { 'X-Plan3D-Key': o.key } });
+        const ask = () => fetch(PLAN3D_CLOUD + '/comments/' + encodeURIComponent(o.id) + '?after=' + (o.notified || 0), { headers: { 'X-Plan3D-Key': o.key } });
+        let r = await ask();
+        if (r.status === 404) {
+          // the server doesn't know this job's key yet (registering it missed, or comments came in first): register, ask again
+          const g = await fetch(PLAN3D_CLOUD + '/shares', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shareId: o.id, key: o.key, project: o.name || '' }) });
+          if (g.ok) r = await ask();
+        }
         if (!r.ok) continue;
         const d = await r.json(), list = (d.comments || []).filter(c => c && c.text);
         if (d.last > (o.notified || 0)) { o.notified = d.last; changed = true; }
