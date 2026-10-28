@@ -621,6 +621,8 @@ ipcMain.handle('get-assets', () => {
   return {
     three: rd('three.min.js'),
     orbit: rd('OrbitControls.js'),
+    post: rd('post.js'),
+    exporter: rd('GLTFExporter.js'),
     viewer: fs.readFileSync(path.join(__dirname, 'renderer', 'viewer.js'), 'utf8')
   };
 });
