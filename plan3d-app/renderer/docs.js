@@ -129,7 +129,7 @@ function submittalHTML(plan, X) {
   let cat = '', rows = '';
   for (const l of L) { if (l.cat !== cat) rows += `<tr class="cat"><td colspan="3">${esc(cat = l.cat)}</td></tr>`; rows += `<tr><td>${esc(l.item)}${l.size ? `<small>${esc(l.size)}</small>` : ''}</td><td class="n">${num(l.qty, 2)}</td><td>${l.unit === 'ea' ? 'ea' : esc(l.unit)}</td></tr>`; }
   const mrows = rows.split('</tr>').filter(x => x.trim()).map(x => x + '</tr>');
-  pages.push(...tablePages(F, 'Materials summary', 'Materials summary', '', '<tr><th>Item</th><th class="n">Qty</th><th>Unit</th></tr>', mrows, 24, 26));
+  pages.push(...tablePages(F, 'Materials summary', 'Materials summary', '', '<tr><th>Item</th><th class="n">Qty</th><th>Unit</th></tr>', mrows, 22, 24));
   return F.doc(pages);
 }
 
@@ -265,12 +265,20 @@ function certHTML(plan, X) {
     const m2 = r.area * 0.092903, nLoc = r.iso ? sampleLocations(m2) : 0, lim = r.iso && ISO_LIMIT[r.iso], perF = r.ffus.length ? r.cfm / r.ffus.length : 0;
     const ffuRows = r.ffus.map((f, i) => `<tr><td>FFU-${i + 1}</td><td class="n">${perF ? num(perF) : ''}</td><td class="bl"></td><td class="bl"></td><td class="bl"></td><td><i class="chk"></i>Pass <i class="chk"></i>Fail</td></tr>`).join('');
     const locRows = Array.from({ length: Math.min(nLoc, 30) }, (_, i) => `<tr><td>L${i + 1}</td><td class="bl"></td><td class="bl"></td><td class="bl"></td><td><i class="chk"></i>Pass</td></tr>`).join('');
-    pages.push(F.page('Certification · ' + r.name, `<h2>${esc(r.name)}</h2><div class="kv"><span>Class</span><b>${isoOf(r)}${r.type ? ' · ' + esc(r.type) : ''}</b><span>Area</span><b>${num(r.area)} sq ft (${num(m2, 1)} m²) · ${num(r.volume)} cu ft</b><span>Design</span><b>${r.ffus.length} FFUs · ${num(r.cfm)} CFM · ${r.ach != null ? num(r.ach) + ' ACH' : '—'} · ${esc(prTxt(r))}</b></div>
-      <h3>1. Airflow and HEPA filter leak test, each FFU</h3><table><thead><tr><th>Unit</th><th class="n">Design CFM</th><th>Measured CFM</th><th>Avg velocity (fpm)</th><th>Leak scan</th><th>Result</th></tr></thead><tbody>${ffuRows || '<tr><td colspan="6">No FFUs in this room.</td></tr>'}</tbody></table>
-      <h3>2. Air changes and pressure</h3><table><tbody><tr><td>Total supply (sum of the FFUs)</td><td class="bl" style="width:1.4in"></td><td>CFM</td></tr><tr><td>Air changes per hour (CFM × 60 ÷ ${num(r.volume)} cu ft)${r.achT ? ' · target ' + r.achT : ''}</td><td class="bl"></td><td>ACH</td></tr><tr><td>Pressure to the space next door · design ${esc(prTxt(r))}</td><td class="bl"></td><td>″ w.c.</td></tr><tr><td>Temperature / relative humidity</td><td class="bl"></td><td>°F / %RH</td></tr><tr><td>Light level at work height</td><td class="bl"></td><td>fc</td></tr></tbody></table>
+    const head = `<h2>${esc(r.name)}</h2><div class="kv"><span>Class</span><b>${isoOf(r)}${r.type ? ' · ' + esc(r.type) : ''}</b><span>Area</span><b>${num(r.area)} sq ft (${num(m2, 1)} m²) · ${num(r.volume)} cu ft</b><span>Design</span><b>${r.ffus.length} FFUs · ${num(r.cfm)} CFM · ${r.ach != null ? num(r.ach) + ' ACH' : '—'} · ${esc(prTxt(r))}</b></div>`;
+    const ffuHead = '<tr><th>Unit</th><th class="n">Design CFM</th><th>Measured CFM</th><th>Avg velocity (fpm)</th><th>Leak scan</th><th>Result</th></tr>';
+    const ffuList = r.ffus.map((f, i) => `<tr><td>FFU-${i + 1}</td><td class="n">${perF ? num(perF) : ''}</td><td class="bl"></td><td class="bl"></td><td class="bl"></td><td><i class="chk"></i>Pass <i class="chk"></i>Fail</td></tr>`);
+    const sec1 = (rows, cont) => `<h3>1. Airflow and HEPA filter leak test, each FFU${cont ? ' (continued)' : ''}</h3><table><thead>${ffuHead}</thead><tbody>${rows.join('') || '<tr><td colspan="6">No FFUs in this room.</td></tr>'}</tbody></table>`;
+    const rest = `<h3>2. Air changes and pressure</h3><table><tbody><tr><td>Total supply (sum of the FFUs)</td><td class="bl" style="width:1.4in"></td><td>CFM</td></tr><tr><td>Air changes per hour (CFM × 60 ÷ ${num(r.volume)} cu ft)${r.achT ? ' · target ' + r.achT : ''}</td><td class="bl"></td><td>ACH</td></tr><tr><td>Pressure to the space next door · design ${esc(prTxt(r))}</td><td class="bl"></td><td>″ w.c.</td></tr><tr><td>Temperature / relative humidity</td><td class="bl"></td><td>°F / %RH</td></tr><tr><td>Light level at work height</td><td class="bl"></td><td>fc</td></tr></tbody></table>
       ${r.iso ? `<h3>3. Particle count, ISO ${r.iso} · ${nLoc} location${nLoc === 1 ? '' : 's'} · limit ${num(lim[0])}/m³ ≥ 0.5 µm</h3><table><thead><tr><th>Location</th><th>Count ≥ 0.5 µm (/m³)</th><th>Count ≥ 5 µm (/m³)</th><th>Sample volume</th><th>Result</th></tr></thead><tbody>${locRows}</tbody></table>${nLoc > 30 ? `<p class="note">${nLoc - 30} more locations on an extra sheet.</p>` : ''}` : '<h3>3. Particle count</h3><p class="note">Set the room\'s ISO class (room type) to get its sample locations and limits.</p>'}
       <h3>4. Recovery (ISO 14644-3, 100:1)</h3><table><tbody><tr><td>Time to recover 100:1 after a challenge · typically 15 minutes or less</td><td class="bl" style="width:1.4in"></td><td>min</td></tr></tbody></table>
-      <div style="margin-top:14px;display:flex;gap:26px"><span><i class="chk"></i>Room passes</span><span><i class="chk"></i>Room fails, see notes</span><span>Certifier <span class="blank" style="min-width:1.8in"></span></span><span>Date <span class="blank" style="min-width:1in"></span></span></div>`));
+      <div style="margin-top:14px;display:flex;gap:26px"><span><i class="chk"></i>Room passes</span><span><i class="chk"></i>Room fails, see notes</span><span>Certifier <span class="blank" style="min-width:1.8in"></span></span><span>Date <span class="blank" style="min-width:1in"></span></span></div>`;
+    // one page when it all fits; otherwise the FFU table on its own page(s), the rest after
+    if (ffuList.length + Math.min(nLoc, 30) <= 18) pages.push(F.page('Certification · ' + r.name, head + sec1(ffuList) + rest));
+    else {
+      for (let j = 0; j < ffuList.length || j === 0; j += 26) pages.push(F.page('Certification · ' + r.name, (j ? `<h2>${esc(r.name)}</h2>` : head) + sec1(ffuList.slice(j, j + 26), j > 0)));
+      pages.push(F.page('Certification · ' + r.name, `<h2>${esc(r.name)} (continued)</h2>` + rest));
+    }
   }
   return F.doc(pages);
 }
