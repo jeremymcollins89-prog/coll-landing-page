@@ -279,7 +279,7 @@
       <div class="p3g-x"><i></i><i></i><i></i><i></i><b></b></div>
       <div class="p3g-msg"></div><div class="p3g-msl">⚠ MISSILE LOCK</div>
       <div class="p3g-hull"><div class="l">HULL</div><div class="bar"><div class="f"></div></div></div>
-      <div class="p3g-help">${C.touchy ? 'FIRE · BEAM over aliens · drag to aim' : 'X FIRE · HOLD B TRACTOR BEAM · L MOUSE AIM (CLICK FIRES) · G EXIT'}</div>
+      <div class="p3g-help">${C.touchy ? 'FIRE · BEAM over aliens · drag to aim' : 'HOLD X FIRE · GUNS LOCK ON AHEAD · HOLD B TRACTOR BEAM · G EXIT'}</div>
       ${C.touchy ? '<div class="p3g-tb"><button class="fire">FIRE</button><button class="beam">BEAM</button></div>' : ''}`;
     container.appendChild(hud);
     const H = (s) => hud.querySelector(s);
@@ -305,7 +305,7 @@
 
     // ---------------------------------------------------------------- game state
     let waveClear = false, score = 0, wave = 0, hull = 100, abducted = 0, dead = false, deadT = 0, waveT = 1.2, toSpawn = 0, spawnT = 0, fireT = 0, gunSide = 1, hitFlash = 0, time = 0, liftT = 0;
-    let lastHit = -9, firing = false, beamOn = false, streak = 0, lastKill = -9, mslWarn = 0, best = 0;
+    let lastHit = -9, beamOn = false, streak = 0, lastKill = -9, mslWarn = 0, best = 0;
     try { best = +localStorage.getItem('p3g.best') || 0; } catch (e) { /* none */ }
     const jets = [], aliens = [];
     const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
@@ -345,9 +345,6 @@
     const motes = []; for (let i = 0; i < 40; i++) { const s = new THREE.Sprite(ADD(TX.green, 0xffffff, 0.8)); s.scale.set(0.35, 0.35, 1); s.visible = false; root.add(s); motes.push({ s, a: rnd(0, 6.28), r: rnd(0, 1), h: rnd(0, 1), v: rnd(0.25, 0.6) }); }
 
     // ---------------------------------------------------------------- input
-    const onDown = (e) => { if (e.button === 0 && C.isLocked()) { audio(); firing = true; } };
-    const onUp = (e) => { if (e.button === 0) firing = false; };
-    canvas.addEventListener('pointerdown', onDown); global.addEventListener('pointerup', onUp);
     audio();
     say('AREA 51', 'HOSTILE AIRCRAFT INBOUND', 2.6);
 
@@ -380,15 +377,20 @@
       if (toSpawn) { spawnT -= dt; if (spawnT <= 0) { spawnJet(); toSpawn--; spawnT = 1.4; } }
 
       // our guns: aim through the crosshair, with a little help onto a jet near it
-      const camFwd = camera.getWorldDirection(tmpV2).clone();
-      let lockJ = null, bestA = 0.045;
-      for (const j of jets) { if (j.dying) continue; const to = j.J.position.clone().sub(camera.position); const d = to.length(); const ang = to.normalize().angleTo(camFwd); if (ang < bestA && d < 300) { bestA = ang; lockJ = j; } }
+      const camFwd = camera.getWorldDirection(tmpV2).clone(), head = new THREE.Vector3(-Math.sin(st.yaw), 0, -Math.cos(st.yaw));
+      // the guns lock on to the jet nearest the nose: within about 25° either side, and well up or down
+      let lockJ = null, bestS = 1e9;
+      for (const j of jets) {
+        if (j.dying) continue; const to = j.J.position.clone().sub(D), d = to.length(); if (d > 280) continue;
+        const hz = Math.hypot(to.x, to.z), side = Math.acos(clamp((to.x * head.x + to.z * head.z) / Math.max(hz, 1e-6), -1, 1)), elev = Math.abs(Math.atan2(to.y, hz));
+        if (side < 0.44 && elev < 1.0) { const sc = side * 2 + elev + d / 400; if (sc < bestS) { bestS = sc; lockJ = j; } }
+      }
       elX.classList.toggle('lock', !!lockJ);
       fireT -= dt;
-      if ((firing || keys.has('x') || keys.has('enter') || touchFire) && !dead && fireT <= 0) {
+      if ((keys.has('x') || keys.has('enter') || touchFire) && !dead && fireT <= 0) {
         fireT = 1 / 11; gunSide = -gunSide;
         const right = new THREE.Vector3(Math.cos(st.yaw), 0, -Math.sin(st.yaw)), muzzle = D.clone().addScaledVector(right, gunSide * 0.35).add(new THREE.Vector3(0, -0.1, 0)).addScaledVector(new THREE.Vector3(-Math.sin(st.yaw), 0, -Math.cos(st.yaw)), 0.5);
-        let aim = camera.position.clone().addScaledVector(camFwd, 400);
+        let aim = muzzle.clone().addScaledVector(head, 400);
         if (lockJ) { const t = lockJ.J.position.distanceTo(muzzle) / 320; aim = lockJ.J.position.clone().addScaledVector(lockJ.dir, lockJ.speed * t * 0.85); }
         shoot(muzzle, aim.sub(muzzle).normalize().add(new THREE.Vector3(rnd(-0.014, 0.014), rnd(-0.014, 0.014), rnd(-0.014, 0.014))).normalize(), 320, true);
         const mf = sprite(TX.green, 0xffffff, 1.1, muzzle, 1); addFx(mf, 0.06, (d2, k) => { mf.material.opacity = 1 - k; });
@@ -589,13 +591,12 @@
       if (k === 'g' || k === 'escape') { if (!e.repeat) stop(); return true; }
       if (k === 'enter' && dead) { restart(); return true; }
       if (k === 'b' || k === 'x' || k === 'enter') { keys.add(k); return true; }
-      if (k === 'm' || k === 'p') return true;   // no measuring or snapshots mid-fight
+      if (k === 'm' || k === 'p' || k === 'l') return true;   // no measuring, snapshots or mouse look mid-fight
       return false;
     }
     function stop() {
       if (!alive) return; alive = false;
       keys.delete('b'); keys.delete('x'); keys.delete('enter');
-      canvas.removeEventListener('pointerdown', onDown); global.removeEventListener('pointerup', onUp);
       scene.remove(root);
       try { if (score > (+localStorage.getItem('p3g.best') || 0)) localStorage.setItem('p3g.best', String(score)); } catch (e) { /* ok */ }
       root.traverse(o => { if (o.geometry && o.geometry !== bulletGeo) o.geometry.dispose(); });

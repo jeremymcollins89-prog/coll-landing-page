@@ -4674,13 +4674,9 @@ function mount(container, plan, opts) {
     drone.visible = chase;
     drone.position.set(st.x, st.y, st.z); drone.rotation.set(droneTilt, st.yaw, droneRoll, 'YXZ');
     if (!chase) { camera.position.set(st.x, st.y, st.z); camera.rotation.set(st.pitch, st.yaw, 0, 'YXZ'); return; }
-    // a little behind and above the drone; the camera swings round after it when it turns, so you see the drone
-    // bank and show its side on a turn
-    const now = performance.now(), dtc = Math.min(0.1, (now - (camYawT || now)) / 1000); camYawT = now;
-    if (camYaw == null) camYaw = st.yaw;
-    let dy = st.yaw - camYaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; camYaw += dy * Math.min(1, dtc * 2.2);
-    const cp = Math.cos(st.pitch); camOff.set(Math.sin(camYaw) * cp * 3.2, 0.95 - Math.sin(st.pitch) * 3.2, Math.cos(camYaw) * cp * 3.2);
-    camera.position.set(st.x + camOff.x, st.y + camOff.y, st.z + camOff.z); camera.rotation.set(st.pitch - 0.16, camYaw, 0, 'YXZ');
+    // a little behind and above the drone, looking the way it looks (fixed to it, so turns feel direct)
+    const cp = Math.cos(st.pitch); camOff.set(Math.sin(st.yaw) * cp * 3.2, 0.95 - Math.sin(st.pitch) * 3.2, Math.cos(st.yaw) * cp * 3.2);
+    camera.position.set(st.x + camOff.x, st.y + camOff.y, st.z + camOff.z); camera.rotation.set(st.pitch - 0.16, st.yaw, 0, 'YXZ');
   }
   function poseFromCamera() { const d = camera.getWorldDirection(new THREE.Vector3()); return { x: camera.position.x, y: camera.position.y, z: camera.position.z, yaw: Math.atan2(-d.x, -d.z), pitch: Math.max(-1.3, Math.min(1.3, Math.asin(Math.max(-1, Math.min(1, d.y))))) }; }
   function goFly() {
@@ -4907,7 +4903,7 @@ function mount(container, plan, opts) {
   if (lookBtn) { if (!lockable) lookBtn.hidden = true; lookBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleLook(); }); }
   document.addEventListener('pointerlockchange', () => { container.classList.toggle('p3v-looking', isLocked()); keys.clear(); if (lookBtn) lookBtn.setAttribute('aria-pressed', String(isLocked())); });
   canvas.addEventListener('mousemove', e => {
-    if (!isLocked() || (mode !== 'walk' && mode !== 'fly') || tween) return;
+    if (!isLocked() || (mode !== 'walk' && mode !== 'fly') || tween || game) return;
     const k = 0.0024 * (fov / 70);
     st.yaw -= e.movementX * k; st.pitch = Math.max(-1.25, Math.min(1.25, st.pitch - e.movementY * k));
   });
@@ -4915,6 +4911,7 @@ function mount(container, plan, opts) {
     if (isLocked()) return;
     if (down) down.moved = Math.max(down.moved, Math.hypot(e.clientX - down.x, e.clientY - down.y));
     if ((mode === 'walk' || mode === 'fly') && !tween && pts.has(e.pointerId)) {
+      if (game) return;
       const p = pts.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
       if (pts.size === 1) { const k = (e.pointerType === 'touch' ? 0.0068 : 0.0058) * (fov / 70); st.yaw -= dx * k; st.pitch = Math.max(-1.25, Math.min(1.25, st.pitch - dy * k)); }  // game-style: drag up looks up, drag right turns right (same as mouse look and the joystick)
       else if (pts.size === 2 && pinch) { const [a, b] = [...pts.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); fov = Math.max(35, Math.min(85, pinch.fov * pinch.d / d)); camera.fov = fov; camera.updateProjectionMatrix(); }
@@ -5083,7 +5080,8 @@ function mount(container, plan, opts) {
   };
   const onKeyUp = (e) => { keys.delete(e.key.toLowerCase()); running = e.shiftKey; if (game) game.key(e.key.toLowerCase(), e, false); };
   function startGame() {
-    setMeasure(false);
+    setMeasure(false); if (isLocked()) document.exitPointerLock();
+    st.pitch = 0;  // level flight: W straight ahead, Space / C up and down
     game = global.P3Game.start({
       THREE, scene, camera, drone, st, renderer, canvas, container, keys, touchy, bounds: A.bounds,
       isLocked, lock: () => { if (lockable && !isLocked() && !touchy) toggleLook(); }, unlock: () => { if (isLocked()) document.exitPointerLock(); },
