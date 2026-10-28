@@ -170,6 +170,75 @@ const ITEMS = {
   // (it.lines, it.swings, local feet about its centre), size (w × d) and height (it.h)
   machine: { label: 'Machine', group: 'Equipment', w: 4, d: 4, h: 8, free: true, hidden: true }
 };
+/* ---------- House foundation (plan.foundation) ----------
+   type: slab (monolithic slab, thickened edge), stem (stem wall on a footing, slab inside), crawl (stem wall on a
+   footing, wood floor over a crawlspace), basement (full-height basement walls on a footing, slab). Sizes in feet. */
+const FOUNDATIONS = {
+  slab: { label: 'Slab on grade, thickened edge', exp: 0.33 },
+  stem: { label: 'Stem wall and footing, slab inside', exp: 0.67 },
+  crawl: { label: 'Crawlspace: stem wall, footing, wood floor', exp: 1.5 },
+  basement: { label: 'Full basement: 8′ walls, footing, slab', exp: 0.67 },
+  none: { label: 'None (on an existing slab)', exp: 0 }
+};
+function foundationOf(plan) {
+  const F = Object.assign({ type: 'slab', slabT: 4 / 12, footW: 16 / 12, footD: 12 / 12, stemT: 8 / 12, stemH: 2, crawlH: 3, baseH: 8, gravel: 4 / 12, mesh: 'wwm' }, (plan && plan.foundation) || {});
+  if (!FOUNDATIONS[F.type]) F.type = 'slab';
+  return F;
+}
+/* The house's outside walls (framed walls with the outdoors on one side), as the takeoff and foundation use them. */
+function houseExtWalls(plan, A) {
+  A = A || analyze(plan);
+  const FP = footprint(A, true), out = (x, z) => !FP || !FP.has(x, z);
+  return (A.walls || []).filter(w => isFrame(w)).filter(w => {
+    const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 0.2) return false;
+    if (w.ext != null) return !!w.ext;
+    const t = w.t || 0.375, nx = -(w.y2 - w.y1) / L, nz = (w.x2 - w.x1) / L, cx = (w.x1 + w.x2) / 2, cz = (w.y1 + w.y2) / 2, off = t / 2 + 0.8;
+    return out(cx + nx * off, cz + nz * off) || out(cx - nx * off, cz - nz * off);
+  });
+}
+/* Foundation quantities: perimeter (outside walls), slab area (the whole footprint) and the concrete, steel,
+   gravel and the rest for the chosen type. Concrete in cubic yards (+5%), rebar in feet (#4, +10% laps). */
+function foundationTakeoff(plan, A) {
+  A = A || analyze(plan);
+  const F = foundationOf(plan), FP = footprint(A, true), ext = houseExtWalls(plan, A);
+  const perim = ext.reduce((t, w) => t + Math.hypot(w.x2 - w.x1, w.y2 - w.y1), 0), area = FP ? FP.area : 0;
+  const cy = (cf) => cf / 27 * 1.05, L = [];
+  if (F.type === 'none' || !perim) return { F, perim, area, lines: L };
+  const footCF = perim * F.footW * F.footD;
+  if (F.type === 'slab') {
+    L.push(['Concrete', 'Concrete, monolithic slab ' + Math.round(F.slabT * 12) + '″ with thickened edge ' + Math.round(F.footW * 12) + '″ × ' + Math.round(F.footD * 12) + '″', '', cy(area * F.slabT + perim * F.footW * Math.max(0, F.footD - F.slabT)), 'cu yd']);
+  } else {
+    L.push(['Concrete', 'Concrete, footings ' + Math.round(F.footW * 12) + '″ × ' + Math.round(F.footD * 12) + '″', '', cy(footCF), 'cu yd']);
+    const wallH = F.type === 'basement' ? F.baseH : F.type === 'crawl' ? F.crawlH : F.stemH;
+    L.push(['Concrete', (F.type === 'basement' ? 'Concrete, basement walls ' : 'Concrete, stem walls ') + Math.round(F.stemT * 12) + '″ × ' + (wallH >= 1 ? fmtFt(wallH) : Math.round(wallH * 12) + '″'), '', cy(perim * F.stemT * wallH), 'cu yd']);
+    L.push(['Concrete', 'Wall forms (both faces)', '', perim * wallH * 2, 'sq ft']);
+    if (F.type !== 'crawl') L.push(['Concrete', 'Concrete, slab ' + Math.round(F.slabT * 12) + '″' + (F.type === 'basement' ? ' (basement floor)' : ''), '', cy(Math.max(0, area - perim * F.stemT) * F.slabT), 'cu yd']);
+    L.push(['Rebar', 'Rebar #4, wall verticals at 24″ (with hooks)', '', Math.ceil(perim / 2) * (wallH + F.footD + 1), 'lin ft']);
+    L.push(['Rebar', 'Rebar #4, wall horizontals (' + (wallH > 3 ? 'at 18″' : '2 bars') + ')', '', perim * (wallH > 3 ? Math.ceil(wallH / 1.5) : 2) * 1.1, 'lin ft']);
+  }
+  L.push(['Rebar', 'Rebar #4, footing / edge, 2 continuous', '', perim * 2 * 1.1, 'lin ft']);
+  if (F.type !== 'crawl') {
+    if (F.mesh === 'rebar') L.push(['Rebar', 'Rebar #4 at 18″ each way, slab', '', area / 1.5 * 2 * 1.1, 'lin ft']);
+    else L.push(['Rebar', 'Welded wire mesh 6×6 W1.4, slab', '', area * 1.1, 'sq ft']);
+    L.push(['Concrete', 'Gravel base ' + Math.round(F.gravel * 12) + '″, compacted', '', area * F.gravel / 27 * 1.1, 'cu yd']);
+    L.push(['Concrete', 'Vapor barrier, 10 mil under slab', '', area * 1.15, 'sq ft']);
+  } else {
+    L.push(['Concrete', 'Ground vapor barrier, 6 mil (crawlspace)', '', area * 1.15, 'sq ft']);
+    L.push(['Concrete', 'Foundation vents', '1 per 150 sq ft', Math.ceil(area / 150), 'ea']);
+    L.push(['Framing', 'Floor joists 2×10 at 16″ (est.)', '', Math.ceil(area / 1.333 / 12 * 1.1), 'pcs (12′)']);
+    L.push(['Framing', 'Subfloor ¾″ T&G OSB 4×8', '', Math.ceil(area / 32 * 1.1), 'sheets']);
+    L.push(['Framing', 'Sill plate, pressure-treated 2×6', '', perim * 1.05, 'lin ft']);
+  }
+  if (F.type === 'basement') {
+    L.push(['Concrete', 'Foundation waterproofing (basement walls)', '', perim * F.baseH, 'sq ft']);
+    L.push(['Concrete', 'Perimeter drain tile, 4″ with gravel', '', perim * 1.05, 'lin ft']);
+    L.push(['Framing', 'Floor joists over basement, 2×10 at 16″ (est.)', '', Math.ceil(area / 1.333 / 12 * 1.1), 'pcs (12′)']);
+    L.push(['Framing', 'Subfloor ¾″ T&G OSB 4×8', '', Math.ceil(area / 32 * 1.1), 'sheets']);
+  }
+  L.push(['Concrete', 'Anchor bolts ½″ × 10″ (6′ on center, 12″ from corners)', '', Math.ceil(perim / 6) + ext.length * 2, 'ea']);
+  L.push(['Concrete', 'Sill seal gasket', '', perim * 1.05, 'lin ft']);
+  return { F, perim, area, ext, lines: L };
+}
 /* House finishes: picked in the Plan panel (plan.finish), shown in 3D and named on the parts list. */
 const FINISH = {
   siding: { lap: 'Lap siding', board: 'Board and batten', shake: 'Cedar shake', brick: 'Brick', stone: 'Stone veneer', stucco: 'Stucco' },
@@ -2795,6 +2864,15 @@ function buildScene(THREE, plan, A) {
     shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
   }
   curRef = null;
+  // a house's foundation where it shows above grade: a concrete band at the foot of the outside walls (the slab
+  // edge, or the stem / basement wall), siding starting above it
+  if (A.frameAny) {
+    const F = foundationOf(plan), exp = (FOUNDATIONS[F.type] || {}).exp || 0;
+    if (exp > 0) {
+      const cm = M.concrete || (M.concrete = new THREE.MeshLambertMaterial({ color: 0xb7b4ad }));
+      for (const w of houseExtWalls(plan, A)) { const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), ux = (w.x2 - w.x1) / L, uz = (w.y2 - w.y1) / L, e = (w.t || 0.375) / 2 + 0.03; const m = segBox(w.x1 - ux * e, w.y1 - uz * e, w.x2 + ux * e, w.y2 + uz * e, -exp - 0.1, -0.005, (w.t || 0.375) + 0.06, cm); pick.push(m); }
+    }
+  }
   // transition panels over a lower building that carries on through a gap in this one's wall
   for (const q of A.transitions || []) {
     const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(q.len / 4, 1);
@@ -2962,6 +3040,15 @@ function buildScene(THREE, plan, A) {
       segBox(j1x, j1z, ax, az, 0, head, t + 0.06, M.frame);
       segBox(bx, bz, j2x, j2z, 0, head, t + 0.06, M.frame);
       segBox(j1x, j1z, j2x, j2z, head - 0.02, Math.min(H, head + 0.12), t + 0.06, M.frame);
+      if (i.frame && (o.type === 'door' || o.type === 'door2')) {
+        // a house door's jambs and head inside the opening, the full wall depth, so nothing shows past the leaf;
+        // an outside door gets a threshold
+        const r = o.type === 'door' ? 0.12 : 0.1, [k1x, k1z] = along(0.1), [k2x, k2z] = along(i.len - r);
+        segBox(ax, az, k1x, k1z, 0, head, t + 0.01, M.frame); segBox(k2x, k2z, bx, bz, 0, head, t + 0.01, M.frame);
+        const lt = Math.min(head - 0.05, 6.7); if (head - lt > 0.005) segBox(ax, az, bx, bz, lt, head, t + 0.01, M.frame);
+        const FPh = footprint(A, true), mx = (ax + bx) / 2, mz = (az + bz) / 2, outD = FPh && (!FPh.has(mx + nx * (t / 2 + 0.8), mz + nz * (t / 2 + 0.8)) || !FPh.has(mx - nx * (t / 2 + 0.8), mz - nz * (t / 2 + 0.8)));
+        if (outD) segBox(ax, az, bx, bz, 0, 0.06, t + 0.12, M.steel || M.frame);
+      }
       for (const l of i.leaves) {
         const baseAngle = Math.atan2(-(l.z2 - l.z1), l.x2 - l.x1);
         // Open toward the swing side shown on the plan. Turning by +90° sends the leaf's direction (dx, dz)
@@ -3070,7 +3157,10 @@ function buildScene(THREE, plan, A) {
     const F = floorMat(THREE, r.room.floor); root.add(new THREE.Mesh(rectsGeometry(THREE, r.rects, 0.035, false, F.su, F.sv, 0, 0), F.mat));
   }
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(B.w + 140, B.d + 140), new THREE.MeshLambertMaterial({ color: 0xc4c8c2 }));
-  ground.rotation.x = -Math.PI / 2; ground.position.set(B.cx, -0.08, B.cz); root.add(ground);
+  // a house on a stem wall, crawlspace or basement sits up off the ground: the ground drops below the floor and the
+  // foundation shows between them
+  const gDrop = A.frameAny ? ((FOUNDATIONS[foundationOf(plan).type] || {}).exp || 0) : 0;
+  ground.rotation.x = -Math.PI / 2; ground.position.set(B.cx, -0.08 - gDrop, B.cz); root.add(ground);
 
   const ceiling = new THREE.Group(); root.add(ceiling);
   const cTex = new THREE.CanvasTexture(ceilCanvas); cTex.wrapS = cTex.wrapT = THREE.RepeatWrapping; cTex.repeat.set(B.w / 2, B.d / 4); cTex.anisotropy = ANISO;
@@ -4158,5 +4248,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, deckShapes, deckBase, deckLevels, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);

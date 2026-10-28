@@ -1326,6 +1326,23 @@ class Editor {
       g.fill('evenodd'); g.stroke(); g.setLineDash([]);
       const L = this.deckLabel(d); g.font = '600 11px Consolas, monospace'; g.fillStyle = '#c9a6ff'; g.textBaseline = 'top'; g.fillText('LID' + ((P.deckPieces || []).length > 1 ? ' ' + ((P.deckPieces || []).indexOf(d) + 1) : ''), this.sx(L.x), this.sy(L.y)); g.restore();
     }
+    // a house's foundation: the footing under the outside walls, dashed, with anchor bolts every 6′
+    if (P.mode === 'house' && global.Plan3DViewer && global.Plan3DViewer.foundationOf && s > 4) {
+      const V = global.Plan3DViewer, F = V.foundationOf(P);
+      if (F.type !== 'none') {
+        const key = 'f' + JSON.stringify(P.walls);
+        if (this._fKey !== key) { this._fKey = key; try { this._fExt = V.houseExtWalls(P); } catch (err) { this._fExt = []; } }
+        g.save(); g.strokeStyle = 'rgba(183,180,173,.75)'; g.lineWidth = 1; g.setLineDash([6, 4]);
+        for (const w of this._fExt || []) {
+          const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, nx = -uy, ny = ux, hw = Math.max(F.footW, (w.t || 0.375)) / 2, e1 = hw;
+          for (const sd of [1, -1]) { g.beginPath(); g.moveTo(this.sx(w.x1 - ux * e1 + nx * sd * hw), this.sy(w.y1 - uy * e1 + ny * sd * hw)); g.lineTo(this.sx(w.x2 + ux * e1 + nx * sd * hw), this.sy(w.y2 + uy * e1 + ny * sd * hw)); g.stroke(); }
+          g.setLineDash([]); g.fillStyle = 'rgba(183,180,173,.9)';
+          for (let m = 1; m < L; m += 6) { const x = w.x1 + ux * Math.min(m, L - 1), y = w.y1 + uy * Math.min(m, L - 1); g.beginPath(); g.arc(this.sx(x), this.sy(y), 1.8, 0, Math.PI * 2); g.fill(); }
+          g.setLineDash([6, 4]);
+        }
+        g.restore();
+      }
+    }
     // return grilles: a hatched box across the wall, an arrow on the side the air goes in, the size (D: damper)
     for (const gr of P.grilles || []) {
       const c = this.grilleCorners(gr); g.save(); g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath();

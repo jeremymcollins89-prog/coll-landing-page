@@ -29,6 +29,11 @@ function floorTrackFt(plan, A) {
    trim and the kitchen / bath / laundry items. Estimates use common rules of thumb (studs at 16″ on centre,
    triple plates, 10% waste on sheet goods and shingles); check them against your supplier's takeoff. */
 function houseTakeoff(plan, A, add) {
+  // foundation first (concrete, rebar, gravel, anchor bolts; floor framing for a crawlspace or basement)
+  if (global.Plan3DViewer.foundationTakeoff) {
+    const FT = global.Plan3DViewer.foundationTakeoff(plan, A);
+    FT.lines.forEach(([cat, item, size, q, unit], k) => add(cat === 'Framing' ? 'Framing' : 'Foundation', (cat === 'Rebar' ? '' : '') + item, size, unit === 'cu yd' ? Math.ceil(q * 4) / 4 : Math.ceil(q), unit, 60 + k * 0.1));
+  }
   const V0 = global.Plan3DViewer, FIN = V0.finishOf ? V0.finishOf(plan) : {}, FN = (k, v) => { const e = V0.FINISH && V0.FINISH[k] && V0.FINISH[k][v]; return Array.isArray(e) ? e[0] : (e || ''); };
   const V = global.Plan3DViewer, H = A.H, OC = 16 / 12, FPall = V.footprint(A, true);
   const outside = (x, z) => !FPall || !FPall.has(x, z);
