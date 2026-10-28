@@ -29,6 +29,7 @@
 .p3g-msg{position:absolute;left:0;right:0;top:27%;text-align:center;font:900 34px/1.1 Consolas,monospace;letter-spacing:.18em;color:#fff;text-shadow:0 0 14px rgba(57,255,136,.9),0 0 2px #000;opacity:0;transition:opacity .35s}
 .p3g-msg small{display:block;font:700 14px/1.8 Consolas,monospace;letter-spacing:.3em;color:#9fe8bd}
 .p3g-msg.on{opacity:1}
+.p3g-hid{position:absolute;left:0;right:0;top:calc(50% + 74px);text-align:center;font:800 14px Consolas,monospace;letter-spacing:.3em;color:#39ff88;text-shadow:0 0 8px rgba(57,255,136,.8);opacity:0;transition:opacity .3s}
 .p3g-msl{position:absolute;left:0;right:0;top:calc(50% + 48px);text-align:center;font:900 18px Consolas,monospace;letter-spacing:.3em;color:#ff5a48;text-shadow:0 0 10px rgba(255,80,60,.9);opacity:0}
 .p3g-pop{position:absolute;font:900 16px/1 Consolas,monospace;letter-spacing:.1em;color:#ffd84d;text-shadow:0 0 8px rgba(255,170,40,.9);transform:translate(-50%,-50%);transition:transform 1s ease-out,opacity 1s;white-space:nowrap}
 .p3g-mk{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border:2px solid #ff4d3d;transform:rotate(45deg);box-shadow:0 0 8px rgba(255,77,61,.7)}
@@ -277,13 +278,13 @@
       <div class="p3g-tl"><div class="t">AREA 51 · DEFENSE</div><div class="s">0</div><div class="r">WAVE 1 · 👽 0</div><div class="r b"></div></div>
       <canvas class="p3g-radar" width="300" height="300"></canvas>
       <div class="p3g-x"><i></i><i></i><i></i><i></i><b></b></div>
-      <div class="p3g-msg"></div><div class="p3g-msl">⚠ MISSILE LOCK</div>
+      <div class="p3g-msg"></div><div class="p3g-msl">⚠ MISSILE LOCK</div><div class="p3g-hid">◉ HIDDEN · INSIDE THE BUILDING</div>
       <div class="p3g-hull"><div class="l">HULL</div><div class="bar"><div class="f"></div></div></div>
       <div class="p3g-help">${C.touchy ? 'FIRE · BEAM over aliens · drag to aim' : 'HOLD X FIRE · GUNS LOCK ON AHEAD · HOLD B TRACTOR BEAM · G EXIT'}</div>
       ${C.touchy ? '<div class="p3g-tb"><button class="fire">FIRE</button><button class="beam">BEAM</button></div>' : ''}`;
     container.appendChild(hud);
     const H = (s) => hud.querySelector(s);
-    const elScore = H('.p3g-tl .s'), elRow = H('.p3g-tl .r'), elBest = H('.p3g-tl .b'), elHull = H('.p3g-hull'), elFill = H('.p3g-hull .f'), elMsg = H('.p3g-msg'), elVig = H('.p3g-vig'), elBeamV = H('.p3g-beam'), elX = H('.p3g-x'), elMsl = H('.p3g-msl'), radar = H('.p3g-radar'), rg = radar.getContext('2d');
+    const elScore = H('.p3g-tl .s'), elRow = H('.p3g-tl .r'), elBest = H('.p3g-tl .b'), elHull = H('.p3g-hull'), elFill = H('.p3g-hull .f'), elMsg = H('.p3g-msg'), elVig = H('.p3g-vig'), elBeamV = H('.p3g-beam'), elX = H('.p3g-x'), elMsl = H('.p3g-msl'), elHid = H('.p3g-hid'), radar = H('.p3g-radar'), rg = radar.getContext('2d');
     setTimeout(() => { const h = H('.p3g-help'); if (h) h.style.opacity = '0'; }, 7000);
     let msgT = 0;
     function say(big, small, secs) { elMsg.innerHTML = big + (small ? `<small>${small}</small>` : ''); elMsg.classList.add('on'); msgT = secs || 2.2; }
@@ -317,7 +318,7 @@
       const J = makeJet(); J.position.set(cx + Math.cos(a) * r, rnd(30, 65), cz + Math.sin(a) * r); root.add(J);
       const dir = new THREE.Vector3(cx - J.position.x, rnd(-0.1, 0.05) * r, cz - J.position.z).normalize();
       const sp = 34 + Math.min(18, wave * 2.2);
-      jets.push({ J, dir, speed: sp, hp: 5 + Math.floor(wave / 2), jink: 0, jinkV: new THREE.Vector3(), phase: 'attack', phaseT: 0, burst: 0, burstT: rnd(1.5, 3), shotT: 0, bank: 0, smokeT: 0, mslT: rnd(5, 9), dying: false });
+      jets.push({ J, dir, speed: sp, hp: 4 + Math.floor(wave / 2), jink: 0, jinkV: new THREE.Vector3(), phase: 'attack', phaseT: 0, burst: 0, burstT: rnd(1.5, 3), shotT: 0, bank: 0, smokeT: 0, mslT: rnd(5, 9), dying: false });
     }
     // wanders the ground round the building (not through it)
     const ring = { x0: B.minX - 45, x1: B.maxX + 45, z0: B.minZ - 45, z1: B.maxZ + 45 };
@@ -371,6 +372,8 @@
       droneVel.set(st.x - prevDrone.x, st.y - prevDrone.y, st.z - prevDrone.z).divideScalar(Math.max(dt, 1e-3)); prevDrone.set(st.x, st.y, st.z);
       if (dead) { drone.visible = false; deadT += dt; if (touchFire && deadT > 1.2) restart(); }
       const D = dronePos().clone();
+      const hidden = !dead && !!(C.inside && C.inside(st.x, st.y, st.z));
+      elHid.style.opacity = hidden ? '1' : '0';
 
       // waves
       if (!dead && !jets.length && !toSpawn) { if (wave && !waveClear) { waveClear = true; const b = 500 * wave; score += b; hull = Math.min(100, hull + 25); say('WAVE ' + wave + ' CLEAR', '+' + b + ' · HULL REPAIRED', 2.6); tone('triangle', 440, 880, 0.3, 0.1); tone('triangle', 660, 1320, 0.35, 0.08, 0.15); waveT = 3.2; } waveT -= dt; if (waveT <= 0) { waveClear = false; wave++; toSpawn = Math.min(1 + wave, 9); spawnT = 0; say('WAVE ' + wave, wave === 1 ? 'SHOOT THEM DOWN · BEAM UP THE LOCALS' : 'MORE BANDITS INBOUND', 2.4); SND.alarm(); } }
@@ -412,7 +415,11 @@
         if (dist < nearest) { nearest = dist; closing = -to.clone().normalize().dot(j.dir.clone().multiplyScalar(j.speed).sub(droneVel)); }
         j.phaseT += dt;
         let want;
-        if (j.phase === 'attack') {
+        if (hidden && j.phase === 'attack') {
+          // can't see you: circle high over the building, waiting for you to come out
+          const a = time * 0.35 + i * 1.7, R2 = span * 0.6 + 30, ov = new THREE.Vector3(cx + Math.cos(a) * R2, 45 + (i % 3) * 8, cz + Math.sin(a) * R2);
+          want = ov.sub(P).normalize();
+        } else if (j.phase === 'attack') {
           const lead = dist / 200; want = D.clone().addScaledVector(droneVel, lead).sub(P).normalize();
           if (dist < 22) { j.phase = 'extend'; j.phaseT = 0; j.ext = j.dir.clone().add(new THREE.Vector3(rnd(-0.6, 0.6), rnd(0.15, 0.45), rnd(-0.6, 0.6))).normalize(); }
         } else {
@@ -433,17 +440,17 @@
         // guns: short bursts when lined up
         j.burstT -= dt;
         const toN = to.clone().normalize();
-        if (!dead && j.phase === 'attack' && dist < 150 && dist > 24 && j.dir.angleTo(toN) < 0.22 && j.burstT <= 0 && !j.burst) { j.burst = 7; j.shotT = 0; }
-        if (j.burst) { j.shotT -= dt; if (j.shotT <= 0) { j.shotT = 0.065; j.burst--; const nose = P.clone().addScaledVector(j.dir, 5); const aimD = D.clone().addScaledVector(droneVel, dist / 260).sub(nose).normalize().add(new THREE.Vector3(rnd(-0.022, 0.022), rnd(-0.022, 0.022), rnd(-0.022, 0.022))).normalize(); shoot(nose, aimD, 260, false); SND.enemyGun(clamp(1.4 - dist / 120, 0.2, 1)); if (!j.burst) j.burstT = rnd(2, 3.4) - Math.min(0.9, wave * 0.1); } }
+        if (!dead && !hidden && j.phase === 'attack' && dist < 125 && dist > 24 && j.dir.angleTo(toN) < 0.22 && j.burstT <= 0 && !j.burst) { j.burst = 5; j.shotT = 0; }
+        if (j.burst) { j.shotT -= dt; if (j.shotT <= 0) { j.shotT = 0.065; j.burst--; const nose = P.clone().addScaledVector(j.dir, 5); const aimD = D.clone().addScaledVector(droneVel, dist / 260).sub(nose).normalize().add(new THREE.Vector3(rnd(-0.032, 0.032), rnd(-0.032, 0.032), rnd(-0.032, 0.032))).normalize(); shoot(nose, aimD, 250, false); SND.enemyGun(clamp(1.4 - dist / 120, 0.2, 1)); if (!j.burst) j.burstT = rnd(2.6, 4.2) - Math.min(0.9, wave * 0.08); } }
         // from wave 3 on, now and then a heat-seeker
-        if (wave >= 2 && !dead) { j.mslT -= dt; if (j.mslT <= 0 && dist < 160 && dist > 40) { j.mslT = rnd(7, 12); fireMissile(P.clone().addScaledVector(j.dir, 3).add(new THREE.Vector3(0, -0.6, 0)), j.dir); } }
+        if (wave >= 3 && !dead && !hidden) { j.mslT -= dt; if (j.mslT <= 0 && dist < 160 && dist > 40) { j.mslT = rnd(7, 12); fireMissile(P.clone().addScaledVector(j.dir, 3).add(new THREE.Vector3(0, -0.6, 0)), j.dir); } }
         // flames flicker; strobe blinks
         const fl = j.J.userData.flames; const k = 0.85 + Math.random() * 0.3; for (let q = 0; q < fl.length; q++) { if (fl[q].isSprite) fl[q].material.opacity = 0.6 + Math.random() * 0.4; else fl[q].scale.set(1, k, 1); }
         j.J.userData.strobe.visible = ((time * 1.5 + i) % 1) < 0.08;
         if (Math.abs(j.bank) > 0.45) { j.trailT = (j.trailT || 0) - dt; if (j.trailT <= 0) { j.trailT = 0.035; for (const sd of [1, -1]) smokePuff(j.J.localToWorld(new THREE.Vector3(sd * 7.4, 0, -4.4)), 0.7, 1.3, 0.05, true); } }
         if (j.hp <= 1 && !j.dying) { j.smokeT -= dt; if (j.smokeT <= 0) { j.smokeT = 0.08; smokePuff(P.clone().addScaledVector(j.dir, -4), 1.6, 1.5, 0.5); } }
         // ramming the drone hurts both
-        if (dist < 3.2 && !dead) { hurt(35); j.hp = 0; }
+        if (dist < 3.2 && !dead && !hidden) { hurt(35); j.hp = 0; }
         if (j.hp <= 0) killJet(j);
       }
       // engine roar from the nearest jet, pitched by how fast it's closing
@@ -455,7 +462,7 @@
         let gone = b.life <= 0 || b.m.position.y < 0;
         if (!gone && b.mine) {
           for (const j of jets) { if (j.dying) continue; if (segDist(j.J.position, p0, b.m.position) < 3.4) { j.hp--; j.hitT = 0.6; gone = true; SND.clang(); const sp = sprite(TX.spark, 0xffffff, 2, b.m.position, 1); addFx(sp, 0.15, (d2, k) => { sp.material.opacity = 1 - k; }); if (j.hp <= 0) killJet(j); break; } }
-        } else if (!gone && !dead) { if (segDist(D, p0, b.m.position) < 1.15) { gone = true; hurt(Math.round(3 + Math.min(4, wave * 0.6))); const sp = sprite(TX.spark, 0xffffff, 1.4, b.m.position, 1); addFx(sp, 0.12, (d2, k) => { sp.material.opacity = 1 - k; }); } }
+        } else if (!gone && !dead && !hidden) { if (segDist(D, p0, b.m.position) < 1.15) { gone = true; hurt(Math.round(2 + Math.min(3, wave * 0.4))); const sp = sprite(TX.spark, 0xffffff, 1.4, b.m.position, 1); addFx(sp, 0.12, (d2, k) => { sp.material.opacity = 1 - k; }); } }
         if (b.m.position.y < 0.1 && !gone) gone = true;
         if (gone) { root.remove(b.m); bullets.splice(i, 1); }
       }
@@ -463,17 +470,17 @@
       for (let i = missiles.length - 1; i >= 0; i--) {
         const m = missiles[i], P = m.g.position; m.life -= dt; m.speed = Math.min(52, m.speed + dt * 24);
         const want = D.clone().sub(P).normalize(), ang = m.dir.angleTo(want), ax = new THREE.Vector3().crossVectors(m.dir, want);
-        if (ang > 1e-4 && ax.lengthSq() > 1e-10) m.dir.applyAxisAngle(ax.normalize(), Math.min(ang, 1.15 * dt)).normalize();
+        if (!hidden && ang > 1e-4 && ax.lengthSq() > 1e-10) m.dir.applyAxisAngle(ax.normalize(), Math.min(ang, 1.15 * dt)).normalize();
         const p0 = P.clone(); P.addScaledVector(m.dir, m.speed * dt); m.g.lookAt(P.clone().add(m.dir));
         m.puff -= dt; if (m.puff <= 0) { m.puff = 0.03; smokePuff(P.clone().addScaledVector(m.dir, -1.4), 0.9, 1.6, 0.3); }
         let boom = m.life <= 0 || P.y < 0.3;
-        if (!dead && segDist(D, p0, P) < 2) { boom = true; hurt(25); }
+        if (!dead && !hidden && segDist(D, p0, P) < 2) { boom = true; hurt(20); }
         // shoot it down
         for (const b of bullets) if (b.mine && b.m.position.distanceTo(P) < 1.6) { boom = true; score += 50; pop('+50', P); }
         if (boom) { explode(P.clone(), false); root.remove(m.g); missiles.splice(i, 1); }
       }
 
-      const warn = !dead && missiles.length > 0; mslWarn -= dt; if (warn && mslWarn <= 0) { mslWarn = 0.45; tone('square', 1320, 1300, 0.12, 0.05); } elMsl.style.opacity = warn ? (Math.sin(time * 14) > 0 ? '1' : '.35') : '0';
+      const warn = !dead && !hidden && missiles.length > 0; mslWarn -= dt; if (warn && mslWarn <= 0) { mslWarn = 0.45; tone('square', 1320, 1300, 0.12, 0.05); } elMsl.style.opacity = warn ? (Math.sin(time * 14) > 0 ? '1' : '.35') : '0';
       // aliens and the tractor beam
       beamOn = !dead && (keys.has('b') || touchBeam);
       const bh = Math.max(0.5, st.y - 0.25), bR = 1 + bh * 0.16;
