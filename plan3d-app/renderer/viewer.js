@@ -938,8 +938,12 @@ function ceilAreas(plan, A) {
   const top = (A.WH || A.H) - 0.25;
   return (plan.ceilAreas || []).filter(c => c && Math.abs(c.x1 - c.x0) > 0.5 && Math.abs(c.y1 - c.y0) > 0.5).map(c => ({
     c, x0: Math.min(c.x0, c.x1), x1: Math.max(c.x0, c.x1), z0: Math.min(c.y0, c.y1), z1: Math.max(c.y0, c.y1),
-    h: Math.max(6, Math.min(c.raise ? 40 : top, c.ceiling > 0 ? +c.ceiling : A.H)), raise: !!c.raise
+    h: Math.max(6, Math.min(c.raise ? 40 : top, c.ceiling > 0 ? +c.ceiling : A.H)), raise: !!c.raise, hang: !!c.hang
   }));
+}
+// ceiling areas marked hang: grid hung where there are no walls round it (an open area, a canopy), as rects
+function hangRects(plan) {
+  return (plan && plan.ceilAreas || []).filter(c => c && c.hang && Math.abs(c.x1 - c.x0) > 0.5 && Math.abs(c.y1 - c.y0) > 0.5).map(c => [Math.min(c.x0, c.x1), Math.min(c.y0, c.y1), Math.max(c.x0, c.x1), Math.max(c.y0, c.y1)]);
 }
 // the ceiling height at a point: the last area drawn over it, or the room's
 function ceilingAt(CA, H, x, z, skip) { let h = H; for (const a of CA) if (a !== skip && x > a.x0 + 1e-6 && x < a.x1 - 1e-6 && z > a.z0 + 1e-6 && z < a.z1 - 1e-6) h = a.h; return h; }
@@ -949,6 +953,7 @@ function areaBulkheads(plan, A, CA) {
   const fp = footprint(A), out = [], st = 0.25, t = 0.25;
   const nearWall = (x, z) => A.pieces.some(p => segDist(x, z, p.x1, p.z1, p.x2, p.z2) < (p.t || 0.25) / 2 + 0.2) || A.boxes.some(b => x > b.x0 - 0.2 && x < b.x1 + 0.2 && z > b.z0 - 0.2 && z < b.z1 + 0.2);
   for (const a of CA) {
+    if (a.hang) continue; // a hung grid section has no walls or bulkheads round it
     for (const [ax, az, bx, bz, nx, nz] of [[a.x0, a.z0, a.x1, a.z0, 0, -1], [a.x1, a.z0, a.x1, a.z1, 1, 0], [a.x1, a.z1, a.x0, a.z1, 0, 1], [a.x0, a.z1, a.x0, a.z0, -1, 0]]) {
       const L = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.round(L / st)), ux = (bx - ax) / L, uz = (bz - az) / L;
       let run = null;
@@ -1032,6 +1037,12 @@ function drawingCover(own, walls) {
   DRAWN_COVER.set(own, { key, out }); return out;
 }
 function ceilingRects(plan, FP, A) {
+  const res = ceilingRects0(plan, FP, A), H2 = hangRects(plan);
+  if (!H2.length) return res;
+  // hung grid sections add their own ceiling, outside the walls too
+  return res.concat(subtractRects(H2, res.map(r => ({ x0: r[0], z0: r[1], x1: r[2], z1: r[3] }))).filter(r => r[2] - r[0] > 0.05 && r[3] - r[1] > 0.05));
+}
+function ceilingRects0(plan, FP, A) {
   if (isBuilt(plan)) return builtRects(plan);
   const R = plan && Array.isArray(plan.ceilRects) && plan.ceilRects.length ? plan.ceilRects : null;
   const own = !R && plan && Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length ? plan.ceilingGrid : null;
@@ -1052,8 +1063,9 @@ function inCeiling(plan, FP, x, z) {
   // a built ceiling keeps its outline in plan.ceilRects too (the editor sets it on every change)
   if (isBuilt(plan) && !(Array.isArray(plan.ceilRects) && plan.ceilRects.length)) plan.ceilRects = builtRects(plan);
   const R = plan && Array.isArray(plan.ceilRects) && plan.ceilRects.length ? plan.ceilRects : null;
-  if (!R) return !!(FP && FP.has(x, z));
-  return R.some(r => x >= r[0] && x <= r[2] && z >= r[1] && z <= r[3]);
+  const inHang = () => hangRects(plan).some(r => x >= r[0] && x <= r[2] && z >= r[1] && z <= r[3]);
+  if (!R) return !!(FP && FP.has(x, z)) || inHang();
+  return R.some(r => x >= r[0] && x <= r[2] && z >= r[1] && z <= r[3]) || inHang();
 }
 const rectsMinus = (rects, cut) => subtractRects(rects, cut.map(r => ({ x0: r[0], z0: r[1], x1: r[2], z1: r[3] })));
 const clipRects = (rects, h) => rects.map(([a, b, c, d]) => [Math.max(a, h.x0), Math.max(b, h.z0), Math.min(c, h.x1), Math.min(d, h.z1)]).filter(([a, b, c, d]) => a < c && b < d);
@@ -5251,5 +5263,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);

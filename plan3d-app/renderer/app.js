@@ -495,11 +495,13 @@ function renderProps(opt) {
     h = `<div class="hd"><span class="kind">Ceiling area</span><button class="btn small danger" id="pDel">Delete</button></div>
       ${fld('Ceiling', txt('pCaH', fmt(+o.ceiling || K.H)))}
       ${fld('Walls', `<label class="chk"><input type="checkbox" id="pCaR" ${o.raise ? 'checked' : ''}> Raise the walls and the top with it (a taller section)</label>`)}
+      ${fld('No walls', `<label class="chk"><input type="checkbox" id="pCaH" ${o.hang ? 'checked' : ''}> Hang the grid here even without walls round it (an open area, a canopy)</label>`)}
       ${fld('Size', `<span class="mono">${esc(fmt(Math.max(w, d)))} × ${esc(fmt(Math.min(w, d)))}</span>`)}
       <p class="note">This part of the room gets its own ceiling, raised or dropped. Where its edge crosses open ceiling, bulkhead panels fill the step (on the parts list with their H-studs and closure channel); along walls the ceiling track follows it. ${o.raise ? `The walls in and around it go up to its ceiling plus the plenum (${esc(fmt((+o.ceiling || K.H) + K.PL))}), and the top steps up over it with panels closing the step.` : `It stays at least 3″ under the top of the walls (${esc(fmt(top))}); tick <b>Raise the walls</b> to make this part of the room taller.`} Drag its outline or label to move it.</p>`;
     box.innerHTML = h;
     bindLen('pCaH', 'ft', v => ed.edit(() => { o.ceiling = Math.max(6, Math.min(40, v)); }));
     $('#pCaR').onchange = (e) => { ed.edit(() => { if (e.target.checked) o.raise = true; else delete o.raise; }); renderProps(); };
+    $('#pCaH').onchange = (e) => { ed.edit(() => { if (e.target.checked) o.hang = true; else delete o.hang; }); renderProps(); };
     $('#pDel').onclick = () => ed.deleteSel();
     return;
   }
