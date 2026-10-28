@@ -3,7 +3,8 @@
    wall's start (the same panels the parts list counts), each with a number (W3-02, and L / U for the lower and
    upper panel of a stacked wall), the doors, glass and pass-thrus, the return grilles and dampers cut into
    the panels, and the electrical boxes. A key plan shows where each wall is, and a cut list gives every
-   panel's size and the cut-outs to make in it, measured from the panel's left edge and bottom.
+   panel's size and the cut-outs to make in it, measured from the panel's left edge and bottom, and a crate list
+   packs the panels wall by wall for shipping.
    Elevations look at the wall from its left side as drawn (start on the left, end on the right).
    Coll Business Solutions LLC */
 (function (global) {
@@ -206,14 +207,26 @@ function html(plan, info) {
     ${c.map(r => `<tr${r.cuts.length ? ' class="has"' : ''}><td><b>${esc(r.id)}</b></td><td>${esc(r.type)}</td><td>${dim(r.w)}</td><td>${dim(r.h)}</td><td>${r.cuts.length ? r.cuts.map(esc).join('<br>') : '—'}</td></tr>`).join('')}
     </tbody></table>${k === cut.length - 1 ? `<h2>Panels by size</h2><table class="sz"><tbody>${[...sizes].sort().map(([k2, n]) => `<tr><td>${esc(k2)}</td><td>${n}</td></tr>`).join('')}</tbody></table>` : ''}
     <footer>${esc(info.company || 'Coll Business Solutions LLC')} · ${esc(info.project)} · ${esc(info.date)}</footer></section>`).join('');
-  return { S, html: `<!doctype html><html><head><meta charset="utf-8"><title>${esc(info.project)} fabrication sheets</title><style>
+  // crate list: panels packed wall by wall (so a crate opens next to the wall it builds), up to 16 panels or
+  // 1,800 lb a crate; weights at about 3.2 lb per sq ft of panel
+  const D = global.Plan3DDocs, CR = D ? D.crates(rows) : [];
+  const crPages = [];
+  for (let i = 0; i < CR.length; i += 8) {
+    const grp = CR.slice(i, i + 8);
+    crPages.push(`<section class="cl"><h2>Crate and packing list${CR.length > 8 ? ` (${i / 8 + 1} of ${Math.ceil(CR.length / 8)})` : ''}</h2>
+    <table><thead><tr><th>Crate</th><th>Walls</th><th>Panels (in the order they go up)</th><th>Count</th><th>Longest</th><th>Weight, about</th></tr></thead><tbody>
+    ${grp.map(c => `<tr><td><b>C-${String(c.n).padStart(2, '0')}</b></td><td>${esc([...c.walls].join(', '))}</td><td>${c.items.map(r => esc(r.id)).join(', ')}</td><td>${c.items.length}</td><td>${dim(c.maxH)}</td><td>${Math.round(c.lb).toLocaleString()} lb</td></tr>`).join('')}
+    </tbody></table>${i + 8 >= CR.length ? `<p style="margin-top:14px;font-size:10pt"><b>${CR.length} crates · ${rows.length} panels · about ${Math.round(CR.reduce((t, c) => t + c.lb, 0)).toLocaleString()} lb of panels.</b> Mark each crate with its number, the project and the walls it holds. Panel numbers match the elevations and the cut list.</p>` : ''}
+    <footer>${esc(info.company || 'Coll Business Solutions LLC')} · ${esc(info.project)} · ${esc(info.date)}</footer></section>`);
+  }
+  return { S, crates: CR, html: `<!doctype html><html><head><meta charset="utf-8"><title>${esc(info.project)} fabrication sheets</title><style>
 @page{size:17in 11in;margin:0}html,body{margin:0;padding:0;background:#fff;font-family:"Segoe UI",Arial,sans-serif;color:#111}
 svg{display:block;page-break-after:always}
 .cl{width:17in;height:11in;box-sizing:border-box;padding:.6in .7in;page-break-after:always;position:relative}.cl:last-child{page-break-after:auto}
 .cl h2{font-size:18pt;margin:0 0 10px}.cl table{width:100%;border-collapse:collapse;font-size:9.5pt}.cl th{text-align:left;border-bottom:2px solid #111;padding:4px 6px;font-size:8pt;text-transform:uppercase;letter-spacing:.05em;color:#444}
 .cl td{border-bottom:1px solid #ddd;padding:4px 6px;vertical-align:top}.cl tr.has td{background:#fffbea}.cl table.sz{width:auto;margin-top:6px}.cl table.sz td{padding:2px 14px 2px 0}
 .cl footer{position:absolute;left:.7in;right:.7in;bottom:.4in;font-size:8pt;color:#777;border-top:1px solid #ddd;padding-top:5px}
-</style></head><body>${S.pages.join('')}${cutPages}</body></html>` };
+</style></head><body>${S.pages.join('')}${cutPages}${crPages.join('')}</body></html>` };
 }
 
 global.Plan3DFab = { walls, cutList, sheets, html };
