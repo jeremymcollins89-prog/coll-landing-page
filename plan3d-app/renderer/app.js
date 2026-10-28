@@ -756,7 +756,7 @@ function renderProps(opt) {
       ${hasGeo ? '<div class="row"><button class="btn small" id="pClearAuto">Clear all walls</button></div>' : ''}
     </div>
     ${house ? '' : ffuPanelHtml(P) + lightPanelHtml(P)}
-    ${house ? '' : checkGroupHtml(P) + loadsGroupHtml(P)}
+    ${house ? '' : checkGroupHtml(P) + flowGroupHtml(P) + loadsGroupHtml(P)}
     ${commentsGroupHtml(P)}
     ${fld('Project type', `<select id="pMode"><option value="cleanroom" ${house ? '' : 'selected'}>Cleanroom</option><option value="house" ${house ? 'selected' : ''}>House</option></select>`)}`;
   if (view === 'build') h = `<div class="hd"><span class="kind">Build</span></div>
@@ -818,7 +818,7 @@ function renderProps(opt) {
   $('#pSnap').onchange = e => { ed.snapIn = +e.target.value; };
   bindParts();
   bindComments(P);
-  if (!house) { bindFfuPanel(P); bindLightPanel(P); bindLoads(P); }
+  if (!house) { bindFfuPanel(P); bindLightPanel(P); bindLoads(P); bindFlows(P); }
   if ($('#pClearAuto')) $('#pClearAuto').onclick = () => confirmDlg('Clear all walls?', 'This removes every wall, door, glass panel and chase. Room labels and the background stay. You can undo with Ctrl+Z.', 'Clear walls').then(ok => { if (ok) ed.edit(Pl => { Pl.walls = []; Pl.openings = []; Pl.chases = []; }); });
   if (B) {
     $('#pBgVis').onchange = e => ed.edit(() => { B.visible = e.target.checked; });
@@ -865,6 +865,26 @@ function roomCheckHtml(P, o) {
   h += `<p class="note">Pressure is relative to outside the cleanroom (0 Pa). On the plan, arrows at doors show which way air flows; red means it flows from the less clean side or the difference is under 5 Pa. Targets are typical design ranges, not a certification.</p></div>`;
   return h;
 }
+/* ---------- People and material flow (plan.flows): the gowning route in and the material route through,
+   room by room; arrows on the plan and on the 3D floor, and a guided tour along the people route ---------- */
+function flowGroupHtml(P) {
+  const R = (P.rooms || []).filter(r => r.id); if (R.length < 2) return '';
+  const F = P.flows || {}, nm = (k) => k === 'out' ? 'Outside' : esc((R.find(r => r.id === k) || {}).name || 'Room');
+  let FR = null; try { FR = Plan3DViewer.flowRoutes(P); } catch (e) { FR = null; }
+  const row = (key, label, col) => {
+    const list = F[key] || [], miss = FR && FR[key] ? FR[key].miss : [];
+    return `<div class="fld"><label style="color:${col}">${label}</label><div class="flow">${list.map((k, i) => `<span class="fchip">${i ? '→ ' : ''}${nm(k)}<button data-fk="${key}" data-fi="${i}" title="Take it out">×</button></span>`).join('')}
+      <select data-fadd="${key}"><option value="">+ add</option><option value="out">Outside</option>${R.map(r => `<option value="${esc(r.id)}">${esc(r.name || 'Room')}</option>`).join('')}</select></div></div>
+      ${miss.length ? `<p class="note" style="color:#f2b84b">No door between ${miss.map(([a, b]) => esc(a ? a.name || 'Room' : 'Outside') + ' and ' + esc(b ? b.name || 'Room' : 'Outside')).join(', ')}: the route crosses straight there.</p>` : ''}`;
+  };
+  return `<div class="grp"><h3>People and material flow</h3>${row('people', 'People (gowning)', '#3fd07a')}${row('material', 'Material', '#f09a3a')}
+    <p class="note">Pick the rooms in the order people and material go through them. The routes show as arrows on the plan and on the 3D floor (the Airflow button shows and hides them), and the 3D view, walkthroughs and the phone viewer get a ▶ Gowning tour along the people route.</p></div>`;
+}
+function bindFlows(P) {
+  $$('[data-fadd]').forEach(el => el.onchange = () => { const k = el.dataset.fadd, v = el.value; if (!v) return; ed.edit(Q => { Q.flows = { ...(Q.flows || {}) }; Q.flows[k] = [...(Q.flows[k] || []), v]; }); });
+  $$('[data-fk]').forEach(b => b.onclick = () => { const k = b.dataset.fk, i = +b.dataset.fi; ed.edit(Q => { Q.flows = { ...(Q.flows || {}) }; Q.flows[k] = (Q.flows[k] || []).filter((_, j) => j !== i); if (!Q.flows[k].length) delete Q.flows[k]; }); });
+}
+
 /* ---------- Heat load and power (Plan3DLoads) ---------- */
 function loadsGroupHtml(P) {
   if (!window.Plan3DLoads || !(P.rooms || []).length) return '';

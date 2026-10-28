@@ -20,6 +20,7 @@ const CSS = `
 .p3v-here span{font:11.5px Consolas,"Cascadia Mono",ui-monospace,monospace;color:#f2c84b}
 .p3v-modes{display:flex;border-radius:999px;padding:3px;gap:2px}
 .p3v-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.p3v-cap{position:absolute;left:50%;bottom:86px;transform:translateX(-50%);padding:12px 18px;border-radius:12px;text-align:center;pointer-events:none;max-width:80%}.p3v-cap b{display:block;font-size:17px;color:#fff;margin-bottom:2px}.p3v-cap span{font-size:12.5px;color:#cfd8dc}
 .p3v-look{font-family:inherit;font-size:12.5px;font-weight:600;color:#cfd8dc;border-radius:999px;padding:6px 12px;cursor:pointer}
 .p3v-look kbd{font:11px Consolas,ui-monospace,monospace;color:#9aa7ad;margin-left:4px;border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:0 4px}
 .p3v-look[aria-pressed=true]{background:#f2c84b;color:#121719;border-color:#f2c84b}
@@ -3906,6 +3907,50 @@ function airflowArrows(THREE, plan, A) {
    cleanroom does. In each space a path runs along the floor from where the air starts (the room label, or the
    door it came in by) to each door it leaves by, then on through that door; moving chevrons show the way.
    One group, marked userData.airflow, so the Airflow button shows and hides it with the other arrows. */
+/* People and material flow (plan.flows = { people: [room id | 'out' …], material: […] }): a path on the floor
+   from room to room in that order, through the door between each pair (straight across when there's none),
+   with its stops (the rooms) for the guided tour. */
+function flowRoutes(plan) {
+  const F = plan.flows || {}; if (!((F.people || []).length > 1 || (F.material || []).length > 1)) return null;
+  let C; try { C = cleanroomCheck(plan); } catch (e) { return null; }
+  const R = new Map((plan.rooms || []).map(r => [r.id, r]));
+  const path = (list) => {
+    const ids = (list || []).filter(k => k === 'out' || R.has(k)); if (ids.length < 2) return null;
+    const pts = [], miss = [], stops = [];
+    for (let i = 0; i < ids.length; i++) {
+      const cur = ids[i] === 'out' ? null : R.get(ids[i]);
+      if (i === 0 && cur) { pts.push([cur.x, cur.y]); stops.push({ room: cur, at: 0 }); }
+      if (i + 1 >= ids.length) break;
+      const nxt = ids[i + 1] === 'out' ? null : R.get(ids[i + 1]);
+      const d = C.doors.find(q => (q.a === cur && q.b === nxt) || (q.a === nxt && q.b === cur));
+      if (d) {
+        const sg = d.a === cur ? 1 : -1, off = 1.8;
+        if (i === 0 && !cur) pts.push([d.mx + d.nx * 6 * sg, d.my + d.ny * 6 * sg]);
+        pts.push([d.mx + d.nx * off * sg, d.my + d.ny * off * sg], [d.mx, d.my], [d.mx - d.nx * off * sg, d.my - d.ny * off * sg]);
+        if (!nxt) pts.push([d.mx - d.nx * 6 * sg, d.my - d.ny * 6 * sg]);
+      } else miss.push([cur, nxt]);
+      if (nxt) { pts.push([nxt.x, nxt.y]); stops.push({ room: nxt, at: pts.length - 1 }); }
+    }
+    return pts.length > 1 ? { ids, pts, miss, stops } : null;
+  };
+  return { people: path(F.people), material: path(F.material), check: C };
+}
+// the flow paths drawn on the floor in 3D: green chevrons for people, orange for material
+function flowArrows(THREE, root, plan) {
+  const FR = flowRoutes(plan); if (!FR) return;
+  const grp = new THREE.Group(); grp.userData.airflow = true; root.add(grp);
+  const sh = new THREE.Shape(); sh.moveTo(-0.6, -0.5); sh.lineTo(0, 0.15); sh.lineTo(0.6, -0.5); sh.lineTo(0.6, -0.15); sh.lineTo(0, 0.55); sh.lineTo(-0.6, -0.15); sh.lineTo(-0.6, -0.5);
+  const geo = new THREE.ShapeGeometry(sh);
+  for (const [k, col, y] of [['people', 0x3fbf6f, 0.1], ['material', 0xf09a3a, 0.11]]) {
+    const P = FR[k]; if (!P) continue;
+    const m = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide });
+    for (let i = 0; i + 1 < P.pts.length; i++) {
+      const [x1, z1] = P.pts[i], [x2, z2] = P.pts[i + 1], L = Math.hypot(x2 - x1, z2 - z1); if (L < 0.3) continue;
+      const n = Math.max(1, Math.floor(L / 2.5)), ang = Math.atan2(x2 - x1, z2 - z1);
+      for (let j = 0; j < n; j++) { const t = (j + 0.5) / n, c = new THREE.Mesh(geo, m); c.rotation.x = -Math.PI / 2; c.rotation.z = ang + Math.PI; c.position.set(x1 + (x2 - x1) * t, y, z1 + (z2 - z1) * t); c.renderOrder = 2; grp.add(c); }
+    }
+  }
+}
 function floorFlow(THREE, root, plan) {
   const grp = new THREE.Group(); grp.userData.airflow = true; root.add(grp);
   let A; try { A = analyzeAll(plan); } catch (e) { return; }
@@ -4070,8 +4115,10 @@ function mount(container, plan, opts) {
       <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button>
       <button class="p3v-panel p3v-look p3v-lidb" aria-pressed="false" hidden title="Show the lid (the top of the cleanroom, or a roof deck you placed) in every view, or take it off again">Lid</button>
       <button class="p3v-panel p3v-look p3v-air" aria-pressed="true" hidden title="Show or hide the airflow: air down out of the FFUs, into the return grilles, and along the floor out through the doors and out of the building">Airflow</button>
+      <button class="p3v-panel p3v-look p3v-tour" hidden title="A guided walk along the gowning route, room by room">▶ Gowning tour</button>
       <button class="p3v-panel p3v-look p3v-srb" hidden title="A photo-real, path-traced picture of this view (light bounces, real glass and steel, soft shadows). Save it as an image.">✨ Super render</button><button class="p3v-panel p3v-cbtn" aria-pressed="false" hidden title="Click anything in the model to leave a comment on it">💬 Comment</button></div>
     </div>
+    <div class="p3v-cap p3v-panel" hidden aria-live="polite"></div>
     <div class="p3v-aim" aria-hidden="true"></div>
     <div class="p3v-joy" hidden aria-hidden="true"><b>MOVE</b><i></i></div>
     <div class="p3v-bottom"><canvas class="p3v-mini p3v-panel" aria-label="Mini map. Click to jump there."></canvas><div class="p3v-chips"></div></div>
@@ -4440,6 +4487,40 @@ function mount(container, plan, opts) {
     return false;
   }
 
+  // ---- Guided tour: walk the people route (plan.flows.people), stopping in each room with its name and class
+  const tourBtn = $('.p3v-tour'), capEl = $('.p3v-cap');
+  let tour = null;
+  function refreshTour() { let FR = null; try { FR = plan && flowRoutes(plan); } catch (e) { FR = null; } tourBtn.hidden = !(FR && FR.people); return FR; }
+  function caption(r, q) {
+    if (!r) { capEl.hidden = true; return; }
+    const T = r.crType && ROOM_TYPES[r.crType], bits = [];
+    if (T) bits.push(T.label); if (r.iso) bits.push('ISO ' + r.iso); if (r.pressure != null && r.pressure !== '') bits.push((r.pressure > 0 ? '+' : '') + r.pressure + ' Pa (' + (r.pressure * PA_TO_INWC).toFixed(3) + '″ w.c.)'); if (q && q.ach) bits.push(Math.round(q.ach) + ' air changes/hr');
+    capEl.innerHTML = '<b>' + String(r.name || 'Room').replace(/[&<>]/g, '') + '</b><span>' + bits.join(' · ') + '</span>'; capEl.hidden = false;
+  }
+  function stopTour() { if (!tour) return; tour = null; capEl.hidden = true; tourBtn.textContent = '▶ Gowning tour'; }
+  function startTour() {
+    const FR = refreshTour(); if (!FR || !FR.people) return;
+    const P = FR.people, q0 = (r) => FR.check.rooms.find(x => x.room === r);
+    const [x0, z0] = P.pts[0], [x1, z1] = P.pts[1];
+    goWalk(x0, z0, Math.atan2(-(x1 - x0), -(z1 - z0)), 600);
+    tour = { P, i: 0, t: 0, pause: 1.6, q0, stopAt: new Map(P.stops.map(s2 => [s2.at, s2.room])) };
+    caption(P.stops[0] && P.stops[0].at === 0 ? P.stops[0].room : null, P.stops[0] && q0(P.stops[0].room));
+    tourBtn.textContent = '■ Stop tour';
+  }
+  function stepTour(dt) {
+    const T = tour; if (!T || tween) return;
+    if (T.pause > 0) { T.pause -= dt; if (T.pause <= 0 && T.i >= T.P.pts.length - 1) { stopTour(); } return; }
+    const [x1, z1] = T.P.pts[T.i], [x2, z2] = T.P.pts[T.i + 1], L = Math.hypot(x2 - x1, z2 - z1) || 0.01;
+    T.t += dt * 3.2 / L; const k = Math.min(1, T.t);
+    st.x = x1 + (x2 - x1) * k; st.z = z1 + (z2 - z1) * k;
+    // face the way it's walking, turning smoothly
+    let want = Math.atan2(-(x2 - x1), -(z2 - z1)), dy = want - st.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; st.yaw += dy * Math.min(1, dt * 4); st.pitch += (-0.04 - st.pitch) * Math.min(1, dt * 3);
+    // doors open ahead of the tour
+    if (built && built.doors) for (const dg of built.doors) { const p2 = dg.getWorldPosition ? dg.getWorldPosition(new THREE.Vector3()) : dg.position; if (Math.hypot(p2.x - st.x, p2.z - st.z) < 5 && dg.userData) dg.userData.isOpen = true; }
+    if (k >= 1) { T.i++; T.t = 0; const r = T.stopAt.get(T.i); if (r) { caption(r, T.q0(r)); T.pause = 2.6; } else if (T.i >= T.P.pts.length - 1) T.pause = 1.5; }
+  }
+  tourBtn.addEventListener('click', (e) => { e.stopPropagation(); if (tour) stopTour(); else startTour(); });
+
   const pts = new Map(); let down = null, pinch = null;
   let hintGone = false; function dismissHint() { if (hintGone) return; hintGone = true; hint.classList.add('gone'); }
   const coarse = global.matchMedia && global.matchMedia('(pointer: coarse)').matches;
@@ -4448,7 +4529,7 @@ function mount(container, plan, opts) {
   setTimeout(dismissHint, 7000);
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('pointerdown', e => {
-    dismissHint(); canvas.focus();
+    dismissHint(); canvas.focus(); stopTour();
     if (isLocked()) { down = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0, multi: false }; return; }
     down = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0, multi: pts.size > 0 };
     if (mode !== 'walk' || tween) return;
@@ -4606,6 +4687,7 @@ function mount(container, plan, opts) {
     if (!alive || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || !viewOnScreen()) return;
     if (document.querySelector('dialog[open]')) return;
     const k = e.key.toLowerCase();
+    if (tour && /^(w|a|s|d|q|e|arrow\w+|escape)$/.test(k)) stopTour();
     if (k === 'l' && !e.repeat) { toggleLook(); e.preventDefault(); return; }
     // Only take keys that are meant for the walkthrough: when you're in it, or when it fills the window.
     // Side by side with the 2D plan, keys typed in the plan stay with the plan (W = wall tool, and so on).
@@ -4708,9 +4790,10 @@ function mount(container, plan, opts) {
     if (built) { scene.remove(built.root); built.root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     built = buildStack(THREE, p, A);
     EYE = EYE0; try { if ((p.levels || []).length > 1) { const L = levelPlans(p).find(q => q.k === (p.level || 0)); if (L) EYE = EYE0 + L.elev; } } catch (e) { }
-    for (const extra of [() => pressureArrows(THREE, built.root, p), () => floorFlow(THREE, built.root, p)]) { try { extra(); } catch (e) { console.error(e); } }
+    for (const extra of [() => pressureArrows(THREE, built.root, p), () => floorFlow(THREE, built.root, p), () => flowArrows(THREE, built.root, p)]) { try { extra(); } catch (e) { console.error(e); } }
     scene.add(built.root);
     try { refreshAir(); applySwitches(); } catch (e) { console.error(e); }
+    try { stopTour(); refreshTour(); } catch (e) { console.error(e); }
     try { upgradeScene(scene); let top = (A && A.H) || 10; try { const LP = levelPlans(p); top = LP[LP.length - 1].elev + 30; } catch (e) { } fitSun(A && A.bounds, top); } catch (e) { console.error(e); }
     if (typeof drawPins === 'function' && cList) { loadMine(); drawPins(); }
     emptyEl.hidden = !A.empty;
@@ -4748,9 +4831,11 @@ function mount(container, plan, opts) {
   function loop(now) {
     if (!alive) return;
     // up to 1/8 s per frame, so turning and walking keep their speed even when the 3D draws slowly
-    const dt = Math.min(0.125, (now - last) / 1000); last = now;
+    const rawDt = Math.max(0, (now - last) / 1000), dt = Math.min(0.125, rawDt); last = now;
     if (A) {
-      if (tween) runTween(now);
+      // the tour keeps real time even when the 3D draws slowly
+      if (tour && !tween) { stepTour(Math.min(0.5, rawDt)); applyWalkCam(); }
+      else if (tween) runTween(now);
       else if (mode === 'walk') {
         let f = 0, s = 0, turn = 0;
         if (keys.has('w') || keys.has('arrowup')) f += 1; if (keys.has('s') || keys.has('arrowdown')) f -= 1;
@@ -4821,5 +4906,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
