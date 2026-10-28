@@ -11,8 +11,13 @@
   <div class="brand"><span class="mark" aria-hidden="true"></span><div><b>Coll Plan3D <span class="modechip" id="modeChip">Cleanroom</span></b><small id="docName">Untitled plan</small></div></div>
   <div class="actions">
     <button id="bImport" class="btn primary" title="Import a DWG, DXF, Revit IFC, plan image or Plan3D project (Ctrl+I). With a plan already open, you can add the file to this project instead of replacing it.">Import plan…</button>
-    <button id="bCeiling" class="btn" data-only="cleanroom" title="Add a ceiling drawing (DWG, DXF or picture) on top of the room">Add ceiling</button>
-    <button id="bGenCeil" class="btn" data-only="cleanroom" title="Lay out the ceiling grid, FFUs and lights inside the cleanroom walls">Generate ceiling</button>
+    <div class="dd" data-only="cleanroom">
+      <button id="bCeilMenu" class="btn" aria-haspopup="menu" aria-expanded="false" title="Ceiling: add or edit a ceiling drawing, or generate the grid, FFUs and lights">Ceiling <span class="caret" aria-hidden="true">▾</span></button>
+      <div class="menu" id="ceilMenu" role="menu" hidden>
+        <button role="menuitem" id="bCeiling" title="Add a ceiling drawing (DWG, DXF or picture) on top of the room"><span><i id="bCeilingLbl" style="font-style:normal">Add ceiling</i> <small>a DWG, DXF or picture of the ceiling</small></span><kbd></kbd></button>
+        <button role="menuitem" id="bGenCeil" title="Lay out the ceiling grid, FFUs and lights inside the cleanroom walls"><span>Generate ceiling <small>grid, FFUs and lights laid out for you</small></span><kbd></kbd></button>
+      </div>
+    </div>
     <button id="bLid" class="btn" data-only="cleanroom" title="The lid (roof deck) over the cleanroom: import a deck drawing and place it, piece by piece">Lid…</button>
     <div class="dd">
       <button id="bBld" class="btn" aria-haspopup="menu" aria-expanded="false" title="Your library: save buildings, groups of pieces and ceilings, and place them in any project">Library <span class="caret" aria-hidden="true">▾</span></button>

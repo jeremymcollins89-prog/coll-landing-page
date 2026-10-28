@@ -187,7 +187,7 @@ function updateChrome() {
   $('#modeChip').textContent = house ? 'House' : 'Cleanroom';
   $('#docName').textContent = (P.name || 'Untitled plan') + (ed.dirty ? ' •' : '');
   document.title = (P.name || 'Untitled plan') + ' — Coll Plan3D';
-  const cb = $('#bCeiling'); if (cb) cb.textContent = (P.ceilingSource || (P.ceilingMode === 'manual' && (P.fixtures || []).length)) ? 'Edit ceiling' : 'Add ceiling';
+  const cb = $('#bCeilingLbl'); if (cb) cb.textContent = (P.ceilingSource || (P.ceilingMode === 'manual' && (P.fixtures || []).length)) ? 'Edit ceiling' : 'Add ceiling';
   const empty = !P.walls.length && !P.chases.length && !P.background && !(P.inserts || []).length && !(P.beams || []).length && !(P.columns || []).length && !(P.ceilTiles || []).length && !(P.ceilingGrid || []).length && !(P.ceilingMode === 'manual' && (P.fixtures || []).length);
   $('#welcome').hidden = !empty;
   if (empty) { $('#wPick').hidden = modePicked; $('#wNext').hidden = !modePicked; welcomeText(); }
@@ -2750,6 +2750,16 @@ $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave
   item('#bExportHtml', exportHtml); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
   item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportParts', exportParts);
 }
+// Ceiling dropdown: add / edit the ceiling drawing, or generate one
+{
+  const btn = $('#bCeilMenu'), menu = $('#ceilMenu');
+  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+  btn.onclick = (e) => { e.stopPropagation(); const open = menu.hidden; document.querySelectorAll('.menu').forEach(m => { if (m !== menu) m.hidden = true; }); menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); if (open) menu.querySelector('button').focus(); };
+  document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); btn.focus(); } });
+  menu.addEventListener('keydown', (e) => { if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return; e.preventDefault(); const items = [...menu.querySelectorAll('button')], i = items.indexOf(document.activeElement); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); });
+  $('#bCeiling').onclick = (e) => { close(); ceilingMenu(e); }; $('#bGenCeil').onclick = () => { close(); generateCeilingDialog(); };
+}
 // Buildings dropdown
 {
   const btn = $('#bBld'), menu = $('#bldMenu');
@@ -2761,7 +2771,7 @@ $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave
   item('#bBldInsert', () => libraryDialog()); item('#bBldFile', insertFromFile); item('#bBldSave', saveBuildingDialog);
   item('#bLibGroup', saveGroupDialog); item('#bLibCeil', saveCeilingDialog); item('#bLibMach', addMachineDialog);
 }
-$('#bCeiling').onclick = ceilingMenu; $('#bGenCeil').onclick = generateCeilingDialog; $('#bLid').onclick = lidMenu; $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
+ $('#bLid').onclick = lidMenu; $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
 $('#wCleanroom').onclick = () => pickMode('cleanroom'); $('#wHouse').onclick = () => pickMode('house');
 $('#wBack').onclick = (e) => { e.preventDefault(); modePicked = false; updateChrome(); };
 $('#wDraw').onclick = () => { $('#welcome').hidden = true; ed.setTool('wall'); $('#plan').focus(); };
@@ -2780,7 +2790,7 @@ if (api.onMenu) api.onMenu(async (a) => {
 if (api.onUpdate) {
   const b = $('#bUpdate');
   api.onUpdate((u) => {
-    if (u.state === 'downloading') { b.hidden = false; b.disabled = true; b.textContent = 'Downloading update' + (u.percent ? ' ' + u.percent + '%' : '…'); }
+    if (u.state === 'downloading') { b.hidden = false; b.disabled = true; b.textContent = 'Update ' + (u.percent ? u.percent + '%' : '…'); b.title = 'Downloading the new version of Coll Plan3D'; }
     else if (u.state === 'ready') {
       b.hidden = false; b.disabled = false; b.textContent = 'Update now' + (u.version ? ' to ' + u.version : '');
       toast('Coll Plan3D ' + (u.version || '') + ' is ready to install.', { label: 'Update now', fn: () => b.click() });
