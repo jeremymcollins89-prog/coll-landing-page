@@ -622,7 +622,7 @@ function renderProps(opt) {
   if (s && o && s.kind === 'device') {
     const DV = Plan3DViewer.DEVICES, D = DV[o.type] || { label: o.type, h: 1.5 };
     h = `<div class="hd"><span class="kind">${esc(D.label)}</span><button class="btn small danger" id="pDel">Delete</button></div>
-      ${fld('Type', `<select id="pDvT">${Object.entries(DV).map(([k, v]) => `<option value="${k}" ${o.type === k ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select>`)}
+      ${fld('Type', `<select id="pDvT">${Object.entries(DV).map(([k, v]) => `<option value="${k}" ${o.crType === k ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select>`)}
       ${fld('Height to center', txt('pDvH', fmtIn(o.h != null ? o.h : D.h)))}
       <div class="row"><button class="btn small" id="pDvDup">Add another 6′ along</button></div>
       <p class="note">Drag it along a wall; it stays on the wall face. It goes on the parts list under Electrical and into the Revit export.</p>`;
@@ -692,6 +692,7 @@ function renderProps(opt) {
     const roomLen = (id, key, lo, hi) => { const el = $('#' + id); if (!el) return; const go = () => { const raw = el.value.trim(); if (!raw) { ed.edit(() => { delete o[key]; }); renderProps(); return; } const v = parseLen(raw, 'ft'); if (isFinite(v) && v >= 0) { ed.edit(() => { o[key] = Math.max(lo, Math.min(hi, v)); }); renderProps(); } else { el.style.borderColor = 'var(--warn)'; setTimeout(() => el.style.borderColor = '', 900); } }; el.addEventListener('change', go); el.addEventListener('keydown', e => { if (e.key === 'Enter') { go(); el.blur(); } }); };
     roomLen('pRCeil', 'ceiling', 6, 30); roomLen('pRPlen', 'plenum', 0, 20);
     if ($('#pRGen')) $('#pRGen').onchange = e => ed.edit(() => { if (e.target.value) o.ceil = e.target.value; else delete o.ceil; });
+    if ($('#pRType')) $('#pRType').onchange = e => { ed.edit(() => { if (e.target.value) { o.crType = e.target.value; const T = Plan3DViewer.ROOM_TYPES[o.crType]; if (T.iso && !o.iso) o.iso = T.iso; } else delete o.crType; }); renderProps(); };
     if ($('#pRIso')) $('#pRIso').onchange = e => { ed.edit(() => { if (e.target.value) o.iso = +e.target.value; else delete o.iso; }); renderProps(); };
     const numIn = (id, key, lo, hi) => { const el = $('#' + id); if (!el) return; el.onchange = () => { const raw = el.value.trim(); if (!raw) { ed.edit(() => { delete o[key]; }); renderProps(); return; } const v = parseFloat(raw.replace(/[^\d.+-]/g, '')); if (isFinite(v)) { ed.edit(() => { o[key] = Math.max(lo, Math.min(hi, v)); }); renderProps(); } }; };
     numIn('pRAch', 'ach', 0, 1000); numIn('pRPpl', 'people', 0, 500); numIn('pREqW', 'equipW', 0, 1000000);
@@ -840,6 +841,7 @@ const inWC = (pa) => (pa > 0 ? '+' : pa < 0 ? '−' : '') + (Math.abs(pa) * Plan
 function roomCheckHtml(P, o) {
   const C = (() => { try { return Plan3DViewer.cleanroomCheck(P); } catch (e) { return null; } })(), q = C && C.rooms.find(x => x.room === o);
   let h = `<div class="grp"><h3>Cleanroom class and pressure</h3>
+    ${fld('Room type', `<select id="pRType"><option value="">General cleanroom</option>${Object.entries(Plan3DViewer.ROOM_TYPES).map(([k, t]) => `<option value="${k}" ${o.type === k ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select>`)}
     ${fld('ISO class', `<select id="pRIso"><option value="">Not set</option>${[5, 6, 7, 8, 9].map(k => `<option value="${k}" ${+o.iso === k ? 'selected' : ''}>ISO ${k}${k === 5 ? ' (Class 100)' : k === 6 ? ' (Class 1,000)' : k === 7 ? ' (Class 10,000)' : k === 8 ? ' (Class 100,000)' : ''}</option>`).join('')}</select>`)}
     ${fld('Pressure', txt('pRPa', o.pressure != null && o.pressure !== '' ? String(o.pressure) : '', 'Pa, or inches: 12.5 or 0.05″'))}
     ${fld('People', txt('pRPpl', o.people != null && o.people !== '' ? String(o.people) : '', 'auto, about 1 per 150 sq ft'))}
@@ -856,6 +858,8 @@ function roomCheckHtml(P, o) {
       <span>Return capacity</span><span>${Math.round(q.returnCap).toLocaleString()} CFM <small>of ${Math.round(q.cfm).toLocaleString()} supplied</small></span>
       ${q.pressure != null ? `<span>Pressure</span><span>${q.pressure > 0 ? '+' : ''}${q.pressure} Pa <small>(${inWC(q.pressure)})</small></span>` : ''}</div>`;
     if (q.retWarn) h += `<p class="note" style="color:#f2b84b">Air balance: ${esc(q.retWarn)}${q.retMore ? `; add about ${q.retMore} more 24″ × 24″ return grille${q.retMore === 1 ? '' : 's'} (Grille tool)` : ''}.</p>`;
+    if (q.typeIssues && q.typeIssues.length) h += `<p class="note" style="color:#ff7a6b"><b>${esc(Plan3DViewer.ROOM_TYPES[o.crType].label)}:</b> ${q.typeIssues.map(esc).join('; ')}.</p>`;
+    else if (o.crType && Plan3DViewer.ROOM_TYPES[o.crType]) h += `<p class="note" style="color:#6fd08c">Meets the ${esc(Plan3DViewer.ROOM_TYPES[o.crType].label)} checks in the plan.</p>`;
     if (q.iso) h += `<p class="note" style="color:${q.ok ? '#6fd08c' : '#ff7a6b'}">${q.ok ? 'Meets typical ISO ' + q.iso + ' design airflow.' : 'Short for ISO ' + q.iso + ': ' + esc(q.short.join('; ')) + '.'}</p>`;
   } else h += `<p class="note">Put this label inside walls to see its airflow.</p>`;
   h += `<p class="note">Pressure is relative to outside the cleanroom (0 Pa). On the plan, arrows at doors show which way air flows; red means it flows from the less clean side or the difference is under 5 Pa. Targets are typical design ranges, not a certification.</p></div>`;
@@ -904,9 +908,9 @@ function panelScheduleDialog() {
   });
 }
 function checkGroupHtml(P) {
-  if (!(P.rooms || []).some(r => r.iso || (r.pressure != null && r.pressure !== ''))) return `<div class="grp"><h3>Cleanroom check</h3><p class="note">Pick a room label and set its ISO class and pressure to check air changes, filter coverage and the pressure cascade.</p></div>`;
+  if (!(P.rooms || []).some(r => r.iso || r.crType || (r.pressure != null && r.pressure !== ''))) return `<div class="grp"><h3>Cleanroom check</h3><p class="note">Pick a room label and set its ISO class and pressure to check air changes, filter coverage and the pressure cascade.</p></div>`;
   const C = (() => { try { return Plan3DViewer.cleanroomCheck(P); } catch (e) { return null; } })(); if (!C) return '';
-  const rows = C.rooms.filter(q => q.iso || q.pressure != null).map(q => `<div class="pl-row"><span>${esc(q.room.name || 'Room')}<small>${q.iso ? 'ISO ' + q.iso + ' · ' : ''}${Math.round(q.ach)} ACH${q.achTarget ? ' / ' + q.achTarget : ''} · ${Math.round(q.coverage)}% coverage${q.pressure != null ? ' · ' + (q.pressure > 0 ? '+' : '') + q.pressure + ' Pa (' + inWC(q.pressure) + ')' : ''}${q.retWarn ? '<br><span style="color:#f2b84b">' + esc(q.retWarn) + '</span>' : q.returns ? ' · returns ' + Math.round(q.returnFpm) + ' fpm' : ''}</small></span><b style="color:${!q.iso ? 'inherit' : q.ok ? '#6fd08c' : '#ff7a6b'}">${!q.iso ? '–' : q.ok ? '✓' : '✗'}</b></div>`).join('');
+  const rows = C.rooms.filter(q => q.iso || q.pressure != null || q.room.crType).map(q => `<div class="pl-row"><span>${esc(q.room.name || 'Room')}<small>${q.iso ? 'ISO ' + q.iso + ' · ' : ''}${Math.round(q.ach)} ACH${q.achTarget ? ' / ' + q.achTarget : ''} · ${Math.round(q.coverage)}% coverage${q.pressure != null ? ' · ' + (q.pressure > 0 ? '+' : '') + q.pressure + ' Pa (' + inWC(q.pressure) + ')' : ''}${q.typeIssues && q.typeIssues.length ? '<br><span style="color:#ff7a6b">' + esc(q.typeIssues[0]) + (q.typeIssues.length > 1 ? ' (+' + (q.typeIssues.length - 1) + ' more)' : '') + '</span>' : ''}${q.retWarn ? '<br><span style="color:#f2b84b">' + esc(q.retWarn) + '</span>' : q.returns ? ' · returns ' + Math.round(q.returnFpm) + ' fpm' : ''}</small></span><b style="color:${!q.iso ? 'inherit' : q.ok ? '#6fd08c' : '#ff7a6b'}">${!q.iso ? '–' : q.ok ? '✓' : '✗'}</b></div>`).join('');
   const nm = (r) => r ? esc(r.name || 'Room') : 'outside';
   const dw = C.doors.filter(d => d.warn).map(d => `<div class="pl-row"><span>${nm(d.a)} ↔ ${nm(d.b)}<small>${esc(d.warn)}</small></span><b style="color:#ff7a6b">!</b></div>`).join('');
   return `<div class="grp"><h3>Cleanroom check</h3><div class="pl">${rows}${dw ? '<div class="pl-cat">Doors</div>' + dw : ''}</div>
