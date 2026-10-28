@@ -119,7 +119,7 @@ function houseTakeoff(plan, A, add) {
   }
   if (ext2x6) add('Insulation', 'Batts R-21, 2×6 walls', '', Math.ceil(ext2x6), 'sq ft', 100);
   if (ext2x4) add('Insulation', 'Batts R-15, 2×4 walls', '', Math.ceil(ext2x4), 'sq ft', 100);
-  if (ceilArea) add('Insulation', 'Attic, blown R-49', '', Math.ceil(ceilArea), 'sq ft', 101);
+  if (ceilArea && plan.__top !== false) add('Insulation', 'Attic, blown R-49', '', Math.ceil(ceilArea), 'sq ft', 101);
   if (dryArea + ceilArea) {
     add('Drywall', 'Drywall ½″, walls', '4×8 sheets', sheets(dryArea), 'sheets', 105);
     if (ceilArea) add('Drywall', 'Drywall ½″ ceiling board, ceilings', '4×8 sheets', sheets(ceilArea), 'sheets', 106);
@@ -157,6 +157,17 @@ function houseTakeoff(plan, A, add) {
     const D = V.ITEMS[it.type]; if (!D) continue;
     const w = it.w || D.w, d = it.d || D.d;
     if (it.type === 'machine') continue;
+    if (it.type === 'stairs' || it.type === 'stairsL') {
+      // stairs: risers at 7¾″ max to the floor above, 10″ treads, three 2×12 stringers per run, rail and balusters
+      const rise = plan.__rise || ((plan.ceiling || 8) + 1), n = Math.max(2, Math.ceil(rise * 12 / 7.75)), runFt = (n - 1) * 10 / 12;
+      add('Stairs', D.label + ' (' + n + ' risers at ' + (Math.round(rise * 12 / n * 100) / 100) + '″, ' + (n - 1) + ' treads)', inch(w) + ' wide', 1, 'ea', 176);
+      add('Stairs', 'Stair treads, oak 1″ × 11¼″', inch(w), n - 1, 'ea', 176.1);
+      add('Stairs', 'Risers, primed 1×8', inch(w), n, 'ea', 176.2);
+      add('Stairs', 'Stringers, 2×12', ftin(Math.hypot(runFt, rise) + 1), (it.type === 'stairsL' ? 2 : 1) * (w > 3.1 ? 3 : 2), 'ea', 176.3);
+      add('Stairs', 'Handrail with brackets', '', Math.ceil(Math.hypot(runFt, rise) + 2), 'lin ft', 176.4);
+      if (it.type === 'stairsL') add('Stairs', 'Landing framing and subfloor', inch(w) + ' square', 1, 'ea', 176.5);
+      continue;
+    }
     add(D.group, D.label, D.wv ? inch(w) + ' wide' : inch(w) + ' × ' + inch(d), 1, 'ea', ({ Kitchen: 130, Bathroom: 140, 'Laundry & utility': 150, 'Living room': 160, Dining: 165, Bedroom: 170, Lighting: 175, 'Outdoor & garage': 180 })[D.group] || 185);
     if (it.type === 'base' || it.type === 'sinkbase') { baseLf += w; counter += w * (d + 1 / 12); }
     if (it.type === 'island') counter += w * d;
@@ -450,7 +461,21 @@ function partsList(plan) {
     if (cRec) add('Electrical', 'Branch circuits for receptacles, 20A (est., 8 per circuit)', '', cRec, 'ea', 97);
     if (ded) add('Electrical', 'Dedicated circuits (equipment)', '', ded, 'ea', 98);
   }
-  if (A.frameAny) houseTakeoff(plan, A, add);
+  const LPs = V.levelPlans && plan.levels && plan.levels.length > 1 ? V.levelPlans(plan) : null;
+  if (LPs) {
+    // every floor of the house; the floor system under each floor that sits on another
+    for (const L of LPs) {
+      const AL = V.analyze(L.plan); if (!AL.frameAny) continue;
+      houseTakeoff(L.plan, AL, (cat, item, size, qty, unit, order) => add(cat, item, size, qty, unit, order));
+      if (L.plan.__floorBand > 0) {
+        const fp = V.footprint(AL, true), ar = fp ? fp.area : 0, per = V.houseExtWalls(L.plan, AL).reduce((t, w) => t + Math.hypot(w.x2 - w.x1, w.y2 - w.y1), 0), nm = L.name;
+        add('Floor framing', 'I-joists 11⅞″ at 16″ on center, ' + nm, '', Math.ceil(ar / 1.333 * 1.1), 'lin ft', 66);
+        add('Floor framing', 'Rim board 1⅛″ × 11⅞″, ' + nm, '', Math.ceil(per * 1.1), 'lin ft', 66.1);
+        add('Floor framing', 'Subfloor ¾″ T&G OSB 4×8, ' + nm, '', Math.ceil(ar / 32 * 1.1), 'sheets', 66.2);
+        add('Floor framing', 'Subfloor adhesive (1 tube per 2 sheets)', '', Math.ceil(ar / 32 * 1.1 / 2), 'tubes', 66.3);
+      }
+    }
+  } else if (A.frameAny) houseTakeoff(plan, A, add);
   return [...rows.values()].sort((a, b) => a.order - b.order || a.item.localeCompare(b.item) || a.size.localeCompare(b.size, undefined, { numeric: true }));
 }
 

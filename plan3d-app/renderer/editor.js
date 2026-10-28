@@ -542,7 +542,9 @@ class Editor {
   /* where a house item goes: backed against the nearest wall (within 2½′), else free at the R angle */
   itemPlace(x, y, type, keep) {
     const V = global.Plan3DViewer, D = V && V.ITEMS[type]; if (!D) return null;
-    const w = (keep && keep.w) || D.w, d = (keep && keep.d) || D.d;
+    let w = (keep && keep.w) || D.w, d = (keep && keep.d) || D.d;
+    // stairs: the run from the floor-to-floor height (10″ treads, risers 7¾″ max)
+    if (type === 'stairs' && !(keep && keep.d)) { const rise = V.stairRise ? V.stairRise(this.plan, this.plan.level || 0) : (this.plan.ceiling || 8) + 1; d = (Math.ceil(rise * 12 / 7.75) - 1) * 10 / 12; }
     // most items back up against a wall; free ones (an island, a table, a rug, a light) go anywhere
     if (!D.free) {
       const hit = this.wallAt(x, y, 2.5 * this.view.s + 8);
@@ -1148,6 +1150,21 @@ class Editor {
 
   drawItem(it, ghost) {
     const g = this.g, s = this.view.s, V = global.Plan3DViewer, D = V.ITEMS[it.type]; if (!D) return;
+    if (it.type === 'stairs' || it.type === 'stairsL') {
+      // stairs: the outline, a line at every tread, an arrow up the run and UP
+      const a = it.a || 0, cs = Math.cos(a), sn = Math.sin(a), T = (u, v) => [this.sx(it.x + cs * u - sn * v), this.sy(it.y + sn * u + cs * v)];
+      const w = it.w || D.w, d = it.d || D.d, rise = (this.plan.levels && V.stairRise) ? V.stairRise(this.plan, this.plan.level || 0) : (this.plan.ceiling || 8) + 1, n = Math.max(2, Math.ceil(rise * 12 / 7.75));
+      g.save(); g.strokeStyle = ghost ? COL.draft : '#d5dde1'; g.fillStyle = ghost ? 'rgba(242,200,75,.18)' : 'rgba(185,143,98,.18)'; g.lineWidth = 1.2;
+      const c = V.itemCorners(it); g.beginPath(); c.forEach((q, k) => k ? g.lineTo(this.sx(q[0]), this.sy(q[1])) : g.moveTo(this.sx(q[0]), this.sy(q[1]))); g.closePath(); g.fill(); g.stroke();
+      g.lineWidth = 0.8; g.beginPath();
+      if (it.type === 'stairs') for (let k = 1; k < n - 1; k++) { const v = -d / 2 + d * k / (n - 1), p1 = T(-w / 2, v), p2 = T(w / 2, v); g.moveTo(p1[0], p1[1]); g.lineTo(p2[0], p2[1]); }
+      else { const half = Math.ceil(n / 2), wr = w / 2 - 0.1, run = d - wr; for (let k = 1; k < half - 1; k++) { const v = d / 2 - run * k / (half - 1); for (const [u0, u1] of [[0.1, w / 2], [-w / 2, -0.1]]) { const p1 = T(u0, v), p2 = T(u1, v); g.moveTo(p1[0], p1[1]); g.lineTo(p2[0], p2[1]); } } const l1 = T(-w / 2, -d / 2 + wr), l2 = T(w / 2, -d / 2 + wr); g.moveTo(l1[0], l1[1]); g.lineTo(l2[0], l2[1]); }
+      g.stroke();
+      const ax = it.type === 'stairs' ? 0 : w / 4, a0 = T(ax, it.type === 'stairs' ? -d / 2 + 0.4 : d / 2 - 0.4), a1 = T(ax, it.type === 'stairs' ? d / 2 - 0.4 : -d / 2 + w / 2), ang = Math.atan2(a1[1] - a0[1], a1[0] - a0[0]);
+      g.lineWidth = 1.4; g.beginPath(); g.moveTo(a0[0], a0[1]); g.lineTo(a1[0], a1[1]); g.lineTo(a1[0] - 8 * Math.cos(ang - 0.4), a1[1] - 8 * Math.sin(ang - 0.4)); g.moveTo(a1[0], a1[1]); g.lineTo(a1[0] - 8 * Math.cos(ang + 0.4), a1[1] - 8 * Math.sin(ang + 0.4)); g.stroke();
+      if (s > 8) { g.font = '600 10px Consolas, monospace'; g.fillStyle = ghost ? COL.draft : '#e8edef'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('UP ' + n + 'R', a0[0], a0[1] + 10); }
+      g.restore(); return;
+    }
     if (it.type === 'machine') {
       // a machine from a drawing: its own linework, turned and moved into place, its name in the middle
       const a = it.a || 0, cs = Math.cos(a), sn = Math.sin(a), T = (u, v) => [this.sx(it.x + cs * u - sn * v), this.sy(it.y + sn * u + cs * v)];
@@ -1528,6 +1545,18 @@ class Editor {
       g.font = '600 11.5px Bahnschrift, "Segoe UI", sans-serif'; g.textAlign = 'left'; g.textBaseline = 'bottom';
       const lbl = (ins.name || 'Building') + '  ' + fmt(b.x1 - b.x0) + ' × ' + fmt(b.y1 - b.y0), tw = g.measureText(lbl).width;
       g.fillStyle = 'rgba(26,32,36,.88)'; g.fillRect(X - 4, Y - 22, tw + 12, 17); g.fillStyle = on ? COL.sel : '#9fdbe8'; g.fillText(lbl, X + 2, Y - 7);
+    }
+    // several floors: the floor below shows faint under this one (and the floor above when this is a basement), so
+    // walls and stairs line up
+    if (P.levels && P.levels.length > 1 && global.Plan3DViewer && global.Plan3DViewer.levelData) {
+      const k = P.level || 0, other = P.levels[k] && P.levels[k].below ? k + 1 : k - 1;
+      if (other >= 0 && other < P.levels.length) {
+        const d = global.Plan3DViewer.levelData(P, other);
+        g.save(); g.strokeStyle = 'rgba(127,211,227,.35)'; g.lineWidth = 1; g.setLineDash([5, 4]);
+        for (const w of d.walls || []) { const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, nx = -(w.y2 - w.y1) / L, ny = (w.x2 - w.x1) / L, t = (w.t || 0.375) / 2; for (const sd of [1, -1]) { g.beginPath(); g.moveTo(this.sx(w.x1 + nx * t * sd), this.sy(w.y1 + ny * t * sd)); g.lineTo(this.sx(w.x2 + nx * t * sd), this.sy(w.y2 + ny * t * sd)); g.stroke(); } }
+        g.setLineDash([]); g.globalAlpha = 0.45; for (const it of d.items || []) if (it.type === 'stairs' || it.type === 'stairsL') this.drawItem(it, false);
+        g.restore();
+      }
     }
     this.drawContent(P);
     // walls (outline helper used below)

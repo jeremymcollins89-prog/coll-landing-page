@@ -65,6 +65,41 @@ const HINTS = {
   item: 'Pick an item above, then click near a wall: it backs up against the wall. R turns it. Islands, tables, rugs, lights, cars and outdoor pieces go anywhere.',
   piece: 'Pick a piece above and click to place it, or drag to lay a whole run of panels. Drag a placed panel with Select to move it; its ends catch on nearby walls. Pieces snap to open ends and turn the corner toward the mouse. R turns a free piece. Right-drag pans.'
 };
+/* ---------- Floors (stories) ----------
+   The floor being edited lives on the plan itself; the others are kept in plan.levels[k].data. Switching floors
+   puts this one away and brings the other out (one undo step). */
+function levelInit(P) { if (!P.levels || !P.levels.length) { P.levels = [{ id: Plan3DEditor.uid(), name: 'First floor' }]; P.level = 0; } }
+function levelStash(P) { const k = P.level || 0, d = {}; for (const key of Plan3DViewer.LEVEL_KEYS) d[key] = JSON.parse(JSON.stringify(P[key] === undefined ? (key === 'ceiling' ? P.ceiling : []) : P[key])); P.levels[k].data = d; }
+function levelLoad(P, k) { const d = P.levels[k].data || {}; for (const key of Plan3DViewer.LEVEL_KEYS) P[key] = d[key] !== undefined ? JSON.parse(JSON.stringify(d[key])) : (key === 'ceiling' ? (P.ceiling || 8) : []); delete P.levels[k].data; P.level = k; }
+function switchLevel(k) {
+  const P = ed.plan; if (!P.levels || k === (P.level || 0) || !P.levels[k]) return;
+  ed.sel = null; ed.multi = null;
+  ed.edit(Pl => { levelStash(Pl); levelLoad(Pl, k); });
+  ed.fit && ed.render(); renderProps(); updateChrome(); queue3D();
+  toast('Now drawing on ' + (P.levels[k].name || 'floor ' + (k + 1)) + '.');
+}
+function addLevel(basement) {
+  ed.sel = null; ed.multi = null;
+  ed.edit(Pl => {
+    levelInit(Pl); levelStash(Pl);
+    const cur = Pl.level || 0, uid = Plan3DEditor.uid;
+    // a new floor starts with the outside walls of the floor it's on (same footprint), ready to edit
+    const src = Pl.levels[cur].data, A0 = Plan3DViewer.analyze(Object.assign({}, Pl, src)), ext = new Set(Plan3DViewer.houseExtWalls(Object.assign({}, Pl, src), A0).map(w => w.id));
+    const walls = (src.walls || []).filter(w => ext.has(w.id)).map(w => ({ ...w, id: uid() }));
+    const data = { walls, openings: [], rooms: [], items: [], devices: [], chases: [], columns: [], beams: [], headers: [], grilles: [], ceiling: basement ? 8 : (src.ceiling || Pl.ceiling || 8) };
+    const names = ['First floor', 'Second floor', 'Third floor', 'Fourth floor', 'Fifth floor'];
+    if (basement) { Pl.levels.unshift({ id: uid(), name: 'Basement', below: true, data }); Pl.level = cur + 1; levelLoad(Pl, 0); }
+    else { const above = Pl.levels.filter(l => !l.below).length; Pl.levels.push({ id: uid(), name: names[above] || 'Floor ' + (above + 1), data }); levelLoad(Pl, Pl.levels.length - 1); }
+  });
+  ed.render(); renderProps(); updateChrome(); queue3D();
+  toast(basement ? 'Basement added under the house, with the outside walls to start from. Draw it, then switch floors with the buttons in the House panel.' : 'Floor added on top, with the outside walls of the floor below to start from. Add its rooms, doors and windows; stairs from below cut its stairwell.');
+}
+function deleteLevel() {
+  const P = ed.plan; if (!P.levels || P.levels.length < 2) return;
+  ed.sel = null; ed.multi = null;
+  ed.edit(Pl => { const k = Pl.level || 0; Pl.levels.splice(k, 1); const n = Math.max(0, Math.min(k, Pl.levels.length - 1)); Pl.level = n; levelLoad(Pl, n); });
+  ed.render(); renderProps(); updateChrome(); queue3D();
+}
 function grillePalette() {
   const W = ed.grW || 20, H = ed.grH || 20, key = W === 20 && H === 20 ? '20' : W === 36 && H === 36 ? '36' : 'c';
   $('#grillePal').innerHTML = `<div class="grp"><div class="row"><b style="margin-right:6px">Return grille</b>${[['20', '20″ × 20″'], ['36', '36″ × 36″'], ['c', 'Custom']].map(([k, l]) => `<button data-gs="${k}" class="${key === k ? 'on' : ''}">${l}</button>`).join('')}
@@ -672,6 +707,12 @@ function renderProps(opt) {
       ${R.type && R.type !== 'none' ? fld('Overhang', txt('pOver', fmt(R.overhang == null ? 1 : R.overhang))) : ''}
       ${fld('Floors', `<select id="pFloor">${Object.entries(Plan3DViewer.FLOORS).map(([k, l]) => `<option value="${k}" ${(P.floorType || 'lvp') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
       <p class="note">Pick a room label to give that room its own floor. Pick a wall for its framing (wood or steel), stud size and exterior / interior.</p></div>
+    <div class="grp"><h3>Floors (stories)</h3>
+      ${(() => { const L = P.levels && P.levels.length ? P.levels : [{ name: 'First floor' }], cur = P.level || 0;
+        return `<div class="row" style="flex-wrap:wrap;gap:6px">${L.map((l, k) => `<button class="btn small${k === cur ? ' primary' : ''}" data-lvl="${k}">${esc(l.name || 'Floor ' + (k + 1))}</button>`).join('')}</div>
+        <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px"><button class="btn small" id="lvAdd">+ Floor above</button><button class="btn small" id="lvBase" ${L[0] && L[0].below ? 'disabled' : ''}>+ Basement</button>${L.length > 1 ? '<button class="btn small" id="lvRen">Rename</button><button class="btn small danger" id="lvDel">Delete this floor</button>' : ''}</div>
+        ${L.length > 1 ? fld('Floor system', txt('lvDepth', fmtIn(Plan3DViewer.floorDepthOf(P)))) : ''}
+        <p class="note">You're drawing on <b>${esc((L[cur] && L[cur].name) || 'First floor')}</b>. The floor below shows dashed blue so walls and stairs line up. Stairs (Items → Stairs) rise to the floor above and cut its stairwell. In 3D, Dollhouse shows up to this floor.</p>`; })()}</div>
     <div class="grp"><h3>Foundation</h3>
       ${(() => { const F = Plan3DViewer.foundationOf(P), FT = Plan3DViewer.foundationTakeoff(P), tp = F.type;
         const inch = (id, v) => txt(id, fmtIn(v));
@@ -743,6 +784,12 @@ function renderProps(opt) {
   if ($('#pWallsFollow')) $('#pWallsFollow').onclick = () => { const own = ownHeightWalls(ed.plan); ed.edit(() => { for (const w of own) delete w.sections; }); toast(`${own.length} walls now follow the ceiling and plenum.`); renderProps(); queue3D(); };
   if ($('#pRoof')) $('#pRoof').onchange = e => ed.edit(Pl => { Pl.roof = Object.assign({ pitch: 6, overhang: 1 }, Pl.roof || {}, { type: e.target.value }); });
   const fset = (k, v) => ed.edit(Pl => { Pl.foundation = Object.assign({}, Pl.foundation || {}, { [k]: v }); });
+  $$('[data-lvl]').forEach(b => b.onclick = () => switchLevel(+b.dataset.lvl));
+  if ($('#lvAdd')) $('#lvAdd').onclick = () => addLevel(false);
+  if ($('#lvBase')) $('#lvBase').onclick = () => addLevel(true);
+  if ($('#lvRen')) $('#lvRen').onclick = async () => { const L = ed.plan.levels, k = ed.plan.level || 0; const v = await dialogOpen({ title: 'Rename floor', body: fld('Name', txt('lvName', L[k].name || '')), buttons: [{ label: 'Cancel', ret: null }, { label: 'Rename', primary: true, value: () => $('#lvName').value.trim() }] }); if (v) ed.edit(Pl => { Pl.levels[k].name = v; }); };
+  if ($('#lvDel')) $('#lvDel').onclick = async () => { if (await confirmDlg('Delete this floor?', 'Its walls, doors, windows, rooms and items go too. Ctrl+Z brings it back.', 'Delete')) deleteLevel(); };
+  bindLen('lvDepth', 'in', v => ed.edit(Pl => { Pl.floorDepth = Math.max(0.5, Math.min(3, v)); }));
   if ($('#fType')) $('#fType').onchange = e => fset('type', e.target.value);
   if ($('#fMesh')) $('#fMesh').onchange = e => fset('mesh', e.target.value);
   for (const [id, k, u, lo, hi] of [['fFW', 'footW', 'in', 0.5, 4], ['fFD', 'footD', 'in', 0.33, 4], ['fSlab', 'slabT', 'in', 0.25, 1.5], ['fStemH', 'stemH', 'in', 0.5, 8], ['fCrawlH', 'crawlH', 'in', 1, 8], ['fBaseH', 'baseH', 'ft', 6, 14], ['fStemT', 'stemT', 'in', 0.5, 1.5]]) bindLen(id, u, v => fset(k, Math.max(lo, Math.min(hi, v))));
