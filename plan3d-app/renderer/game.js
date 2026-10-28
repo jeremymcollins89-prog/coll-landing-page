@@ -54,7 +54,7 @@
     const B = C.bounds, cx = (B.minX + B.maxX) / 2, cz = (B.minZ + B.maxZ) / 2, span = Math.max(B.w || (B.maxX - B.minX), B.d || (B.maxZ - B.minZ), 40);
     const root = new THREE.Group(); root.name = 'p3g'; scene.add(root);
     container.classList.add('p3g-on');
-    C.setBoost(1.15);
+    C.setBoost(1);
 
     // ---------------------------------------------------------------- textures
     function glowTex(stops, size) {
@@ -350,7 +350,7 @@
 
     function restart() {
       for (const j of jets) root.remove(j.J); jets.length = 0;
-      score = 0; wave = 0; hull = 100; dead = false; abducted = 0; streak = 0; waveClear = false; for (const m of missiles) root.remove(m.g); missiles.length = 0; waveT = 1; toSpawn = 0; C.setBoost(1.15); drone.visible = true;
+      score = 0; wave = 0; hull = 100; dead = false; abducted = 0; streak = 0; waveClear = false; for (const m of missiles) root.remove(m.g); missiles.length = 0; waveT = 1; toSpawn = 0; C.setBoost(1); drone.visible = true;
       const o = H('.p3g-over'); if (o) o.remove(); say('AREA 51', 'HOSTILE AIRCRAFT INBOUND', 2.4);
     }
 
