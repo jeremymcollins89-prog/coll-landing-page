@@ -951,7 +951,7 @@ let shareReg = '';
 function ensureShare() {
   const P = ed.plan;
   if (!P.share || !P.share.id || !P.share.key) { P.share = { id: rid(18), key: rid(24), seen: 0 }; ed.dirty = true; }
-  registerShare();
+  registerShare(); trackJob();
   return P.share;
 }
 async function registerShare() {
@@ -980,6 +980,87 @@ async function checkComments(loud) {
   finally { commentBusy = false; }
 }
 setInterval(() => { if (document.visibilityState === 'visible') checkComments(false); }, 60000);
+
+/* ---------- Comment notifications: every job you've sent a walkthrough or phone link for ----------
+   Each plan with a share is remembered on this computer (its name, file and key). Every minute and a half the
+   app asks the comments server about all of them, even when they aren't open; new comments light up the bell
+   (and a Windows notification). Clicking a job opens its file and shows its comments. */
+const JOBS = {
+  get() { try { return JSON.parse(localStorage.getItem('p3.jobs') || '{}') || {}; } catch (e) { return {}; } },
+  set(j) { try { localStorage.setItem('p3.jobs', JSON.stringify(j)); } catch (e) { /* storage full */ } }
+};
+function trackJob() {
+  const S = ed.plan.share; if (!S || !S.id || !S.key) return;
+  const J = JOBS.get(), o = J[S.id] || { id: S.id, notified: S.seen || 0, unread: 0 };
+  o.key = S.key; o.name = ed.plan.name || o.name || 'Untitled plan'; if (projectPath) o.path = projectPath;
+  J[S.id] = o; JOBS.set(J); refreshBell();
+}
+const ago = (iso) => { const t = Date.parse(iso || ''); if (!isFinite(t)) return ''; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' hr ago' : Math.round(m / 1440) + ' days ago'; };
+function refreshBell() {
+  const J = Object.values(JOBS.get()), n = J.reduce((t, o) => t + (o.unread || 0), 0), badge = $('#bBell .badge');
+  if (badge) { badge.hidden = !n; badge.textContent = n > 99 ? '99+' : String(n); }
+  $('#bBell') && $('#bBell').setAttribute('title', n ? `${n} new customer comment${n === 1 ? '' : 's'}` : 'Customer comments: new ones on any of your jobs');
+  const P2 = $('#bellPanel'); if (!P2 || P2.hidden) return;
+  const L = J.filter(o => o.lastAt || o.unread).sort((a, b) => (b.unread || 0) - (a.unread || 0) || (b.newAt || 0) - (a.newAt || 0));
+  P2.innerHTML = `<h4>Customer comments ${L.some(o => o.unread) ? '<button id="bellAll">Mark all read</button>' : ''}</h4>` + (L.length ? L.map(o => `<button class="bjob${o.unread ? '' : ' read'}" data-job="${esc(o.id)}"><b>${esc(o.name || 'Untitled plan')}${o.unread ? `<span>${o.unread} new</span>` : ''}</b><small>${esc(o.path ? o.path.split(/[\\/]/).pop() : 'not saved to a file yet')}${o.lastAt ? ' · ' + esc(ago(o.lastAt)) : ''}</small>${o.lastText ? `<q>${esc(o.lastText)}</q>${o.lastBy ? `<small>— ${esc(o.lastBy)}</small>` : ''}` : ''}</button>`).join('') : `<div class="empty">No comments yet. When a customer sends comments from a walkthrough or the phone viewer, the job shows up here${J.length ? ` (watching ${J.length} job${J.length === 1 ? '' : 's'})` : ''}.</div>`);
+  $$('#bellPanel [data-job]').forEach(b => b.onclick = () => openJob(b.dataset.job));
+  if ($('#bellAll')) $('#bellAll').onclick = (e) => { e.stopPropagation(); const J2 = JOBS.get(); for (const o of Object.values(J2)) o.unread = 0; JOBS.set(J2); refreshBell(); };
+}
+function showCommentsPanel() {
+  ed.sel = null; ed.multi = null; renderProps();
+  requestAnimationFrame(() => { const h = [...document.querySelectorAll('.grp h3')].find(x => /Customer comments/.test(x.textContent)); if (h) { const g = h.closest('.grp'); g.scrollIntoView({ behavior: 'smooth', block: 'start' }); g.classList.remove('flash'); void g.offsetWidth; g.classList.add('flash'); } });
+}
+async function openJob(id) {
+  const J = JOBS.get(), o = J[id]; if (!o) return;
+  $('#bellPanel').hidden = true; $('#bBell').setAttribute('aria-expanded', 'false');
+  const here = ed.plan.share && ed.plan.share.id === id;
+  if (!here) {
+    if (!o.path) { toast(`“${o.name}” hasn’t been saved to a file yet. Open it and Save once, then it opens from here.`); return; }
+    if (!(await guardUnsaved())) return;
+    const r = api.loadPath ? await api.loadPath(o.path) : null;
+    if (!r || r.kind === 'error') { toast(`Couldn’t open ${o.path.split(/[\\/]/).pop()}. It may have been moved or renamed.`); return; }
+    await handleLoaded(r);
+  }
+  const J2 = JOBS.get(); if (J2[id]) { J2[id].unread = 0; JOBS.set(J2); } refreshBell();
+  await checkComments(false);
+  showCommentsPanel();
+}
+function desktopNotify(o, n) {
+  try {
+    if (!('Notification' in window)) return;
+    const go = () => { const nt = new Notification(`${n} new comment${n === 1 ? '' : 's'} on ${o.name || 'a job'}`, { body: (o.lastBy ? o.lastBy + ': ' : '') + (o.lastText || ''), silent: false }); nt.onclick = () => { window.focus(); openJob(o.id); }; };
+    if (Notification.permission === 'granted') go(); else if (Notification.permission !== 'denied') Notification.requestPermission().then(p => { if (p === 'granted') go(); });
+  } catch (e) { /* no notifications here */ }
+}
+let jobsBusy = false;
+async function pollJobs() {
+  if (jobsBusy || !navigator.onLine) return; jobsBusy = true;
+  try {
+    const J = JOBS.get(); let changed = false; const fresh = [];
+    for (const o of Object.values(J)) {
+      if (!o || !o.id || !o.key) continue;
+      try {
+        const r = await fetch(PLAN3D_CLOUD + '/comments/' + encodeURIComponent(o.id) + '?after=' + (o.notified || 0), { headers: { 'X-Plan3D-Key': o.key } });
+        if (!r.ok) continue;
+        const d = await r.json(), list = (d.comments || []).filter(c => c && c.text);
+        if (d.last > (o.notified || 0)) { o.notified = d.last; changed = true; }
+        if (list.length) {
+          const c = list[list.length - 1]; o.lastText = String(c.text).slice(0, 160); o.lastBy = String(c.by || '').slice(0, 60); o.lastAt = c.at || new Date().toISOString(); o.newAt = Date.now();
+          // the job that's open and on screen gets them straight into its comments (checkComments); still listed
+          const open = ed.plan.share && ed.plan.share.id === o.id && document.hasFocus();
+          if (!open) { o.unread = (o.unread || 0) + list.length; fresh.push([o, list.length]); }
+          changed = true;
+        }
+      } catch (e) { /* this one again next time */ }
+    }
+    if (changed) JOBS.set(J);
+    refreshBell();
+    for (const [o, n] of fresh) desktopNotify(o, n);
+  } finally { jobsBusy = false; }
+}
+setInterval(pollJobs, 90000); setTimeout(pollJobs, 5000); window.addEventListener('focus', () => pollJobs());
+document.addEventListener('click', (e) => { const P2 = $('#bellPanel'); if (P2 && !P2.hidden && !e.target.closest('.bellwrap')) { P2.hidden = true; $('#bBell').setAttribute('aria-expanded', 'false'); } });
+setTimeout(() => { const b = $('#bBell'); if (!b) return; b.onclick = (e) => { e.stopPropagation(); const P2 = $('#bellPanel'), open = P2.hidden; P2.hidden = !open; b.setAttribute('aria-expanded', String(open)); if (open) { refreshBell(); pollJobs(); } }; refreshBell(); }, 0);
 window.addEventListener('focus', () => checkComments(false));
 /* ---------- Customer comments (from the walkthrough page) ---------- */
 /* ---------- Snapshots: pictures taken in the 3D view (📷), each with a note and the camera it was taken from ---------- */
@@ -2502,7 +2583,7 @@ async function handleLoaded(r) {
     let p; try { p = JSON.parse(r.json); } catch (e) { toast('That project file is damaged.'); return; }
     if (adoptImported(p)) return;
     projectPath = r.path; modePicked = true; ed.setPlan(p); hideBanner(); updateChrome(); if (view !== '2d' && viewer) viewer.loadPlan(clonePlan());
-    toast('Opened ' + (p.name || r.name)); setTimeout(() => checkComments(false), 1500); return;
+    toast('Opened ' + (p.name || r.name)); trackJob(); setTimeout(() => checkComments(false), 1500); return;
   }
   if (r.kind === 'dxf') { if (await openCadProject(r)) return; dxfDialog(r); return; }
   if (r.kind === 'ifc') { ifcDialog(r); return; }
@@ -2589,7 +2670,7 @@ async function save(as) {
   if (!api.saveProject) return null;
   if (ed.plan.walls.length) ensureShare();
   const p = await api.saveProject(JSON.stringify(ed.plan), as ? null : projectPath, ed.plan.name);
-  if (p) { projectPath = p; ed.dirty = false; updateChrome(); toast('Saved', { label: 'Show in folder', fn: () => api.showInFolder(p) }); }
+  if (p) { projectPath = p; ed.dirty = false; updateChrome(); trackJob(); toast('Saved', { label: 'Show in folder', fn: () => api.showInFolder(p) }); }
   return p;
 }
 async function exportHtml() {
