@@ -523,8 +523,10 @@ function toIfc(plan, opts) {
   const slab = (ar, z0, z1, st) => ({ k: 'slab', ar, z0, z1, st });
   // the cleanroom floor (gray epoxy), its top at the floor level
   const fl = A.hardAny ? ['Cleanroom floor', 'Coll cleanroom floor, epoxy', S.floor] : A.house ? ['Floor', 'House floor, ' + ((V.FLOORS || {})[plan.floorType || 'lvp'] || 'plank'), S[plan.floorType || 'lvp'] || S.lvp] : ['Floor slab', 'Concrete floor slab', S.slab];
-  // a building placed inside another sits on that building's slab: its floor is a thin epoxy topping
-  if (opts.floor !== false) areasAll.forEach((ar, idx) => put('IFCSLAB', areasAll.length > 1 ? `${fl[0]} ${idx + 1}` : fl[0], fl[1], shape([onSlab ? slab(ar, 0, 0.02, fl[2]) : slab(ar, -0.33, 0, fl[2])]), onSlab ? ',.BASESLAB.' : ',.FLOOR.', fl[2]));
+  // a building placed inside another sits on that building's slab: its floor is a thin epoxy topping. A cleanroom
+  // sits on the building's existing floor, so its floor is just the ⅛″ coating under it, not a 4″ slab (Revit showed
+  // that slab as a step the room stood on)
+  if (opts.floor !== false) areasAll.forEach((ar, idx) => put('IFCSLAB', areasAll.length > 1 ? `${fl[0]} ${idx + 1}` : fl[0], fl[1], shape([onSlab ? slab(ar, 0, 0.02, fl[2]) : A.hardAny ? slab(ar, -0.0104, 0, fl[2]) : slab(ar, -0.33, 0, fl[2])]), onSlab ? ',.BASESLAB.' : ',.FLOOR.', fl[2]));
   // a building's roof deck at the top of its walls
   // house roof: the 3D view's roof surface, as triangles (a surface model Revit can show and render)
   if (A.frameAny && plan.roof && plan.roof.type && plan.roof.type !== 'none' && fpAll && opts.ceiling !== false) {
