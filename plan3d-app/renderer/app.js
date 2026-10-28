@@ -196,7 +196,7 @@ function updateChrome() {
 /* ---------- 3D ---------- */
 function ensureViewer() {
   if (viewer) return viewer;
-  viewer = Plan3DViewer.mount($('#view3d'), clonePlan(), {});
+  viewer = Plan3DViewer.mount($('#view3d'), clonePlan(), { superSrc: 'vendor/superrender.js' });
   return viewer;
 }
 function clonePlan() { const p = JSON.parse(JSON.stringify(ed.plan)); delete p.background; return p; }
@@ -2367,6 +2367,8 @@ async function exportHtml() {
 <body><div id="v"></div>
 <script>${safe(a.three)}</script>
 <script>${safe(a.orbit)}</script>
+<script>${safe(a.post || '')}</script>
+<script>${safe(a.exporter || '')}</script>
 <script>${safe(a.viewer)}</script>
 <script>Plan3DViewer.mount(document.getElementById('v'), ${safe(JSON.stringify(plan))}, { comments: true });</script>
 <!-- Made with Coll Plan3D · Coll Business Solutions LLC -->

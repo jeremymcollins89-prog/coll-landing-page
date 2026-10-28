@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://cleanroom-cloud-production.up.railway.app; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' blob: data: https://cleanroom-cloud-production.up.railway.app; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'">
 <title>Coll Plan3D</title>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -132,6 +132,7 @@
 
 <script src="vendor/three.min.js"></script>
 <script src="vendor/OrbitControls.js"></script>
+<script src="vendor/post.js"></script>
 <script src="vendor/GLTFExporter.js"></script>
 <script src="check.js"></script>
 <script src="viewer.js"></script>

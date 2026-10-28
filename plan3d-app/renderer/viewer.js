@@ -3966,7 +3966,7 @@ function mount(container, plan, opts) {
       <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button>
       <button class="p3v-panel p3v-look p3v-lidb" aria-pressed="false" hidden title="Show the lid (the top of the cleanroom, or a roof deck you placed) in every view, or take it off again">Lid</button>
       <button class="p3v-panel p3v-look p3v-air" aria-pressed="true" hidden title="Show or hide the airflow: air down out of the FFUs, into the return grilles, and along the floor out through the doors and out of the building">Airflow</button>
-      <button class="p3v-panel p3v-cbtn" aria-pressed="false" hidden title="Click anything in the model to leave a comment on it">💬 Comment</button></div>
+      <button class="p3v-panel p3v-look p3v-srb" hidden title="A photo-real, path-traced picture of this view (light bounces, real glass and steel, soft shadows). Save it as an image.">✨ Super render</button><button class="p3v-panel p3v-cbtn" aria-pressed="false" hidden title="Click anything in the model to leave a comment on it">💬 Comment</button></div>
     </div>
     <div class="p3v-aim" aria-hidden="true"></div>
     <div class="p3v-joy" hidden aria-hidden="true"><b>MOVE</b><i></i></div>
@@ -4035,6 +4035,88 @@ function mount(container, plan, opts) {
   scene.add(new THREE.AmbientLight(0xffffff, 0.17));
   const sun = new THREE.DirectionalLight(0xffffff, 0.58); sun.position.set(-50, 80, 35); scene.add(sun);
   const fill = new THREE.DirectionalLight(0xf2f6ff, 0.24); fill.position.set(70, 50, -50); scene.add(fill);
+
+  // ---- Graphics: physically based materials, a lighting environment for reflections, filmic colour, soft sun
+  // shadows fitted to the model and (on a computer) ambient occlusion. Everything the scene builders make
+  // (Phong / Lambert) is swapped for a matching physical material as it appears, so every view gets it.
+  const HQ = opts.quality ? opts.quality === 'high' : !(global.matchMedia && global.matchMedia('(pointer: coarse)').matches);
+  const GFX = !!THREE.MeshStandardMaterial && opts.graphics !== 'classic' && !(global.P3GFX && global.P3GFX.classic);
+  const GT = Object.assign({ exposure: 1.0, ao: false, env: 0.5, light: 0.68, tm: 'none', shadows: true, nb: 0.15 }, global.P3GFX || {});
+  if (GFX) {
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = GT.tm === 'aces' ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping; renderer.toneMappingExposure = GT.exposure;
+    // physical materials add up light in linear space, so the lights are turned down to keep whites white
+    scene.traverse(o => { if (o.isLight) o.intensity *= GT.light; });
+    renderer.shadowMap.enabled = !!GT.shadows; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    scene.fog.color.convertSRGBToLinear();
+    sun.castShadow = true; sun.shadow.mapSize.set(HQ ? 4096 : 2048, HQ ? 4096 : 2048); sun.shadow.bias = -0.0004; sun.shadow.normalBias = GT.nb; sun.shadow.radius = 3;
+    scene.add(sun.target);
+    // the environment: a sky dome, a pale horizon, a darker ground and a few big soft lights, blurred into
+    // reflections and image-based light (what makes steel, glass and epoxy look real)
+    try {
+      const pm = new THREE.PMREMGenerator(renderer), es = new THREE.Scene();
+      const sg = new THREE.SphereGeometry(100, 48, 24), pos = sg.attributes.position, cols = [];
+      for (let i = 0; i < pos.count; i++) { const y = pos.getY(i) / 100, sky = new THREE.Color(0.52, 0.66, 0.92), hor = new THREE.Color(1.0, 0.98, 0.95), gnd = new THREE.Color(0.24, 0.23, 0.22); const c = y > 0 ? hor.clone().lerp(sky, Math.pow(y, 0.6)) : hor.clone().lerp(gnd, Math.min(1, -y * 4)); cols.push(c.r, c.g, c.b); }
+      sg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+      es.add(new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true })));
+      const box = (x, y, z, w, h, k) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.98, 0.94).multiplyScalar(k), side: THREE.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 0, 0); es.add(m); };
+      box(-40, 70, 30, 40, 40, 5); box(60, 40, -40, 30, 50, 2.5); box(0, 90, -10, 60, 30, 3); box(-70, 20, -50, 20, 30, 1.6);
+      scene.environment = pm.fromScene(es, 0.035).texture; pm.dispose();
+    } catch (e) { /* no environment: materials still work */ }
+  }
+  const upCache = new Map(), upDone = new WeakSet();
+  function upMat(m) {
+    if (!m || upDone.has(m)) return m;
+    if (upCache.has(m)) return upCache.get(m);
+    let out = m;
+    if (m.map) { m.map.encoding = THREE.sRGBEncoding; m.map.needsUpdate = true; }
+    if (m.isMeshPhongMaterial || m.isMeshLambertMaterial) {
+      const ph = !!m.isMeshPhongMaterial, sh = ph ? (m.shininess || 30) : 0, sp = ph && m.specular ? (m.specular.r + m.specular.g + m.specular.b) / 3 : 0;
+      const c = m.color, sat = Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b), lum = (c.r + c.g + c.b) / 3;
+      const glass = m.transparent && m.opacity < 0.65 && !m.map;
+      const metal = !glass && ph && sp >= 0.55 && sh >= 55 && sat < 0.1 && lum > 0.45 ? 0.82 : 0;
+      out = new THREE.MeshStandardMaterial({
+        color: m.color.clone().convertSRGBToLinear(), map: m.map || null, transparent: m.transparent, opacity: m.opacity, side: m.side,
+        depthWrite: m.depthWrite, depthTest: m.depthTest, alphaTest: m.alphaTest, vertexColors: m.vertexColors,
+        polygonOffset: m.polygonOffset, polygonOffsetFactor: m.polygonOffsetFactor, polygonOffsetUnits: m.polygonOffsetUnits,
+        roughness: glass ? 0.05 : ph ? Math.max(0.16, Math.min(0.9, 1 - Math.sqrt(sh / 100) * 0.78)) : 0.86,
+        metalness: metal, envMapIntensity: glass ? 1.6 : metal ? 1.15 : GT.env,
+      });
+      if (m.emissive && (m.emissive.r + m.emissive.g + m.emissive.b) > 0.01) { out.emissive = m.emissive.clone().convertSRGBToLinear(); out.emissiveIntensity = m.emissiveIntensity; out.emissiveMap = m.emissiveMap || null; }
+      out.userData = m.userData; out.name = m.name; out.visible = m.visible;
+      upCache.set(m, out); upDone.add(out);
+    } else if (m.isMeshBasicMaterial || m.isLineBasicMaterial || m.isSpriteMaterial || m.isPointsMaterial) {
+      // flat colours (lights, arrows, labels, linework) keep exactly the colour they were drawn in
+      if (m.color) m.color.convertSRGBToLinear(); m.toneMapped = false; m.needsUpdate = true; upDone.add(m);
+    } else upDone.add(m);
+    return out;
+  }
+  function upgradeScene(root) {
+    if (!GFX || !root) return;
+    root.traverse(o => {
+      if (!(o.isMesh || o.isLine || o.isSprite || o.isPoints)) return;
+      o.material = Array.isArray(o.material) ? o.material.map(upMat) : upMat(o.material);
+      if (o.isMesh && !o.isSprite) { const tr = Array.isArray(o.material) ? o.material.some(q => q.transparent) : o.material.transparent; o.castShadow = !tr && !o.material.isMeshBasicMaterial; o.receiveShadow = !o.material.isMeshBasicMaterial; }
+    });
+  }
+  // the sun's shadow box fitted around the model, so shadows stay crisp on a small room and a big building
+  function fitSun(Bd, top) {
+    if (!GFX || !Bd || !isFinite(Bd.w)) return;
+    const cx = Bd.minX + Bd.w / 2, cz = Bd.minZ + Bd.d / 2, r = Math.max(20, Math.hypot(Bd.w, Bd.d) / 2 + 6);
+    sun.target.position.set(cx, 0, cz); sun.position.set(cx - r * 0.75, Math.max(top, 10) + r * 1.4, cz + r * 0.55);
+    const C = sun.shadow.camera; C.left = -r; C.right = r; C.top = r; C.bottom = -r; C.near = 1; C.far = r * 5 + top; C.updateProjectionMatrix();
+  }
+  // ambient occlusion and smoothing on a computer: the soft darkening where walls meet the floor and ceiling
+  let composer = null, ssaoPass = null, fxaaPass = null;
+  if (GFX && HQ && GT.ao && THREE.EffectComposer && THREE.SSAOPass && renderer.capabilities.isWebGL2) {
+    try {
+      const rt = new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType });
+      composer = new THREE.EffectComposer(renderer, rt);
+      ssaoPass = new THREE.SSAOPass(scene, camera, 2, 2); ssaoPass.kernelRadius = 0.9; ssaoPass.minDistance = 0.0004; ssaoPass.maxDistance = 0.02;
+      composer.addPass(ssaoPass); composer.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));
+      fxaaPass = new THREE.ShaderPass(THREE.FXAAShader); composer.addPass(fxaaPass);
+    } catch (e) { composer = null; }
+  }
 
   const controls = new THREE.OrbitControls(camera, canvas);
   controls.enableDamping = true; controls.dampingFactor = 0.09; controls.maxPolarAngle = 1.42;
@@ -4248,6 +4330,25 @@ function mount(container, plan, opts) {
   }
   // ---- Comments: a customer clicks anything in the model and leaves a note on it. The notes stay in this
   // browser and go back to the designer as a small file ("Send comments"); the app reads that file in.
+  // ---- Super render: the visible model goes to the path tracer (loaded on first use) with this exact view
+  const srBtn = $('.p3v-srb'), srSrc = opts.superSrc === undefined ? 'https://collbusinesssolutions.com/plan3d-app/renderer/vendor/superrender.js' : opts.superSrc;
+  srBtn.hidden = !(THREE.GLTFExporter && (global.P3Super || srSrc));
+  const loadScript = (src) => new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = src; sc.onload = ok; sc.onerror = () => no(new Error('Couldn’t load the renderer. Check your internet connection.')); document.head.appendChild(sc); });
+  async function superRender() {
+    if (!built || srBtn.disabled) return;
+    srBtn.disabled = true; const lbl = srBtn.textContent; srBtn.textContent = 'Preparing…';
+    const hid = [];
+    try {
+      built.root.traverse(o => { if (o.visible && ((o.userData && o.userData.airflow) || o.isSprite || o.isLine || o.isLineSegments || o.isPoints)) { o.visible = false; hid.push(o); } });
+      const glb = await new Promise((ok, no) => { try { new THREE.GLTFExporter().parse(built.root, ok, { binary: true, onlyVisible: true, maxTextureSize: 1024 }); } catch (e) { no(e); } });
+      hid.forEach(o => { o.visible = true; }); hid.length = 0;
+      if (!global.P3Super) await loadScript(srSrc);
+      const sd = sun.position.clone().sub(sun.target.position).normalize();
+      global.__p3sr = await global.P3Super.open({ glb, camera: { position: camera.position.toArray(), quaternion: camera.quaternion.toArray(), fov: camera.fov, aspect: camera.aspect }, view: mode, sunDir: sd.toArray(), title: (plan && plan.name) || 'Plan3D', mobile: !HQ, house: !!(plan && plan.mode === 'house'), quality: global.P3SR_Q, log: !!global.P3SR_Q });
+    } catch (e) { console.error(e); hint.textContent = e.message || 'Super render couldn’t start.'; hint.classList.remove('gone'); setTimeout(() => hint.classList.add('gone'), 4000); }
+    finally { hid.forEach(o => { o.visible = true; }); srBtn.disabled = false; srBtn.textContent = lbl; }
+  }
+  srBtn.onclick = (e) => { e.stopPropagation(); superRender(); };
   const cBtn = $('.p3v-cbtn'), cList = $('.p3v-clist'), cForm = $('.p3v-cform');
   const pins = new THREE.Group(); scene.add(pins);
   let commentMode = false, pendingAt = null, myComments = [];
@@ -4433,6 +4534,7 @@ function mount(container, plan, opts) {
     for (const extra of [() => pressureArrows(THREE, built.root, p), () => floorFlow(THREE, built.root, p)]) { try { extra(); } catch (e) { console.error(e); } }
     scene.add(built.root);
     try { refreshAir(); applySwitches(); } catch (e) { console.error(e); }
+    try { upgradeScene(scene); let top = (A && A.H) || 10; try { const LP = levelPlans(p); top = LP[LP.length - 1].elev + 30; } catch (e) { } fitSun(A && A.bounds, top); } catch (e) { console.error(e); }
     if (typeof drawPins === 'function' && cList) { loadMine(); drawPins(); }
     emptyEl.hidden = !A.empty;
     // the Plenum view only when there is a plenum
@@ -4461,10 +4563,11 @@ function mount(container, plan, opts) {
   function resize() {
     const w = container.clientWidth || 1, h = container.clientHeight || 1;
     renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); sizeMini();
+    if (composer) { const pr = renderer.getPixelRatio(); composer.setSize(w, h); if (ssaoPass) ssaoPass.setSize(w * pr, h * pr); if (fxaaPass) fxaaPass.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr)); }
   }
   const ro = new ResizeObserver(resize); ro.observe(container);
 
-  const tmp = new THREE.Vector3(); let last = performance.now(), raf = 0, alive = true, turnHeld = 0;
+  const tmp = new THREE.Vector3(); let last = performance.now(), raf = 0, alive = true, turnHeld = 0, sweepN = 0, aoOff = false;
   function loop(now) {
     if (!alive) return;
     // up to 1/8 s per frame, so turning and walking keep their speed even when the 3D draws slowly
@@ -4511,7 +4614,9 @@ function mount(container, plan, opts) {
       }
       updateRoom(); drawMini();
     }
-    renderer.render(scene, camera);
+    if (GFX && (++sweepN % 30) === 0) upgradeScene(scene);
+    if (GFX) { const sh = mode !== 'walk' && mode !== 'plenum'; if (sun.castShadow !== sh) sun.castShadow = sh; }
+    if (composer && !aoOff) composer.render(); else renderer.render(scene, camera);
     raf = requestAnimationFrame(loop);
   }
 

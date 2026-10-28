@@ -1,0 +1,14 @@
+{
+  "name": "plan3d-superrender",
+  "private": true,
+  "description": "Builds renderer/vendor/superrender.js (Coll Plan3D Super Render: path-traced stills).",
+  "scripts": {
+    "build": "node patch.js && esbuild superrender.js --bundle --minify --format=iife --target=es2020 --legal-comments=eof --outfile=../renderer/vendor/superrender.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "three": "0.185.1",
+    "three-gpu-pathtracer": "0.0.27",
+    "three-mesh-bvh": "0.9.16"
+  }
+}
