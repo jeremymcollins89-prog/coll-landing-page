@@ -54,7 +54,7 @@
     const B = C.bounds, cx = (B.minX + B.maxX) / 2, cz = (B.minZ + B.maxZ) / 2, span = Math.max(B.w || (B.maxX - B.minX), B.d || (B.maxZ - B.minZ), 40);
     const root = new THREE.Group(); root.name = 'p3g'; scene.add(root);
     container.classList.add('p3g-on');
-    C.setBoost(1.9);
+    C.setBoost(1.15);
 
     // ---------------------------------------------------------------- textures
     function glowTex(stops, size) {
@@ -268,7 +268,7 @@
       const g = new THREE.Group(); const body = new THREE.Mesh(mslGeo, M.white); body.rotation.x = Math.PI / 2; g.add(body);
       const nose = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.5, 10), M.stripe); nose.rotation.x = Math.PI / 2; nose.position.z = 1.35; g.add(nose);
       const fl = new THREE.Sprite(ADD(TX.fire, 0xffc070, 1)); fl.scale.set(2, 2, 1); fl.position.z = -1.3; g.add(fl);
-      g.position.copy(from); root.add(g); missiles.push({ g, dir: dir.clone().normalize(), speed: 34, life: 7, puff: 0 }); SND.missile();
+      g.position.copy(from); root.add(g); missiles.push({ g, dir: dir.clone().normalize(), speed: 30, life: 6, puff: 0 }); SND.missile();
     }
 
     // ---------------------------------------------------------------- HUD
@@ -279,7 +279,7 @@
       <div class="p3g-x"><i></i><i></i><i></i><i></i><b></b></div>
       <div class="p3g-msg"></div><div class="p3g-msl">⚠ MISSILE LOCK</div>
       <div class="p3g-hull"><div class="l">HULL</div><div class="bar"><div class="f"></div></div></div>
-      <div class="p3g-help">${C.touchy ? 'FIRE · BEAM over aliens · drag to aim' : 'CLICK / X FIRE · HOLD B TRACTOR BEAM · SHIFT BOOST · G EXIT'}</div>
+      <div class="p3g-help">${C.touchy ? 'FIRE · BEAM over aliens · drag to aim' : 'X FIRE · HOLD B TRACTOR BEAM · L MOUSE AIM (CLICK FIRES) · G EXIT'}</div>
       ${C.touchy ? '<div class="p3g-tb"><button class="fire">FIRE</button><button class="beam">BEAM</button></div>' : ''}`;
     container.appendChild(hud);
     const H = (s) => hud.querySelector(s);
@@ -304,7 +304,7 @@
     }
 
     // ---------------------------------------------------------------- game state
-    let waveClear = false, score = 0, wave = 0, hull = 100, abducted = 0, dead = false, deadT = 0, waveT = 1.2, toSpawn = 0, spawnT = 0, fireT = 0, gunSide = 1, hitFlash = 0, time = 0, liftT = st.y < 14 ? 1.4 : 0;
+    let waveClear = false, score = 0, wave = 0, hull = 100, abducted = 0, dead = false, deadT = 0, waveT = 1.2, toSpawn = 0, spawnT = 0, fireT = 0, gunSide = 1, hitFlash = 0, time = 0, liftT = 0;
     let lastHit = -9, firing = false, beamOn = false, streak = 0, lastKill = -9, mslWarn = 0, best = 0;
     try { best = +localStorage.getItem('p3g.best') || 0; } catch (e) { /* none */ }
     const jets = [], aliens = [];
@@ -345,15 +345,15 @@
     const motes = []; for (let i = 0; i < 40; i++) { const s = new THREE.Sprite(ADD(TX.green, 0xffffff, 0.8)); s.scale.set(0.35, 0.35, 1); s.visible = false; root.add(s); motes.push({ s, a: rnd(0, 6.28), r: rnd(0, 1), h: rnd(0, 1), v: rnd(0.25, 0.6) }); }
 
     // ---------------------------------------------------------------- input
-    const onDown = (e) => { if (e.button === 0) { audio(); firing = true; } };
+    const onDown = (e) => { if (e.button === 0 && C.isLocked()) { audio(); firing = true; } };
     const onUp = (e) => { if (e.button === 0) firing = false; };
     canvas.addEventListener('pointerdown', onDown); global.addEventListener('pointerup', onUp);
-    audio(); C.lock();
+    audio();
     say('AREA 51', 'HOSTILE AIRCRAFT INBOUND', 2.6);
 
     function restart() {
       for (const j of jets) root.remove(j.J); jets.length = 0;
-      score = 0; wave = 0; hull = 100; dead = false; abducted = 0; streak = 0; waveClear = false; for (const m of missiles) root.remove(m.g); missiles.length = 0; waveT = 1; toSpawn = 0; C.setBoost(1.9); drone.visible = true;
+      score = 0; wave = 0; hull = 100; dead = false; abducted = 0; streak = 0; waveClear = false; for (const m of missiles) root.remove(m.g); missiles.length = 0; waveT = 1; toSpawn = 0; C.setBoost(1.15); drone.visible = true;
       const o = H('.p3g-over'); if (o) o.remove(); say('AREA 51', 'HOSTILE AIRCRAFT INBOUND', 2.4);
     }
 
@@ -459,7 +459,7 @@
       }
       // missiles: chase the drone, but turn wide; outrun or dodge them
       for (let i = missiles.length - 1; i >= 0; i--) {
-        const m = missiles[i], P = m.g.position; m.life -= dt; m.speed = Math.min(70, m.speed + dt * 30);
+        const m = missiles[i], P = m.g.position; m.life -= dt; m.speed = Math.min(52, m.speed + dt * 24);
         const want = D.clone().sub(P).normalize(), ang = m.dir.angleTo(want), ax = new THREE.Vector3().crossVectors(m.dir, want);
         if (ang > 1e-4 && ax.lengthSq() > 1e-10) m.dir.applyAxisAngle(ax.normalize(), Math.min(ang, 1.15 * dt)).normalize();
         const p0 = P.clone(); P.addScaledVector(m.dir, m.speed * dt); m.g.lookAt(P.clone().add(m.dir));
@@ -527,8 +527,6 @@
       // effects
       for (let i = fx.length - 1; i >= 0; i--) { const f = fx[i]; f.t += dt; const k = Math.min(1, f.t / f.life); f.update(dt, k, f.t); if (k >= 1) { root.remove(f.obj); if (f.obj.material && f.obj.material.dispose && f.obj.isSprite) f.obj.material.dispose(); fx.splice(i, 1); } }
       if (flashT > 0) { flashT -= dt; flash.intensity = Math.max(0, flash.intensity - dt * 14); } else flash.intensity = 0;
-      // in the chase view the camera rides a little higher in a fight, so the crosshair sits above the drone
-      if (!C.isPilot()) camera.position.y += 0.75;
       if (shake > 0) { camera.position.add(new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).multiplyScalar(shake * 0.35)); shake = Math.max(0, shake - dt * 2.2); }
 
       // the hull patches itself up slowly once you've been out of the fire a while
@@ -603,7 +601,7 @@
       root.traverse(o => { if (o.geometry && o.geometry !== bulletGeo) o.geometry.dispose(); });
       hud.remove(); container.classList.remove('p3g-on'); drone.visible = true;
       try { if (roar) roar.gn.gain.value = 0; if (beamSnd) beamSnd.bg.gain.value = 0; if (AC) setTimeout(() => AC.close(), 200); } catch (e) { /* closed */ }
-      C.unlock(); C.ended();
+      C.ended();
     }
     return { step, key, stop };
   }

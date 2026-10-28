@@ -5083,7 +5083,7 @@ function mount(container, plan, opts) {
   };
   const onKeyUp = (e) => { keys.delete(e.key.toLowerCase()); running = e.shiftKey; if (game) game.key(e.key.toLowerCase(), e, false); };
   function startGame() {
-    setMeasure(false); pilot = false; camYaw = null;
+    setMeasure(false);
     game = global.P3Game.start({
       THREE, scene, camera, drone, st, renderer, canvas, container, keys, touchy, bounds: A.bounds,
       isLocked, lock: () => { if (lockable && !isLocked() && !touchy) toggleLook(); }, unlock: () => { if (isLocked()) document.exitPointerLock(); },
