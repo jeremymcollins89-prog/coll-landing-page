@@ -189,6 +189,10 @@ const ITEMS = {
   scrubsink: { label: 'Scrub sink, stainless, 2 stations', group: 'Sinks and gowning', w: 5, d: 2.17, h: 3, cr: true, wv: true },
   dispenser: { label: 'Glove, mask and bouffant dispenser', group: 'Sinks and gowning', w: 3, d: 0.42, h: 1.25, z: 4, cr: true },
   shoecover: { label: 'Shoe cover dispenser', group: 'Sinks and gowning', w: 1.25, d: 1.25, h: 2.5, cr: true },
+  airshower: { label: 'Air shower, walk-through (interlocked doors)', group: 'Air showers and ceiling', w: 4.17, d: 3.67, h: 7.1, cr: true },
+  teardrop: { label: 'Teardrop LED light, on a grid tee', group: 'Air showers and ceiling', w: 4, d: 0.25, h: 0.2, ceil: true, cr: true, free: true },
+  sprinkler: { label: 'Fire sprinkler head, pendent', group: 'Air showers and ceiling', w: 0.3, d: 0.3, h: 0.25, ceil: true, cr: true, free: true },
+  smokedet: { label: 'Smoke detector', group: 'Air showers and ceiling', w: 0.5, d: 0.5, h: 0.16, ceil: true, cr: true, free: true },
   machine: { label: 'Machine', group: 'Equipment', w: 4, d: 4, h: 8, free: true, hidden: true },
   // stairs up to the floor above: risers 7¾″ max, treads 10″; d is the run (it's set from the floor-to-floor height
   // when placed). The floor above gets a stairwell opening over it.
@@ -385,6 +389,7 @@ const DEVICES = {
   jbox: { label: 'Junction box (equipment hookup)', short: 'J', group: 'Power', h: 1.5, w: 4 / 12, hh: 4 / 12, ifc: ['IFCJUNCTIONBOX', '.POWER.'] },
   switch: { label: 'Light switch', short: 'S', group: 'Controls', h: 4, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCSWITCHINGDEVICE', '.TOGGLESWITCH.'] },
   ffuctl: { label: 'FFU speed controller', short: 'FC', group: 'Controls', h: 4.5, w: 4.5 / 12, hh: 4.5 / 12, ifc: ['IFCSWITCHINGDEVICE', '.SELECTORSWITCH.'] },
+  interlock: { label: 'Door interlock controller (airlock)', short: 'IL', group: 'Controls', h: 5, w: 6 / 12, hh: 8 / 12, ifc: ['IFCCONTROLLER', '.PROGRAMMABLE.'] },
   monitor: { label: 'Room pressure monitor', short: 'PM', group: 'Controls', h: 5, w: 6 / 12, hh: 4.5 / 12, ifc: ['IFCSENSOR', '.PRESSURESENSOR.'] },
   data: { label: 'Data jack', short: 'D', group: 'Data', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.DATAOUTLET.'] },
   panel: { label: 'Electrical panel', short: 'EP', group: 'Power', h: 5, w: 20 / 12, hh: 40 / 12, d: 4 / 12, ifc: ['IFCELECTRICDISTRIBUTIONBOARD', '.DISTRIBUTIONBOARD.'] }
@@ -1383,6 +1388,23 @@ function gridTakeoff(plan, A) {
    Targets are typical industry design ranges (minimums), not a certification. */
 // return grilles: design face velocity (fpm) through the grille; Pa → inches of water column
 const RET_FPM = 400, PA_TO_INWC = 1 / 249.0889;
+/* Room types with the limits their standard puts on a room, checked against what the plan gives the room:
+   USP <797> and <800> (2023 revisions) for sterile and hazardous compounding, EU GMP Annex 1 grades.
+   iso: worst ISO class allowed (in operation); ach: minimum air changes; p: pressure against the rooms next
+   to it ('pos' at least +5 Pa, 'neg' between -2.5 and -7.5 Pa, 'grade' at least 10 Pa over a lower grade);
+   posTo 'unclassified': only against unclassified rooms and outside (an ante room sits below its buffer room);
+   sink: 'need' / 'none'. A guide for the layout; certification on site is what counts. */
+const ROOM_TYPES = {
+  usp797buf: { label: 'USP 797 buffer room', iso: 7, ach: 30, p: 'pos', sink: 'none' },
+  usp797ante: { label: 'USP 797 ante room', iso: 8, ach: 20, p: 'pos', posTo: 'unclassified', sink: 'need' },
+  usp800buf: { label: 'USP 800 hazardous buffer room', iso: 7, ach: 30, p: 'neg', sink: 'none' },
+  usp800ante: { label: 'USP 800 ante room', iso: 7, ach: 30, p: 'pos', posTo: 'unclassified', sink: 'need' },
+  usp800csca: { label: 'USP 800 C-SCA (hazardous, unclassified)', iso: null, ach: 12, p: 'neg' },
+  gmpA: { label: 'GMP Grade A', iso: 5, ach: null, p: 'grade', grade: 4 },
+  gmpB: { label: 'GMP Grade B', iso: 7, ach: null, p: 'grade', grade: 3 },
+  gmpC: { label: 'GMP Grade C', iso: 8, ach: null, p: 'grade', grade: 2 },
+  gmpD: { label: 'GMP Grade D', iso: 8, ach: null, p: 'grade', grade: 1 }
+};
 const ISO_TARGETS = { 5: { ach: 240, cov: 35 }, 6: { ach: 150, cov: 25 }, 7: { ach: 60, cov: 15 }, 8: { ach: 20, cov: 5 }, 9: { ach: 10, cov: 0 } };
 function cleanroomCheck(plan) {
   const Z = zones(plan), rooms = [], grids = [];
@@ -1457,7 +1479,29 @@ function cleanroomCheck(plan) {
     else if (Math.abs(dp) < 5) warn = 'less than 5 Pa difference';
     doors.push({ o, a, b, mx, my, nx, ny, dp, warn });
   }
-  return { rooms, doors, targets: ISO_TARGETS };
+  // room types: class, air changes, pressure against the rooms next to it, sinks
+  for (const q of rooms) {
+    const RT = q.room.crType && ROOM_TYPES[q.room.crType]; q.typeIssues = []; if (!RT) continue;
+    const I = q.typeIssues;
+    if (RT.iso && (!q.iso || q.iso > RT.iso)) I.push(`needs ISO ${RT.iso} or cleaner${q.iso ? ' (set to ISO ' + q.iso + ')' : ' (set its ISO class)'}`);
+    if (RT.ach && q.ach + 1e-6 < RT.ach) I.push(`needs at least ${RT.ach} air changes (has ${Math.round(q.ach)})`);
+    const near = doors.filter(d => d.a === q.room || d.b === q.room).map(d => ({ other: d.a === q.room ? d.b : d.a, dp: d.dp == null ? null : (d.a === q.room ? d.dp : -d.dp) }));
+    const nm = (r) => r ? (r.name || 'Room') : 'outside';
+    if (q.pressure == null) { if (RT.p) I.push('set its pressure to check the cascade'); }
+    else for (const n of near) {
+      if (n.dp == null) continue;
+      const pa = n.dp, inw = (v) => (v * PA_TO_INWC).toFixed(3) + '″';
+      const uncl = !n.other || !n.other.iso || +n.other.iso >= 9;
+      if (RT.p === 'pos' && (RT.posTo !== 'unclassified' || uncl) && pa < 5) I.push(`must be at least +5 Pa (+0.020″) over ${nm(n.other)} (is ${pa > 0 ? '+' : ''}${Math.round(pa * 10) / 10} Pa)`);
+      if (RT.p === 'neg' && (pa > -2.5 || pa < -7.5)) I.push(`must be −2.5 to −7.5 Pa (−0.01 to −0.03″) to ${nm(n.other)} (is ${Math.round(pa * 10) / 10} Pa, ${inw(pa)})`);
+      if (RT.p === 'grade') { const o = n.other && n.other.crType && ROOM_TYPES[n.other.crType]; const og = o && o.grade || 0; if (og < RT.grade && pa < 10) I.push(`must be at least 10 Pa over lower-grade ${nm(n.other)} (is ${Math.round(pa * 10) / 10} Pa)`); }
+    }
+    const sinks = (q.items || []).filter(it => it.type === 'handsink' || it.type === 'scrubsink').length;
+    if (RT.sink === 'none' && sinks) I.push('no sink allowed in this room (move it to the ante room)');
+    if (RT.sink === 'need' && !sinks) I.push('needs a hand-washing sink (Items → Sinks and gowning)');
+    if (I.length) q.ok = false;
+  }
+  return { rooms, doors, targets: ISO_TARGETS, types: ROOM_TYPES };
 }
 /* Grid sections: parts of a generated ceiling laid out on their own grid, turned a quarter turn or shifted
    (plan.gridZones = [{ id, x0, y0, x1, y1, swap, ox, oy }]; ox/oy is where its lines start, unset = its corner).
@@ -2860,7 +2904,7 @@ function itemMesh(THREE, it, M, opt) {
     case 'condenser': box(0, h / 2, 0, w, h, d, mat(0xd8dbd6)); cyl(0, h + 0.02, 0, w * 0.4, 0.05, black, 24); break;
     // ---- cleanroom furniture and equipment: brushed 304 stainless, white powder coat, dark casters
     case 'sstable': case 'sscart': case 'shelving': case 'sscabinet': case 'gownbench': case 'gownrack': case 'crchair': case 'sstrash': case 'tackymat':
-    case 'ivpole': case 'ivrack': case 'ivbar': case 'lafw': case 'bsc': case 'isolator': case 'medfridge': case 'handsink': case 'scrubsink': case 'dispenser': case 'shoecover': {
+    case 'ivpole': case 'ivrack': case 'ivbar': case 'lafw': case 'bsc': case 'isolator': case 'medfridge': case 'handsink': case 'scrubsink': case 'dispenser': case 'shoecover': case 'airshower': case 'teardrop': case 'sprinkler': case 'smokedet': {
       const brushed = cachedCanvas('brushed-ss', () => makeCanvas(256, 64, (c, W2, H2) => { c.fillStyle = '#c9ced1'; c.fillRect(0, 0, W2, H2); for (let k = 0; k < 900; k++) { const v = 180 + Math.random() * 60 | 0; c.fillStyle = `rgba(${v},${v + 4},${v + 6},.35)`; c.fillRect(Math.random() * W2, Math.random() * H2, 20 + Math.random() * 90, 1); } }));
       const sst = new THREE.CanvasTexture(brushed); sst.wrapS = sst.wrapT = THREE.RepeatWrapping; sst.repeat.set(2, 1);
       const ss = new THREE.MeshPhongMaterial({ color: 0xe4e8ea, map: sst, specular: 0xffffff, shininess: 90 });
@@ -2950,6 +2994,18 @@ function itemMesh(THREE, it, M, opt) {
           break;
         }
         case 'dispenser': { box(0, h / 2, 0, w, h, d, ss); for (let k = 0; k < 3; k++) { const x = -w / 3 + k * w / 3; box(x, h / 2, d / 2 + 0.01, w / 3 - 0.1, h - 0.2, 0.02, [blue, coat, mat(0xd8e4ee)][k]); box(x, 0.15, d / 2 + 0.02, 0.4, 0.1, 0.02, rubber); } break; }
+        case 'airshower': {
+          // two nozzle walls and a roof, glass doors at both ends, a stainless floor plate
+          const sw = 0.55, nz = mat(0x6f8fa8);
+          for (const sx of [-1, 1]) { box(sx * (w / 2 - sw / 2), h / 2, 0, sw, h, d, coat); for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) cyl(sx * (w / 2 - sw - 0.02), 1.6 + r * 1.2, -d / 3 + c * d / 3, 0.07, 0.05, nz, 10).rotation.z = Math.PI / 2; }
+          box(0, h - 0.4, 0, w, 0.8, d, coat); box(0, 0.04, 0, w - 2 * sw, 0.08, d, ss);
+          for (const sz2 of [-1, 1]) { box(0, (h - 0.8) / 2, sz2 * (d / 2 - 0.03), w - 2 * sw, h - 0.8, 0.04, glass); box(0, h - 0.95, sz2 * (d / 2 - 0.03), w - 2 * sw, 0.12, 0.06, ss); }
+          box(0, h - 0.2, d / 2 + 0.01, 1.2, 0.18, 0.02, lightP);
+          break;
+        }
+        case 'teardrop': { box(0, h - 0.03, 0, w, 0.06, d * 0.7, coat); const l = cyl(0, h - 0.1, 0, d / 2, w - 0.05, lightP, 16); l.rotation.z = Math.PI / 2; l.scale.set(1, 1, 0.85); break; }
+        case 'sprinkler': { cyl(0, h - 0.01, 0, 0.13, 0.02, coat, 18); cyl(0, h - 0.07, 0, 0.035, 0.1, ssD, 10); cyl(0, h - 0.16, 0, 0.012, 0.06, mat(0xd04a3a), 8); cyl(0, h - 0.2, 0, 0.07, 0.01, ssD, 14); break; }
+        case 'smokedet': { cyl(0, h - 0.06, 0, 0.24, 0.12, coat, 24); cyl(0, h - 0.125, 0, 0.17, 0.01, mat(0xe8eaea), 20); cyl(0.12, h - 0.13, 0, 0.012, 0.012, mat(0x2fbf4f), 8); break; }
         case 'shoecover': { box(0, 0.5, 0, w, 1.0, d, coat); box(0, 1.6, 0, w * 0.8, 1.2, d * 0.8, ss); box(0, 1.02, d / 2 - 0.25, w * 0.6, 0.04, 0.4, blue); break; }
       }
       break;
@@ -4765,5 +4821,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
