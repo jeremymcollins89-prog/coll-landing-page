@@ -295,3 +295,13 @@ body[data-mode="house"] .modechip { background: rgba(127,211,227,.16); color: #9
 .bellp .empty { color: var(--muted); padding: 10px 6px; font-size: 12.5px; }
 .grp.flash { animation: grpflash 1.6s ease-out 1; }
 @keyframes grpflash { 0%, 30% { box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+/* electrical list folded to a chip while placing */
+#elecPal.folded { padding: 0; border: 0; background: transparent; }
+#elecPal .palchip { display: flex; align-items: center; gap: 10px; padding: 7px 12px 7px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: inherit; cursor: pointer; font: inherit; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+#elecPal .palchip:hover { border-color: #f2c84b; }
+#elecPal .palchip .ic { font-size: 16px; color: #f2c84b; }
+#elecPal .palchip small { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: left; }
+#elecPal .palchip b { font-weight: 600; font-size: 13px; color: #f2c84b; }
+#elecPal .palchip .chg { font-size: 12px; color: var(--muted); margin-left: 6px; }
+#elecPal .palfold { align-self: flex-end; margin-left: auto; color: var(--muted) !important; border-style: dashed !important; }

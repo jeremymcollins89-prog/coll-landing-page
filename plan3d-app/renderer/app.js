@@ -46,7 +46,7 @@ const HINTS = {
   header: 'Header panels close the plenum over an open passage between walls. The orange dashes are open gaps: click one to fill it, or press F to fill them all. Or click one end and then the other (ends catch on wall ends and faces). They run from the ceiling up to the top of the walls, with H-studs at 48″ on center.',
   overhead: 'Click on a wall to put an overhead sectional door there (12′ wide, head 2′ below the top of the wall). Change its size in its properties.',
   column: 'Click to place a building column. Its size and steel or concrete are in its properties; it runs up to the roof structure.',
-  elec: 'Pick a device above, then click on a wall: it goes on that face of the wall, facing the room you clicked in. Heights follow the usual mounting heights; change one in its properties.',
+  elec: 'Pick a device (the list folds away; Tab or the ⚡ chip brings it back), then click on a wall: it goes on that face of the wall, facing the room you clicked in. Heights follow the usual mounting heights; change one in its properties.',
   select: 'Click to select. Drag to move. Drag a wall end to stretch it. Drag empty space to pan. Delete removes.',
   build: 'Build mode: pick a piece and click to place it.',
   wall: 'Click corners to draw walls. Type a length (e.g. 23\'8-3/4) and press Enter. Hold Alt for free angles. Esc to finish.',
@@ -124,12 +124,24 @@ function itemPalette() {
   $$('#itemPal button[data-ig]').forEach(b => b.onclick = () => { ed.itemGroup = b.dataset.ig; const first = groups[ed.itemGroup][0]; if (first && IT[ed.itemType].group !== ed.itemGroup) ed.itemType = first[0]; itemPalette(); $('#plan').focus(); });
   $$('#itemPal button[data-it]').forEach(b => b.onclick = () => { ed.itemType = b.dataset.it; itemPalette(); $('#plan').focus(); });
 }
+let elecOpen = true;
 function elecPalette() {
   const DV = Plan3DViewer.DEVICES, groups = {};
   for (const [k, v] of Object.entries(DV)) (groups[v.group] = groups[v.group] || []).push([k, v]);
   if (!ed.deviceType) ed.deviceType = 'outlet';
-  $('#elecPal').innerHTML = Object.entries(groups).map(([g, list]) => `<div class="grp"><h5>${esc(g)}</h5><div class="row">${list.map(([k, v]) => `<button data-dv="${k}" class="${ed.deviceType === k ? 'on' : ''}">${esc(v.label)}</button>`).join('')}</div></div>`).join('');
-  $$('#elecPal button').forEach(b => b.onclick = () => { ed.deviceType = b.dataset.dv; elecPalette(); $('#plan').focus(); });
+  // once a device is picked the list folds down to a small chip, so the plan is clear to place it; click the
+  // chip (or press Tab) to pick another
+  const P = $('#elecPal'), cur = DV[ed.deviceType] || {};
+  P.classList.toggle('folded', !elecOpen);
+  if (!elecOpen) {
+    P.innerHTML = `<button class="palchip" title="Pick a different device (Tab)"><span class="ic">⚡</span><span><small>Placing</small><b>${esc(cur.label || 'Device')}</b></span><span class="chg">Change ▾</span></button>`;
+    P.querySelector('.palchip').onclick = () => { elecOpen = true; elecPalette(); };
+    return;
+  }
+  P.innerHTML = Object.entries(groups).map(([g, list]) => `<div class="grp"><h5>${esc(g)}</h5><div class="row">${list.map(([k, v]) => `<button data-dv="${k}" class="${ed.deviceType === k ? 'on' : ''}">${esc(v.label)}</button>`).join('')}</div></div>`).join('')
+    + `<button class="palfold" title="Fold the list away">▴ Hide list</button>`;
+  $$('#elecPal button[data-dv]').forEach(b => b.onclick = () => { ed.deviceType = b.dataset.dv; elecOpen = false; elecPalette(); msg(toolHintText('elec')); $('#plan').focus(); });
+  P.querySelector('.palfold').onclick = () => { elecOpen = false; elecPalette(); $('#plan').focus(); };
 }
 /* The Grid tool's bar: what a click or drag does, and nudges for the main grid */
 const GRID_MODES = [['room', 'Rooms', 'Click a room to put its ceiling on or take it off'], ['add', 'Add area', 'Drag a box to put ceiling there'], ['cut', 'Cut out', 'Drag a box to take ceiling (and its FFUs and lights) off'], ['center', 'Centre grid', 'Click a room to centre the grid in it'], ['section', 'Grid section', 'Drag a box for a part of the ceiling on its own grid (turned or shifted)']];
@@ -258,6 +270,7 @@ window.addEventListener('keydown', e => {
     return;
   }
   if (view === '3d') return;
+  if (e.key === 'Tab' && ed.tool === 'elec' && !e.ctrlKey && !e.altKey && !/^(input|textarea|select)$/i.test((e.target && e.target.tagName) || '')) { elecOpen = !elecOpen; elecPalette(); e.preventDefault(); return; }
   if (view === 'build') { if (builder && builder.key(e)) e.preventDefault(); return; }
   if (ed.key(e)) { e.preventDefault(); return; }
   if (Plan3DBuilder.NUM_KEYS[e.key] && !e.altKey) { ed.setTool('piece'); pal2d.setTool(Plan3DBuilder.NUM_KEYS[e.key]); e.preventDefault(); return; }
