@@ -20,6 +20,11 @@ const CSS = `
 .p3v-here span{font:11.5px Consolas,"Cascadia Mono",ui-monospace,monospace;color:#f2c84b}
 .p3v-modes{display:flex;border-radius:999px;padding:3px;gap:2px}
 .p3v-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.p3v-mlabels{position:absolute;inset:0;pointer-events:none;overflow:hidden}.p3v-mlab{position:absolute;transform:translate(-50%,-50%);background:#ff9a1f;color:#1a1206;font:700 12.5px/1.2 ui-monospace,Consolas,monospace;padding:4px 7px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.35)}.p3v-mlab small{display:block;font-weight:600;font-size:10.5px;opacity:.8}
+.p3v-mhover{position:absolute;pointer-events:none;transform:translate(14px,14px);background:rgba(20,26,29,.92);color:#e8edef;font:600 12px/1.35 system-ui,sans-serif;padding:6px 9px;border-radius:8px;white-space:nowrap}.p3v-mhover b{color:#ffb547}
+.p3v-ud{position:absolute;right:18px;bottom:150px;display:flex;flex-direction:column;gap:8px;pointer-events:auto}.p3v-ud button{width:54px;height:54px;border-radius:50%;border:0;background:rgba(20,26,29,.8);color:#fff;font-size:20px}
+.p3v-snapdlg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,90%);padding:14px;border-radius:14px;display:flex;flex-direction:column;gap:10px;pointer-events:auto;z-index:5}.p3v-snapdlg b{color:#fff;font-size:15px}.p3v-snapdlg img{width:100%;border-radius:8px}.p3v-snapdlg textarea{background:#11171a;color:#e8edef;border:1px solid #3a464c;border-radius:8px;padding:8px;font:13px system-ui,sans-serif;resize:vertical}.p3v-snapdlg div{display:flex;justify-content:flex-end;gap:8px}.p3v-snapdlg button{border:0;border-radius:8px;padding:8px 14px;font:600 13px system-ui,sans-serif;background:#2b353a;color:#e8edef;cursor:pointer}.p3v-snapdlg button.pri{background:#f2c84b;color:#1a1606}
+.p3v-meas[aria-pressed=true]{background:#ff9a1f;color:#1a1206}
 .p3v-cap{position:absolute;left:50%;bottom:86px;transform:translateX(-50%);padding:12px 18px;border-radius:12px;text-align:center;pointer-events:none;max-width:80%}.p3v-cap b{display:block;font-size:17px;color:#fff;margin-bottom:2px}.p3v-cap span{font-size:12.5px;color:#cfd8dc}
 .p3v-look{font-family:inherit;font-size:12.5px;font-weight:600;color:#cfd8dc;border-radius:999px;padding:6px 12px;cursor:pointer}
 .p3v-look kbd{font:11px Consolas,ui-monospace,monospace;color:#9aa7ad;margin-left:4px;border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:0 4px}
@@ -4165,14 +4170,19 @@ function mount(container, plan, opts) {
     <div class="p3v-labels" hidden></div>
     <div class="p3v-top">
       <div class="p3v-panel p3v-card"><div class="p3v-title"></div><div class="p3v-meta"></div><div class="p3v-here"><b></b><span></span></div></div>
-      <div class="p3v-right"><div class="p3v-panel p3v-modes" role="group" aria-label="View"><button data-m="walk">Walk</button><button data-m="doll">Dollhouse</button><button data-m="plenum" hidden title="Looks into the plenum: the grid ceiling stays, the top comes off">Plenum</button><button data-m="exterior" hidden title="The outside, with the roof on">Exterior</button><button data-m="plan">Plan</button></div>
+      <div class="p3v-right"><div class="p3v-panel p3v-modes" role="group" aria-label="View"><button data-m="walk">Walk</button><button data-m="fly" title="Drone: fly a little drone anywhere, through walls, up into the plenum, outside round the building. W A S D to move, Space or R up, C or F down, Shift faster, drag to look, V for the drone’s own camera">Drone</button><button data-m="doll">Dollhouse</button><button data-m="plenum" hidden title="Looks into the plenum: the grid ceiling stays, the top comes off">Plenum</button><button data-m="exterior" hidden title="The outside, with the roof on">Exterior</button><button data-m="plan">Plan</button></div>
       <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button>
       <button class="p3v-panel p3v-look p3v-lidb" aria-pressed="false" hidden title="Show the lid (the top of the cleanroom, or a roof deck you placed) in every view, or take it off again">Lid</button>
       <button class="p3v-panel p3v-look p3v-air" aria-pressed="true" hidden title="Show or hide the airflow: air down out of the FFUs, into the return grilles, and along the floor out through the doors and out of the building">Airflow</button>
+      <button class="p3v-panel p3v-look p3v-meas" aria-pressed="false" title="Measure: click two points (corners snap) for the distance between them; point at anything to see its size. M turns it on and off, Esc drops a half-done measurement">📏 Measure <kbd>M</kbd></button><button class="p3v-panel p3v-look p3v-mclear" hidden title="Take all the measurements off">✕ Clear</button>
+      <button class="p3v-panel p3v-look p3v-snap" title="Save a picture of this view with a note (and your measurements), to come back to later (P)">📷 Snapshot <kbd>P</kbd></button>
       <button class="p3v-panel p3v-look p3v-tour" hidden title="A guided walk along the gowning route, room by room">▶ Gowning tour</button>
       <button class="p3v-panel p3v-look p3v-srb" hidden title="A photo-real, path-traced picture of this view (light bounces, real glass and steel, soft shadows). Save it as an image.">✨ Super render</button><button class="p3v-panel p3v-cbtn" aria-pressed="false" hidden title="Click anything in the model to leave a comment on it">💬 Comment</button></div>
     </div>
     <div class="p3v-cap p3v-panel" hidden aria-live="polite"></div>
+    <div class="p3v-mlabels" aria-hidden="true"></div><div class="p3v-mhover" hidden></div>
+    <div class="p3v-ud" hidden><button data-ud="1" aria-label="Fly up">▲</button><button data-ud="-1" aria-label="Fly down">▼</button></div>
+    <div class="p3v-snapdlg p3v-panel" hidden role="dialog" aria-label="Snapshot"><b>Snapshot</b><img alt=""><textarea rows="3" placeholder="What needs work here?"></textarea><div><button data-a="cancel">Cancel</button><button data-a="save" class="pri">Save</button></div></div>
     <div class="p3v-aim" aria-hidden="true"></div>
     <div class="p3v-joy" hidden aria-hidden="true"><b>MOVE</b><i></i></div>
     <div class="p3v-bottom"><canvas class="p3v-mini p3v-panel" aria-label="Mini map. Click to jump there."></canvas><div class="p3v-chips"></div></div>
@@ -4326,10 +4336,10 @@ function mount(container, plan, opts) {
   const controls = new THREE.OrbitControls(camera, canvas);
   controls.enableDamping = true; controls.dampingFactor = 0.09; controls.maxPolarAngle = 1.42;
   controls.minDistance = 8; controls.maxDistance = 400; controls.enabled = false;
-  smartZoom(THREE, camera, controls, canvas, { objects: () => { const o = []; if (built) built.root.traverseVisible(m => { if (m.isMesh) o.push(m); }); return o; }, active: () => mode !== 'walk' && !tween });
+  smartZoom(THREE, camera, controls, canvas, { objects: () => { const o = []; if (built) built.root.traverseVisible(m => { if (m.isMesh) o.push(m); }); return o; }, active: () => mode !== 'walk' && mode !== 'fly' && !tween });
 
   const EYE0 = 5.3, R = 0.55; let EYE = EYE0; // eye height, raised to the floor being drawn on
-  const st = { x: 0, z: 0, yaw: 0, pitch: -0.04 };
+  const st = { x: 0, y: 5.5, z: 0, yaw: 0, pitch: -0.04 };
   let A = null, built = null, rooms = [], outside = null;
   let mode = 'walk', tween = null, target = null, stuck = 0, fov = 70, curRoom = undefined;
   const reduce = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -4384,15 +4394,15 @@ function mount(container, plan, opts) {
   // Plenum = the grid ceiling without the lid; Exterior = everything, from outside
   function applyVis(m) {
     if (!built) return;
-    built.ceiling.visible = m === 'walk' || m === 'plenum' || m === 'exterior';
+    built.ceiling.visible = m === 'walk' || m === 'fly' || m === 'plenum' || m === 'exterior';
     if (built.lid) built.lid.visible = lidOn || m === 'walk' || m === 'exterior';
     if (lidBtn) lidBtn.hidden = !(built.lid && built.lid.children.length);
-    if (built.roof) built.roof.visible = m === 'walk' || m === 'exterior';
+    if (built.roof) built.roof.visible = m === 'walk' || m === 'fly' || m === 'exterior';
     // several floors: Dollhouse and the overhead view look down into the floor being edited, so the ones above it hide
     if (built.levelObjs) { const act = (plan && plan.level) || 0, cut = m === 'doll' || m === 'plan'; for (const L of built.levelObjs) for (const o of L.objs) o.visible = !cut || L.k <= act; }
   }
   function startTween(to, dur, done) {
-    const from = { pos: camera.position.clone(), look: mode === 'walk' ? walkLook() : controls.target.clone(), fov: camera.fov };
+    const from = { pos: camera.position.clone(), look: mode === 'walk' ? walkLook() : mode === 'fly' ? camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(6)) : controls.target.clone(), fov: camera.fov };
     tween = { t0: performance.now(), dur: reduce ? 1 : dur, from, to, done };
     controls.enabled = false;
   }
@@ -4413,7 +4423,7 @@ function mount(container, plan, opts) {
   joyEl.addEventListener('pointermove', (e) => { if (e.pointerId !== joy.id) return; e.preventDefault(); e.stopPropagation(); joySet(e.clientX - joy.cx, e.clientY - joy.cy); });
   const joyEnd = (e) => { if (e.pointerId !== joy.id) return; joy.id = null; joySet(0, 0); };
   joyEl.addEventListener('pointerup', joyEnd); joyEl.addEventListener('pointercancel', joyEnd);
-  function setModeUI() { modeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === mode))); joyEl.hidden = !(touchy && mode === 'walk'); if (joyEl.hidden && joy.id == null) joySet(0, 0); }
+  function setModeUI() { modeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === mode))); joyEl.hidden = !(touchy && (mode === 'walk' || mode === 'fly')); if (mode !== 'fly') drone.visible = false; if (udEl) udEl.hidden = !(touchy && mode === 'fly'); if (joyEl.hidden && joy.id == null) joySet(0, 0); }
   function goWalk(x, z, yaw, dur) {
     const p = freeSpot(x, z); target = null;
     const to = { pos: new THREE.Vector3(p.x, EYE, p.z), look: new THREE.Vector3(p.x - Math.sin(yaw) * 6, EYE, p.z - Math.cos(yaw) * 6), fov };
@@ -4430,6 +4440,7 @@ function mount(container, plan, opts) {
   modeBtns.forEach(b => b.addEventListener('click', () => {
     const m = b.dataset.m;
     if (m === 'walk') { if (mode !== 'walk' || tween) goWalk(st.x, st.z, st.yaw); }
+    else if (m === 'fly') { if (mode !== 'fly') goFly(); }
     else if (m !== mode) goOrbit(m);
   }));
 
@@ -4575,6 +4586,189 @@ function mount(container, plan, opts) {
   }
   tourBtn.addEventListener('click', (e) => { e.stopPropagation(); if (tour) stopTour(); else startTour(); });
 
+  // ---- Fly: a free camera that goes anywhere (through walls, into the plenum, outside and over the top).
+  // W A S D move the way you look (looking up and pressing W climbs), Space / R up, C / F down, Q / E turn,
+  // Shift faster; drag (or Mouse look) to look; on a phone the joystick flies and ▲ ▼ go up and down.
+  const udEl = $('.p3v-ud'); let flyUD = 0;
+  udEl.querySelectorAll('button').forEach(b => { const v = +b.dataset.ud; b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); flyUD = v; }); for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { flyUD = 0; }); });
+  // the drone: a small quadcopter you steer; the view follows a few feet behind it (V: look through its camera)
+  const drone = new THREE.Group(); drone.visible = false; scene.add(drone);
+  {
+    const dk = new THREE.MeshPhongMaterial({ color: 0x2b3034, specular: 0x555555, shininess: 60 }), lt = new THREE.MeshPhongMaterial({ color: 0xe9ecee, specular: 0x888888, shininess: 80 });
+    const glass = new THREE.MeshPhongMaterial({ color: 0x0d1418, specular: 0xffffff, shininess: 120 }), prop = new THREE.MeshBasicMaterial({ color: 0x9aa4a9, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.14, 0.62), lt); drone.add(body);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.4), dk); top.position.y = 0.1; drone.add(top);
+    drone.userData.props = [];
+    for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.62), dk); arm.position.set(sx * 0.3, 0.02, sz * 0.28); arm.rotation.y = sx * sz * 0.85; drone.add(arm);
+      const mot = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.08, 14), dk); mot.position.set(sx * 0.5, 0.05, sz * 0.48); drone.add(mot);
+      const pr = new THREE.Mesh(new THREE.CircleGeometry(0.24, 24), prop); pr.rotation.x = -Math.PI / 2; pr.position.set(sx * 0.5, 0.1, sz * 0.48); drone.add(pr);
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.01, 0.04), dk); blade.position.set(sx * 0.5, 0.105, sz * 0.48); drone.add(blade); drone.userData.props.push(blade);
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.16, 0.03), dk); leg.position.set(sx * 0.16, -0.14, sz * 0.2); drone.add(leg);
+    }
+    // camera on a gimbal under the nose, and the nav lights: green on the right, red on the left
+    const gim = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 12), dk); gim.position.set(0, -0.09, -0.3); drone.add(gim);
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.045, 16), glass); lens.position.set(0, -0.09, -0.382); lens.rotation.y = Math.PI; drone.add(lens);
+    const ledG = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), new THREE.MeshBasicMaterial({ color: 0x35e06a })); ledG.position.set(0.5, 0.0, -0.48); drone.add(ledG);
+    const ledR = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3b30 })); ledR.position.set(-0.5, 0.0, -0.48); drone.add(ledR);
+    drone.traverse(o => { o.renderOrder = 4; });
+  }
+  let pilot = false, droneTilt = 0, droneRoll = 0, propSpin = 0;
+  const camOff = new THREE.Vector3();
+  function applyFlyCam() {
+    const chase = mode === 'fly' && !pilot && !tween;
+    drone.visible = chase;
+    drone.position.set(st.x, st.y, st.z); drone.rotation.set(droneTilt, st.yaw, droneRoll, 'YXZ');
+    if (!chase) { camera.position.set(st.x, st.y, st.z); camera.rotation.set(st.pitch, st.yaw, 0, 'YXZ'); return; }
+    // a little behind and above the drone, looking the way it looks
+    const cp = Math.cos(st.pitch); camOff.set(Math.sin(st.yaw) * cp * 3.2, 0.95 - Math.sin(st.pitch) * 3.2, Math.cos(st.yaw) * cp * 3.2);
+    camera.position.set(st.x + camOff.x, st.y + camOff.y, st.z + camOff.z); camera.rotation.set(st.pitch - 0.16, st.yaw, 0, 'YXZ');
+  }
+  function poseFromCamera() { const d = camera.getWorldDirection(new THREE.Vector3()); return { x: camera.position.x, y: camera.position.y, z: camera.position.z, yaw: Math.atan2(-d.x, -d.z), pitch: Math.max(-1.3, Math.min(1.3, Math.asin(Math.max(-1, Math.min(1, d.y))))) }; }
+  function goFly() {
+    if (tween) return;
+    stopTour(); Object.assign(st, poseFromCamera()); target = null; pilot = false;
+    { const cp = Math.cos(st.pitch); st.x -= Math.sin(st.yaw) * cp * 3.2; st.z -= Math.cos(st.yaw) * cp * 3.2; st.y = Math.max(1.5, st.y - 0.95 + Math.sin(st.pitch) * 3.2); }
+    controls.enabled = false; labelsEl.hidden = true; mode = 'fly';
+    applyVis('fly'); setModeUI(); applyFlyCam();
+    hint.textContent = touchy ? 'Drone: joystick flies the way it looks · ▲ ▼ up and down · drag to look' : 'Drone: W A S D fly the way it looks · Space / R up · C / F down · Shift faster · drag or L to look · V drone camera · M measure · P snapshot';
+    hint.classList.remove('gone'); hintGone = false; setTimeout(dismissHint, 6000);
+  }
+  // fly to a saved pose (a snapshot's camera)
+  function flyTo(c) {
+    if (!c || !A) return;
+    stopTour(); target = null; labelsEl.hidden = true; applyVis('fly');
+    const pos = new THREE.Vector3(c.x, c.y, c.z), cp = Math.cos(c.pitch || 0), look = pos.clone().add(new THREE.Vector3(-Math.sin(c.yaw || 0) * cp * 6, Math.sin(c.pitch || 0) * 6, -Math.cos(c.yaw || 0) * cp * 6));
+    startTween({ pos, look, fov: c.fov || fov }, 900, () => { st.x = c.x; st.y = c.y; st.z = c.z; st.yaw = c.yaw || 0; st.pitch = c.pitch || 0; pilot = true; applyFlyCam(); });
+    mode = 'fly'; setModeUI();
+  }
+  function flyStep(dt) {
+    let f = 0, s2 = 0, u = 0, turn = 0;
+    if (keys.has('w') || keys.has('arrowup')) f += 1; if (keys.has('s') || keys.has('arrowdown')) f -= 1;
+    if (keys.has('d')) s2 += 1; if (keys.has('a')) s2 -= 1;
+    if (keys.has(' ') || keys.has('r')) u += 1; if (keys.has('c') || keys.has('f')) u -= 1;
+    if (keys.has('arrowleft') || keys.has('q')) turn += 1; if (keys.has('arrowright') || keys.has('e')) turn -= 1;
+    if (turn) { turnHeld = Math.min(1, turnHeld + dt * 2.5); st.yaw += turn * (1.4 + 1.4 * turnHeld) * dt; } else turnHeld = 0;
+    if (joy.id != null && Math.hypot(joy.f, joy.s) > 0.12) { f += joy.f; s2 += joy.s; }
+    u += flyUD;
+    const sp = (running || keys.has('shift') ? 26 : 9) * dt, cp = Math.cos(st.pitch);
+    const vx = -Math.sin(st.yaw) * cp * f + Math.cos(st.yaw) * s2, vy = Math.sin(st.pitch) * f + u, vz = -Math.cos(st.yaw) * cp * f - Math.sin(st.yaw) * s2, n = Math.hypot(vx, vy, vz);
+    if (n > 1e-4) { const k = sp * Math.min(1, n) / n; st.x += vx * k; st.y += vy * k; st.z += vz * k; }
+    // leans into the way it's flying; props always spinning
+    const lean = Math.min(1, Math.abs(f)) * Math.sign(f) * (running || keys.has('shift') ? 0.32 : 0.2), roll = -Math.max(-1, Math.min(1, s2 + turn * 0.6)) * 0.22;
+    droneTilt += (-lean - droneTilt) * Math.min(1, dt * 5); droneRoll += (roll - droneRoll) * Math.min(1, dt * 5);
+    propSpin += dt * 60; drone.userData.props.forEach((b, i) => { b.rotation.y = propSpin * (i % 2 ? 1 : -1); });
+    drone.position.y = st.y + Math.sin(propSpin * 0.05) * 0.02;
+    const b = A.bounds; st.x = Math.max(b.minX - 120, Math.min(b.maxX + 120, st.x)); st.z = Math.max(b.minZ - 120, Math.min(b.maxZ + 120, st.z)); st.y = Math.max(0.3, Math.min(150, st.y));
+    applyFlyCam();
+  }
+
+  // ---- Measure: click two points for the distance between them (snaps to corners within 3″); pointing at
+  // anything shows its size. Measurements stay until Clear; they show on snapshots too.
+  const measBtn = $('.p3v-meas'), mClearBtn = $('.p3v-mclear'), mLabels = $('.p3v-mlabels'), mHover = $('.p3v-mhover');
+  const mGroup = new THREE.Group(); mGroup.renderOrder = 20; scene.add(mGroup);
+  const mLine = new THREE.LineBasicMaterial({ color: 0xff9a1f, depthTest: false, transparent: true }), mDot = new THREE.MeshBasicMaterial({ color: 0xff9a1f, depthTest: false, transparent: true }), mDotG = new THREE.SphereGeometry(0.08, 12, 8);
+  let measureOn = false, mPending = null, mRubber = null, mLast = 0;
+  const meas = [];
+  const fIn = (v) => fmtFt(Math.abs(v));
+  function mLabelHTML(a, b) {
+    const d = a.distanceTo(b), dh = Math.hypot(b.x - a.x, b.z - a.z), dv = Math.abs(b.y - a.y);
+    return fIn(d) + (dh > 0.04 && dv > 0.04 ? `<small>↔ ${fIn(dh)} · ↕ ${fIn(dv)}</small>` : '');
+  }
+  function dotAt(p) { const m = new THREE.Mesh(mDotG, mDot); m.position.copy(p); m.renderOrder = 21; mGroup.add(m); return m; }
+  function lineOf(a, b) { const g = new THREE.BufferGeometry().setFromPoints([a, b]), l = new THREE.Line(g, mLine); l.renderOrder = 21; mGroup.add(l); return l; }
+  function setMeasure(on) { measureOn = on; measBtn.setAttribute('aria-pressed', String(on)); if (!on) { cancelPending(); mHover.hidden = true; } canvas.style.cursor = on ? 'crosshair' : ''; if (on) dismissHint(); }
+  function cancelPending() { if (!mPending) return; mGroup.remove(mPending.dot); if (mRubber) { mGroup.remove(mRubber.line); mRubber.el.remove(); mRubber = null; } mPending = null; }
+  function refreshClear() { mClearBtn.hidden = !meas.length; }
+  measBtn.addEventListener('click', (e) => { e.stopPropagation(); setMeasure(!measureOn); });
+  mClearBtn.addEventListener('click', (e) => { e.stopPropagation(); cancelPending(); for (const m of meas) { mGroup.remove(m.line, m.da, m.db); m.el.remove(); } meas.length = 0; refreshClear(); });
+  const mRay = new THREE.Raycaster();
+  function surfaceAt(cx, cy) {
+    if (!built) return null;
+    const r = canvas.getBoundingClientRect(); ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1); mRay.setFromCamera(ndc, camera);
+    const seen = (o) => { for (let q = o; q; q = q.parent) if (!q.visible || (q.userData && q.userData.airflow)) return false; return true; };
+    return mRay.intersectObject(built.root, true).find(h => h.object.isMesh && !h.object.isSprite && seen(h.object)) || null;
+  }
+  // the hit point, pulled onto the nearest corner of the face it's on when that's within 3″
+  function snapped(hit) {
+    const p = hit.point.clone(), pos = hit.object.geometry && hit.object.geometry.attributes.position;
+    if (hit.face && pos) { let best = null, bd = 0.25; for (const i of [hit.face.a, hit.face.b, hit.face.c]) { const v = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(hit.object.matrixWorld), d = v.distanceTo(p); if (d < bd) { bd = d; best = v; } } if (best) return best; }
+    return p;
+  }
+  // what's under the pointer: the whole piece it belongs to (everything sharing its plan reference)
+  function pieceOf(o) {
+    let top = null, ref = null;
+    for (let q = o; q && q !== built.root; q = q.parent) { const r2 = q.userData && q.userData.ref; if (r2 && (!ref || (r2.kind === ref.kind && r2.id === ref.id))) { ref = r2; top = q; } else if (ref) break; }
+    return top ? { obj: top, ref } : { obj: o, ref: null };
+  }
+  const KIND_NAMES = { wall: 'Wall', fixture: 'Ceiling fixture', item: 'Item', device: 'Device', chase: 'Air chase', opening: 'Door / opening', beam: 'Beam', column: 'Column', grille: 'Grille', deck: 'Lid piece' };
+  function measureHover(cx, cy) {
+    const now = performance.now(); if (now - mLast < 60) return; mLast = now;
+    const hit = surfaceAt(cx, cy), r = canvas.getBoundingClientRect();
+    if (!hit) { mHover.hidden = true; return; }
+    const p = snapped(hit);
+    if (mPending) {
+      if (!mRubber) { mRubber = { line: lineOf(mPending.p, p), el: document.createElement('div') }; mRubber.el.className = 'p3v-mlab'; mRubber.el.style.opacity = '0.8'; mLabels.appendChild(mRubber.el); }
+      mRubber.line.geometry.setFromPoints([mPending.p, p]); mRubber.b = p; mRubber.el.innerHTML = mLabelHTML(mPending.p, p);
+      mHover.hidden = true; return;
+    }
+    const pc = pieceOf(hit.object), box = new THREE.Box3().setFromObject(pc.obj), sz = box.getSize(new THREE.Vector3());
+    const w = Math.max(sz.x, sz.z), d = Math.min(sz.x, sz.z), name = (pc.obj.userData && pc.obj.userData.label) || (pc.ref && KIND_NAMES[pc.ref.kind]) || 'Size';
+    mHover.innerHTML = `<b>${name}</b><br>${fIn(w)} × ${fIn(d)} × ${fIn(sz.y)} high<br><span style="opacity:.7">top at ${fIn(box.max.y)} · click two points to measure</span>`;
+    mHover.style.left = (cx - r.left) + 'px'; mHover.style.top = (cy - r.top) + 'px'; mHover.hidden = false;
+  }
+  function measureClick(cx, cy) {
+    const hit = surfaceAt(cx, cy); if (!hit) return;
+    const p = snapped(hit);
+    if (!mPending) { mPending = { p, dot: dotAt(p) }; return; }
+    const a = mPending.p, el = document.createElement('div'); el.className = 'p3v-mlab'; el.innerHTML = mLabelHTML(a, p); mLabels.appendChild(el);
+    meas.push({ a, b: p, line: lineOf(a, p), da: mPending.dot, db: dotAt(p), el });
+    if (mRubber) { mGroup.remove(mRubber.line); mRubber.el.remove(); mRubber = null; }
+    mPending = null; refreshClear();
+  }
+  const mTmp = new THREE.Vector3();
+  function placeLabel(el, a, b) {
+    mTmp.copy(a).add(b).multiplyScalar(0.5).project(camera);
+    if (mTmp.z > 1) { el.style.display = 'none'; return; }
+    el.style.display = ''; el.style.left = ((mTmp.x * 0.5 + 0.5) * container.clientWidth) + 'px'; el.style.top = ((-mTmp.y * 0.5 + 0.5) * container.clientHeight) + 'px';
+  }
+  function updateMeasureLabels() { for (const m of meas) placeLabel(m.el, m.a, m.b); if (mRubber && mPending && mRubber.b) placeLabel(mRubber.el, mPending.p, mRubber.b); }
+
+  // ---- Snapshot: a picture of this view (with the measurements on it) and a note, saved with the plan in the
+  // app (opts.onSnapshot), or downloaded as a picture in a walkthrough or the phone viewer.
+  const snapBtn = $('.p3v-snap'), snapDlg = $('.p3v-snapdlg');
+  let snapPending = null;
+  function takeSnapshot() {
+    if (!built || tween || !snapDlg.hidden) return;
+    // with the drone out, the picture is what its camera sees (not the drone from behind)
+    const viaDrone = mode === 'fly' && !pilot; if (viaDrone) { pilot = true; applyFlyCam(); }
+    try { renderer.render(scene, camera); } catch (e) { /* draw what's there */ }
+    const W0 = canvas.width, H0 = canvas.height, k = Math.min(1, 1600 / W0), c2 = document.createElement('canvas'); c2.width = Math.round(W0 * k); c2.height = Math.round(H0 * k);
+    const g = c2.getContext('2d'); g.drawImage(canvas, 0, 0, c2.width, c2.height);
+    // the measurement labels, drawn onto the picture
+    const sx = c2.width / container.clientWidth, sy = c2.height / container.clientHeight;
+    g.font = `700 ${Math.round(13 * sx)}px Consolas, monospace`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (const m of meas) {
+      mTmp.copy(m.a).add(m.b).multiplyScalar(0.5).project(camera); if (mTmp.z > 1) continue;
+      const x = (mTmp.x * 0.5 + 0.5) * container.clientWidth * sx, y = (-mTmp.y * 0.5 + 0.5) * container.clientHeight * sy, t = fIn(m.a.distanceTo(m.b)), w = g.measureText(t).width + 14 * sx;
+      g.fillStyle = '#ff9a1f'; g.fillRect(x - w / 2, y - 11 * sy, w, 22 * sy); g.fillStyle = '#1a1206'; g.fillText(t, x, y);
+    }
+    if (viaDrone) { pilot = false; applyFlyCam(); }
+    const img = c2.toDataURL('image/jpeg', 0.86), pose = mode === 'walk' ? { x: st.x, y: EYE, z: st.z, yaw: st.yaw, pitch: st.pitch } : mode === 'fly' ? { x: st.x, y: st.y, z: st.z, yaw: st.yaw, pitch: st.pitch } : poseFromCamera();
+    snapPending = { img, cam: { ...pose, fov: camera.fov, mode } };
+    snapDlg.querySelector('img').src = img; const ta = snapDlg.querySelector('textarea'); ta.value = ''; snapDlg.hidden = false; setTimeout(() => ta.focus(), 30);
+  }
+  snapBtn.addEventListener('click', (e) => { e.stopPropagation(); takeSnapshot(); });
+  snapDlg.addEventListener('pointerdown', (e) => e.stopPropagation());
+  snapDlg.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') snapDlg.querySelector('[data-a=cancel]').click(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) snapDlg.querySelector('[data-a=save]').click(); });
+  snapDlg.querySelectorAll('button').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation(); snapDlg.hidden = true; const S2 = snapPending; snapPending = null; canvas.focus();
+    if (b.dataset.a !== 'save' || !S2) return;
+    const snap = { id: 's' + Date.now().toString(36), at: new Date().toISOString(), note: snapDlg.querySelector('textarea').value.trim(), img: S2.img, cam: S2.cam, meas: meas.map(m => ({ a: m.a.toArray().map(v => +v.toFixed(3)), b: m.b.toArray().map(v => +v.toFixed(3)) })) };
+    if (opts.onSnapshot) opts.onSnapshot(snap);
+    else { const a2 = document.createElement('a'); a2.href = S2.img; a2.download = ((plan && plan.name) || 'Plan3D') + ' snapshot' + (snap.note ? ' - ' + snap.note.slice(0, 40).replace(/[\\/:*?"<>|]+/g, ' ') : '') + '.jpg'; document.body.appendChild(a2); a2.click(); a2.remove(); }
+  }));
+
   const pts = new Map(); let down = null, pinch = null;
   let hintGone = false; function dismissHint() { if (hintGone) return; hintGone = true; hint.classList.add('gone'); }
   const coarse = global.matchMedia && global.matchMedia('(pointer: coarse)').matches;
@@ -4586,7 +4780,7 @@ function mount(container, plan, opts) {
     dismissHint(); canvas.focus(); stopTour();
     if (isLocked()) { down = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0, multi: false }; return; }
     down = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0, multi: pts.size > 0 };
-    if (mode !== 'walk' || tween) return;
+    if ((mode !== 'walk' && mode !== 'fly') || tween) return;
     canvas.setPointerCapture(e.pointerId);
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), fov }; down.multi = true; }
@@ -4599,26 +4793,27 @@ function mount(container, plan, opts) {
   function toggleLook() {
     if (!lockable) return;
     if (isLocked()) { document.exitPointerLock(); return; }
-    if (mode !== 'walk') goWalk(st.x, st.z, st.yaw, 500);
+    if (mode !== 'walk' && mode !== 'fly') goWalk(st.x, st.z, st.yaw, 500);
     try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (err) { /* not allowed here */ }
   }
   if (lookBtn) { if (!lockable) lookBtn.hidden = true; lookBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleLook(); }); }
   document.addEventListener('pointerlockchange', () => { container.classList.toggle('p3v-looking', isLocked()); keys.clear(); if (lookBtn) lookBtn.setAttribute('aria-pressed', String(isLocked())); });
   canvas.addEventListener('mousemove', e => {
-    if (!isLocked() || mode !== 'walk' || tween) return;
+    if (!isLocked() || (mode !== 'walk' && mode !== 'fly') || tween) return;
     const k = 0.0024 * (fov / 70);
     st.yaw -= e.movementX * k; st.pitch = Math.max(-1.25, Math.min(1.25, st.pitch - e.movementY * k));
   });
   canvas.addEventListener('pointermove', e => {
     if (isLocked()) return;
     if (down) down.moved = Math.max(down.moved, Math.hypot(e.clientX - down.x, e.clientY - down.y));
-    if (mode === 'walk' && !tween && pts.has(e.pointerId)) {
+    if ((mode === 'walk' || mode === 'fly') && !tween && pts.has(e.pointerId)) {
       const p = pts.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
       if (pts.size === 1) { const k = (e.pointerType === 'touch' ? 0.0068 : 0.0058) * (fov / 70); st.yaw -= dx * k; st.pitch = Math.max(-1.25, Math.min(1.25, st.pitch - dy * k)); }  // game-style: drag up looks up, drag right turns right (same as mouse look and the joystick)
       else if (pts.size === 2 && pinch) { const [a, b] = [...pts.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); fov = Math.max(35, Math.min(85, pinch.fov * pinch.d / d)); camera.fov = fov; camera.updateProjectionMatrix(); }
       ring.visible = false; return;
     }
-    if (e.pointerType === 'mouse' && !e.buttons && !tween) {
+    if (measureOn && !e.buttons && !tween) { measureHover(e.clientX, e.clientY); ring.visible = false; return; }
+    if (e.pointerType === 'mouse' && !e.buttons && !tween && mode !== 'fly') {
       const p = pick(e.clientX, e.clientY);
       if (p) { ring.position.set(p.x, 0.03, p.z); ring.visible = true; } else ring.visible = false;
     }
@@ -4632,10 +4827,12 @@ function mount(container, plan, opts) {
     if (isLocked()) { const r = canvas.getBoundingClientRect(); e = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; }
 
     if (commentMode) { placeComment(e.clientX, e.clientY); return; }
+    if (measureOn) { measureClick(e.clientX, e.clientY); return; }
     if (checkSurpriseClick(e.clientX, e.clientY)) return;
     if (checkSwitchClick(e.clientX, e.clientY)) return;
     if (checkDoorClick(e.clientX, e.clientY)) return;
 
+    if (mode === 'fly') return;
     const p = pick(e.clientX, e.clientY); if (!p) return;
     if (mode === 'walk') { const f = freeSpot(p.x, p.z); target = f; stuck = 0; showPulse(f.x, f.z); }
     else { const yaw = Math.atan2(-(p.x - camera.position.x), -(p.z - camera.position.z)); showPulse(p.x, p.z); goWalk(p.x, p.z, yaw); }
@@ -4730,9 +4927,9 @@ function mount(container, plan, opts) {
   canvas.addEventListener('pointerup', endPointer);
   canvas.addEventListener('pointercancel', endPointer);
   canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') ring.visible = false; });
-  canvas.addEventListener('wheel', e => { if (mode !== 'walk') return; e.preventDefault(); fov = Math.max(12, Math.min(85, fov + e.deltaY * 0.03 * (fov / 60))); camera.fov = fov; camera.updateProjectionMatrix(); }, { passive: false });
+  canvas.addEventListener('wheel', e => { if (mode !== 'walk' && mode !== 'fly') return; e.preventDefault(); fov = Math.max(12, Math.min(85, fov + e.deltaY * 0.03 * (fov / 60))); camera.fov = fov; camera.updateProjectionMatrix(); }, { passive: false });
   const keys = new Set();
-  const MOVE_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'q', 'e', 'shift'];
+  const MOVE_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'q', 'e', 'shift', ' ', 'r', 'f', 'c'];
   const typing = (t) => t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName || ''));
   // Keys reach the walkthrough whenever it's on screen and you're not typing in a box,
   // so you don't have to click the 3D view first.
@@ -4743,11 +4940,15 @@ function mount(container, plan, opts) {
     const k = e.key.toLowerCase();
     if (tour && /^(w|a|s|d|q|e|arrow\w+|escape)$/.test(k)) stopTour();
     if (k === 'l' && !e.repeat) { toggleLook(); e.preventDefault(); return; }
+    if (k === 'm' && !e.repeat && (container.contains(e.target) || container.clientWidth > global.innerWidth * 0.6)) { setMeasure(!measureOn); e.preventDefault(); return; }
+    if (k === 'p' && !e.repeat && (container.contains(e.target) || container.clientWidth > global.innerWidth * 0.6)) { takeSnapshot(); e.preventDefault(); return; }
+    if (k === 'escape' && mPending) { cancelPending(); }
+    if (k === 'v' && !e.repeat && mode === 'fly') { pilot = !pilot; applyFlyCam(); e.preventDefault(); return; }
     // Only take keys that are meant for the walkthrough: when you're in it, or when it fills the window.
     // Side by side with the 2D plan, keys typed in the plan stay with the plan (W = wall tool, and so on).
     const inView = container.contains(e.target), big = container.clientWidth > global.innerWidth * 0.6;
     if (!inView && !big) return;
-    if (mode !== 'walk' && !inView) return;
+    if (mode !== 'walk' && mode !== 'fly' && !inView) return;
     running = e.shiftKey;
     if (MOVE_KEYS.includes(k)) { keys.add(k); dismissHint(); if (k !== 'shift') e.preventDefault(); }
   };
@@ -4831,8 +5032,8 @@ function mount(container, plan, opts) {
     curRoom = undefined;
   }
   function updateRoom() {
-    const x = mode === 'walk' && !tween ? st.x : camera.position.x, z = mode === 'walk' && !tween ? st.z : camera.position.z;
-    const r = (mode !== 'walk' && !tween) ? { name: 'Overview', dims: '' } : roomAt(x, z);
+    const live = (mode === 'walk' || mode === 'fly') && !tween, x = live ? st.x : camera.position.x, z = live ? st.z : camera.position.z;
+    const r = (!live && !tween) ? { name: 'Overview', dims: '' } : roomAt(x, z);
     if (r === curRoom || (curRoom && r && !r.id && curRoom.name === r.name)) return; curRoom = r;
     hereName.textContent = r ? (r.name || 'Room') : '—'; hereDims.textContent = r ? (r.dims || '') : '';
     [...rooms, outside].forEach(q => q.__btn && q.__btn.classList.toggle('on', q === r));
@@ -4864,6 +5065,7 @@ function mount(container, plan, opts) {
       const sx = r0 ? r0.x : b.cx, sz = r0 ? r0.y : b.cz;
       const f = freeSpot(sx, sz); st.x = f.x; st.z = f.z; st.yaw = r0 ? Math.atan2(-(b.cx - sx), -(b.cz - sz)) || 0 : 0; st.pitch = -0.04;
       if (A.empty) { mode = 'doll'; }
+      if (mode === 'fly') mode = 'doll';
       if (mode === 'walk') { labelsEl.hidden = true; applyWalkCam(); }
       else { const pose = orbitPose(mode); camera.position.copy(pose.pos); camera.fov = 45; camera.updateProjectionMatrix(); controls.target.copy(pose.look); controls.enabled = true; controls.update(); labelsEl.hidden = false; }
       applyVis(mode);
@@ -4909,7 +5111,8 @@ function mount(container, plan, opts) {
           else { const sp = Math.min(d, dt * Math.max(2.2, Math.min(9, d * 2.6))); const m = step(dx / d * sp, dz / d * sp); if (m < sp * 0.2) { stuck += dt; if (stuck > 0.2) target = null; } else stuck = 0; }
         }
         applyWalkCam();
-      } else controls.update();
+      } else if (mode === 'fly') flyStep(dt);
+      else controls.update();
 
       if (built && built.doors) {
         built.doors.forEach(doorGroup => {
@@ -4928,7 +5131,7 @@ function mount(container, plan, opts) {
           l.d.style.transform = `translate(${(tmp.x * 0.5 + 0.5) * w}px,${(-tmp.y * 0.5 + 0.5) * h}px) translate(-50%,-50%)`;
         }
       }
-      updateRoom(); drawMini();
+      updateRoom(); drawMini(); updateMeasureLabels();
     }
     if (gas.length) stepGas(dt);
     if (GFX && (++sweepN % 30) === 0) upgradeScene(scene);
@@ -4947,9 +5150,10 @@ function mount(container, plan, opts) {
     loadPlan: (p) => setPlan(p, false),
     setMode: (m) => { if (m === 'walk') goWalk(st.x, st.z, st.yaw); else goOrbit(m); },
     resize,
-    get state() { return { x: st.x, z: st.z, yaw: st.yaw, pitch: st.pitch, mode }; },
+    get state() { return { x: st.x, y: st.y, z: st.z, yaw: st.yaw, pitch: st.pitch, mode }; },
+    flyTo: (c) => flyTo(c), setMeasure: (on) => setMeasure(!!on), takeSnapshot: () => takeSnapshot(),
     // a picture of the view as it is now (JPEG data URL), or null when the 3D view isn't on screen
-    snapshot: (q) => { if (canvas.width < 64 || canvas.height < 64) return null; try { renderer.render(scene, camera); return canvas.toDataURL('image/jpeg', q || 0.9); } catch (e) { return null; } },
+    snapshot: (q) => { if (canvas.width < 64 || canvas.height < 64) return null; const dv = drone.visible; drone.visible = false; try { renderer.render(scene, camera); return canvas.toDataURL('image/jpeg', q || 0.9); } catch (e) { return null; } finally { drone.visible = dv; } },
     exportGLB: () => new Promise((resolve, reject) => {
       if (!THREE.GLTFExporter) return reject(new Error('GLTF exporter missing'));
       const fresh = buildStack(THREE, plan);

@@ -556,7 +556,7 @@ ipcMain.handle('save-project', async (e, json, current, suggested) => {
 ipcMain.handle('export-file', async (e, { data, name, ext }) => {
   const r = await dialog.showSaveDialog(win, {
     defaultPath: path.join(app.getPath('documents'), (name || 'Walkthrough') + '.' + ext),
-    filters: [{ name: ext === 'html' ? 'Web page' : ext === 'csv' ? 'Spreadsheet (CSV)' : ext === 'ifc' ? 'IFC for Revit / BIM' : '3D model (glTF binary)', extensions: [ext] }]
+    filters: [{ name: ext === 'html' ? 'Web page' : ext === 'csv' ? 'Spreadsheet (CSV)' : ext === 'ifc' ? 'IFC for Revit / BIM' : ext === 'jpg' ? 'Picture (JPEG)' : '3D model (glTF binary)', extensions: [ext] }]
   });
   if (r.canceled || !r.filePath) return null;
   if (typeof data === 'string') fs.writeFileSync(r.filePath, data, 'utf8');

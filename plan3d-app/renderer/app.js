@@ -196,10 +196,11 @@ function updateChrome() {
 /* ---------- 3D ---------- */
 function ensureViewer() {
   if (viewer) return viewer;
-  viewer = Plan3DViewer.mount($('#view3d'), clonePlan(), { superSrc: 'vendor/superrender.js' });
+  viewer = Plan3DViewer.mount($('#view3d'), clonePlan(), { superSrc: 'vendor/superrender.js', onSnapshot: (sn) => { ed.edit(P => { P.snaps = (P.snaps || []).concat([sn]); }); toast('Snapshot saved with the plan (Plan panel → Snapshots).'); } });
   return viewer;
 }
-function clonePlan() { const p = JSON.parse(JSON.stringify(ed.plan)); delete p.background; return p; }
+// the 3D view doesn't need the background drawing or the snapshot pictures (big), so they stay out of its copy
+function clonePlan() { const sn = ed.plan.snaps; if (sn) delete ed.plan.snaps; let p; try { p = JSON.parse(JSON.stringify(ed.plan)); } finally { if (sn) ed.plan.snaps = sn; } delete p.background; return p; }
 function queue3D() {
   if (view === '2d' || !viewer) return;
   clearTimeout(liveTimer); liveTimer = setTimeout(() => viewer.setPlan(clonePlan()), view === 'split' ? 250 : 0);
@@ -757,6 +758,7 @@ function renderProps(opt) {
     </div>
     ${house ? '' : ffuPanelHtml(P) + lightPanelHtml(P)}
     ${house ? '' : checkGroupHtml(P) + flowGroupHtml(P) + loadsGroupHtml(P)}
+    ${snapsGroupHtml(P)}
     ${commentsGroupHtml(P)}
     ${fld('Project type', `<select id="pMode"><option value="cleanroom" ${house ? '' : 'selected'}>Cleanroom</option><option value="house" ${house ? 'selected' : ''}>House</option></select>`)}`;
   if (view === 'build') h = `<div class="hd"><span class="kind">Build</span></div>
@@ -817,7 +819,7 @@ function renderProps(opt) {
   bindLen('pSH', 'ft', v => ed.edit(Pl => { Pl.shellH = Math.max(6, Math.min(80, v)); }));
   $('#pSnap').onchange = e => { ed.snapIn = +e.target.value; };
   bindParts();
-  bindComments(P);
+  bindComments(P); bindSnaps(P);
   if (!house) { bindFfuPanel(P); bindLightPanel(P); bindLoads(P); bindFlows(P); }
   if ($('#pClearAuto')) $('#pClearAuto').onclick = () => confirmDlg('Clear all walls?', 'This removes every wall, door, glass panel and chase. Room labels and the background stay. You can undo with Ctrl+Z.', 'Clear walls').then(ok => { if (ok) ed.edit(Pl => { Pl.walls = []; Pl.openings = []; Pl.chases = []; }); });
   if (B) {
@@ -978,6 +980,20 @@ async function checkComments(loud) {
 setInterval(() => { if (document.visibilityState === 'visible') checkComments(false); }, 60000);
 window.addEventListener('focus', () => checkComments(false));
 /* ---------- Customer comments (from the walkthrough page) ---------- */
+/* ---------- Snapshots: pictures taken in the 3D view (📷), each with a note and the camera it was taken from ---------- */
+function snapsGroupHtml(P) {
+  const L = P.snaps || [];
+  if (!L.length) return `<div class="grp"><h3>Snapshots</h3><p class="note">In 3D, press 📷 Snapshot (or P) to save a picture of an area you want to work on, with a note. They're listed here; Go there flies the 3D view back to the spot.</p></div>`;
+  return `<div class="grp"><h3>Snapshots <small>${L.filter(x => !x.done).length} open</small></h3><div class="snaps">${L.map((x, i) => `<div class="snap${x.done ? ' done' : ''}"><img src="${x.img}" alt=""><div><b>${i + 1}.</b> ${esc(x.note || 'No note')}<small>${esc((x.at || '').slice(0, 16).replace('T', ' '))}${x.meas && x.meas.length ? ' · ' + x.meas.length + ' measurement' + (x.meas.length === 1 ? '' : 's') : ''}</small>
+    <div class="row"><button class="btn small" data-sgo="${x.id}">Go there</button><button class="btn small" data-sdone="${x.id}">${x.done ? 'Reopen' : 'Done'}</button><button class="btn small" data-ssave="${x.id}">Save picture</button><button class="btn small danger" data-sdel="${x.id}">Delete</button></div></div></div>`).join('')}</div></div>`;
+}
+function bindSnaps(P) {
+  const find = (id) => (ed.plan.snaps || []).find(x => x.id === id);
+  $$('[data-sgo]').forEach(b => b.onclick = () => { const x = find(b.dataset.sgo); if (!x) return; if (view === '2d') setView('split'); requestAnimationFrame(() => { if (viewer && viewer.flyTo) viewer.flyTo(x.cam); }); });
+  $$('[data-sdone]').forEach(b => b.onclick = () => ed.edit(Q => { const x = (Q.snaps || []).find(y => y.id === b.dataset.sdone); if (x) x.done = !x.done; }));
+  $$('[data-sdel]').forEach(b => b.onclick = () => ed.edit(Q => { Q.snaps = (Q.snaps || []).filter(y => y.id !== b.dataset.sdel); }));
+  $$('[data-ssave]').forEach(b => b.onclick = async () => { const x = find(b.dataset.ssave); if (!x || !api.exportFile) return; const bin = atob(x.img.split(',')[1]); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); const p = await api.exportFile(u, (ed.plan.name || 'Plan3D') + ' snapshot ' + ((ed.plan.snaps || []).indexOf(x) + 1), 'jpg'); if (p) toast('Picture saved.', { label: 'Open it', fn: () => api.openPath(p) }); });
+}
 function commentsGroupHtml(P) {
   const L = P.comments || [];
   const rows = L.map((c, i) => `<div class="pl-row"><span><b>${i + 1}.</b> ${esc(c.text)}<small>${esc(c.by || 'Customer')} · ${esc((c.at || '').slice(0, 10))}${c.done ? ' · done' : ''}</small></span><b><button class="btn small" data-cdone="${esc(c.id)}" title="${c.done ? 'Mark open' : 'Mark done'}">${c.done ? '↺' : '✓'}</button><button class="btn small danger" data-cdel="${esc(c.id)}" title="Delete">✕</button></b></div>`).join('');
