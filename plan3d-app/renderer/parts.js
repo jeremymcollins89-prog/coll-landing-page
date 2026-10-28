@@ -392,7 +392,8 @@ function partsList(plan) {
       ffuLb += z.lb || 0; ffuCfm += z.cfm || 0; ffuN++;
       continue;
     }
-    const LM = plan.lightModel;
+    const LM = plan.lightModel, LZ = LM && f.type !== 'ffu' && global.Plan3DEquipment ? global.Plan3DEquipment.lightSize(LM, f) : null;
+    if (LZ) { const [nm0] = fxSize(f); add('Ceiling', (LM.maker ? LM.maker + ' ' : '') + LM.model + ' LED panel, ' + nm0 + ', ' + LZ.model, LZ.watts + ', ' + LZ.lm + ', ' + LZ.cct, 1, 'ea', 60); continue; }
     const [nm, sz] = fxSize(f); add('Ceiling', f.type === 'ffu' ? 'Fan filter unit, ' + nm : (LM ? (LM.maker ? LM.maker + ' ' : '') + LM.name + ', ' : 'LED light, ') + nm, LM && f.type !== 'ffu' ? sz + (sz ? ', ' : '') + (LM.finishLabel || '') : sz, 1, 'ea', f.type === 'ffu' ? 61 : 60);
   }
   if (ffuN && ffuLb) add('Ceiling', 'FFU weight on the grid, total', '', Math.round(ffuLb), 'lb', 65);
