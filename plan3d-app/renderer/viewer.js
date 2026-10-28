@@ -813,8 +813,10 @@ function footprint(A, all) {
   });
   const joined = new Set();
   free.forEach((a, ia) => {
-    let best = -1, bd = 16;
-    free.forEach((b, ib) => { if (ib === ia || b.w === a.w) return; const d = Math.hypot(b.x - a.x, b.z - a.z); if (d > 0.3 && d < bd && !crosses(a, b)) { bd = d; best = ib; } });
+    // an open side closes straight across: ends lined up along X or Y count as half as far, so they link to
+    // each other before cutting diagonally to a nearer loose end (that cut left a V notch in the floor)
+    let best = -1, bs = Infinity;
+    free.forEach((b, ib) => { if (ib === ia || b.w === a.w) return; const d = Math.hypot(b.x - a.x, b.z - a.z), sc = Math.abs(b.x - a.x) < 0.1 || Math.abs(b.z - a.z) < 0.1 ? d * 0.5 : d; if (d > 0.3 && d < 16 && sc < bs && !crosses(a, b)) { bs = sc; best = ib; } });
     if (best < 0) return;
     const key = Math.min(ia, best) + '-' + Math.max(ia, best); if (joined.has(key)) return; joined.add(key);
     stamp(a.x, a.z, free[best].x, free[best].z, 0.05);
