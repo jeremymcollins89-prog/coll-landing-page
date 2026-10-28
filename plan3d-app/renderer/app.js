@@ -578,9 +578,11 @@ function renderProps(opt) {
     h = `<div class="hd"><span class="kind">${o.type === 'ffu' ? 'Fan filter unit' : 'LED light'}</span><button class="btn small danger" id="pDel">Delete</button></div>
       ${fld('Type', `<select id="pFx"><option value="led" ${o.type !== 'ffu' ? 'selected' : ''}>LED light, 2×4</option><option value="ffu" ${o.type === 'ffu' ? 'selected' : ''}>Fan filter unit, 2×4</option></select>`)}
       <div class="row"><button class="btn small" id="pFxTurn">Turn 90° (R)</button><button class="btn small" id="pFxSnap">Snap into the grid</button></div>
+      ${o.type === 'ffu' ? `<label class="chk" title="It looks like every other filter. In the 3D view, walkthroughs and the phone viewer, clicking it plays a fart and puffs out a cloud of green gas."><input type="checkbox" id="pFxSur" ${o.surprise ? 'checked' : ''}> 💨 Surprise filter (hidden: click it in 3D)</label>` : ''}
       <p class="note">Sits in the 2′ × 4′ ceiling grid. Turned across the grid, it takes half of two cells side by side: the cross tee moves to its edge and the other half gets one 2′ × 4′ tile laid the same way.</p>`;
     box.innerHTML = h;
     $('#pFx').onchange = e => ed.edit(() => { o.type = e.target.value; });
+    if ($('#pFxSur')) $('#pFxSur').onchange = e => ed.edit(() => { if (e.target.checked) o.surprise = true; else delete o.surprise; });
     $('#pFxTurn').onclick = () => ed.turnFixture(o); $('#pFxSnap').onclick = () => snapFixturesIn(new Set([o.id]));
     $('#pDel').onclick = () => ed.deleteSel();
     return;

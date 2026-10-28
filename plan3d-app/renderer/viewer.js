@@ -4271,6 +4271,78 @@ function mount(container, plan, opts) {
     return false;
   }
 
+  // ---- The surprise filter: one FFU marked "Surprise" in the app looks like every other filter, until someone
+  // clicks it: a fart, and a cloud of green gas pushed down out of the filter that drifts and slowly thins away.
+  const gasRay = new THREE.Raycaster(), gas = [];
+  let gasTex = null;
+  function gasTexture() {
+    if (gasTex) return gasTex;
+    const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+    for (let k = 0; k < 7; k++) { // a lumpy, soft puff
+      const x = 64 + (Math.random() - 0.5) * 34, y = 64 + (Math.random() - 0.5) * 34, r = 26 + Math.random() * 22, gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, 'rgba(255,255,255,0.55)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.22)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    }
+    gasTex = new THREE.CanvasTexture(c); return gasTex;
+  }
+  let fartAC = null;
+  function fartSound() {
+    try {
+      const AC = global.AudioContext || global.webkitAudioContext; if (!AC) return;
+      const ac = fartAC || (fartAC = new AC()); if (ac.state === 'suspended') ac.resume();
+      const t = ac.currentTime + 0.02, dur = 1.0 + Math.random() * 0.7, f0 = 85 + Math.random() * 35;
+      const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 0.55, t + dur);
+      const wob = ac.createOscillator(), wg = ac.createGain(); wob.frequency.value = 18 + Math.random() * 8; wg.gain.value = f0 * 0.3; wob.connect(wg); wg.connect(o.frequency);
+      const nb = ac.createBuffer(1, Math.ceil(ac.sampleRate * dur), ac.sampleRate), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      const n = ac.createBufferSource(); n.buffer = nb; const nf = ac.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 160; nf.Q.value = 0.9; const ng = ac.createGain(); ng.gain.value = 0.5;
+      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 7; lp.frequency.setValueAtTime(1000, t); lp.frequency.exponentialRampToValueAtTime(300, t + dur);
+      const flut = ac.createGain(); flut.gain.value = 0.7; const am = ac.createOscillator(), amg = ac.createGain(); am.frequency.setValueAtTime(16, t); am.frequency.linearRampToValueAtTime(6, t + dur); amg.gain.value = 0.3; am.connect(amg); amg.connect(flut.gain);
+      const env = ac.createGain(); env.gain.setValueAtTime(0.0001, t); env.gain.exponentialRampToValueAtTime(0.9, t + 0.03); env.gain.setValueAtTime(0.9, t + dur * 0.6); env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(lp); n.connect(nf); nf.connect(ng); ng.connect(lp); lp.connect(flut); flut.connect(env); env.connect(ac.destination);
+      for (const src of [o, wob, n, am]) { src.start(t); src.stop(t + dur + 0.05); }
+    } catch (e) { /* no sound here */ }
+  }
+  function releaseGas(at) {
+    const tex = gasTexture();
+    for (let k = 0; k < 46; k++) {
+      const m = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color().setHSL(0.24 + Math.random() * 0.06, 0.85, 0.42 + Math.random() * 0.12), transparent: true, opacity: 0, depthWrite: false });
+      m.toneMapped = false;
+      const sp = new THREE.Sprite(m), a = Math.random() * Math.PI * 2, out = 0.6 + Math.random() * 2.2;
+      sp.position.set(at.x + (Math.random() - 0.5) * 1.5, at.y - 0.3, at.z + (Math.random() - 0.5) * 3);
+      sp.userData.gas = { delay: Math.random() * 1.4, t: 0, life: 9 + Math.random() * 7, vx: Math.cos(a) * out, vz: Math.sin(a) * out, vy: -(2.5 + Math.random() * 3), s0: 0.6 + Math.random() * 0.6, s1: 5 + Math.random() * 5, spin: (Math.random() - 0.5) * 0.4, floor: at.y - 30 };
+      sp.scale.setScalar(0.01); sp.renderOrder = 5;
+      scene.add(sp); gas.push(sp);
+    }
+    fartSound();
+  }
+  function stepGas(dt) {
+    for (let i = gas.length - 1; i >= 0; i--) {
+      const sp = gas[i], q = sp.userData.gas;
+      if (q.delay > 0) { q.delay -= dt; continue; }
+      q.t += dt; const k = q.t / q.life;
+      if (k >= 1) { scene.remove(sp); sp.material.dispose(); gas.splice(i, 1); continue; }
+      const drag = Math.exp(-1.1 * dt); q.vx *= drag; q.vz *= drag; q.vy = q.vy * drag + 0.12 * dt; // pushed down, then hangs and slowly rises
+      sp.position.x += q.vx * dt; sp.position.y += q.vy * dt; sp.position.z += q.vz * dt;
+      sp.scale.setScalar(q.s0 + (q.s1 - q.s0) * (1 - Math.pow(1 - k, 2.2)));
+      sp.material.rotation += q.spin * dt;
+      sp.material.opacity = (k < 0.06 ? k / 0.06 : Math.pow(1 - (k - 0.06) / 0.94, 1.6)) * 0.62;
+    }
+  }
+  function checkSurpriseClick(clientX, clientY) {
+    if (!built || !plan) return false;
+    const ids = new Set((plan.fixtures || []).filter(f => f && f.surprise && f.id).map(f => f.id));
+    for (const L of plan.levels || []) for (const f of (L && L.fixtures) || []) if (f && f.surprise && f.id) ids.add(f.id);
+    if (!ids.size) return false;
+    const r = canvas.getBoundingClientRect();
+    ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    gasRay.setFromCamera(ndc, camera);
+    const seen = (o) => { for (let p = o; p; p = p.parent) if (!p.visible || (p.userData && p.userData.airflow)) return false; return true; }; // airflow arrows don't block it
+    const hit = gasRay.intersectObject(built.root, true).find(h => h.object.isMesh && seen(h.object));
+    if (!hit) return false;
+    for (let o = hit.object; o; o = o.parent) { const ref = o.userData && o.userData.ref; if (ref) { if (ref.kind === 'fixture' && ids.has(ref.id)) { releaseGas(hit.point); return true; } return false; } }
+    return false;
+  }
+
   const pts = new Map(); let down = null, pinch = null;
   let hintGone = false; function dismissHint() { if (hintGone) return; hintGone = true; hint.classList.add('gone'); }
   const coarse = global.matchMedia && global.matchMedia('(pointer: coarse)').matches;
@@ -4328,6 +4400,7 @@ function mount(container, plan, opts) {
     if (isLocked()) { const r = canvas.getBoundingClientRect(); e = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; }
 
     if (commentMode) { placeComment(e.clientX, e.clientY); return; }
+    if (checkSurpriseClick(e.clientX, e.clientY)) return;
     if (checkSwitchClick(e.clientX, e.clientY)) return;
     if (checkDoorClick(e.clientX, e.clientY)) return;
 
@@ -4621,6 +4694,7 @@ function mount(container, plan, opts) {
       }
       updateRoom(); drawMini();
     }
+    if (gas.length) stepGas(dt);
     if (GFX && (++sweepN % 30) === 0) upgradeScene(scene);
     if (GFX) { const sh = mode !== 'walk' && mode !== 'plenum'; if (sun.castShadow !== sh) sun.castShadow = sh; }
     if (composer && !aoOff) composer.render(); else renderer.render(scene, camera);

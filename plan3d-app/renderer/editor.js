@@ -1442,7 +1442,7 @@ class Editor {
     // FFUs and lights from a drawn ceiling (drag them; they land in the grid's cells)
     if (P.ceilingMode === 'manual' && this.showCeil !== false && !(this.tool === 'piece' && this.pieces && (this.pieces.tool === 'led' || this.pieces.tool === 'ffu'))) {
       g.save(); g.lineWidth = 1;
-      for (const f of P.fixtures || []) { const fw = (f.w || 2) - 0.1, fh = (f.h || 4) - 0.1; g.strokeStyle = f.type === 'ffu' ? 'rgba(127,211,227,.75)' : 'rgba(230,236,238,.7)'; g.fillStyle = f.type === 'ffu' ? 'rgba(127,211,227,.10)' : 'rgba(255,255,255,.07)'; g.fillRect(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2), fw * s, fh * s); g.strokeRect(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2), fw * s, fh * s); }
+      for (const f of P.fixtures || []) { const fw = (f.w || 2) - 0.1, fh = (f.h || 4) - 0.1; g.strokeStyle = f.type === 'ffu' ? 'rgba(127,211,227,.75)' : 'rgba(230,236,238,.7)'; g.fillStyle = f.type === 'ffu' ? 'rgba(127,211,227,.10)' : 'rgba(255,255,255,.07)'; g.fillRect(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2), fw * s, fh * s); g.strokeRect(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2), fw * s, fh * s); if (f.surprise && s > 5) { g.fillStyle = 'rgba(120,220,60,.9)'; g.beginPath(); g.arc(this.sx(f.x), this.sy(f.y), Math.max(3, s * 0.35), 0, Math.PI * 2); g.fill(); } }
       g.restore();
     }
     for (const c of P.columns || []) { const r = (c.size || 0.67) / 2, X0 = this.sx(c.x - r), Y0 = this.sy(c.y - r), W = 2 * r * this.view.s; g.save(); g.fillStyle = c.kind === 'concrete' ? '#8d8a84' : '#6f777c'; g.strokeStyle = '#e8edef'; g.lineWidth = 1.2; g.fillRect(X0, Y0, W, W); g.strokeRect(X0, Y0, W, W); g.beginPath(); g.moveTo(X0, Y0); g.lineTo(X0 + W, Y0 + W); g.moveTo(X0 + W, Y0); g.lineTo(X0, Y0 + W); g.stroke(); g.restore(); }
