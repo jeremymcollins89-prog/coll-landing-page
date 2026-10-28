@@ -541,14 +541,17 @@ function transformPlanKeepInserts(P, T) {
 }
 
 /* A door built like the standard cleanroom door drawings (o.style === 'cr'): leaves o.leafW wide (36″ to
-   start) and 84″ tall, a 7½″ meeting strip between the leaves of a pair, the frame (jambs and posts) taking up
+   start) and 84″ tall, a pair meeting in the middle with no post between them, the frame (jambs and posts) taking up
    the rest of the opening, the head at 86″ with the header panel above. Vision glass 24″ × 34″ in a 26″ × 36″
    frame, centred on the leaf, its bottom 41¾″ up; lever 38″ up. */
 function doorSpec(o, len) {
   if (!o || o.style !== 'cr' || (o.type !== 'door' && o.type !== 'door2')) return null;
-  const n = o.type === 'door2' ? 2 : 1, mull = n === 2 ? 7.5 / 12 : 0;
-  let leafW = o.leafW > 0 ? +o.leafW : 3, jamb = (len - n * leafW - mull) / 2;
-  if (jamb < 1.5 / 12) { jamb = 1.5 / 12; leafW = (len - mull - 2 * jamb) / n; }
+  // a pair has no post between the leaves: the frame keeps its jambs and the two leaves meet in the middle,
+  // sharing the space a meeting strip used to take (7½″, 3¾″ more on each leaf)
+  const n = o.type === 'door2' ? 2 : 1, gap = n === 2 ? 7.5 / 12 : 0, mull = 0;
+  let leafW = o.leafW > 0 ? +o.leafW : 3, jamb = (len - n * leafW - gap) / 2;
+  if (jamb < 1.5 / 12) jamb = 1.5 / 12;
+  leafW = (len - 2 * jamb) / n;
   return { n, leafW, jamb, mull, leafH: 7, head: 86 / 12, vis: { w: 26 / 12, h: 36.12 / 12, y0: 41.75 / 12 }, lever: 38 / 12 };
 }
 /* ---------- Pure geometry analysis (no three.js) ---------- */
