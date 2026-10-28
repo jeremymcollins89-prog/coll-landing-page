@@ -156,7 +156,7 @@ function houseTakeoff(plan, A, add) {
   for (const it of plan.items || []) {
     const D = V.ITEMS[it.type]; if (!D) continue;
     const w = it.w || D.w, d = it.d || D.d;
-    if (it.type === 'machine') continue;
+    if (it.type === 'machine' || D.cr) continue;
     if (it.type === 'stairs' || it.type === 'stairsL') {
       // stairs: risers at 7¾″ max to the floor above, 10″ treads, three 2×12 stringers per run, rail and balusters
       const rise = plan.__rise || ((plan.ceiling || 8) + 1), n = Math.max(2, Math.ceil(rise * 12 / 7.75)), runFt = (n - 1) * 10 / 12;
@@ -191,6 +191,14 @@ function partsList(plan) {
   };
   // machines brought in from drawings: one line each, by name and size
   for (const it of plan.items || []) if (it.type === 'machine') add('Equipment', it.name || 'Machine', ftin(it.w || 0) + ' × ' + ftin(it.d || 0) + ' × ' + ftin(it.h || 8) + ' tall', 1, 'ea', 190);
+  // cleanroom furniture and equipment: one line per kind and size, with its options
+  for (const it of plan.items || []) {
+    const D = V.ITEMS[it.type]; if (!D || !D.cr) continue;
+    const w = it.w || D.w, d = it.d || D.d, h = D.sz && it.h > 0 ? it.h : D.h, inch = (v) => Math.round(v * 12 * 4) / 4 + '″';
+    const opts = it.type === 'sstable' ? [it.shelf !== false ? 'undershelf' : '', it.splash ? 'backsplash' : '', it.casters ? 'casters' : ''].filter(Boolean) : [];
+    const size = it.type === 'tackymat' ? inch(d) + ' × ' + inch(w) : D.sz ? inch(d) + ' × ' + inch(w) + ' × ' + inch(h) + (it.type === 'sstable' ? ' high' : ' tall') : D.wv ? inch(w) + ' wide' : '';
+    add(D.group, D.label + (opts.length ? ', ' + opts.join(', ') : ''), size, 1, 'ea', ({ 'Cleanroom furniture': 186, 'IV and compounding': 187, 'Sinks and gowning': 188 })[D.group] || 189);
+  }
   // hardwall (cleanroom) walls get panels, studs, posts, track and base; building walls get their own lines
   const walls = A.walls.filter(w => V.isHard(w)), built = new Set(walls.filter(w => w.piece).map(w => w.id));
   // panels and posts run the full wall height: up through the plenum when there is one

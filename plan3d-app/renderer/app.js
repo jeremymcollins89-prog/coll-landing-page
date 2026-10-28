@@ -62,7 +62,7 @@ const HINTS = {
   beam: 'Click both ends of a steel beam (I-beam). Over the cleanroom it spans wall to wall in the plenum, its top level with the top of the walls; otherwise it goes up under the roof. Pick it to change its size or height.',
   measure: 'Click two points to measure between them. Snaps to wall ends and lines up with them; Alt for any angle. Esc clears.',
   calibrate: 'Click both ends of a dimension you know, like the 40′ overall.',
-  item: 'Pick an item above, then click near a wall: it backs up against the wall. R turns it. Islands, tables, rugs, lights, cars and outdoor pieces go anywhere.',
+  item: 'Pick an item above, then click near a wall: it backs up against the wall. R turns it. Carts, chairs, IV poles, islands, tables, rugs and lights go anywhere. Pick a placed item to change its size.',
   piece: 'Pick a piece above and click to place it, or drag to lay a whole run of panels. Drag a placed panel with Select to move it; its ends catch on nearby walls. Pieces snap to open ends and turn the corner toward the mouse. R turns a free piece. Right-drag pans.'
 };
 /* ---------- Floors (stories) ----------
@@ -114,8 +114,10 @@ function grillePalette() {
 function itemPalette() {
   // one group at a time, picked from a row of tabs, so the palette stays small over the plan
   const IT = Plan3DViewer.ITEMS, groups = {};
-  for (const [k, v] of Object.entries(IT)) if (!v.hidden) (groups[v.group] = groups[v.group] || []).push([k, v]);
-  if (!ed.itemType || !IT[ed.itemType]) ed.itemType = 'base';
+  // cleanroom plans get the cleanroom furniture and equipment; houses get the house items
+  const crMode = ed.plan.mode !== 'house';
+  for (const [k, v] of Object.entries(IT)) if (!v.hidden && !!v.cr === crMode) (groups[v.group] = groups[v.group] || []).push([k, v]);
+  if (!ed.itemType || !IT[ed.itemType] || !!IT[ed.itemType].cr !== crMode) { ed.itemType = crMode ? 'sstable' : 'base'; ed.itemGroup = null; }
   const names = Object.keys(groups); if (!ed.itemGroup || !groups[ed.itemGroup]) ed.itemGroup = IT[ed.itemType].group;
   $('#itemPal').innerHTML = `<div class="grp"><div class="row">${names.map(g => `<button data-ig="${esc(g)}" class="${ed.itemGroup === g ? 'on' : ''}"><b>${esc(g)}</b></button>`).join('')}</div></div>`
     + `<div class="grp"><div class="row">${groups[ed.itemGroup].map(([k, v]) => `<button data-it="${k}" class="${ed.itemType === k ? 'on' : ''}">${esc(v.label)}</button>`).join('')}</div></div>`;
@@ -231,7 +233,7 @@ $('#optDims').addEventListener('change', e => { ed.showDims = e.target.checked; 
 $('#optPosts').addEventListener('change', e => { ed.showPosts = e.target.checked; ed.render(); });
 
 const TOOL_KEYS = { q: 'grille', j: 'header', v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', b: 'beam', i: 'item', e: 'elec', h: 'overhead', u: 'column', a: 'carea', t: 'grid' };
-const HOUSE_ONLY = new Set(['item']), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase', 'column', 'carea', 'grid']);
+const HOUSE_ONLY = new Set([]), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase', 'column', 'carea', 'grid']);
 function inField(e) { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA'); }
 window.addEventListener('keydown', e => {
   if ($('#dlg').open || inField(e)) return;
@@ -650,14 +652,21 @@ function renderProps(opt) {
   }
   if (s && o && s.kind === 'item') {
     const D = Plan3DViewer.ITEMS[o.type] || { label: o.type };
+    const TABLE_SIZES = [[2, 4], [2.5, 4], [2.5, 5], [2.5, 6], [2.5, 8], [3, 6], [3, 8]];
     h = `<div class="hd"><span class="kind">${esc(D.label)}</span><button class="btn small danger" id="pDel">Delete</button></div>
-      ${D.wv ? fld('Width', txt('pIW', fmtIn(o.w || D.w))) : fld('Size', `<span>${fmtIn(o.w || D.w)} × ${fmtIn(o.d || D.d)}</span>`)}
-      ${o.type === 'island' || o.type === 'shower' ? fld('Depth', txt('pID', fmtIn(o.d || D.d))) : ''}
+      ${D.wv || D.sz ? fld('Width', txt('pIW', fmtIn(o.w || D.w))) : fld('Size', `<span>${fmtIn(o.w || D.w)} × ${fmtIn(o.d || D.d)}</span>`)}
+      ${o.type === 'island' || o.type === 'shower' || D.sz ? fld('Depth', txt('pID', fmtIn(o.d || D.d))) : ''}
+      ${D.sz && o.type !== 'tackymat' ? fld(o.type === 'sstable' ? 'Top height' : 'Height', txt('pIH', fmtIn(o.h > 0 ? o.h : D.h))) : ''}
+      ${o.type === 'sstable' ? `<div class="row" style="flex-wrap:wrap;gap:4px"><span class="note" style="margin:0 6px 0 0">Common sizes</span>${TABLE_SIZES.map(([dd, ww]) => `<button class="btn small" data-tsz="${ww},${dd}">${Math.round(dd * 12)}″ × ${Math.round(ww * 12)}″</button>`).join('')}</div>
+      <div class="row" style="flex-wrap:wrap;gap:12px"><label class="chk"><input type="checkbox" id="pTShelf" ${o.shelf !== false ? 'checked' : ''}> Undershelf</label><label class="chk"><input type="checkbox" id="pTSplash" ${o.splash ? 'checked' : ''}> Backsplash</label><label class="chk"><input type="checkbox" id="pTCas" ${o.casters ? 'checked' : ''}> Casters</label></div>` : ''}
       <div class="row"><button class="btn small" id="pIL">⟲ Turn</button><button class="btn small" id="pIR">⟳ Turn</button><button class="btn small" id="pIDup">Add another beside it</button></div>
-      <p class="note">Drag it along a wall; it stays backed against the wall. R turns it. It goes on the parts list${o.type === 'base' || o.type === 'sinkbase' || o.type === 'island' ? ' with its countertop' : ''}.</p>`;
+      <p class="note">${D.free ? 'Drag it anywhere. R turns it.' : 'Drag it along a wall; it stays backed against the wall. R turns it.'} It goes on the parts list${o.type === 'base' || o.type === 'sinkbase' || o.type === 'island' ? ' with its countertop' : ''}.</p>`;
     box.innerHTML = h;
     bindLen('pIW', 'in', v => ed.edit(() => { o.w = Math.max(0.75, Math.min(16, v)); }));
-    bindLen('pID', 'in', v => ed.edit(() => { o.d = Math.max(1, Math.min(10, v)); }));
+    bindLen('pID', 'in', v => ed.edit(() => { o.d = Math.max(D.sz ? 0.5 : 1, Math.min(10, v)); }));
+    bindLen('pIH', 'in', v => ed.edit(() => { o.h = Math.max(0.5, Math.min(10, v)); }));
+    $$('[data-tsz]').forEach(b => b.onclick = () => { const [ww, dd] = b.dataset.tsz.split(',').map(Number); ed.edit(() => { o.w = ww; o.d = dd; }); renderProps(); });
+    if ($('#pTShelf')) { $('#pTShelf').onchange = e => ed.edit(() => { if (e.target.checked) delete o.shelf; else o.shelf = false; }); $('#pTSplash').onchange = e => ed.edit(() => { if (e.target.checked) o.splash = true; else delete o.splash; }); $('#pTCas').onchange = e => ed.edit(() => { if (e.target.checked) o.casters = true; else delete o.casters; }); }
     $('#pIL').onclick = () => ed.edit(() => { o.a = (o.a || 0) - Math.PI / 2; });
     $('#pIR').onclick = () => ed.edit(() => { o.a = (o.a || 0) + Math.PI / 2; });
     $('#pIDup').onclick = () => { const w = o.w || D.w, c = Math.cos(o.a || 0), sn = Math.sin(o.a || 0), n = { ...o, id: Plan3DEditor.uid(), x: o.x + c * w, y: o.y + sn * w }; ed.edit(Pl => Pl.items.push(n)); ed.sel = { kind: 'item', id: n.id }; ed.emit('select'); };

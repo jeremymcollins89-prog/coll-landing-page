@@ -168,6 +168,27 @@ const ITEMS = {
   condenser: { label: 'AC condenser', group: 'Outdoor & garage', w: 2.5, d: 2.5, h: 2.67 },
   // a machine brought in from a drawing (Library → Add a machine): it carries its own plan linework
   // (it.lines, it.swings, local feet about its centre), size (w × d) and height (it.h)
+  // ---- cleanroom furniture and equipment (cr: shown in cleanroom plans; sz: width, depth and height can change)
+  sstable: { label: 'Stainless steel table', group: 'Cleanroom furniture', w: 6, d: 2.5, h: 34 / 12, cr: true, sz: true },
+  sscart: { label: 'Stainless utility cart', group: 'Cleanroom furniture', w: 3, d: 1.67, h: 3, cr: true, sz: true, free: true },
+  shelving: { label: 'Wire shelving, stainless', group: 'Cleanroom furniture', w: 4, d: 1.5, h: 6, cr: true, sz: true },
+  sscabinet: { label: 'Stainless storage cabinet', group: 'Cleanroom furniture', w: 3, d: 1.5, h: 6, cr: true, sz: true },
+  gownbench: { label: 'Gowning bench (step-over)', group: 'Cleanroom furniture', w: 6, d: 1.33, h: 1.5, cr: true, sz: true, free: true },
+  gownrack: { label: 'Garment rack, stainless', group: 'Cleanroom furniture', w: 4, d: 1.67, h: 6, cr: true, wv: true },
+  crchair: { label: 'Cleanroom chair', group: 'Cleanroom furniture', w: 1.83, d: 1.83, h: 3.5, cr: true, free: true },
+  sstrash: { label: 'Waste can, stainless, foot pedal', group: 'Cleanroom furniture', w: 1.25, d: 1.25, h: 2.33, cr: true },
+  tackymat: { label: 'Tacky mat', group: 'Cleanroom furniture', w: 3, d: 2, h: 0.02, cr: true, sz: true, free: true },
+  ivpole: { label: 'IV pole, mobile', group: 'IV and compounding', w: 2, d: 2, h: 6.5, cr: true, free: true },
+  ivrack: { label: 'IV rack, mobile (12 hooks)', group: 'IV and compounding', w: 3, d: 2, h: 6, cr: true, free: true, wv: true },
+  ivbar: { label: 'IV bar, wall-mounted', group: 'IV and compounding', w: 4, d: 0.42, h: 0.5, z: 5.5, cr: true, wv: true },
+  lafw: { label: 'Laminar flow hood (LAFW)', group: 'IV and compounding', w: 4, d: 2.75, h: 7, cr: true, wv: true },
+  bsc: { label: 'Biosafety cabinet, Class II', group: 'IV and compounding', w: 4, d: 2.75, h: 7, cr: true, wv: true },
+  isolator: { label: 'Compounding aseptic isolator', group: 'IV and compounding', w: 4.5, d: 2.75, h: 6.75, cr: true, wv: true },
+  medfridge: { label: 'Pharmacy refrigerator', group: 'IV and compounding', w: 2.25, d: 2.25, h: 6.5, cr: true },
+  handsink: { label: 'Hand sink, stainless, hands-free', group: 'Sinks and gowning', w: 2, d: 1.67, h: 3, cr: true },
+  scrubsink: { label: 'Scrub sink, stainless, 2 stations', group: 'Sinks and gowning', w: 5, d: 2.17, h: 3, cr: true, wv: true },
+  dispenser: { label: 'Glove, mask and bouffant dispenser', group: 'Sinks and gowning', w: 3, d: 0.42, h: 1.25, z: 4, cr: true },
+  shoecover: { label: 'Shoe cover dispenser', group: 'Sinks and gowning', w: 1.25, d: 1.25, h: 2.5, cr: true },
   machine: { label: 'Machine', group: 'Equipment', w: 4, d: 4, h: 8, free: true, hidden: true },
   // stairs up to the floor above: risers 7¾″ max, treads 10″; d is the run (it's set from the floor-to-floor height
   // when placed). The floor above gets a stairwell opening over it.
@@ -2695,7 +2716,7 @@ function machineMesh(THREE, it) {
 function itemMesh(THREE, it, M, opt) {
   opt = opt || {};
   if (it.type === 'machine') return machineMesh(THREE, it);
-  const D = ITEMS[it.type], w = it.w || D.w, d = it.d || D.d, h = D.h, z0 = D.ceil ? Math.max(1, (opt.H || 8) - h) : (D.z || 0), g = new THREE.Group();
+  const D = ITEMS[it.type], w = it.w || D.w, d = it.d || D.d, h = (D.sz && it.h > 0) ? it.h : D.h, z0 = D.ceil ? Math.max(1, (opt.H || 8) - h) : (D.z || 0), g = new THREE.Group();
   const mat = (c, sp) => new THREE.MeshPhongMaterial({ color: c, specular: sp || 0x222222, shininess: sp ? 60 : 14 });
   const F = finishOf(opt.plan), hex = (k, v) => parseInt(((FINISH[k][v] || [])[1] || '#888888').slice(1), 16);
   const cab = mat(hex('cabinet', F.cabinet)), counter = mat(hex('counter', F.counter), 0x555555), steel = mat(0xc9ced2, 0x999999), porcelain = mat(0xfbfbfb, 0x777777), dark = mat(0x26292c, 0x444444), wood = mat(hex('cabinet', F.cabinet) === 0xf3f1ec ? 0xe9e5dd : hex('cabinet', F.cabinet));
@@ -2792,6 +2813,102 @@ function itemMesh(THREE, it, M, opt) {
     case 'hottub': box(0, h / 2, 0, w, h, d, walnut); box(0, h - 0.05, 0, w - 0.8, 0.1, d - 0.8, mat(0x5fb8d6, 0xffffff)); break;
     case 'patioset': cyl(0, 2.4, 0, 1.6, 0.1, black, 32); cyl(0, 1.2, 0, 0.15, 2.4, black, 10); cyl(0, 5.3, 0, 0.06, 5.6, mat(0xd8d2c4), 8); { const um = new THREE.Mesh(new THREE.ConeGeometry(4, 1.2, 8), mat(0xe8e1d0)); um.position.y = 7.2; g.add(um); } for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 4; chair(Math.sin(a) * 2.3, Math.cos(a) * 2.3, a + Math.PI, black); } break;
     case 'condenser': box(0, h / 2, 0, w, h, d, mat(0xd8dbd6)); cyl(0, h + 0.02, 0, w * 0.4, 0.05, black, 24); break;
+    // ---- cleanroom furniture and equipment: brushed 304 stainless, white powder coat, dark casters
+    case 'sstable': case 'sscart': case 'shelving': case 'sscabinet': case 'gownbench': case 'gownrack': case 'crchair': case 'sstrash': case 'tackymat':
+    case 'ivpole': case 'ivrack': case 'ivbar': case 'lafw': case 'bsc': case 'isolator': case 'medfridge': case 'handsink': case 'scrubsink': case 'dispenser': case 'shoecover': {
+      const brushed = cachedCanvas('brushed-ss', () => makeCanvas(256, 64, (c, W2, H2) => { c.fillStyle = '#c9ced1'; c.fillRect(0, 0, W2, H2); for (let k = 0; k < 900; k++) { const v = 180 + Math.random() * 60 | 0; c.fillStyle = `rgba(${v},${v + 4},${v + 6},.35)`; c.fillRect(Math.random() * W2, Math.random() * H2, 20 + Math.random() * 90, 1); } }));
+      const sst = new THREE.CanvasTexture(brushed); sst.wrapS = sst.wrapT = THREE.RepeatWrapping; sst.repeat.set(2, 1);
+      const ss = new THREE.MeshPhongMaterial({ color: 0xe4e8ea, map: sst, specular: 0xffffff, shininess: 90 });
+      const ssD = new THREE.MeshPhongMaterial({ color: 0xb4bbbf, specular: 0xcccccc, shininess: 70 });
+      const coat = mat(0xf3f4f2, 0x444444), glass = new THREE.MeshPhongMaterial({ color: 0x9fc4d6, specular: 0xffffff, shininess: 100, transparent: true, opacity: 0.35 }), rubber = mat(0x2a2d30), blue = mat(0x3d78b8), lightP = new THREE.MeshBasicMaterial({ color: 0xf6fbff });
+      const caster = (x, z) => { cyl(x, 0.12, z, 0.12, 0.1, rubber, 14).rotation.z = Math.PI / 2; box(x, 0.27, z, 0.1, 0.12, 0.1, ssD); };
+      const legs = (x0, z0, y0, y1, t, m) => { for (const [x, z] of [[-x0, -z0], [x0, -z0], [-x0, z0], [x0, z0]]) box(x, (y0 + y1) / 2, z, t, y1 - y0, t, m || ss); };
+      switch (it.type) {
+        case 'sstable': {
+          // 14-gauge top with a rolled front edge, tube legs, optional undershelf, backsplash and casters
+          const cas = !!it.casters, y0 = cas ? 0.33 : 0.03, ix = w / 2 - 0.12, iz = d / 2 - 0.12;
+          box(0, h - 0.04, 0, w, 0.08, d, ss); box(0, h - 0.09, d / 2 - 0.02, w, 0.1, 0.04, ss);
+          legs(ix, iz, y0, h - 0.08, 0.14);
+          if (cas) for (const [x, z] of [[-ix, -iz], [ix, -iz], [-ix, iz], [ix, iz]]) caster(x, z); else for (const [x, z] of [[-ix, -iz], [ix, -iz], [-ix, iz], [ix, iz]]) cyl(x, 0.03, z, 0.09, 0.06, ssD, 12);
+          if (it.shelf !== false) box(0, Math.max(0.55, y0 + 0.4), 0, w - 0.1, 0.05, d - 0.1, ss);
+          else { box(0, 0.75, -iz, w - 0.3, 0.08, 0.08, ss); for (const x of [-ix, ix]) box(x, 0.75, 0, 0.08, 0.08, d - 0.3, ss); }
+          if (it.splash) box(0, h + 0.25, -d / 2 + 0.03, w, 0.5, 0.06, ss);
+          break;
+        }
+        case 'sscart': {
+          const ix = w / 2 - 0.08, iz = d / 2 - 0.08; legs(ix, iz, 0.33, h - 0.05, 0.1);
+          for (const y of [0.6, 1.8, h - 0.05]) { box(0, y, 0, w, 0.05, d, ss); box(0, y + 0.08, d / 2 - 0.02, w, 0.14, 0.03, ss); box(0, y + 0.08, -d / 2 + 0.02, w, 0.14, 0.03, ss); }
+          for (const [x, z] of [[-ix, -iz], [ix, -iz], [-ix, iz], [ix, iz]]) caster(x, z);
+          box(w / 2 + 0.12, h - 0.25, 0, 0.06, 0.06, d * 0.7, ssD); break;
+        }
+        case 'shelving': {
+          const ix = w / 2 - 0.04, iz = d / 2 - 0.04; legs(ix, iz, 0, h, 0.07, ssD);
+          const n = Math.max(3, Math.round(h / 1.5)); for (let k = 0; k < n; k++) { const y = 0.5 + k * (h - 0.6) / (n - 1); box(0, y, 0, w - 0.02, 0.04, d - 0.02, ss); for (let q = -w / 2 + 0.25; q < w / 2; q += 0.25) box(q, y - 0.04, 0, 0.015, 0.04, d - 0.06, ssD); }
+          break;
+        }
+        case 'sscabinet': {
+          box(0, h / 2 + 0.25, 0, w, h - 0.5, d, ss); legs(w / 2 - 0.1, d / 2 - 0.1, 0, 0.3, 0.1, ssD);
+          box(0, h / 2 + 0.25, d / 2 + 0.005, 0.02, h - 0.6, 0.01, ssD); for (const x of [-0.12, 0.12]) box(x, h / 2 + 0.3, d / 2 + 0.05, 0.04, 0.6, 0.06, ssD);
+          break;
+        }
+        case 'gownbench': {
+          box(0, h - 0.05, 0, w, 0.1, d, ss); legs(w / 2 - 0.2, d / 2 - 0.15, 0, h - 0.1, 0.12);
+          box(0, h + 0.004, 0, 0.12, 0.02, d, mat(0xd9a928)); break;  // the clean / dirty line painted across the top
+        }
+        case 'gownrack': {
+          for (const x of [-w / 2 + 0.06, w / 2 - 0.06]) { box(x, h / 2, 0, 0.08, h, 0.08, ss); box(x, 0.2, 0, 0.08, 0.08, d, ss); caster(x, -d / 2 + 0.1); caster(x, d / 2 - 0.1); }
+          cyl(0, h - 0.15, 0, 0.04, w, ss, 10).rotation.z = Math.PI / 2;
+          const n = Math.max(2, Math.floor(w / 0.45)); for (let k = 0; k < n; k++) { const x = -w / 2 + 0.3 + k * (w - 0.6) / Math.max(1, n - 1); box(x, h - 2.0, 0, 0.32, 3.6, 1.3, k % 3 === 1 ? mat(0xb9d4ee) : coat); }
+          break;
+        }
+        case 'crchair': {
+          for (let k = 0; k < 5; k++) { const a2 = k * Math.PI * 2 / 5, bx = Math.cos(a2) * 0.4, bz = Math.sin(a2) * 0.4; const leg = box(bx, 0.2, bz, 0.8, 0.07, 0.1, ssD); leg.rotation.y = -a2; caster(Math.cos(a2) * 0.8, Math.sin(a2) * 0.8); }
+          cyl(0, 1.0, 0, 0.07, 1.4, ss, 12); cyl(0, 1.75, 0, 0.75, 0.22, mat(0x2f3a45), 24); box(0, 2.75, -0.62, 1.2, 1.1, 0.16, mat(0x2f3a45)); box(0, 2.1, -0.7, 0.12, 0.8, 0.08, ss);
+          break;
+        }
+        case 'sstrash': { cyl(0, h / 2, 0, w / 2 - 0.02, h - 0.1, ss, 28); cyl(0, h - 0.03, 0, w / 2, 0.08, ssD, 28); box(0, 0.08, w / 2, 0.4, 0.06, 0.25, rubber); break; }
+        case 'tackymat': { box(0, 0.012, 0, w, 0.024, d, new THREE.MeshPhongMaterial({ color: 0xd9e6f0, specular: 0xffffff, shininess: 60 })); box(0, 0.026, 0, w - 0.25, 0.004, d - 0.25, new THREE.MeshPhongMaterial({ color: 0xc7d9e8, transparent: true, opacity: 0.7 })); break; }
+        case 'ivpole': {
+          for (let k = 0; k < 5; k++) { const a2 = k * Math.PI * 2 / 5; const leg = box(Math.cos(a2) * 0.45, 0.32, Math.sin(a2) * 0.45, 0.9, 0.07, 0.09, ss); leg.rotation.y = -a2; caster(Math.cos(a2) * 0.88, Math.sin(a2) * 0.88); }
+          cyl(0, h / 2 + 0.2, 0, 0.045, h - 0.4, ss, 12);
+          for (let k = 0; k < 4; k++) { const a2 = k * Math.PI / 2 + Math.PI / 4; const hk = box(Math.cos(a2) * 0.22, h - 0.05, Math.sin(a2) * 0.22, 0.44, 0.05, 0.05, ss); hk.rotation.y = -a2; cyl(Math.cos(a2) * 0.42, h - 0.12, Math.sin(a2) * 0.42, 0.03, 0.16, ss, 8); }
+          box(0.3, h - 0.75, 0.3, 0.32, 0.55, 0.12, new THREE.MeshPhongMaterial({ color: 0xeaf4fb, transparent: true, opacity: 0.8 }));
+          break;
+        }
+        case 'ivrack': {
+          box(0, 0.3, 0, w, 0.08, 0.1, ss); for (const x of [-w / 2 + 0.1, w / 2 - 0.1]) { box(x, 0.3, 0, 0.1, 0.08, d, ss); caster(x, -d / 2 + 0.1); caster(x, d / 2 - 0.1); box(x, h / 2 + 0.15, 0, 0.09, h - 0.3, 0.09, ss); }
+          for (const y of [h - 0.1, h - 1.2]) { cyl(0, y, 0, 0.04, w, ss, 10).rotation.z = Math.PI / 2; for (let k = 0; k < 6; k++) { const x = -w / 2 + 0.3 + k * (w - 0.6) / 5; box(x, y - 0.1, 0, 0.03, 0.2, 0.03, ss); if (k % 2 === 0) box(x, y - 0.55, 0.02, 0.28, 0.45, 0.1, new THREE.MeshPhongMaterial({ color: 0xeaf4fb, transparent: true, opacity: 0.8 })); } }
+          break;
+        }
+        case 'ivbar': {
+          cyl(0, 0.3, 0.1, 0.05, w, ss, 12).rotation.z = Math.PI / 2; for (const x of [-w / 2 + 0.15, w / 2 - 0.15]) box(x, 0.3, -0.06, 0.08, 0.2, 0.32, ss);
+          for (let k = 0; k < Math.max(2, Math.floor(w / 0.5)); k++) { const x = -w / 2 + 0.3 + k * 0.5; if (x > w / 2 - 0.2) break; box(x, 0.17, 0.1, 0.03, 0.22, 0.03, ss); }
+          break;
+        }
+        case 'lafw': case 'bsc': case 'isolator': {
+          // stand, stainless work surface at 30″, the cabinet with its HEPA housing on top and a lit work zone
+          const top = h, ws = 2.5; legs(w / 2 - 0.15, d / 2 - 0.15, 0, ws - 0.1, 0.12, ssD); box(0, 0.6, -d / 2 + 0.15, w - 0.3, 0.06, 0.06, ssD);
+          box(0, ws, 0, w, 0.12, d, ss);
+          box(-w / 2 + 0.06, (ws + top) / 2, 0, 0.12, top - ws, d, coat); box(w / 2 - 0.06, (ws + top) / 2, 0, 0.12, top - ws, d, coat); box(0, (ws + top) / 2, -d / 2 + 0.06, w, top - ws, 0.12, coat);
+          box(0, top - 0.55, 0, w, 1.1, d, coat); box(0, top - 0.55, d / 2 + 0.005, w - 0.4, 0.5, 0.01, mat(0x5b6670)); box(0, ws + 0.07, 0, w - 0.3, 0.02, d - 0.3, ssD);
+          box(0, top - 1.13, 0, w - 0.3, 0.04, d - 0.4, lightP);
+          if (it.type === 'lafw') { box(0, ws + 1.4, d / 2 - 0.12, w - 0.25, 0.08, 0.06, coat); }
+          else if (it.type === 'bsc') { const sash = box(0, ws + 1.45, d / 2 - 0.15, w - 0.25, 1.9, 0.04, glass); sash.rotation.x = -0.18; box(0, ws + 0.35, d / 2 - 0.05, w - 0.25, 0.1, 0.12, ssD); }
+          else { box(0, (ws + top - 1.1) / 2 + 0.05, d / 2 - 0.08, w - 0.25, top - ws - 1.2, 0.05, glass); for (const x of [-w / 4, w / 4]) { const p2 = cyl(x, ws + 1.0, d / 2 - 0.05, 0.28, 0.08, mat(0x30353a), 22); p2.rotation.x = Math.PI / 2; } }
+          break;
+        }
+        case 'medfridge': { box(0, h / 2, 0, w, h, d, coat); box(0, h / 2 + 0.1, d / 2 + 0.01, w - 0.25, h - 0.7, 0.03, glass); for (let k = 1; k < 5; k++) box(0, k * (h - 0.6) / 5 + 0.2, 0, w - 0.3, 0.03, d - 0.3, ssD); box(w / 2 - 0.2, h / 2, d / 2 + 0.06, 0.05, 1.2, 0.05, ssD); box(0, 0.25, d / 2 + 0.02, w - 0.2, 0.25, 0.02, mat(0x30353a)); break; }
+        case 'handsink': case 'scrubsink': {
+          const n = it.type === 'scrubsink' ? 2 : 1; box(0, h - 0.35, 0, w, 0.7, d, ss); box(0, h * 0.4, -d / 2 + 0.15, w * 0.9, h * 0.6, 0.2, ss);
+          box(0, h + 0.5, -d / 2 + 0.05, w, 1.0, 0.1, ss);
+          for (let k = 0; k < n; k++) { const x = n === 1 ? 0 : (k ? 1 : -1) * w / 4; box(x, h - 0.02, 0.05, Math.min(1.5, w / n - 0.4), 0.06, d - 0.5, ssD); cyl(x, h + 0.35, -d / 2 + 0.3, 0.035, 0.7, ss, 10); const sp = cyl(x, h + 0.68, -d / 2 + 0.5, 0.03, 0.42, ss, 10); sp.rotation.x = Math.PI / 2; box(x + 0.3, 0.08, d / 2 - 0.1, 0.35, 0.06, 0.3, ssD); }
+          break;
+        }
+        case 'dispenser': { box(0, h / 2, 0, w, h, d, ss); for (let k = 0; k < 3; k++) { const x = -w / 3 + k * w / 3; box(x, h / 2, d / 2 + 0.01, w / 3 - 0.1, h - 0.2, 0.02, [blue, coat, mat(0xd8e4ee)][k]); box(x, 0.15, d / 2 + 0.02, 0.4, 0.1, 0.02, rubber); } break; }
+        case 'shoecover': { box(0, 0.5, 0, w, 1.0, d, coat); box(0, 1.6, 0, w * 0.8, 1.2, d * 0.8, ss); box(0, 1.02, d / 2 - 0.25, w * 0.6, 0.04, 0.4, blue); break; }
+      }
+      break;
+    }
     default: box(0, h / 2, 0, w, h, d, cab);
   }
   g.position.set(it.x, z0, it.y); g.rotation.y = -(it.a || 0);
