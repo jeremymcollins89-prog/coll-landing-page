@@ -1,5 +1,5 @@
 /* Marble Atelier offline cache. Everything the app needs is in these few files. */
-const CACHE = 'marble-atelier-07aa9a1aea';
+const CACHE = 'marble-atelier-5586682224';
 const FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './icon-maskable.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
