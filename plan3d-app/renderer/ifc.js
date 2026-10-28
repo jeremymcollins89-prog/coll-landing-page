@@ -598,7 +598,19 @@ function toIfc(plan, opts) {
     // (a roof-type slab, so in Revit it hides with Roofs in Visibility/Graphics while the grid ceiling stays,
     // like the Plenum view)
     const lName = 'Plenum lid, top at ' + V.fmtFt(WH) + ' (' + V.fmtFt(A.PL) + ' plenum)';
-    if (A.PL > 0) areas.forEach((ar, idx) => put('IFCSLAB', areas.length > 1 ? `${lName} (${idx + 1})` : lName, 'Coll cleanroom top over the plenum', shape([slab(ar, WH, WH + 0.17, S.white)]), ',.ROOF.', S.white));
+    // a lid you placed (plan.deckPieces) replaces the automatic one: each piece at the heights it sits at
+    // over the walls and beams, exactly as the 3D view builds it, and the step panels between heights
+    const DK = V.deckShapes ? V.deckShapes(plan) : [];
+    if (DK.length && V.deckParts) {
+      DK.forEach((d, idx) => {
+        const parts = V.deckParts(plan, A, d, WH); if (!parts.length) return;
+        const top = Math.max(...parts.map(q => q.h)) + 0.17, low = Math.min(...parts.map(q => q.h)) + 0.17;
+        const nm = (DK.length > 1 ? `Lid (roof deck) ${idx + 1}` : 'Lid (roof deck)') + ', top at ' + (Math.abs(top - low) < 0.01 ? V.fmtFt(top) : V.fmtFt(low) + ' to ' + V.fmtFt(top));
+        put('IFCSLAB', nm, 'Coll steel roof deck / lid, 2″', shape(parts.map(q => slab({ outer: q.outer, holes: q.holes || [] }, q.h, q.h + 0.17, S.deck))), ',.ROOF.', S.deck);
+      });
+      const steps = (V.deckSteps ? V.deckSteps(plan, A, WH) : []).filter(q => q.y1 - q.y0 >= 0.05);
+      if (steps.length) put('IFCPLATE', 'Lid step panels', 'Coll hardwall panels closing the steps in the lid', shape(steps.map(q => seg(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t || 0.25, S.white))), ',.NOTDEFINED.', S.white);
+    } else if (A.PL > 0) areas.forEach((ar, idx) => put('IFCSLAB', areas.length > 1 ? `${lName} (${idx + 1})` : lName, 'Coll cleanroom top over the plenum', shape([slab(ar, WH, WH + 0.17, S.white)]), ',.ROOF.', S.white));
     // the T-grid just under the tiles: 15/16″ tees on the 2′ × 4′ layout (or the imported ceiling drawing's
     // own grid), only where there's ceiling
     // each tee: the 15/16″ face below the tiles and its web standing up 1½″ into the plenum
