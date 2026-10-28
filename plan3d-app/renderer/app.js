@@ -859,21 +859,62 @@ function checkGroupHtml(P) {
     <p class="note">Air changes and filter coverage from the FFUs over each room, against typical ISO class design ranges. Pressure arrows on the plan show the cascade.</p></div>`;
 }
 
+/* ---------- Customer comments (from the walkthrough page) ----------
+   Each plan gets a share id and a private key (plan.share). Walkthroughs and the phone viewer send comments
+   to the share id on Coll Business Solutions' server; this app reads them back with the key, every minute
+   while the plan is open, and adds them to the plan. A comments file still works (Import comments file). */
+const PLAN3D_CLOUD = 'https://cleanroom-cloud-production.up.railway.app/api/plan3d';
+const rid = (n) => { const a = new Uint8Array(n); crypto.getRandomValues(a); return btoa(String.fromCharCode(...a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+let shareReg = '';
+function ensureShare() {
+  const P = ed.plan;
+  if (!P.share || !P.share.id || !P.share.key) { P.share = { id: rid(18), key: rid(24), seen: 0 }; ed.dirty = true; }
+  registerShare();
+  return P.share;
+}
+async function registerShare() {
+  const S = ed.plan.share; if (!S || !S.key || shareReg === S.id) return;
+  try { const r = await fetch(PLAN3D_CLOUD + '/shares', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shareId: S.id, key: S.key, project: ed.plan.name || '' }) }); if (r.ok) shareReg = S.id; } catch (e) { /* offline: tried again on the next check */ }
+}
+function mergeComments(list) {
+  let n = 0; const who = new Set();
+  ed.edit(Pl => { Pl.comments = Pl.comments || []; for (const c of list) { if (!c || !c.text || !isFinite(c.x) || !isFinite(c.y)) continue; const old = Pl.comments.find(q => q.id === String(c.id)); if (old) { if (old.text !== c.text) { old.text = String(c.text).slice(0, 2000); n++; } continue; } Pl.comments.push({ id: String(c.id || Plan3DEditor.uid()), x: +c.x, y: +c.y, h: +c.h || 0, text: String(c.text).slice(0, 2000), by: String(c.by || '').slice(0, 60), at: String(c.at || ''), ref: c.ref || null }); n++; if (c.by) who.add(c.by); } });
+  return { n, who: [...who] };
+}
+let commentBusy = false;
+async function checkComments(loud) {
+  const S = ed.plan.share; if (!S || !S.key || commentBusy) return;
+  commentBusy = true;
+  try {
+    await registerShare();
+    const r = await fetch(PLAN3D_CLOUD + '/comments/' + encodeURIComponent(S.id) + '?after=' + (S.seen || 0), { headers: { 'X-Plan3D-Key': S.key } });
+    if (!r.ok) { if (loud) toast('Couldn’t check for comments right now.'); return; }
+    const d = await r.json(), list = d.comments || [];
+    if (d.last > (S.seen || 0)) { S.seen = d.last; ed.dirty = true; }
+    const { n, who } = list.length ? mergeComments(list) : { n: 0, who: [] };
+    if (n) { renderProps(); updateChrome(); toast(`${n} new comment${n === 1 ? '' : 's'}${who.length ? ' from ' + who.slice(0, 2).join(' and ') : ''} on “${ed.plan.name || 'this plan'}”. Pins show where.`); }
+    else if (loud) toast('No new comments.');
+  } catch (e) { if (loud) toast('Couldn’t reach the comments server. Check your internet connection.'); }
+  finally { commentBusy = false; }
+}
+setInterval(() => { if (document.visibilityState === 'visible') checkComments(false); }, 60000);
+window.addEventListener('focus', () => checkComments(false));
 /* ---------- Customer comments (from the walkthrough page) ---------- */
 function commentsGroupHtml(P) {
   const L = P.comments || [];
   const rows = L.map((c, i) => `<div class="pl-row"><span><b>${i + 1}.</b> ${esc(c.text)}<small>${esc(c.by || 'Customer')} · ${esc((c.at || '').slice(0, 10))}${c.done ? ' · done' : ''}</small></span><b><button class="btn small" data-cdone="${esc(c.id)}" title="${c.done ? 'Mark open' : 'Mark done'}">${c.done ? '↺' : '✓'}</button><button class="btn small danger" data-cdel="${esc(c.id)}" title="Delete">✕</button></b></div>`).join('');
-  return `<div class="grp"><h3>Customer comments</h3>${L.length ? `<div class="pl">${rows}</div>` : '<p class="note">Export a walkthrough page and send it. Your customer clicks 💬 Comment, leaves notes on anything, and sends you back a comments file.</p>'}
-    <div class="row"><button class="btn small" id="pCImp">Import comments file…</button></div>
+  return `<div class="grp"><h3>Customer comments</h3>${L.length ? `<div class="pl">${rows}</div>` : '<p class="note">Export a walkthrough page and send it, or open the plan in the phone viewer. Your customer clicks 💬 Comment, leaves notes on anything and taps Send comments: they show up here on their own, with pins where they were left.</p>'}
+    <div class="row">${P.share && P.share.key ? '<button class="btn small" id="pCChk">Check for comments</button>' : ''}<button class="btn small" id="pCImp">Import comments file…</button></div>
     ${L.length ? '<p class="note">Numbered pins show on the plan and in 3D where each comment was left. Comments go out with the next walkthrough you send, so your customer sees what you marked done.</p>' : ''}</div>`;
 }
 function bindComments(P) {
+  const chk = $('#pCChk'); if (chk) chk.onclick = () => checkComments(true);
   const imp = $('#pCImp'); if (imp) imp.onclick = () => {
     const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
     inp.onchange = () => { const f = inp.files && inp.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => {
       let d; try { d = JSON.parse(rd.result); } catch (e) { toast('That file isn’t a comments file.'); return; }
       const list = Array.isArray(d) ? d : d && Array.isArray(d.comments) ? d.comments : null; if (!list) { toast('That file isn’t a comments file.'); return; }
-      let n = 0; ed.edit(Pl => { Pl.comments = Pl.comments || []; for (const c of list) { if (!c || !c.text || !isFinite(c.x) || !isFinite(c.y)) continue; if (Pl.comments.some(q => q.id === c.id)) continue; Pl.comments.push({ id: String(c.id || Plan3DEditor.uid()), x: +c.x, y: +c.y, h: +c.h || 0, text: String(c.text).slice(0, 2000), by: String(c.by || '').slice(0, 60), at: String(c.at || ''), ref: c.ref || null }); n++; } });
+      const { n } = mergeComments(list);
       toast(n ? `Imported ${n} comment${n === 1 ? '' : 's'}${d.project ? ' on “' + d.project + '”' : ''}.` : 'No new comments in that file.');
     }; rd.readAsText(f); };
     inp.click();
@@ -2223,7 +2264,7 @@ async function handleLoaded(r) {
     let p; try { p = JSON.parse(r.json); } catch (e) { toast('That project file is damaged.'); return; }
     if (adoptImported(p)) return;
     projectPath = r.path; modePicked = true; ed.setPlan(p); hideBanner(); updateChrome(); if (view !== '2d' && viewer) viewer.loadPlan(clonePlan());
-    toast('Opened ' + (p.name || r.name)); return;
+    toast('Opened ' + (p.name || r.name)); setTimeout(() => checkComments(false), 1500); return;
   }
   if (r.kind === 'dxf') { if (await openCadProject(r)) return; dxfDialog(r); return; }
   if (r.kind === 'ifc') { ifcDialog(r); return; }
@@ -2308,6 +2349,7 @@ async function openSample() {
 }
 async function save(as) {
   if (!api.saveProject) return null;
+  if (ed.plan.walls.length) ensureShare();
   const p = await api.saveProject(JSON.stringify(ed.plan), as ? null : projectPath, ed.plan.name);
   if (p) { projectPath = p; ed.dirty = false; updateChrome(); toast('Saved', { label: 'Show in folder', fn: () => api.showInFolder(p) }); }
   return p;
@@ -2316,7 +2358,8 @@ async function exportHtml() {
   if (!ed.plan.walls.length) { toast('Add some walls first.'); return; }
   const a = await api.getAssets();
   const safe = (s) => s.replace(/<\/script/gi, '<\\/script');
-  const plan = clonePlan();
+  const S = ensureShare();
+  const plan = clonePlan(); plan.share = { id: S.id };  // the walkthrough can send comments, never read them
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(plan.name)} — 3D Walkthrough</title>
@@ -2329,7 +2372,7 @@ async function exportHtml() {
 <!-- Made with Coll Plan3D · Coll Business Solutions LLC -->
 </body></html>`;
   const p = await api.exportFile(html, plan.name + ' walkthrough', 'html');
-  if (p) toast('Walkthrough saved. It opens in any browser and can be emailed or texted. Your customer can click 💬 Comment, leave notes on anything, and send you the comments file.', { label: 'Open it', fn: () => api.openPath(p) });
+  if (p) toast('Walkthrough saved. It opens in any browser and can be emailed or texted. Your customer clicks 💬 Comment, leaves notes on anything and taps Send comments; they show up here on their own.', { label: 'Open it', fn: () => api.openPath(p) });
 }
 async function exportGlb() {
   if (!ed.plan.walls.length) { toast('Add some walls first.'); return; }
@@ -2356,7 +2399,7 @@ function helpDialog() {
       <h4>Cleanroom check</h4><ul><li>Pick a room label and set its ISO class and pressure (Pa). The room shows its air changes per hour and filter coverage from the FFUs over it, green when it meets the class, red with how many FFUs it's short.</li><li>On the plan, arrows at doors show which way air flows; red means it flows from the less clean side or the difference is under 5 Pa. The same arrows show on the floor in 3D. The Plan panel lists every room and door that needs a look.</li></ul>
       <h4>Electrical</h4><ul><li>Electrical (E): pick a receptacle, switch, data jack, FFU controller, pressure monitor or panel, and click on a wall. It goes on that face at the usual mounting height.</li><li>Devices show in 3D and in the Revit export, and the parts list counts them with an estimate of branch circuits for FFUs, lights and receptacles.</li></ul>
       <h4>Warehouses</h4><ul><li>Overhead (H) puts an overhead sectional door in a wall; Column (U) places a steel or concrete column. Over building walls the roof gets open-web steel joists 5′ on center under the deck. All of it goes on the parts list and into Revit.</li></ul>
-      <h4>Sharing and comments</h4><ul><li>Export walkthrough saves one .html file. Anyone can open it in a browser, on a phone too.</li><li>Your customer clicks 💬 Comment, clicks anything in the model and types a note, then Send comments saves a small file they email back. In the Plan panel, Customer comments → Import comments file shows numbered pins on the plan and in 3D.</li><li>Export .glb opens in Windows 3D Viewer, SketchUp, Blender and most 3D tools.</li></ul>
+      <h4>Sharing and comments</h4><ul><li>Export walkthrough saves one .html file. Anyone can open it in a browser, on a phone too. Or send the .plan3d file to someone with the phone viewer (collbusinesssolutions.com/plan3d-viewer).</li><li>Your customer clicks 💬 Comment, clicks anything in the model, types a note and taps Send comments. The comments come straight to this app: it checks every minute while the plan is open (or click Check for comments in the Plan panel) and shows numbered pins on the plan and in 3D. With no internet they save a comments file instead, and Import comments file reads it.</li><li>Export .glb opens in Windows 3D Viewer, SketchUp, Blender and most 3D tools.</li></ul>
       <h4>Ceiling grid takeoff</h4><ul><li>The parts list counts main tees (12′), 4′ cross tees, 2′ cross tees at 2 × 2 fixtures and hanger wires from the grid as laid out over each room.</li></ul></div>`,
     buttons: [{ label: 'Close', primary: true, ret: null }]
   });
@@ -2442,5 +2485,5 @@ window.addEventListener('drop', async e => {
 
 renderProps(); updateChrome(); toolHint('select');
 if (api.rendererReady) api.rendererReady();
-window.__app = { wallHeightDialog, setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
+window.__app = { ensureShare, checkComments, exportHtml, wallHeightDialog, setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
 })();
