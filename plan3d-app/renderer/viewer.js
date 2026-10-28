@@ -4269,11 +4269,27 @@ function mount(container, plan, opts) {
     cList.hidden = !opts.comments && !L.length;
     const esc2 = (t) => String(t || '').replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
     cList.innerHTML = `<b>Comments${L.length ? ' (' + L.length + ')' : ''}</b>` + (L.length ? '<ol>' + L.map((c, i) => `<li>${esc2(c.text)}<br><small>${esc2(c.by || '')}${c.by ? ' · ' : ''}${esc2((c.at || '').slice(0, 10))}${c.done ? ' · done' : ''}</small>${!c.theirs && opts.comments ? ` <button class="x" data-del="${esc2(c.id)}" title="Delete">✕</button>` : ''}</li>`).join('') + '</ol>' : '<br><small>Turn on 💬 Comment, then click anything in the model.</small>')
-      + (opts.comments && myComments.length ? '<button class="p3v-csend">Send comments</button>' : '');
+      + (opts.comments && myComments.some(c => !c.sent) ? '<button class="p3v-csend">Send comments</button>' : opts.comments && myComments.length ? '<p><small>All sent to your designer ✓</small></p>' : '');
     cList.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { myComments = myComments.filter(c => c.id !== b.dataset.del); saveMine(); drawPins(); });
     const sb = cList.querySelector('.p3v-csend'); if (sb) sb.onclick = sendComments;
   }
-  function sendComments() {
+  // with a share id (set by the app), comments go straight to the designer's app through the server;
+  // without one, or with no connection, they're saved as a file to email back
+  const COMMENTS_URL = opts.commentsUrl || 'https://cleanroom-cloud-production.up.railway.app/api/plan3d/comments/';
+  async function sendComments() {
+    const sid = plan && plan.share && plan.share.id, todo = myComments.filter(c => !c.sent);
+    if (sid && todo.length) {
+      const sb = cList.querySelector('.p3v-csend'); if (sb) { sb.disabled = true; sb.textContent = 'Sending…'; }
+      try {
+        const r = await fetch(COMMENTS_URL + encodeURIComponent(sid), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ comments: todo }) });
+        if (r.ok) { todo.forEach(c => { c.sent = true; }); saveMine(); drawPins(); cList.insertAdjacentHTML('beforeend', '<p><small>Sent. Your designer will see ' + (todo.length === 1 ? 'it' : 'them') + ' in Coll Plan3D.</small></p>'); return; }
+      } catch (e) { /* no connection: save a file instead */ }
+      if (sb) { sb.disabled = false; sb.textContent = 'Send comments'; }
+      cList.insertAdjacentHTML('beforeend', '<p><small>Couldn’t send right now, so they’re saved as a file too.</small></p>');
+    }
+    saveFile();
+  }
+  function saveFile() {
     const data = JSON.stringify({ kind: 'coll-plan3d-comments', project: plan && plan.name, sent: new Date().toISOString(), comments: myComments }, null, 1);
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' })); a.download = ((plan && plan.name) || 'project') + ' comments.json';
     document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
