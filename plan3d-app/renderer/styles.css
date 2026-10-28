@@ -240,3 +240,25 @@ body[data-mode="house"] .modechip { background: rgba(127,211,227,.16); color: #9
 .ce-pad .btn { min-width: 30px; padding: 3px 0; }
 #cePrev:focus { outline: 2px solid #f2c84b; outline-offset: 2px; }
 #grillePal .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } #grillePal input[type=text] { padding: 3px 5px; }
+
+/* ---------- Quote & proposal ---------- */
+.qd { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; grid-template-rows: minmax(0, 1fr); gap: 22px; height: calc(100vh - 230px); min-height: 320px; }
+.qd .qcol { overflow: auto; padding-right: 6px; min-height: 0; }
+.qd h4 { margin: 14px 0 8px; font: 600 12px var(--display); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.qd h4 small { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 6px; }
+.qd h4:first-child { margin-top: 0; }
+.qd textarea { width: 100%; resize: vertical; background: var(--ink); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; }
+.qt { width: 100%; border-collapse: collapse; font-size: 12px; }
+.qt th { text-align: left; font-weight: 600; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
+.qt td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.qt td small { display: block; color: var(--muted); font-size: 11px; }
+.qt .n { text-align: right; white-space: nowrap; }
+.qt input { width: 84px; text-align: right; }
+.qt tr.qc td { padding-top: 10px; font: 600 11px var(--display); text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+.qtot { margin: 10px 0 4px; padding: 10px 12px; background: var(--raise); border: 1px solid var(--line); border-radius: 8px; }
+.qtot div { display: flex; justify-content: space-between; padding: 2px 0; }
+.qtot div span { color: var(--muted); }
+.qtot .big { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 15px; }
+.qtot .big b { color: var(--accent); }
+.qco summary { cursor: pointer; color: var(--muted); margin: 12px 0 6px; }
+.qd .qcol:focus, .qd .qcol:focus-visible { outline: none; }
