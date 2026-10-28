@@ -1266,7 +1266,80 @@ async function fabSheets() {
   if (!R.S.W.walls.length) { toast('No cleanroom (hardwall) walls to draw.'); return; }
   if (!api.exportPDF) return;
   const p = await api.exportPDF(R.html, (P.name || 'Cleanroom') + ' fabrication sheets', 17, 11);
-  if (p) toast(`Fabrication sheets saved: ${R.S.W.walls.length} walls, ${R.S.rows.length} panels.`, { label: 'Open it', fn: () => api.openPath(p) });
+  if (p) toast(`Fabrication sheets saved: ${R.S.W.walls.length} walls, ${R.S.rows.length} panels, ${(R.crates || []).length} crates.`, { label: 'Open it', fn: () => api.openPath(p) });
+}
+
+/* ---------- Project documents (Plan3DDocs): submittal, purchase orders, install schedule, certification ---------- */
+function docCtx() {
+  const P = ed.plan, pq = P.quote || {};
+  const co = QS.get('company', { name: 'Coll Business Solutions LLC', phone: '', email: 'collbusinesssolutions@gmail.com', web: 'collbusinesssolutions.com', logo: '' });
+  const cust = { name: '', company: '', address: '', project: P.name || '', scope: '', ...pq.cust };
+  const d = new Date(), pad = (v) => String(v).padStart(2, '0'), stamp = String(d.getFullYear()).slice(2) + pad(d.getMonth() + 1) + pad(d.getDate());
+  return { P, co, cust, stamp, date: d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) };
+}
+const needWalls = () => { if (!ed.plan.walls.length && !(ed.plan.inserts || []).length) { toast('Add some walls first.'); return false; } return true; };
+const custNote = (c) => c.cust.name || c.cust.company ? '' : '<p class="note">Customer details come from Quote &amp; proposal; fill them in there to put them on the documents.</p>';
+async function pdfOut(html, name, msgText) { if (!api.exportPDF) return; const p = await api.exportPDF(html, name, 8.5, 11); if (p) toast(msgText, { label: 'Open it', fn: () => api.openPath(p) }); }
+function submittalDialog() {
+  if (!needWalls()) return; const c = docCtx(), P = c.P, sd = P.submittal || {};
+  const inp = (id, v) => `<input type="text" id="${id}" value="${esc(v == null ? '' : v)}">`;
+  dialogOpen({ title: 'Submittal package', body: `${fld('Submittal no.', inp('sbNo', sd.number || 'S' + c.stamp))}${fld('Revision', inp('sbRev', sd.rev != null ? sd.rev : '0'))}
+    ${fld('Picture', `<select id="sbPic"><option value="view">The 3D view as it is now</option><option value="none">No picture</option></select>`)}
+    <p class="note">Cover with an approval stamp, contents, floor plan, a data sheet for every room (ISO class, air changes, pressure), FFU and light cut sheets, wall panel and ceiling spec, electrical summary and the materials list.</p>${custNote(c)}`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Make PDF', primary: true, value: () => ({ number: $('#sbNo').value.trim() || 'S' + c.stamp, rev: $('#sbRev').value.trim(), pic: $('#sbPic').value }) }] }).then(async (r) => {
+    if (!r) return;
+    ed.edit(Q2 => { Q2.submittal = { number: r.number, rev: r.rev }; });
+    const picture = r.pic === 'view' && viewer && viewer.snapshot ? viewer.snapshot() : null;
+    let sheetSvg = ''; try { if (P.walls.length) sheetSvg = Plan3DSheet.makeSheet(P, { page: 'letter', rotate: 'auto' }).svg; } catch (e) { console.error(e); }
+    let html; try { html = Plan3DDocs.submittalHTML(P, { co: c.co, cust: c.cust, number: r.number, rev: r.rev, date: c.date, picture, sheetSvg }); } catch (e) { console.error(e); toast('Couldn’t make the submittal: ' + e.message); return; }
+    await pdfOut(html, (c.cust.project || P.name || 'Cleanroom') + ' submittal ' + r.number + (r.rev ? ' rev ' + r.rev : ''), 'Submittal package saved.');
+  });
+}
+function poDialog() {
+  if (!needWalls()) return; const c = docCtx(), P = c.P, G = Plan3DDocs.poGroups(P), sup = QS.get('suppliers', {}), pq = P.pos || {};
+  if (!G.length) { toast('Nothing on the parts list to order yet.'); return; }
+  const inp = (id, v, ph, w) => `<input type="text" id="${id}" value="${esc(v == null ? '' : v)}" placeholder="${esc(ph || '')}"${w ? ` style="width:${w}"` : ''}>`;
+  const need = pq.needBy || '';
+  dialogOpen({ title: 'Purchase orders', body: `<p class="note">One PO for each supplier, with every part it supplies, your unit costs from the price book (Quote &amp; proposal), and the order-by date worked back from when you need it on site. Suppliers are saved for every project.</p>
+    <div class="row" style="gap:12px">${fld('Need on site by', `<input type="date" id="poNeed" value="${esc(need)}">`)}${fld('PO no. starts', inp('poNo', pq.number || 'PO' + c.stamp))}</div>
+    ${fld('Ship to', `<textarea id="poShip" rows="2" placeholder="Job site address (defaults to the customer's address)">${esc(pq.shipTo || '')}</textarea>`)}
+    <table class="qt" style="width:100%"><thead><tr><th>Supplies</th><th>Supplier</th><th>Phone</th><th>Email</th><th class="n">Lead (days)</th><th class="n">Lines</th></tr></thead><tbody>
+    ${G.map(g => { const s = sup[g.k] || {}; return `<tr><td>${esc(g.label)}</td><td>${inp('poN_' + g.k, s.name, 'Name', '100%')}</td><td>${inp('poP_' + g.k, s.phone, '', '100%')}</td><td>${inp('poE_' + g.k, s.email, '', '100%')}</td><td class="n">${inp('poL_' + g.k, s.lead || Plan3DDocs.LEAD_DAYS[g.k], '', '50px')}</td><td class="n">${g.lines.length}</td></tr>`; }).join('')}</tbody></table>${custNote(c)}`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Export (.csv)', value: () => 'csv' }, { label: 'Make PDF', primary: true, value: () => 'pdf' }],
+    onOpen: (d) => d.classList.add('wide-xl'),
+  }).then(async (r) => {
+    const d = $('#dlg'); d.classList.remove('wide-xl');
+    if (!r) return;
+    for (const g of G) sup[g.k] = { name: ($('#poN_' + g.k) || {}).value || '', phone: ($('#poP_' + g.k) || {}).value || '', email: ($('#poE_' + g.k) || {}).value || '', lead: parseInt(($('#poL_' + g.k) || {}).value, 10) || Plan3DDocs.LEAD_DAYS[g.k] };
+    QS.set('suppliers', sup);
+    const needBy = $('#poNeed').value, number = $('#poNo').value.trim() || 'PO' + c.stamp, shipTo = $('#poShip').value.trim();
+    ed.edit(Q2 => { Q2.pos = { needBy, number, shipTo }; });
+    const X = { co: c.co, cust: c.cust, number, date: c.date, needBy: needBy ? new Date(needBy + 'T12:00:00') : null, suppliers: sup, prices: QS.get('prices', {}), shipTo };
+    const name = (c.cust.project || P.name || 'Cleanroom') + ' purchase orders';
+    if (r === 'csv') { if (!api.exportFile) return; const p = await api.exportFile(Plan3DDocs.posCSV(P, X), name, 'csv'); if (p) toast('Purchase orders saved.', { label: 'Open it', fn: () => api.openPath(p) }); return; }
+    const R = Plan3DDocs.posHTML(P, X);
+    await pdfOut(R.html, name, `${R.groups.length} purchase order${R.groups.length === 1 ? '' : 's'} saved.`);
+  });
+}
+function scheduleDialog() {
+  if (!needWalls()) return; const c = docCtx(), P = c.P, sp = P.install || {};
+  const today = new Date(), iso = (d) => d.toISOString().slice(0, 10);
+  dialogOpen({ title: 'Install schedule & punch list', body: `<div class="row" style="gap:12px">${fld('Start', `<input type="date" id="isStart" value="${esc(sp.start || iso(new Date(today.getTime() + 14 * 864e5)))}">`)}${fld('Crew', `<input type="number" id="isCrew" min="1" max="20" value="${sp.crew || 3}" style="width:70px"> installers`)}</div>
+    <div id="isPrev" class="note"></div><p class="note">Order of work with crew-days from the plan's quantities, start and finish dates (Monday to Friday), crew-days for each room, and a punch list page for every room.</p>${custNote(c)}`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Make PDF', primary: true, value: () => ({ start: $('#isStart').value, crew: +$('#isCrew').value || 3 }) }],
+    onOpen: () => { const prev = () => { try { const X = Plan3DDocs.installPlan(P, { crew: +$('#isCrew').value || 3, start: new Date(($('#isStart').value || iso(today)) + 'T12:00:00') }); $('#isPrev').innerHTML = `<b>${X.total.toFixed(1)} working days</b> with ${X.crew} installers: ${X.start.toLocaleDateString()} to ${X.finish.toLocaleDateString()}.`; } catch (e) { $('#isPrev').textContent = ''; } }; $('#isCrew').oninput = prev; $('#isStart').onchange = prev; prev(); }
+  }).then(async (r) => {
+    if (!r) return;
+    ed.edit(Q2 => { Q2.install = { start: r.start, crew: r.crew }; });
+    const R = Plan3DDocs.scheduleHTML(P, { co: c.co, cust: c.cust, crew: r.crew, start: new Date((r.start || iso(today)) + 'T12:00:00') });
+    await pdfOut(R.html, (c.cust.project || P.name || 'Cleanroom') + ' install schedule', `Install schedule saved: ${R.P.total.toFixed(1)} working days.`);
+  });
+}
+async function certExport() {
+  if (!needWalls()) return; const c = docCtx(), P = c.P;
+  const R = Plan3DDocs.roomsOf(P);
+  if (!R.length) { toast('Label the rooms (Room tool) and set their type to get a certification page for each.'); }
+  await pdfOut(Plan3DDocs.certHTML(P, { co: c.co, cust: c.cust }), (c.cust.project || P.name || 'Cleanroom') + ' certification checklist', `Certification checklist saved: ${R.length} room${R.length === 1 ? '' : 's'}.`);
 }
 
 /* ---------- Plan sheet (PDF) ---------- */
@@ -2805,7 +2878,7 @@ $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave
     items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
   });
   const item = (id, fn) => { $(id).onclick = () => { close(); fn(); }; };
-  item('#bExportLink', linkDialog); item('#bExportHtml', exportHtml); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
+  item('#bExportLink', linkDialog); item('#bExportHtml', exportHtml); item('#bSubm', submittalDialog); item('#bPOs', poDialog); item('#bSched', scheduleDialog); item('#bCert', certExport); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
   item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportParts', exportParts);
 }
 // Ceiling dropdown: add / edit the ceiling drawing, or generate one
