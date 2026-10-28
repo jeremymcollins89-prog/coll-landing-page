@@ -305,7 +305,7 @@
 
     // ---------------------------------------------------------------- game state
     let waveClear = false, score = 0, wave = 0, hull = 100, abducted = 0, dead = false, deadT = 0, waveT = 1.2, toSpawn = 0, spawnT = 0, fireT = 0, gunSide = 1, hitFlash = 0, time = 0, liftT = st.y < 14 ? 1.4 : 0;
-    let firing = false, beamOn = false, streak = 0, lastKill = -9, mslWarn = 0, best = 0;
+    let lastHit = -9, firing = false, beamOn = false, streak = 0, lastKill = -9, mslWarn = 0, best = 0;
     try { best = +localStorage.getItem('p3g.best') || 0; } catch (e) { /* none */ }
     const jets = [], aliens = [];
     const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
@@ -358,7 +358,7 @@
     }
 
     function hurt(n) {
-      if (dead) return; hull = Math.max(0, hull - n); hitFlash = Math.min(1, 0.4 + n / 25); shake = Math.max(shake, 0.35); SND.hit();
+      if (dead) return; lastHit = time; hull = Math.max(0, hull - n); hitFlash = Math.min(1, 0.4 + n / 25); shake = Math.max(shake, 0.35); SND.hit();
       if (hull <= 0) {
         try { if (score >= best) localStorage.setItem('p3g.best', String(score)); } catch (e) { /* ok */ }
         dead = true; deadT = 0; C.setBoost(0); explode(new THREE.Vector3(st.x, st.y, st.z), true); SND.over(); drone.visible = false;
@@ -376,7 +376,7 @@
       const D = dronePos().clone();
 
       // waves
-      if (!dead && !jets.length && !toSpawn) { if (wave && !waveClear) { waveClear = true; const b = 500 * wave; score += b; hull = Math.min(100, hull + 25); say('WAVE ' + wave + ' CLEAR', '+' + b + ' · HULL REPAIRED', 2.6); tone('triangle', 440, 880, 0.3, 0.1); tone('triangle', 660, 1320, 0.35, 0.08, 0.15); waveT = 3.2; } waveT -= dt; if (waveT <= 0) { waveClear = false; wave++; toSpawn = Math.min(2 + wave, 9); spawnT = 0; say('WAVE ' + wave, wave === 1 ? 'SHOOT THEM DOWN · BEAM UP THE LOCALS' : 'MORE BANDITS INBOUND', 2.4); SND.alarm(); } }
+      if (!dead && !jets.length && !toSpawn) { if (wave && !waveClear) { waveClear = true; const b = 500 * wave; score += b; hull = Math.min(100, hull + 25); say('WAVE ' + wave + ' CLEAR', '+' + b + ' · HULL REPAIRED', 2.6); tone('triangle', 440, 880, 0.3, 0.1); tone('triangle', 660, 1320, 0.35, 0.08, 0.15); waveT = 3.2; } waveT -= dt; if (waveT <= 0) { waveClear = false; wave++; toSpawn = Math.min(1 + wave, 9); spawnT = 0; say('WAVE ' + wave, wave === 1 ? 'SHOOT THEM DOWN · BEAM UP THE LOCALS' : 'MORE BANDITS INBOUND', 2.4); SND.alarm(); } }
       if (toSpawn) { spawnT -= dt; if (spawnT <= 0) { spawnJet(); toSpawn--; spawnT = 1.4; } }
 
       // our guns: aim through the crosshair, with a little help onto a jet near it
@@ -453,7 +453,7 @@
         let gone = b.life <= 0 || b.m.position.y < 0;
         if (!gone && b.mine) {
           for (const j of jets) { if (j.dying) continue; if (segDist(j.J.position, p0, b.m.position) < 3.4) { j.hp--; j.hitT = 0.6; gone = true; SND.clang(); const sp = sprite(TX.spark, 0xffffff, 2, b.m.position, 1); addFx(sp, 0.15, (d2, k) => { sp.material.opacity = 1 - k; }); if (j.hp <= 0) killJet(j); break; } }
-        } else if (!gone && !dead) { if (segDist(D, p0, b.m.position) < 1.15) { gone = true; hurt(5); const sp = sprite(TX.spark, 0xffffff, 1.4, b.m.position, 1); addFx(sp, 0.12, (d2, k) => { sp.material.opacity = 1 - k; }); } }
+        } else if (!gone && !dead) { if (segDist(D, p0, b.m.position) < 1.15) { gone = true; hurt(Math.round(3 + Math.min(4, wave * 0.6))); const sp = sprite(TX.spark, 0xffffff, 1.4, b.m.position, 1); addFx(sp, 0.12, (d2, k) => { sp.material.opacity = 1 - k; }); } }
         if (b.m.position.y < 0.1 && !gone) gone = true;
         if (gone) { root.remove(b.m); bullets.splice(i, 1); }
       }
@@ -531,10 +531,12 @@
       if (!C.isPilot()) camera.position.y += 0.75;
       if (shake > 0) { camera.position.add(new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).multiplyScalar(shake * 0.35)); shake = Math.max(0, shake - dt * 2.2); }
 
+      // the hull patches itself up slowly once you've been out of the fire a while
+      if (!dead && time - lastHit > 6 && hull < 100) hull = Math.min(100, hull + dt * 2.5);
       // HUD
       hitFlash = Math.max(0, hitFlash - dt * 2.5); elVig.style.opacity = String(Math.max(hitFlash, hull < 30 && !dead ? 0.35 + Math.sin(time * 6) * 0.15 : 0));
       elScore.textContent = score.toLocaleString(); if (score > best) { best = score; } elBest.textContent = best ? 'BEST ' + best.toLocaleString() : ''; elRow.textContent = `WAVE ${Math.max(1, wave)} · 👽 ${abducted}`;
-      elFill.style.width = hull + '%'; elHull.classList.toggle('low', hull < 30);
+      elFill.style.width = hull.toFixed(1) + '%'; elHull.classList.toggle('low', hull < 30);
       if (msgT > 0) { msgT -= dt; if (msgT <= 0) elMsg.classList.remove('on'); }
       const w = container.clientWidth, h = container.clientHeight; let n = 0;
       for (const j of jets) {
