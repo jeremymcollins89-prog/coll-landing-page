@@ -534,7 +534,7 @@ ipcMain.handle('open-file', async (e, which) => {
 ipcMain.handle('load-path', (e, p) => loadAny(p));
 
 ipcMain.handle('load-sample', (e, which) => {
-  const name = which === 'house' ? 'Sample house' : 'SOM base cleanroom';
+  const name = which === 'house' ? 'Sample house' : 'Sample cleanroom';
   const p = path.join(__dirname, 'samples', name + '.plan3d');
   return { kind: 'project', name, path: null, json: fs.readFileSync(p, 'utf8') };
 });

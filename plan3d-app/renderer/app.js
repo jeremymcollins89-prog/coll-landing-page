@@ -33,7 +33,7 @@ function welcomeText() {
   const house = ed.plan.mode === 'house';
   $('#wTitle').textContent = house ? 'Design a house in 3D' : 'Turn a floor plan into a 3D walkthrough';
   $('#wText').textContent = house ? 'Draw the walls (wood or steel studs), add doors and windows, pick a roof, place the kitchen, bath and laundry, then walk through it. The parts list counts the framing, drywall, siding, roof and more.' : 'Bring in an AutoCAD drawing or a photo of the plan sheet, check the walls, add doors, glass and air chases, then walk through it.';
-  $('#wSampleText').textContent = house ? 'A 3-bedroom ranch house with kitchen, two baths and laundry' : 'SOM base cleanroom: 8′-6″ and 11′ grids, 3′ plenum, MAC 10 FFUs';
+  $('#wSampleText').textContent = house ? 'A two-story house with a basement and an attached 2-car garage' : 'A fill-and-finish suite: ISO 5 core, two ISO 7 rooms, gowning, airlock and packaging';
 }
 function pickMode(m) {
   modePicked = true;
