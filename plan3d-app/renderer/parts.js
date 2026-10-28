@@ -187,7 +187,8 @@ function partsList(plan) {
 
   // --- Panels: one piece up to 12′ tall; a taller wall is a 12′ panel with another stacked on it (and a
   // horizontal H-channel along the joint)
-  const panelRows = (ht) => { const r = []; let left = ht; while (left > 12 + 1 / 96) { r.push(12); left -= 12; } r.push(left); return r; };
+  // stacked walls split at the ceiling line (a plenum panel on top) where that works, else at 12′
+  const panelRows = (ht, pc) => V.panelStack ? V.panelStack(ht, pc ? V.wallCeil(plan, A, pc) : H) : (() => { const r = []; let left = ht; while (left > 12 + 1 / 96) { r.push(12); left -= 12; } r.push(left); return r; })();
   let hJoint = 0;
   for (const w of walls) {
     if (!w.piece) continue;
@@ -206,7 +207,7 @@ function partsList(plan) {
     let n = 0;
     for (let i = 0; i + 1 < cuts.length; i++) {
       const L = cuts[i + 1] - cuts[i]; if (L < 1 / 12) continue;
-      const R = panelRows(p.h || WH); hJoint += (R.length - 1) * L;
+      const R = panelRows(p.h || WH, p); hJoint += (R.length - 1) * L;
       R.forEach((ht, k) => add('Wall panels', (p.sp ? 'S.P. panel' : 'Wall panel') + (R.length > 1 ? (k === R.length - 1 ? ' (upper, stacked)' : ' (lower)') : ''), panW(L) + ' × ' + ftin(ht), 1, 'ea', 10)); n++;
     }
     hStuds += Math.max(0, n - 1);

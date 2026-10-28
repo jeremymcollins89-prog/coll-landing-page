@@ -168,7 +168,11 @@ const ITEMS = {
   condenser: { label: 'AC condenser', group: 'Outdoor & garage', w: 2.5, d: 2.5, h: 2.67 },
   // a machine brought in from a drawing (Library → Add a machine): it carries its own plan linework
   // (it.lines, it.swings, local feet about its centre), size (w × d) and height (it.h)
-  machine: { label: 'Machine', group: 'Equipment', w: 4, d: 4, h: 8, free: true, hidden: true }
+  machine: { label: 'Machine', group: 'Equipment', w: 4, d: 4, h: 8, free: true, hidden: true },
+  // stairs up to the floor above: risers 7¾″ max, treads 10″; d is the run (it's set from the floor-to-floor height
+  // when placed). The floor above gets a stairwell opening over it.
+  stairs: { label: 'Stairs, straight run', group: 'Stairs', w: 3, d: 12, h: 9, free: true },
+  stairsL: { label: 'Stairs with landing (L)', group: 'Stairs', w: 6.5, d: 10, h: 9, free: true }
 };
 /* ---------- House foundation (plan.foundation) ----------
    type: slab (monolithic slab, thickened edge), stem (stem wall on a footing, slab inside), crawl (stem wall on a
@@ -238,6 +242,53 @@ function foundationTakeoff(plan, A) {
   L.push(['Concrete', 'Anchor bolts ½″ × 10″ (6′ on center, 12″ from corners)', '', Math.ceil(perim / 6) + ext.length * 2, 'ea']);
   L.push(['Concrete', 'Sill seal gasket', '', perim * 1.05, 'lin ft']);
   return { F, perim, area, ext, lines: L };
+}
+/* Where a wall taller than one 12′ panel is stacked: the first joint at the ceiling line when the room's ceiling
+   (the higher of the two sides) leaves a plenum panel of 12′ or less above it, otherwise at 12′; then every 12′.
+   Returns the panel heights bottom to top, e.g. [11, 3] for a 14′ wall over an 11′ ceiling. */
+function panelStack(h, ceil) {
+  if (!(h > 12 + 1 / 96)) return [h];
+  const r = []; let y = 0;
+  if (ceil >= 4 && ceil <= 12 && h - ceil > 0.25) { r.push(ceil); y = ceil; }
+  while (h - y > 12 + 1 / 96) { r.push(12); y += 12; }
+  r.push(h - y); return r;
+}
+function wallCeil(plan, A, p) {
+  const CA = ceilAreas(plan, A), L = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, nx = -(p.z2 - p.z1) / L, nz = (p.x2 - p.x1) / L, mx = (p.x1 + p.x2) / 2, mz = (p.z1 + p.z2) / 2, o = (p.t || 0.25) / 2 + 0.4;
+  return Math.max(ceilingAt(CA, A.H, mx + nx * o, mz + nz * o), ceilingAt(CA, A.H, mx - nx * o, mz - nz * o));
+}
+/* ---------- Stories (plan.levels) ----------
+   A house can have several floors. plan.levels = [{ id, name, data }] and plan.level is the floor being edited:
+   its contents (walls, openings, rooms, items…) live on the plan itself, as a one-floor plan always has; the
+   others are kept in their level's data. Floor k sits at the sum of the floor-to-floor heights below it: each
+   floor's wall height plus the floor system (plan.floorDepth, 1′ to start: joists and subfloor). */
+const LEVEL_KEYS = ['walls', 'openings', 'rooms', 'items', 'devices', 'chases', 'columns', 'beams', 'headers', 'grilles', 'ceiling'];
+function levelData(plan, k) {
+  const L = plan.levels || [], cur = plan.level || 0;
+  if (k === cur || !L.length) { const d = {}; for (const key of LEVEL_KEYS) d[key] = plan[key]; return d; }
+  return Object.assign({ walls: [], openings: [], rooms: [], items: [], devices: [], chases: [], columns: [], beams: [], headers: [], grilles: [], ceiling: plan.ceiling || 8 }, (L[k] && L[k].data) || {});
+}
+const floorDepthOf = (plan) => Math.max(0.5, Math.min(3, +plan.floorDepth || 1));
+const stairRise = (plan, k) => (levelData(plan, k).ceiling || plan.ceiling || 8) + floorDepthOf(plan);
+/* Each floor as a plan of its own, with its elevation: the roof on the top floor only, the foundation under the
+   first; a floor over another gets the stairwell openings of the stairs coming up from below. */
+function levelPlans(plan) {
+  const L = plan.levels || [];
+  if (L.length < 2) return [{ k: 0, name: (L[0] && L[0].name) || '', plan, elev: 0, top: true }];
+  const out = []; let elev = 0;
+  for (let k = 0; k < L.length; k++) {
+    const d = levelData(plan, k), lp = Object.assign({}, plan, JSON.parse(JSON.stringify(d)));
+    delete lp.levels; lp.level = 0;
+    if (k < L.length - 1) lp.roof = { type: 'none' };
+    if (k > 0) { lp.foundation = { type: 'none' }; lp.__floorBand = floorDepthOf(plan); lp.inserts = []; }
+    lp.__rise = stairRise(plan, k);
+    const holes = (items) => (items || []).filter(it => it.type === 'stairs' || it.type === 'stairsL').map(it => { const c = itemCorners(it); return { x0: Math.min(...c.map(q => q[0])), z0: Math.min(...c.map(q => q[1])), x1: Math.max(...c.map(q => q[0])), z1: Math.max(...c.map(q => q[1])) }; });
+    lp.__ceilHoles = holes(d.items);
+    if (k > 0) lp.__floorHoles = holes(levelData(plan, k - 1).items);
+    out.push({ k, name: L[k].name || 'Floor ' + (k + 1), plan: lp, elev, top: k === L.length - 1 });
+    elev += stairRise(plan, k);
+  }
+  return out;
 }
 /* House finishes: picked in the Plan panel (plan.finish), shown in 3D and named on the parts list. */
 const FINISH = {
@@ -2623,6 +2674,25 @@ function itemMesh(THREE, it, M, opt) {
     case 'dishwasher': box(0, 1.42, 0, w - 0.02, 2.83, d - 0.05, steel); box(0, 2.6, d / 2, w - 0.1, 0.06, 0.06, dark); box(0, 2.94, 0.04, w + 0.05, 0.12, d + 0.08, counter); break;
     case 'toilet': { box(0, 1.25, -d / 2 + 0.33, w * 0.95, 1.2, 0.62, porcelain); const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.45, 1.25, 24), porcelain); bowl.scale.set(0.95, 1, 1.25); bowl.position.set(0, 0.62, 0.3); g.add(bowl); box(0, 1.27, 0.32, 1.2, 0.06, 1.45, porcelain); break; }
     case 'vanity': box(0, 1.3, 0, w - 0.02, 2.5, d - 0.05, wood); box(0, 2.78, 0.02, w + 0.04, 0.1, d + 0.04, mat(0xeae6df, 0x666666)); box(0, 2.8, 0.05, Math.min(1.6, w - 0.6), 0.1, 1.0, porcelain); cyl(0, 3.1, -d / 2 + 0.25, 0.04, 0.5, steel); box(0, 4.6, -d / 2 + 0.03, Math.min(w, 3), 2.6, 0.05, mat(0xcfe3ea, 0xffffff)); break;
+    case 'stairs': case 'stairsL': {
+      // treads and risers up to the floor above (rise from the plan), stringers, a handrail on the open side
+      const rise = (opt.plan && opt.plan.__rise) || ((opt.H || 8) + 1), n = Math.max(2, Math.ceil(rise * 12 / 7.75)), rh = rise / n;
+      const oak2 = mat(0xb98f62), wht = mat(0xf2f0eb), rail = mat(0x6b4a33);
+      if (it.type === 'stairs') {
+        const tr = d / (n - 1);
+        for (let k = 0; k < n - 1; k++) { const z = -d / 2 + tr * (k + 0.5); box(0, rh * (k + 1) - 0.04, z, w, 0.08, tr + 0.08, oak2); box(0, rh * (k + 0.5), z - tr / 2 + 0.02, w, rh, 0.04, wht); }
+        for (const sx of [-1, 1]) { const st = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.8, Math.hypot(d, rise)), wht); st.position.set(sx * (w / 2 - 0.06), rise / 2 - 0.3, 0); st.rotation.x = Math.atan2(rise, d); g.add(st); }
+        const hr = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, Math.hypot(d, rise)), rail); hr.position.set(w / 2 - 0.1, rise / 2 + 3, 0); hr.rotation.x = Math.atan2(rise, d); g.add(hr);
+        for (let k = 0; k < n - 1; k += 2) { const z = -d / 2 + (d / (n - 1)) * (k + 0.5); box(w / 2 - 0.1, rh * (k + 1) + 1.5, z, 0.06, 3, 0.06, wht); }
+      } else {
+        // two runs and a square landing at half height: up along the right side, across the landing, back along the left
+        const half = Math.ceil(n / 2), wr = w / 2 - 0.1, run = d - wr, tr = run / (half - 1), y0 = rh * half;
+        for (let k = 0; k < half - 1; k++) { const z = d / 2 - tr * (k + 0.5); box(w / 4, rh * (k + 1) - 0.04, z, wr, 0.08, tr + 0.08, oak2); box(w / 4, rh * (k + 0.5), z + tr / 2 - 0.02, wr, rh, 0.04, wht); }
+        box(0, y0 - 0.04, -d / 2 + wr / 2, w, 0.08, wr, oak2); box(0, y0 / 2, -d / 2 + wr / 2, w, y0, wr, wht);
+        for (let k = 0; k < n - half - 1; k++) { const z = -d / 2 + wr + tr * (k + 0.5); box(-w / 4, y0 + rh * (k + 1) - 0.04, z, wr, 0.08, tr + 0.08, oak2); box(-w / 4, y0 + rh * (k + 0.5), z - tr / 2 + 0.02, wr, rh, 0.04, wht); }
+      }
+      break;
+    }
     case 'tub': box(0, h / 2, 0, w, h, d, porcelain); box(0, h - 0.05, 0.02, w - 0.5, 0.12, d - 0.45, mat(0xe9eef0)); cyl(-w / 2 + 0.35, h + 0.25, -d / 2 + 0.3, 0.04, 0.5, steel); break;
     case 'shower': box(0, 0.12, 0, w, 0.24, d, porcelain); box(0, h / 2, d / 2 - 0.02, w, h, 0.03, M.glass); box(-w / 2 + 0.02, h / 2, 0, 0.03, h, d, M.glass); cyl(0, 6.2, -d / 2 + 0.25, 0.25, 0.04, steel); break;
     case 'washer': case 'dryer': box(0, h / 2, 0, w, h, d, porcelain); box(0, h - 0.2, -d / 2 + 0.2, w, 0.4, 0.4, mat(0xdde1e3)); { const c = cyl(0, 1.55, d / 2 + 0.01, 0.7, 0.05, it.type === 'washer' ? mat(0x9fb6c2, 0xffffff) : dark, 32); c.rotation.x = Math.PI / 2; } break;
@@ -2858,12 +2928,16 @@ function buildScene(THREE, plan, A) {
     }
     // panels come up to 12′ tall in one piece; a taller wall is a 12′ panel with a second one stacked on it,
     // joined with a horizontal H-channel
-    for (let y = 12; y < p.h - 0.1; y += 12) segBox(p.x1, p.z1, p.x2, p.z2, y - 0.06, y + 0.06, p.t + 0.02, M.white);
+    { let y = 0; const st = panelStack(p.h, wallCeil(plan, A, p)); for (let k = 0; k + 1 < st.length; k++) { y += st[k]; segBox(p.x1, p.z1, p.x2, p.z2, y - 0.06, y + 0.06, p.t + 0.02, M.white); } }
     // a section that stops short of (or runs past) the top of the cleanroom gets a cap along its top
     if (Math.abs(p.h - WH) > 0.02) segBox(p.x1, p.z1, p.x2, p.z2, p.h - 0.03, p.h + 0.04, p.t + 0.03, M.white);
     shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
   }
   curRef = null;
+  // an upper floor's floor system (rim joist, subfloor) between it and the floor below, sided on the outside
+  if (A.frameAny && plan.__floorBand > 0) {
+    for (const w of houseExtWalls(plan, A)) { const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), ux = (w.x2 - w.x1) / L, uz = (w.y2 - w.y1) / L, e = (w.t || 0.375) / 2; const sm = sidingMat(L + 2 * e, plan.__floorBand); const m = segBox(w.x1 - ux * e, w.y1 - uz * e, w.x2 + ux * e, w.y2 + uz * e, -plan.__floorBand, 0, (w.t || 0.375), [M.edge, M.edge, M.edge, M.edge, sm, sm]); pick.push(m); }
+  }
   // a house's foundation where it shows above grade: a concrete band at the foot of the outside walls (the slab
   // edge, or the stem / basement wall), siding starting above it
   if (A.frameAny) {
@@ -3149,12 +3223,13 @@ function buildScene(THREE, plan, A) {
   let floor;
   // houses: a floor finish for the whole house (plan.floorType), and per room where a room label sets one
   const fl = A.house ? floorMat(THREE, plan.floorType || 'lvp') : null;
-  if (FPall) floor = fl ? new THREE.Mesh(rectsGeometry(THREE, FPall.rects, 0.01, false, fl.su, fl.sv, 0, 0), fl.mat) : new THREE.Mesh(rectsGeometry(THREE, FPall.rects, 0.01, false, 12, 12, 0, 0), fMat);
+  const fRects = FPall ? (plan.__floorHoles && plan.__floorHoles.length ? subtractRects(FPall.rects, plan.__floorHoles) : FPall.rects) : null;
+  if (FPall) floor = fl ? new THREE.Mesh(rectsGeometry(THREE, fRects, 0.01, false, fl.su, fl.sv, 0, 0), fl.mat) : new THREE.Mesh(rectsGeometry(THREE, fRects, 0.01, false, 12, 12, 0, 0), fMat);
   else { fTex.repeat.set(B.w / 12, B.d / 12); floor = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.d), fMat); floor.rotation.x = -Math.PI / 2; floor.position.set(B.cx, 0.01, B.cz); }
   root.add(floor);
   if (A.house && FPall) for (const r of roomRegions(A, plan)) {
     if (!r.room.floor || r.room.floor === (plan.floorType || 'lvp')) continue;
-    const F = floorMat(THREE, r.room.floor); root.add(new THREE.Mesh(rectsGeometry(THREE, r.rects, 0.035, false, F.su, F.sv, 0, 0), F.mat));
+    const F = floorMat(THREE, r.room.floor); root.add(new THREE.Mesh(rectsGeometry(THREE, plan.__floorHoles ? subtractRects(r.rects, plan.__floorHoles) : r.rects, 0.035, false, F.su, F.sv, 0, 0), F.mat));
   }
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(B.w + 140, B.d + 140), new THREE.MeshLambertMaterial({ color: 0xc4c8c2 }));
   // a house on a stem wall, crawlspace or basement sits up off the ground: the ground drops below the floor and the
@@ -3180,7 +3255,7 @@ function buildScene(THREE, plan, A) {
     const CR = ceilingRects(plan, FP, A), GP = gridPieces(plan, CR, CG);
     // each grid section's tiles laid on its own grid (the main grid first)
     GP.forEach((gp, i) => {
-      const G = gp.G, m = new THREE.Mesh(rectsGeometry(THREE, subtractRects(gp.rects, CA), H, true, 2, ownGrid ? 2 : 4, G.ox, G.oz, G.swap && !ownGrid), cMat);
+      const G = gp.G, m = new THREE.Mesh(rectsGeometry(THREE, subtractRects(gp.rects, CA.concat(plan.__ceilHoles || [])), H, true, 2, ownGrid ? 2 : 4, G.ox, G.oz, G.swap && !ownGrid), cMat);
       if (!ceil) ceil = m; else ceil.add(m);
       for (const a of CA) ceil.add(new THREE.Mesh(rectsGeometry(THREE, clipRects(gp.rects, a), a.h, true, 2, ownGrid ? 2 : 4, G.ox, G.oz, G.swap && !ownGrid), cMat));
     });
@@ -3488,6 +3563,26 @@ function buildAll(THREE, plan, M) {
   return out;
 }
 
+/* A house with several floors: each floor built on its own and stacked at its elevation (the ground and the
+   foundation from the first floor). */
+function buildStack(THREE, plan, M) {
+  const LP = levelPlans(plan);
+  if (LP.length < 2) return buildAll(THREE, plan, M);
+  const root = new THREE.Group(), ceiling = new THREE.Group(), lid = new THREE.Group(), roof = new THREE.Group(), out = { root, pick: [], floors: [], ground: null, ceiling, lid, roof, ceilPlane: new THREE.Object3D(), fixtures: new THREE.Group(), doors: [], doorObs: [], levelObjs: [] };
+  root.add(ceiling); root.add(lid); root.add(roof); root.add(out.fixtures);
+  for (const L of LP) {
+    const b = buildAll(THREE, L.plan);
+    b.root.position.y = L.elev;
+    if (L.k > 0 || !b.ground) { if (b.ground && b.ground.parent) b.ground.parent.remove(b.ground); } else out.ground = b.ground;
+    for (const [grp, src] of [[ceiling, b.ceiling], [lid, b.lid], [roof, b.roof]]) if (src) { grp.add(src); src.position.y = L.elev; }
+    root.add(b.root);
+    out.pick.push(...b.pick); out.floors.push(b.floor); out.doors.push(...b.doors); out.doorObs.push(...b.doorObs);
+    out.levelObjs.push({ k: L.k, objs: [b.root, b.ceiling, b.lid, b.roof].filter(Boolean) });
+  }
+  out.floor = out.floors[0];
+  if (!out.ground) out.ground = new THREE.Object3D();
+  return out;
+}
 /* Airflow in 3D: clean air pushed straight down out of each fan filter unit (blue), and room air drawn into
    each air chase's return grille (purple). They go in a group marked userData.airflow so the viewer can show
    and hide them. */
@@ -3842,6 +3937,8 @@ function mount(container, plan, opts) {
     if (built.lid) built.lid.visible = lidOn || m === 'walk' || m === 'exterior';
     if (lidBtn) lidBtn.hidden = !(built.lid && built.lid.children.length);
     if (built.roof) built.roof.visible = m === 'walk' || m === 'exterior';
+    // several floors: Dollhouse and the overhead view look down into the floor being edited, so the ones above it hide
+    if (built.levelObjs) { const act = (plan && plan.level) || 0, cut = m === 'doll' || m === 'plan'; for (const L of built.levelObjs) for (const o of L.objs) o.visible = !cut || L.k <= act; }
   }
   function startTween(to, dur, done) {
     const from = { pos: camera.position.clone(), look: mode === 'walk' ? walkLook() : controls.target.clone(), fov: camera.fov };
@@ -4143,7 +4240,7 @@ function mount(container, plan, opts) {
     plan = p;
     A = analyzeAll(p);
     if (built) { scene.remove(built.root); built.root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
-    built = buildAll(THREE, p, A);
+    built = buildStack(THREE, p, A);
     for (const extra of [() => pressureArrows(THREE, built.root, p), () => floorFlow(THREE, built.root, p)]) { try { extra(); } catch (e) { console.error(e); } }
     scene.add(built.root);
     try { refreshAir(); applySwitches(); } catch (e) { console.error(e); }
@@ -4240,7 +4337,7 @@ function mount(container, plan, opts) {
     get state() { return { x: st.x, z: st.z, yaw: st.yaw, pitch: st.pitch, mode }; },
     exportGLB: () => new Promise((resolve, reject) => {
       if (!THREE.GLTFExporter) return reject(new Error('GLTF exporter missing'));
-      const fresh = buildAll(THREE, plan);
+      const fresh = buildStack(THREE, plan);
       fresh.root.traverse(o => { if (o.isLineSegments) o.visible = false; });
       new THREE.GLTFExporter().parse(fresh.root, (res) => resolve(res), { binary: true, onlyVisible: true });
     }),
@@ -4248,5 +4345,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
