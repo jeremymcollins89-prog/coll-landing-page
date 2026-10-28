@@ -317,7 +317,7 @@
       const J = makeJet(); J.position.set(cx + Math.cos(a) * r, rnd(30, 65), cz + Math.sin(a) * r); root.add(J);
       const dir = new THREE.Vector3(cx - J.position.x, rnd(-0.1, 0.05) * r, cz - J.position.z).normalize();
       const sp = 34 + Math.min(18, wave * 2.2);
-      jets.push({ J, dir, speed: sp, hp: 4 + Math.floor(wave / 2), jink: 0, jinkV: new THREE.Vector3(), phase: 'attack', phaseT: 0, burst: 0, burstT: rnd(1.5, 3), shotT: 0, bank: 0, smokeT: 0, mslT: rnd(5, 9), dying: false });
+      jets.push({ J, dir, speed: sp, hp: 5 + Math.floor(wave / 2), jink: 0, jinkV: new THREE.Vector3(), phase: 'attack', phaseT: 0, burst: 0, burstT: rnd(1.5, 3), shotT: 0, bank: 0, smokeT: 0, mslT: rnd(5, 9), dying: false });
     }
     // wanders the ground round the building (not through it)
     const ring = { x0: B.minX - 45, x1: B.maxX + 45, z0: B.minZ - 45, z1: B.maxZ + 45 };
@@ -383,7 +383,7 @@
       for (const j of jets) {
         if (j.dying) continue; const to = j.J.position.clone().sub(D), d = to.length(); if (d > 280) continue;
         const hz = Math.hypot(to.x, to.z), side = Math.acos(clamp((to.x * head.x + to.z * head.z) / Math.max(hz, 1e-6), -1, 1)), elev = Math.abs(Math.atan2(to.y, hz));
-        if (side < 0.44 && elev < 1.0) { const sc = side * 2 + elev + d / 400; if (sc < bestS) { bestS = sc; lockJ = j; } }
+        if (side < 0.38 && elev < 0.95) { const sc = side * 2 + elev + d / 400; if (sc < bestS) { bestS = sc; lockJ = j; } }
       }
       elX.classList.toggle('lock', !!lockJ);
       fireT -= dt;
@@ -392,7 +392,7 @@
         const right = new THREE.Vector3(Math.cos(st.yaw), 0, -Math.sin(st.yaw)), muzzle = D.clone().addScaledVector(right, gunSide * 0.35).add(new THREE.Vector3(0, -0.1, 0)).addScaledVector(new THREE.Vector3(-Math.sin(st.yaw), 0, -Math.cos(st.yaw)), 0.5);
         let aim = muzzle.clone().addScaledVector(head, 400);
         if (lockJ) { const t = lockJ.J.position.distanceTo(muzzle) / 320; aim = lockJ.J.position.clone().addScaledVector(lockJ.dir, lockJ.speed * t * 0.85); }
-        shoot(muzzle, aim.sub(muzzle).normalize().add(new THREE.Vector3(rnd(-0.014, 0.014), rnd(-0.014, 0.014), rnd(-0.014, 0.014))).normalize(), 320, true);
+        shoot(muzzle, aim.sub(muzzle).normalize().add(new THREE.Vector3(rnd(-0.02, 0.02), rnd(-0.02, 0.02), rnd(-0.02, 0.02))).normalize(), 320, true);
         const mf = sprite(TX.green, 0xffffff, 1.1, muzzle, 1); addFx(mf, 0.06, (d2, k) => { mf.material.opacity = 1 - k; });
         SND.gun();
       }
