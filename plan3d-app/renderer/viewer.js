@@ -820,7 +820,7 @@ function footprint(A, all) {
     const s1 = ((w.x1 - a.x) * d2z - (w.y1 - a.z) * d2x) / den, s2 = ((w.x1 - a.x) * d1z - (w.y1 - a.z) * d1x) / den;
     return s1 > 0.02 && s1 < 0.98 && s2 > 0 && s2 < 1;
   });
-  const joined = new Set();
+  const joined = new Set(), joins = []; // joins: the lines drawn to close open sides (the floor's edge there)
   free.forEach((a, ia) => {
     // an open side closes straight across: ends lined up along X or Y count as half as far, so they link to
     // each other before cutting diagonally to a nearer loose end (that cut left a V notch in the floor)
@@ -828,7 +828,7 @@ function footprint(A, all) {
     free.forEach((b, ib) => { if (ib === ia || b.w === a.w) return; const d = Math.hypot(b.x - a.x, b.z - a.z), sc = Math.abs(b.x - a.x) < 0.1 || Math.abs(b.z - a.z) < 0.1 ? d * 0.5 : d; if (d > 0.3 && d < 16 && sc < bs && !crosses(a, b)) { bs = sc; best = ib; } });
     if (best < 0) return;
     const key = Math.min(ia, best) + '-' + Math.max(ia, best); if (joined.has(key)) return; joined.add(key);
-    stamp(a.x, a.z, free[best].x, free[best].z, 0.05);
+    stamp(a.x, a.z, free[best].x, free[best].z, 0.05); joins.push([a.x, a.z, free[best].x, free[best].z, 0.05]);
   });
   // a gap up to 12′ between wall ends on the same straight line counts as closed only where a building placed
   // next to this one carries on through it (its walls meet both ends), so the ceiling and floor stay inside.
@@ -848,7 +848,7 @@ function footprint(A, all) {
       if (!meets(ex, ez) || !meets(fx, fz)) continue;
       bd = g; best = [ex, ez, fx, fz];
     }
-    if (best) stamp(best[0], best[1], best[2], best[3], 0.05);
+    if (best) { stamp(best[0], best[1], best[2], best[3], 0.05); joins.push([best[0], best[1], best[2], best[3], 0.05]); }
   }
   const dist = (seed) => {
     const D = new Float32Array(N); for (let k = 0; k < N; k++) D[k] = seed[k] ? 0 : 1e9;
@@ -865,9 +865,20 @@ function footprint(A, all) {
   for (let i = 0; i < nx; i++) { push(i); push((nz - 1) * nx + i); }
   for (let j = 0; j < nz; j++) { push(j * nx); push(j * nx + nx - 1); }
   while (stack.length) { const k = stack.pop(), i = k % nx, j = (k - i) / nx; if (i > 0) push(k - 1); if (i < nx - 1) push(k + 1); if (j > 0) push(k - nx); if (j < nz - 1) push(k + nx); }
+  // the outside reaches on, a short way, into the pockets it couldn't get into above (the inside corner of an
+  // L-shaped outline, round a wall's end): any cell it gets to without crossing a wall is outside too, so the
+  // floor and ceiling don't bulge out into those pockets
+  const near = new Uint8Array(N), q2 = [];
+  for (let k = 0; k < N; k++) if (out[k]) { near[k] = 1; q2.push(k, 0); }
+  const LIM = Math.ceil(rc) + 2;
+  for (let h = 0; h < q2.length; h += 2) {
+    const k = q2[h], st = q2[h + 1]; if (st >= LIM) continue;
+    const i = k % nx;
+    for (const m of [i > 0 ? k - 1 : -1, i < nx - 1 ? k + 1 : -1, k >= nx ? k - nx : -1, k + nx < N ? k + nx : -1]) if (m >= 0 && !near[m] && !wall[m] && Dw[m] >= 1) { near[m] = 1; q2.push(m, st + 1); }
+  }
   const Do = dist(out), inside = new Uint8Array(N);
   let n = 0;
-  for (let k = 0; k < N; k++) if (wall[k] || Do[k] > rc + 0.5) { inside[k] = 1; n++; }
+  for (let k = 0; k < N; k++) if (wall[k] || (Do[k] > rc + 0.5 && !near[k])) { inside[k] = 1; n++; }
   if (n < 4) return null;
   const rects = [], open = new Map();
   for (let j = 0; j <= nz; j++) {
@@ -879,6 +890,34 @@ function footprint(A, all) {
       if (open.has(key)) open.get(key)[3] = z0 + (j + 1) * cell;
       else { const [a, b] = key.split(',').map(Number); open.set(key, [x0 + a * cell, z0 + j * cell, x0 + b * cell, z0 + (j + 1) * cell]); }
     }
+  }
+  // The cells round a wall reach past its outside face (a cell is ¼′ or more), so the floor and ceiling would
+  // show outside the room. Each rectangle's edge that runs along a wall, or sticks out past a wall's end, moves
+  // onto the wall's centre line or end, under the wall where it can't be seen.
+  const segs = [];
+  for (const p of A.pieces) if (use(p.ceilw)) segs.push([p.x1, p.z1, p.x2, p.z2, p.t || 0.25]);
+  for (const i of A.opInfo) if (use(i.ceilw)) segs.push([i.o.x1, i.o.y1, i.o.x2, i.o.y2, i.t || 0.25]);
+  for (const g of A.ghost || []) segs.push([g.x1, g.y1, g.x2, g.y2, g.t || 0.25]);
+  segs.push(...joins);
+  // side at v (x = v when alongZ, else z = v), spanning lo..hi on the other axis
+  const snapSide = (v, lo, hi, alongZ) => {
+    let best = v, bd = Infinity;
+    for (const q of segs) {
+      const [ua, va, ub, vb] = alongZ ? [q[0], q[1], q[2], q[3]] : [q[1], q[0], q[3], q[2]], t = q[4], R = Math.max(t / 2, cell * 0.75) + cell + 0.02;
+      if (Math.abs(ua - ub) < 0.02) { // the wall runs along the side
+        if (Math.max(va, vb) < lo - 0.01 || Math.min(va, vb) > hi + 0.01) continue;
+        const d = Math.abs(v - ua); if (d <= R && d < bd) { bd = d; best = ua; }
+      } else if (Math.abs(va - vb) < 0.02) { // the wall runs across: the side may stick out past its end
+        if (va < lo - R || va > hi + R || hi - lo > 2 * R + cell) continue; // only the short bump round the end
+        for (const [e, o] of [[ua, ub], [ub, ua]]) { const d = Math.abs(v - e); if (d <= R && d < bd && (v - e) * (e - o) > 0) { bd = d; best = e; } }
+      }
+    }
+    return best;
+  };
+  for (let k = rects.length - 1; k >= 0; k--) {
+    const r = rects[k], x0s = snapSide(r[0], r[1], r[3], true), x1s = snapSide(r[2], r[1], r[3], true), z0s = snapSide(r[1], r[0], r[2], false), z1s = snapSide(r[3], r[0], r[2], false);
+    if (x1s - x0s < 0.01 || z1s - z0s < 0.01) { rects.splice(k, 1); continue; }
+    rects[k] = [x0s, z0s, x1s, z1s];
   }
   const fp = { cell, x0, z0, nx, nz, inside, wall, rects, area: n * cell * cell,
     has(x, z) { const i = Math.floor((x - x0) / cell), j = Math.floor((z - z0) / cell); return i >= 0 && j >= 0 && i < nx && j < nz && !!inside[j * nx + i]; } };
