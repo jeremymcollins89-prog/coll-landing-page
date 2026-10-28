@@ -2199,7 +2199,10 @@ function deckSteps(plan, A, WH) {
   const inside = (q, x, z) => x >= q.r[0] - 1e-6 && x <= q.r[2] + 1e-6 && z >= q.r[1] - 1e-6 && z <= q.r[3] + 1e-6 && inPoly(q.d.outer, x, z) && !q.d.holes.some(hh => inPoly(hh, x, z));
   // the lid's height at a point (null: no lid there)
   const lidAt = (x, z) => { let h = null; for (const q of R) if (inside(q, x, z)) h = h == null ? q.h : Math.max(h, q.h); return h; };
-  const walls = (A.pieces || []).filter(p => p.hard);
+  // what already closes a step: wall pieces, the panels over doors (they run up as far as their wall) and headers
+  const walls = (A.pieces || []).filter(p => p.hard)
+    .concat((A.opInfo || []).filter(i => i.hard).map(i => ({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, t: i.t, h: i.wallH })))
+    .concat(typeof headerSegs === 'function' ? headerSegs(plan, A).map(q => ({ x1: q.x1, z1: q.z1, x2: q.x2, z2: q.z2, t: q.t, h: q.y1 })) : []);
   const walled = (x, z, hi) => walls.some(p => p.h >= hi - 0.05 && segDist(x, z, p.x1, p.z1, p.x2, p.z2) < (p.t || 0.25) / 2 + 0.25);
   const out = [], st = 0.25, seen = new Set(), auto = plan.lidStepsAuto !== false;
   // every edge between two parts of the lid at different heights (unless automatic step panels are off)
