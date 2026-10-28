@@ -4221,7 +4221,7 @@ function mount(container, plan, opts) {
     if (down) down.moved = Math.max(down.moved, Math.hypot(e.clientX - down.x, e.clientY - down.y));
     if (mode === 'walk' && !tween && pts.has(e.pointerId)) {
       const p = pts.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
-      if (pts.size === 1) { const k = (e.pointerType === 'touch' ? 0.0068 : 0.0058) * (fov / 70); st.yaw += dx * k; st.pitch = Math.max(-1.25, Math.min(1.25, st.pitch + dy * k)); }
+      if (pts.size === 1) { const k = (e.pointerType === 'touch' ? 0.0068 : 0.0058) * (fov / 70); st.yaw -= dx * k; st.pitch = Math.max(-1.25, Math.min(1.25, st.pitch - dy * k)); }  // game-style: drag up looks up, drag right turns right (same as mouse look and the joystick)
       else if (pts.size === 2 && pinch) { const [a, b] = [...pts.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); fov = Math.max(35, Math.min(85, pinch.fov * pinch.d / d)); camera.fov = fov; camera.updateProjectionMatrix(); }
       ring.visible = false; return;
     }
