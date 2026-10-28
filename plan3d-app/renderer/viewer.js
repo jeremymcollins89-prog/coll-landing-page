@@ -1410,8 +1410,9 @@ function cleanroomCheck(plan) {
     R.forEach((q, ci) => {
       const r = q.room, area = q.area, vol = area * A.H;
       let n = 0, cfm = 0, face = 0;
-      for (const f of fx) {
-        if (f.type !== 'ffu' || compAt(f.x, f.y) !== ci) continue;
+      const inRoom = fx.filter(f => compAt(f.x, f.y) === ci);
+      for (const f of inRoom) {
+        if (f.type !== 'ffu') continue;
         n++;
         const long = Math.max(f.w || 2, f.h || 4), short = Math.min(f.w || 2, f.h || 4);
         const zz = FM ? (FM.sizes.find(s2 => s2.nominal === '2x' + Math.max(2, Math.min(4, Math.round(long)))) || FM.sizes[0]) : null;
@@ -1431,7 +1432,8 @@ function cleanroomCheck(plan) {
       else if (vel != null && vel > RET_FPM * 1.1) { retMore = Math.ceil((cfm / RET_FPM - rt.area) / 4); retWarn = `returns too small: ${Math.round(vel)} fpm through them (aim for ${RET_FPM} or less)`; }
       const pr = r.pressure != null && r.pressure !== '' ? +r.pressure : null;
       rooms.push({ room: r, zone: z, area, volume: vol, H: A.H, ffus: n, cfm, ach, coverage: cov, iso, achTarget: achT, covTarget: T ? T.cov : null, pressure: pr, inWC: pr != null ? pr * PA_TO_INWC : null, ok: !short.length, short,
-        returns: rt.n, returnArea: rt.area, returnCap: retCap, returnFpm: vel, retWarn, retMore });
+        returns: rt.n, returnArea: rt.area, returnCap: retCap, returnFpm: vel, retWarn, retMore, fixtures: inRoom, lights: inRoom.filter(f => f.type !== 'ffu').length,
+        devices: (z.plan.devices || []).filter(d => compAt(d.x + Math.cos(d.a || 0) * 0.6, d.y + Math.sin(d.a || 0) * 0.6) === ci), items: (z.plan.items || []).filter(it => compAt(it.x, it.y) === ci) });
     });
   }
   // which room is at a point (any area), or null outside every labeled room

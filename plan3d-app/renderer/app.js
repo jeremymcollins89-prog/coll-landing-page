@@ -694,7 +694,7 @@ function renderProps(opt) {
     if ($('#pRGen')) $('#pRGen').onchange = e => ed.edit(() => { if (e.target.value) o.ceil = e.target.value; else delete o.ceil; });
     if ($('#pRIso')) $('#pRIso').onchange = e => { ed.edit(() => { if (e.target.value) o.iso = +e.target.value; else delete o.iso; }); renderProps(); };
     const numIn = (id, key, lo, hi) => { const el = $('#' + id); if (!el) return; el.onchange = () => { const raw = el.value.trim(); if (!raw) { ed.edit(() => { delete o[key]; }); renderProps(); return; } const v = parseFloat(raw.replace(/[^\d.+-]/g, '')); if (isFinite(v)) { ed.edit(() => { o[key] = Math.max(lo, Math.min(hi, v)); }); renderProps(); } }; };
-    numIn('pRAch', 'ach', 0, 1000);
+    numIn('pRAch', 'ach', 0, 1000); numIn('pRPpl', 'people', 0, 500); numIn('pREqW', 'equipW', 0, 1000000);
     // pressure in Pa, or in inches of water as a gauge reads it (0.05″, .05 in, 0.05 wc)
     { const el = $('#pRPa'); if (el) el.onchange = () => { const raw = el.value.trim(); if (!raw) { ed.edit(() => { delete o.pressure; }); renderProps(); return; } let v = parseFloat(raw.replace(/[^\d.+-]/g, '')); if (!isFinite(v)) return; if (/(″|"|in\b|inch|w\.?c)/i.test(raw)) v = Math.round(v / Plan3DViewer.PA_TO_INWC * 10) / 10; ed.edit(() => { o.pressure = Math.max(-200, Math.min(200, v)); }); renderProps(); }; }
     $('#pDel').onclick = () => ed.deleteSel();
@@ -755,7 +755,7 @@ function renderProps(opt) {
       ${hasGeo ? '<div class="row"><button class="btn small" id="pClearAuto">Clear all walls</button></div>' : ''}
     </div>
     ${house ? '' : ffuPanelHtml(P) + lightPanelHtml(P)}
-    ${house ? '' : checkGroupHtml(P)}
+    ${house ? '' : checkGroupHtml(P) + loadsGroupHtml(P)}
     ${commentsGroupHtml(P)}
     ${fld('Project type', `<select id="pMode"><option value="cleanroom" ${house ? '' : 'selected'}>Cleanroom</option><option value="house" ${house ? 'selected' : ''}>House</option></select>`)}`;
   if (view === 'build') h = `<div class="hd"><span class="kind">Build</span></div>
@@ -817,7 +817,7 @@ function renderProps(opt) {
   $('#pSnap').onchange = e => { ed.snapIn = +e.target.value; };
   bindParts();
   bindComments(P);
-  if (!house) { bindFfuPanel(P); bindLightPanel(P); }
+  if (!house) { bindFfuPanel(P); bindLightPanel(P); bindLoads(P); }
   if ($('#pClearAuto')) $('#pClearAuto').onclick = () => confirmDlg('Clear all walls?', 'This removes every wall, door, glass panel and chase. Room labels and the background stay. You can undo with Ctrl+Z.', 'Clear walls').then(ok => { if (ok) ed.edit(Pl => { Pl.walls = []; Pl.openings = []; Pl.chases = []; }); });
   if (B) {
     $('#pBgVis').onchange = e => ed.edit(() => { B.visible = e.target.checked; });
@@ -842,6 +842,8 @@ function roomCheckHtml(P, o) {
   let h = `<div class="grp"><h3>Cleanroom class and pressure</h3>
     ${fld('ISO class', `<select id="pRIso"><option value="">Not set</option>${[5, 6, 7, 8, 9].map(k => `<option value="${k}" ${+o.iso === k ? 'selected' : ''}>ISO ${k}${k === 5 ? ' (Class 100)' : k === 6 ? ' (Class 1,000)' : k === 7 ? ' (Class 10,000)' : k === 8 ? ' (Class 100,000)' : ''}</option>`).join('')}</select>`)}
     ${fld('Pressure', txt('pRPa', o.pressure != null && o.pressure !== '' ? String(o.pressure) : '', 'Pa, or inches: 12.5 or 0.05″'))}
+    ${fld('People', txt('pRPpl', o.people != null && o.people !== '' ? String(o.people) : '', 'auto, about 1 per 150 sq ft'))}
+    ${fld('Equipment heat', txt('pREqW', o.equipW > 0 ? String(o.equipW) : '', 'W, e.g. 1500'))}
     ${fld('Air changes target', txt('pRAch', o.ach > 0 ? String(o.ach) : '', q && q.iso ? 'ISO ' + q.iso + ' typical: ' + C.targets[q.iso].ach + '/hr' : 'per hour'))}`;
   if (q) {
     h += `<div class="stats">
@@ -858,6 +860,48 @@ function roomCheckHtml(P, o) {
   } else h += `<p class="note">Put this label inside walls to see its airflow.</p>`;
   h += `<p class="note">Pressure is relative to outside the cleanroom (0 Pa). On the plan, arrows at doors show which way air flows; red means it flows from the less clean side or the difference is under 5 Pa. Targets are typical design ranges, not a certification.</p></div>`;
   return h;
+}
+/* ---------- Heat load and power (Plan3DLoads) ---------- */
+function loadsGroupHtml(P) {
+  if (!window.Plan3DLoads || !(P.rooms || []).length) return '';
+  const L = Plan3DLoads.rooms(P); if (!L.rooms.length) return '';
+  const S = Plan3DLoads.schedule(P), E = L.E, T = L.total, cnt = (k) => S.circuits.filter(c => c.kind === k).length;
+  const rows = L.rooms.map(r => `<div class="pl-row"><span>${esc(r.name)}<small>${Math.round(r.wL)} W lights · ${Math.round(r.wF)} W FFUs${r.wEq ? ' · ' + Math.round(r.wEq) + ' W equipment' : ''} · ${r.people} ${r.people === 1 ? 'person' : 'people'}</small></span><b>${Math.round(r.btuS).toLocaleString()} <small>BTU/hr</small></b></div>`).join('');
+  return `<div class="grp"><h3>Heat and power</h3>
+    ${fld('FFU motor, 2×4', `<input type="text" id="pLdF" value="${E.ffuW}"> <small>W each (2×2: ${E.ffuW2} W)</small>`)}
+    ${fld('Circuits at', `<select id="pLdV"><option value="120" ${E.volts === 120 ? 'selected' : ''}>120 V</option><option value="277" ${E.volts === 277 ? 'selected' : ''}>277 V</option></select>`)}
+    ${fld('Safety margin', `<input type="text" id="pLdS" value="${E.safety}"> <small>% on the cooling</small>`)}
+    <div class="pl">${rows}</div>
+    <div class="stats"><span>Cooling</span><span><b>${Math.round(T.btuS).toLocaleString()} BTU/hr</b> · ${T.tons.toFixed(1)} tons</span>
+      <span>Circuits</span><span>${S.circuits.length} <small>(${cnt('ffu')} FFU, ${cnt('light')} lights${cnt('rec') ? ', ' + cnt('rec') + ' receptacle' : ''}${cnt('ded') ? ', ' + cnt('ded') + ' dedicated' : ''})</small></span>
+      <span>Connected load</span><span>${(S.connectedW / 1000).toFixed(1)} kW · ${Math.round(S.amps)} A at ${E.volts} V</span>
+      <span>Dimming zones</span><span>${S.zones.length} <small>(0-10 V, one per room)</small></span></div>
+    <div class="row"><button class="btn small" id="pLdSch">Panel schedule…</button></div>
+    <p class="note">Heat from the lights, FFU motors, people (${Plan3DLoads.BTU_PERSON} BTU/hr each, gowned, light work) and equipment you enter on a room label. Planning numbers for sizing the AC and the panel, not a stamped design.</p></div>`;
+}
+function bindLoads(P) {
+  const set = (k, v) => ed.edit(Q => { Q.loads = { ...(Q.loads || {}), [k]: v }; });
+  const n = (id, k, lo, hi) => { const el = $('#' + id); if (el) el.onchange = () => { const v = parseFloat(el.value); if (isFinite(v)) set(k, Math.max(lo, Math.min(hi, v))); }; };
+  n('pLdF', 'ffuW', 20, 2000); n('pLdS', 'safety', 0, 100);
+  if ($('#pLdV')) $('#pLdV').onchange = (e) => set('volts', +e.target.value);
+  if ($('#pLdSch')) $('#pLdSch').onclick = panelScheduleDialog;
+}
+function panelScheduleDialog() {
+  const P = ed.plan, S = Plan3DLoads.schedule(P);
+  dialogOpen({
+    title: 'Panel schedule',
+    body: `<table class="qt"><thead><tr><th>Ckt</th><th>Description</th><th>Breaker</th><th class="n">Load</th><th class="n">Amps</th></tr></thead><tbody>
+      ${S.circuits.map(c => `<tr><td>${c.n}</td><td>${esc(c.desc)}</td><td>${c.breaker}</td><td class="n">${c.load ? Math.round(c.load) + ' W' : '—'}</td><td class="n">${c.amps ? c.amps.toFixed(1) : '—'}</td></tr>`).join('')}
+      </tbody></table>
+      <p class="note">${S.circuits.length} circuits, ${(S.connectedW / 1000).toFixed(1)} kW connected (${Math.round(S.amps)} A at ${S.E.volts} V). FFUs and lights are loaded to 16 A on 20 A breakers, room by room; receptacles 8 to a circuit. Dimming: ${S.zones.map(z => esc(z.room) + ' (' + z.lights + ')').join(', ') || 'none'}.</p>`,
+    buttons: [{ label: 'Close', ret: null }, { label: 'Export (.csv)', primary: true, ret: 'csv' }],
+    onOpen: (d) => d.classList.add('wide-xl')
+  }).then(async (r) => {
+    $('#dlg').classList.remove('wide-xl');
+    if (r !== 'csv' || !api.exportFile) return;
+    const p = await api.exportFile(Plan3DLoads.scheduleCSV(P), P.name + ' panel schedule', 'csv');
+    if (p) toast('Panel schedule saved.', { label: 'Open it', fn: () => api.openPath(p) });
+  });
 }
 function checkGroupHtml(P) {
   if (!(P.rooms || []).some(r => r.iso || (r.pressure != null && r.pressure !== ''))) return `<div class="grp"><h3>Cleanroom check</h3><p class="note">Pick a room label and set its ISO class and pressure to check air changes, filter coverage and the pressure cascade.</p></div>`;
