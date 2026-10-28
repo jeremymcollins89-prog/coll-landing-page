@@ -108,6 +108,15 @@ function planSpec(model, fitKey, finishKey) {
    (plan.lightModel). */
 const FIN = [{ key: 'white', label: 'White' }, { key: 'sst', label: 'Stainless steel' }];
 const LIGHTS = [
+  // DIMI LIGHT spec sheet, "Back-lit Panel Light, BLP Sensor Base Ready Series": 1.38″ thick aluminum panel
+  // (white frame), driver / sensor base 15.6″ long on the back; wattage and CCT set by dip switch, 145 lm/W
+  { id: 'dimi-blp', name: 'DIMI LIGHT BLP back-lit LED panel', maker: 'DIMI LIGHT', model: 'BLP Sensor Base Ready', kind: 'light', style: 'blp', hh: 1.38 * IN, box: { l: 15.6 * IN, w: 3 * IN, h: 1.1 * IN },
+    finishes: [{ key: 'white', label: 'White aluminum frame' }], source: 'DIMI LIGHT spec sheet',
+    sizes: {
+      '2x4': { model: 'DM-BLP2450WT-3050K', w: 48 * IN, d: 24 * IN, watts: '25/30/35/40/50 W switchable', lm: '3,250–6,500 lm', cct: '3000/3500/4000/5000 K switchable' },
+      '2x2': { model: 'DM-BLP2240WT-3050K', w: 24 * IN, d: 24 * IN, watts: '20/25/30/35/40 W switchable', lm: '2,600–5,200 lm', cct: '3000/3500/4000/5000 K switchable' },
+      '1x4': { model: 'DM-BLP1440WT-3050K', w: 48 * IN, d: 12 * IN, watts: '20/25/30/35/40 W switchable', lm: '2,600–5,200 lm', cct: '3000/3500/4000/5000 K switchable' }
+    } },
   { id: 'led-flat', name: 'LED flat panel, lay-in, gel-seal', maker: '', model: 'LED flat panel', kind: 'light', style: 'flat', hh: 2.5 * IN, finishes: FIN, source: 'Built in' },
   { id: 'led-troffer-sealed', name: 'Sealed cleanroom LED troffer, recessed lens', maker: '', model: 'Sealed LED troffer', kind: 'light', style: 'troffer', hh: 5 * IN, finishes: FIN, source: 'Built in' },
   { id: 'led-troffer-rss', name: 'Room-side serviceable cleanroom LED troffer', maker: '', model: 'RSS LED troffer', kind: 'light', style: 'rss', hh: 6 * IN, finishes: FIN, source: 'Built in' }
@@ -120,8 +129,14 @@ function readLightFamily(xml, fileName) {
 }
 function lightSpec(model, finishKey) {
   const fin = (model.finishes || FIN).find(f => f.key === finishKey) || (model.finishes || FIN)[0];
-  return { id: model.id, name: model.name, maker: model.maker || '', model: model.model || model.name, style: model.style || 'flat', hh: model.hh || 3 * IN, finish: fin.key, finishLabel: fin.label };
+  return { id: model.id, name: model.name, maker: model.maker || '', model: model.model || model.name, style: model.style || 'flat', hh: model.hh || 3 * IN, finish: fin.key, finishLabel: fin.label, ...(model.sizes ? { sizes: model.sizes } : {}), ...(model.box ? { box: model.box } : {}) };
+}
+/* The light model's entry for a fixture's size (2x4, 2x2, 1x4), when the model lists sizes. */
+function lightSize(LM, f) {
+  if (!LM || !LM.sizes) return null;
+  const a = Math.round(Math.max(f.w || 2, f.h || 4)), b = Math.round(Math.min(f.w || 2, f.h || 4));
+  return LM.sizes[b + 'x' + a] || null;
 }
 
-global.Plan3DEquipment = { BUILT_IN, LIGHTS, readRevitFamily, readLightFamily, planSpec, lightSpec, lenFt };
+global.Plan3DEquipment = { BUILT_IN, LIGHTS, lightSize, readRevitFamily, readLightFamily, planSpec, lightSpec, lenFt };
 })(window);
