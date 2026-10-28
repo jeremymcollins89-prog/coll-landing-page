@@ -438,6 +438,14 @@ function toIfc(plan, opts) {
       // frame: jambs and head; leaves (closed) with a vision lite, lite frame, closer and lever, as in the 3D view
       const [j1x, j1y] = along(-0.14), [j2x, j2y] = along(i.len + 0.14);
       const parts = [seg(j1x, j1y, ax, ay, 0, head, t + 0.06, S.frame), seg(bx, by, j2x, j2y, 0, head, t + 0.06, S.frame), seg(j1x, j1y, j2x, j2y, head - 0.02, Math.min(top, head + 0.12), t + 0.06, S.frame)];
+      // a standard cleanroom door's frame fills the opening on each side of the leaves (its jambs), and runs across
+      // over them: without it there was an open slot between the leaf and the wall, as wide as the jamb
+      const DS = !i.frame && V.doorSpec ? V.doorSpec(o, i.len) : null;
+      if (DS && DS.jamb > 0.01) {
+        const hd = Math.min(head, DS.head), [p0x, p0y] = along(0), [p1x, p1y] = along(DS.jamb), [q0x, q0y] = along(i.len - DS.jamb), [q1x, q1y] = along(i.len);
+        parts.push(seg(p0x, p0y, p1x, p1y, 0, hd, t + 0.06, S.frame), seg(q0x, q0y, q1x, q1y, 0, hd, t + 0.06, S.frame));
+        if (hd - DS.leafH > 0.02) parts.push(seg(p0x, p0y, q1x, q1y, DS.leafH, hd, t + 0.06, S.frame));
+      }
       for (const l of i.leaves) {
         const L = Math.hypot(l.x2 - l.x1, l.z2 - l.z1) || 1, dx = (l.x2 - l.x1) / L, dz = (l.z2 - l.z1) / L;
         const f = (k) => [l.x1 + dx * L * k, l.z1 + dz * L * k];
