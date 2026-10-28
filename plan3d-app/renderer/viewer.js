@@ -411,6 +411,20 @@ function leavesFor(i) {
   return out;
 }
 
+/* How tall a cleanroom wall is at an opening in it: as tall as the wall itself there, the same way the wall's
+   pieces work it out (its own height sections, and any ceiling area raising the walls, whichever is higher),
+   so the panel over a door carries the plenum on up to the top. */
+function opTopFor(plan, host, o, t, WH, PL) {
+  const mx = (o.x1 + o.x2) / 2, mz = (o.y1 + o.y2) / 2;
+  let h = null;
+  if (host) { const L = Math.hypot(host.x2 - host.x1, host.y2 - host.y1) || 1, s = (mx - host.x1) * (host.x2 - host.x1) / L + (mz - host.y1) * (host.y2 - host.y1) / L; const own = sectionTop(host, s, null); if (own != null) h = own; }
+  for (const c of plan.ceilAreas || []) {
+    if (!c || !c.raise || !(c.ceiling > 0)) continue;
+    const m = (t || 0.25) / 2 + 0.3;
+    if (mx >= Math.min(c.x0, c.x1) - m && mx <= Math.max(c.x0, c.x1) + m && mz >= Math.min(c.y0, c.y1) - m && mz <= Math.max(c.y0, c.y1) + m) h = Math.max(h == null ? 0 : h, Math.max(6, +c.ceiling) + PL);
+  }
+  return h == null ? WH : Math.max(1, h);
+}
 function analyze(plan) {
   const H = Math.max(6, plan.ceiling || 8);
   // plenum: the space above the grid ceiling (FFU housings, ducts, wiring). Hardwall walls run up through it
@@ -498,7 +512,8 @@ function analyze(plan) {
     for (const w of walls) { const wl = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); let d = segDist((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, w.x1, w.y1, w.x2, w.y2); if (wl < 0.05 || Math.abs(dx * (w.y2 - w.y1) - dz * (w.x2 - w.x1)) / (len * wl) > 0.1) d += 10; if (d < best) { best = d; host = w; } }
     if (best > 1.5) host = null;
     if (!t) t = host && host.t ? host.t : 0.25;
-    const hard = isHard(host), frame = isFrame(host), i = { o, len, ux: dx / len, uz: dz / len, t, hard, frame, ceilw: hard || frame, kind: hard ? 'hardwall' : host.kind, wallH: hard ? (host ? sectionTop(host, ((o.x1 + o.x2) / 2 - host.x1) * (host.x2 - host.x1) / (Math.hypot(host.x2 - host.x1, host.y2 - host.y1) || 1) + ((o.y1 + o.y2) / 2 - host.y1) * (host.y2 - host.y1) / (Math.hypot(host.x2 - host.x1, host.y2 - host.y1) || 1), WH) : WH) : frame ? Math.max(6, host.h || H) : shellHeight(plan, host) };
+    const opTop = (hh, oo, tt) => opTopFor(plan, hh, oo, tt, WH, PL);
+    const hard = isHard(host), frame = isFrame(host), i = { o, len, ux: dx / len, uz: dz / len, t, hard, frame, ceilw: hard || frame, kind: hard ? 'hardwall' : host.kind, wallH: hard ? opTop(host, o, t) : frame ? Math.max(6, host.h || H) : shellHeight(plan, host) };
     i.leaves = leavesFor(i);
     opInfo.push(i);
   }
