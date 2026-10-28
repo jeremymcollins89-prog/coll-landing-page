@@ -4667,7 +4667,7 @@ function mount(container, plan, opts) {
     for (const sd of [1, -1]) { const d = add(new THREE.PlaneGeometry(0.4, 0.125), dm, sd * 0.2225, 0.005, 0); d.lookAt(sd * 2, 0.005, 0); d.renderOrder = 5; }
     drone.traverse(o => { if (o.renderOrder < 4) o.renderOrder = 4; });
   }
-  let pilot = false, droneTilt = 0, droneRoll = 0, propSpin = 0;
+  let pilot = false, droneTilt = 0, droneRoll = 0, propSpin = 0, flyBoost = 1, game = null;
   const camOff = new THREE.Vector3(); let camYaw = null, camYawT = 0;
   function applyFlyCam() {
     const chase = mode === 'fly' && !pilot && !tween;
@@ -4709,7 +4709,7 @@ function mount(container, plan, opts) {
     if (turn) { turnHeld = Math.min(1, turnHeld + dt * 2.5); st.yaw += turn * (1.4 + 1.4 * turnHeld) * dt; } else turnHeld = 0;
     if (joy.id != null && Math.hypot(joy.f, joy.s) > 0.12) { f += joy.f; s2 += joy.s; }
     u += flyUD;
-    const sp = (running || keys.has('shift') ? 26 : 9) * dt, cp = Math.cos(st.pitch);
+    const sp = (running || keys.has('shift') ? 26 : 9) * dt * flyBoost, cp = Math.cos(st.pitch);
     const vx = -Math.sin(st.yaw) * cp * f + Math.cos(st.yaw) * s2, vy = Math.sin(st.pitch) * f + u, vz = -Math.cos(st.yaw) * cp * f - Math.sin(st.yaw) * s2, n = Math.hypot(vx, vy, vz);
     if (n > 1e-4) { const k = sp * Math.min(1, n) / n; st.x += vx * k; st.y += vy * k; st.z += vz * k; }
     // leans into the way it's flying; props always spinning
@@ -4931,7 +4931,7 @@ function mount(container, plan, opts) {
     if (!down) return;
     const click = down.moved < 7 && !down.multi && performance.now() - down.t < 600 && e.type === 'pointerup' && e.button === 0;
     if (pts.size === 0) down = null;
-    if (!click || tween || !A) return;
+    if (!click || tween || !A || game) return;
     if (isLocked()) { const r = canvas.getBoundingClientRect(); e = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; }
 
     if (commentMode) { placeComment(e.clientX, e.clientY); return; }
@@ -5065,6 +5065,8 @@ function mount(container, plan, opts) {
     if (!alive || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || !viewOnScreen()) return;
     if (document.querySelector('dialog[open]')) return;
     const k = e.key.toLowerCase();
+    if (game && game.key(k, e, true)) { e.preventDefault(); return; }
+    if (k === 'g' && !e.repeat && mode === 'fly' && !tween && global.P3Game && A) { startGame(); e.preventDefault(); return; }
     if (tour && /^(w|a|s|d|q|e|arrow\w+|escape)$/.test(k)) stopTour();
     if (k === 'l' && !e.repeat) { toggleLook(); e.preventDefault(); return; }
     if (k === 'm' && !e.repeat && (container.contains(e.target) || container.clientWidth > global.innerWidth * 0.6)) { setMeasure(!measureOn); e.preventDefault(); return; }
@@ -5079,7 +5081,16 @@ function mount(container, plan, opts) {
     running = e.shiftKey;
     if (MOVE_KEYS.includes(k)) { keys.add(k); dismissHint(); if (k !== 'shift') e.preventDefault(); }
   };
-  const onKeyUp = (e) => { keys.delete(e.key.toLowerCase()); running = e.shiftKey; };
+  const onKeyUp = (e) => { keys.delete(e.key.toLowerCase()); running = e.shiftKey; if (game) game.key(e.key.toLowerCase(), e, false); };
+  function startGame() {
+    setMeasure(false); pilot = false; camYaw = null;
+    game = global.P3Game.start({
+      THREE, scene, camera, drone, st, renderer, canvas, container, keys, touchy, bounds: A.bounds,
+      isLocked, lock: () => { if (lockable && !isLocked() && !touchy) toggleLook(); }, unlock: () => { if (isLocked()) document.exitPointerLock(); },
+      setBoost: (v) => { flyBoost = v; }, isPilot: () => pilot,
+      ended: () => { game = null; flyBoost = 1; applyFlyCam(); }
+    });
+  }
   let running = false;
   global.addEventListener('keydown', onKeyDown);
   global.addEventListener('keyup', onKeyUp);
@@ -5250,7 +5261,8 @@ function mount(container, plan, opts) {
           else { const sp = Math.min(d, dt * Math.max(2.2, Math.min(9, d * 2.6))); const m = step(dx / d * sp, dz / d * sp); if (m < sp * 0.2) { stuck += dt; if (stuck > 0.2) target = null; } else stuck = 0; }
         }
         applyWalkCam();
-      } else if (mode === 'fly') flyStep(dt);
+      } else if (mode === 'fly') { flyStep(dt); if (game) game.step(dt); }
+      if (game && mode !== 'fly') game.stop();
       else controls.update();
 
       if (built && built.doors) {
