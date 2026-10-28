@@ -672,6 +672,17 @@ function renderProps(opt) {
       ${R.type && R.type !== 'none' ? fld('Overhang', txt('pOver', fmt(R.overhang == null ? 1 : R.overhang))) : ''}
       ${fld('Floors', `<select id="pFloor">${Object.entries(Plan3DViewer.FLOORS).map(([k, l]) => `<option value="${k}" ${(P.floorType || 'lvp') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
       <p class="note">Pick a room label to give that room its own floor. Pick a wall for its framing (wood or steel), stud size and exterior / interior.</p></div>
+    <div class="grp"><h3>Foundation</h3>
+      ${(() => { const F = Plan3DViewer.foundationOf(P), FT = Plan3DViewer.foundationTakeoff(P), tp = F.type;
+        const inch = (id, v) => txt(id, fmtIn(v));
+        return fld('Type', `<select id="fType">${Object.entries(Plan3DViewer.FOUNDATIONS).map(([k, v]) => `<option value="${k}" ${tp === k ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select>`)
+          + (tp === 'none' ? '' : fld('Footing / edge W × D', `<span class="row" style="gap:4px">${inch('fFW', F.footW)}×${inch('fFD', F.footD)}</span>`)
+          + (tp !== 'crawl' ? fld('Slab', inch('fSlab', F.slabT)) : '')
+          + (tp === 'stem' ? fld('Stem wall height', inch('fStemH', F.stemH)) : tp === 'crawl' ? fld('Crawlspace wall height', inch('fCrawlH', F.crawlH)) : tp === 'basement' ? fld('Basement wall height', txt('fBaseH', fmt(F.baseH))) : '')
+          + (tp !== 'slab' ? fld('Wall thickness', inch('fStemT', F.stemT)) : '')
+          + (tp !== 'crawl' ? fld('Slab steel', `<select id="fMesh"><option value="wwm" ${F.mesh !== 'rebar' ? 'selected' : ''}>Welded wire mesh</option><option value="rebar" ${F.mesh === 'rebar' ? 'selected' : ''}>#4 rebar at 18″</option></select>`) : '')
+          + `<div class="stats"><span>Perimeter</span><span>${Math.round(FT.perim)} lin ft</span><span>Footprint</span><span>${Math.round(FT.area)} sq ft</span><span>Concrete</span><span>${(Math.ceil(FT.lines.filter(l => l[4] === 'cu yd' && /^Concrete,/.test(l[1])).reduce((t, l) => t + l[3], 0) * 4) / 4).toFixed(2)} cu yd</span></div>`)
+          + '<p class="note">Under the outside walls; the footing shows dashed on the plan, the exposed concrete at the foot of the walls in 3D. Concrete, rebar, gravel, vapor barrier and anchor bolts are on the parts list.</p>'; })()}</div>
     <div class="grp"><h3>Finishes</h3>
       ${(() => { const FN = Plan3DViewer.FINISH, F = Plan3DViewer.finishOf(P), sel = (id, key, list) => `<select id="${id}">${Object.entries(list).map(([k, v]) => `<option value="${k}" ${F[key] === k ? 'selected' : ''}>${esc(Array.isArray(v) ? v[0] : v)}</option>`).join('')}</select>`;
         return fld('Siding', sel('fSid', 'siding', FN.siding)) + fld('Siding color', sel('fSidC', 'sidingColor', FN.sidingColor)) + fld('Roofing', sel('fRoof', 'roof', FN.roof)) + fld('Roof color', sel('fRoofC', 'roofColor', FN.roofColor))
@@ -731,6 +742,10 @@ function renderProps(opt) {
   bindLen('pPlen', 'ft', v => allLevels('plenum', v, 0, 20, 'Plenum'));
   if ($('#pWallsFollow')) $('#pWallsFollow').onclick = () => { const own = ownHeightWalls(ed.plan); ed.edit(() => { for (const w of own) delete w.sections; }); toast(`${own.length} walls now follow the ceiling and plenum.`); renderProps(); queue3D(); };
   if ($('#pRoof')) $('#pRoof').onchange = e => ed.edit(Pl => { Pl.roof = Object.assign({ pitch: 6, overhang: 1 }, Pl.roof || {}, { type: e.target.value }); });
+  const fset = (k, v) => ed.edit(Pl => { Pl.foundation = Object.assign({}, Pl.foundation || {}, { [k]: v }); });
+  if ($('#fType')) $('#fType').onchange = e => fset('type', e.target.value);
+  if ($('#fMesh')) $('#fMesh').onchange = e => fset('mesh', e.target.value);
+  for (const [id, k, u, lo, hi] of [['fFW', 'footW', 'in', 0.5, 4], ['fFD', 'footD', 'in', 0.33, 4], ['fSlab', 'slabT', 'in', 0.25, 1.5], ['fStemH', 'stemH', 'in', 0.5, 8], ['fCrawlH', 'crawlH', 'in', 1, 8], ['fBaseH', 'baseH', 'ft', 6, 14], ['fStemT', 'stemT', 'in', 0.5, 1.5]]) bindLen(id, u, v => fset(k, Math.max(lo, Math.min(hi, v))));
   if ($('#pPitch')) $('#pPitch').onchange = e => { const v = parseFloat(e.target.value); if (v >= 0 && v <= 24) ed.edit(Pl => { Pl.roof.pitch = v; }); };
   bindLen('pOver', 'ft', v => ed.edit(Pl => { Pl.roof.overhang = Math.max(0, Math.min(4, v)); }));
   if ($('#pFloor')) $('#pFloor').onchange = e => ed.edit(Pl => { Pl.floorType = e.target.value; });
