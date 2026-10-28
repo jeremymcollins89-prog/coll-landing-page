@@ -2354,6 +2354,21 @@ function deckLevels(plan, A, d, WH) {
   };
   return [...lv.entries()].map(([h, rects]) => ({ h, rects, loops: loopsOf(h) }));
 }
+/* A lid piece cut into the parts that sit at each height: [{ h, outer, holes }] (h = underside, feet). One
+   height under the whole piece gives the piece as drawn; straight-sided pieces give one sheet per height from
+   its outline; anything else is cut into the rectangles under each height. Used by the 3D view and the IFC. */
+function deckParts(plan, A, d, WH) {
+  const LV = deckLevels(plan, A, d, WH), holes = d.holes || [];
+  const sarea = (R) => { let a = 0; for (let i = 0; i < R.length; i++) { const [x1, y1] = R[i], [x2, y2] = R[(i + 1) % R.length]; a += x1 * y2 - x2 * y1; } return a / 2; };
+  const square = [d.outer].concat(holes).every(R => R.every((q, k) => { const b = R[(k + 1) % R.length]; return Math.abs(q[0] - b[0]) < 1e-6 || Math.abs(q[1] - b[1]) < 1e-6; }));
+  const sheets = (l) => {
+    const L = l.loops || [], outs = L.filter(R => sarea(R) < 0), ins = L.filter(R => sarea(R) > 0);
+    const inP = (R, x, z) => { let c = false; for (let a = 0, b = R.length - 1; a < R.length; b = a++) { const [xa, za] = R[a], [xb, zb] = R[b]; if ((za > z) !== (zb > z) && x < (xb - xa) * (z - za) / (zb - za) + xa) c = !c; } return c; };
+    return outs.map(o => ({ h: l.h, outer: o, holes: ins.filter(hh => inP(o, hh[0][0] + 1e-4, hh[0][1] + 1e-4) || inP(o, (hh[0][0] + hh[1][0]) / 2, (hh[0][1] + hh[1][1]) / 2)) }));
+  };
+  const parts = LV.length === 1 ? [{ h: LV[0].h, outer: d.outer, holes }] : square ? [].concat(...LV.map(sheets)) : [].concat(...LV.map(l => l.rects.map(r => ({ h: l.h, outer: clipPolyRect(d.outer, r), holes: holes.map(hh => clipPolyRect(hh, r)).filter(hh => hh.length >= 3 && Math.abs(sarea(hh)) > 0.01) }))));
+  return parts.filter(pt => pt.outer && pt.outer.length >= 3 && Math.abs(sarea(pt.outer)) >= 0.01);
+}
 /* The highest point a lid piece sits at (parts list). */
 function deckBase(plan, A, d, WH) { return Math.max(WH, ...deckLevels(plan, A, d, WH).map(l => l.h)); }
 /* Lid steps: where the lid steps from one height up to another and no wall reaches the higher lid, a run of
@@ -3485,17 +3500,7 @@ function buildScene(THREE, plan, A) {
     const dm = new THREE.MeshPhongMaterial({ map: dtx, color: 0xd5dadd, specular: 0x555555, shininess: 40, side: THREE.DoubleSide });
     const sarea = (R) => { let a = 0; for (let i = 0; i < R.length; i++) { const [x1, y1] = R[i], [x2, y2] = R[(i + 1) % R.length]; a += x1 * y2 - x2 * y1; } return a / 2; };
     for (const d of DK) {
-      const LV = deckLevels(plan, A, d, WH);
-      // one height under the whole piece: the piece as drawn; otherwise each part of it at its own height
-      // straight-sided pieces (the usual) draw each height as one sheet from its outline; anything else is cut
-      // into the rectangles under each height
-      const square = [d.outer].concat(d.holes).every(R => R.every((q, k) => { const b = R[(k + 1) % R.length]; return Math.abs(q[0] - b[0]) < 1e-6 || Math.abs(q[1] - b[1]) < 1e-6; }));
-      const sheets = (l) => {
-        const L = l.loops || [], outs = L.filter(R => sarea(R) < 0), ins = L.filter(R => sarea(R) > 0);
-        const inP = (R, x, z) => { let c = false; for (let a = 0, b = R.length - 1; a < R.length; b = a++) { const [xa, za] = R[a], [xb, zb] = R[b]; if ((za > z) !== (zb > z) && x < (xb - xa) * (z - za) / (zb - za) + xa) c = !c; } return c; };
-        return outs.map(o => ({ h: l.h, outer: o, holes: ins.filter(hh => inP(o, hh[0][0] + 1e-4, hh[0][1] + 1e-4) || inP(o, (hh[0][0] + hh[1][0]) / 2, (hh[0][1] + hh[1][1]) / 2)) }));
-      };
-      const parts = LV.length === 1 ? [{ h: LV[0].h, outer: d.outer, holes: d.holes }] : square ? [].concat(...LV.map(sheets)) : [].concat(...LV.map(l => l.rects.map(r => ({ h: l.h, outer: clipPolyRect(d.outer, r), holes: d.holes.map(hh => clipPolyRect(hh, r)).filter(hh => hh.length >= 3 && Math.abs(sarea(hh)) > 0.01) }))));
+      const parts = deckParts(plan, A, d, WH);
       for (const pt of parts) {
         if (pt.outer.length < 3 || Math.abs(sarea(pt.outer)) < 0.01) continue;
         const sh = new THREE.Shape(pt.outer.map(([x, z]) => new THREE.Vector2(x, z)));
@@ -4641,5 +4646,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
