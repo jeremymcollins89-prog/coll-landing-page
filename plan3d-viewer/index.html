@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plan3D Viewer · Coll Business Solutions LLC</title>
+<meta name="description" content="Open a Coll Plan3D file on your phone or tablet and see it in 3D, or walk through it.">
+<meta name="theme-color" content="#171b1e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Plan3D">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#171b1e;--card:#22272B;--line:#343B40;--ink:#E8ECEF;--body:#AEB7BD;--dim:#7F8A91;--amber:#F2C84B;--amber-deep:#D9A928;
+  --st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:"Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+
+/* the file screen */
+#home{min-height:100%;padding:calc(28px + var(--st)) 20px calc(32px + var(--sb));max-width:560px;margin:0 auto;display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:14px;margin-bottom:30px}
+.brand img{width:52px;height:52px;border-radius:13px;display:block;box-shadow:0 0 0 1px #3A4147}
+.brand b{display:block;font-size:22px;letter-spacing:-.02em}
+.brand span{display:block;font-size:13.5px;color:var(--dim);margin-top:2px}
+.hero{position:relative;border-radius:22px;overflow:hidden;background:#14181b;aspect-ratio:16/10;margin-bottom:22px}
+.hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.hero p{position:absolute;left:16px;right:16px;bottom:14px;margin:0;font-size:14px;line-height:1.45;color:#D6DCE0;text-shadow:0 1px 8px rgba(0,0,0,.6)}
+.open{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;border:0;border-radius:16px;padding:18px;font-size:17px;font-weight:700;color:#22272B;background:linear-gradient(180deg,#F8D978 0%,var(--amber) 55%,var(--amber-deep) 100%);cursor:pointer}
+.open svg{width:22px;height:22px}
+.note{font-size:13.5px;line-height:1.55;color:var(--dim);margin:12px 2px 0}
+h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:30px 2px 10px;font-weight:700}
+.list{display:grid;gap:8px}
+.item{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 14px;cursor:pointer}
+.item:active{background:#2A3035}
+.item .ic{width:40px;height:40px;border-radius:10px;flex:none;display:grid;place-items:center;background:#14181b;font-size:19px}
+.item b{display:block;font-size:15.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item span{display:block;font-size:13px;color:var(--dim);margin-top:2px}
+.item .tx{flex:1;min-width:0}
+.item .x{flex:none;border:0;background:none;color:var(--dim);font-size:20px;padding:4px 6px;cursor:pointer}
+.empty{font-size:14px;color:var(--dim);padding:6px 2px}
+.err{margin-top:14px;padding:12px 14px;border-radius:12px;background:rgba(229,108,92,.12);border:1px solid rgba(229,108,92,.35);color:#F2B8AF;font-size:14px;line-height:1.45}
+.err[hidden]{display:none}
+details{margin-top:28px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+summary{cursor:pointer;font-weight:600;font-size:15px}
+details ol{margin:10px 0 2px;padding-left:20px;color:var(--body);font-size:14px;line-height:1.6}
+.foot{margin-top:auto;padding-top:30px;font-size:12.5px;color:var(--dim);text-align:center}
+.foot a{color:var(--body)}
+
+/* the 3D screen */
+#view{position:fixed;inset:0;display:none;background:var(--bg)}
+body.viewing #home{display:none}
+body.viewing #view{display:block}
+.bar{position:absolute;left:0;right:0;top:0;z-index:20;display:flex;align-items:center;gap:10px;padding:calc(8px + var(--st)) 12px 8px;background:rgba(23,27,30,.92);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.08)}
+.back{display:flex;align-items:center;gap:4px;border:0;background:rgba(255,255,255,.08);border-radius:10px;padding:8px 12px 8px 8px;font-size:15px;font-weight:600;cursor:pointer;flex:none}
+.back svg{width:18px;height:18px}
+.bar .nm{flex:1;min-width:0;font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar select{flex:none;max-width:42%;border:1px solid rgba(255,255,255,.18);background:#22272B;color:var(--ink);border-radius:10px;padding:8px 10px;font:600 14px Inter,system-ui,sans-serif}
+.bar select[hidden]{display:none}
+#v{position:absolute;left:0;right:0;bottom:0;top:calc(56px + var(--st))}
+/* the 3D viewer's own panels, a little smaller on a phone */
+@media (max-width:640px){
+  #v .p3v-card{max-width:58vw}
+  #v .p3v-mini{width:96px;height:110px}
+  #v .p3v-hint{font-size:13px;white-space:normal;text-align:center;border-radius:14px}
+}
+#v .p3v-bottom{bottom:calc(12px + var(--sb))}
+/* no mouse on a phone: drag to look, the joystick to walk */
+body.touch #v .p3v-right > .p3v-look:not(.p3v-lidb):not(.p3v-air){display:none}
+</style>
+</head>
+<body>
+<section id="home">
+  <div class="brand"><img src="icon-180.png" alt=""><div><b>Plan3D Viewer</b><span>by Coll Business Solutions LLC</span></div></div>
+
+  <div class="hero"><picture><img src="/img/plan3d-hero-wide.webp" alt=""></picture><p>Open a plan from Coll Plan3D and walk through it, or look at it from above.</p></div>
+
+  <button class="open" id="open" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5V18a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9.5a2 2 0 0 0-2-2h-7L10 5H5a2 2 0 0 0-2 2.5Z"/></svg>Open a Plan3D file</button>
+  <input type="file" id="file" hidden>
+  <p class="note">Opens .plan3d files saved from Coll Plan3D. Nothing is uploaded: the file stays on this phone.</p>
+  <div class="err" id="err" hidden></div>
+
+  <h2>Recent</h2>
+  <div class="list" id="recent"></div>
+
+  <h2>Samples</h2>
+  <div class="list">
+    <button class="item" type="button" data-sample="Sample cleanroom"><span class="ic">🧪</span><span class="tx"><b>Sample cleanroom</b><span>ISO 5 core, ISO 7 rooms, gowning and airlock</span></span></button>
+    <button class="item" type="button" data-sample="Sample house"><span class="ic">🏠</span><span class="tx"><b>Sample house</b><span>Two stories, basement and a 2-car garage</span></span></button>
+  </div>
+
+  <details>
+    <summary>Getting a file onto your phone</summary>
+    <ol>
+      <li>In Coll Plan3D on your computer, save the plan (File → Save).</li>
+      <li>Send the .plan3d file to yourself: email, text, AirDrop, or a Google Drive or OneDrive folder.</li>
+      <li>On the phone, save it to Files (iPhone) or Downloads (Android).</li>
+      <li>Tap <b>Open a Plan3D file</b> above and pick it.</li>
+    </ol>
+  </details>
+  <details>
+    <summary>Put the viewer on your home screen</summary>
+    <ol>
+      <li>iPhone or iPad: in Safari, tap Share, then Add to Home Screen.</li>
+      <li>Android: in Chrome, tap ⋮, then Add to Home screen (or Install app).</li>
+    </ol>
+  </details>
+
+  <p class="foot">View only. To change a plan, use Coll Plan3D on Windows. · <a href="/projects.html#plan3d">About Coll Plan3D</a></p>
+</section>
+
+<section id="view" aria-label="3D view">
+  <div class="bar">
+    <button class="back" id="back" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>Files</button>
+    <div class="nm" id="nm"></div>
+    <select id="floor" hidden aria-label="Floor"></select>
+  </div>
+  <div id="v"></div>
+</section>
+
+<script src="/plan3d-app/renderer/vendor/three.min.js"></script>
+<script src="/plan3d-app/renderer/vendor/OrbitControls.js"></script>
+<script src="/plan3d-app/renderer/viewer.js"></script>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  let viewer = null, plan = null;
+  const TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches;
+  if (TOUCH) document.body.classList.add('touch');
+
+  // ---- recent files, kept on this device only (IndexedDB)
+  const DB = new Promise((ok) => { try { const r = indexedDB.open('plan3d-viewer', 1); r.onupgradeneeded = () => r.result.createObjectStore('files', { keyPath: 'name' }); r.onsuccess = () => ok(r.result); r.onerror = () => ok(null); } catch (e) { ok(null); } });
+  const tx = async (mode, fn) => { const db = await DB; if (!db) return null; return new Promise((ok) => { try { const t = db.transaction('files', mode), st = t.objectStore('files'), r = fn(st); t.oncomplete = () => ok(r && r.result); t.onerror = () => ok(null); } catch (e) { ok(null); } }); };
+  const listRecent = async () => ((await tx('readonly', st => st.getAll())) || []).sort((a, b) => b.opened - a.opened);
+  const saveRecent = async (name, json) => { await tx('readwrite', st => st.put({ name, json, opened: Date.now() })); const all = await listRecent(); for (const f of all.slice(8)) await tx('readwrite', st => st.delete(f.name)); };
+  const dropRecent = (name) => tx('readwrite', st => st.delete(name));
+  const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); if (m < 1) return 'just now'; if (m < 60) return m + ' min ago'; const h = Math.round(m / 60); if (h < 24) return h + ' hr ago'; const d = Math.round(h / 24); return d === 1 ? 'yesterday' : d + ' days ago'; };
+  async function drawRecent() {
+    const L = await listRecent(), el = $('#recent');
+    if (!L.length) { el.innerHTML = '<div class="empty">Files you open show up here, so you can open them again without finding them.</div>'; return; }
+    el.innerHTML = L.map(f => { let kind = '📐'; try { kind = JSON.parse(f.json).mode === 'house' ? '🏠' : '🧪'; } catch (e) {} return `<div class="item" role="button" tabindex="0" data-recent="${esc(f.name)}"><span class="ic">${kind}</span><span class="tx"><b>${esc(f.name)}</b><span>Opened ${ago(f.opened)}</span></span><button class="x" type="button" aria-label="Remove from recent" data-drop="${esc(f.name)}">×</button></div>`; }).join('');
+    el.querySelectorAll('[data-recent]').forEach(b => b.onclick = async (e) => { if (e.target.closest('[data-drop]')) return; const f = (await listRecent()).find(q => q.name === b.dataset.recent); if (f) show(f.json, f.name, true); });
+    el.querySelectorAll('[data-drop]').forEach(b => b.onclick = async (e) => { e.stopPropagation(); await dropRecent(b.dataset.drop); drawRecent(); });
+  }
+
+  const err = (msg) => { const e = $('#err'); e.textContent = msg; e.hidden = !msg; };
+
+  // ---- floors of a house: the floor being looked at lives on the plan itself, the others in their level's data
+  function useLevel(P, k) {
+    const KEYS = Plan3DViewer.LEVEL_KEYS, cur = P.level || 0; if (k === cur || !P.levels || !P.levels[k]) return;
+    const d = {}; for (const key of KEYS) d[key] = P[key] === undefined ? (key === 'ceiling' ? P.ceiling : []) : P[key];
+    P.levels[cur].data = d;
+    const n = P.levels[k].data || {}; for (const key of KEYS) P[key] = n[key] !== undefined ? n[key] : (key === 'ceiling' ? (P.ceiling || 8) : []);
+    delete P.levels[k].data; P.level = k;
+  }
+  function floorPicker() {
+    const sel = $('#floor'), L = plan.levels || [];
+    sel.hidden = L.length < 2; if (sel.hidden) return;
+    sel.innerHTML = L.map((l, k) => `<option value="${k}" ${k === (plan.level || 0) ? 'selected' : ''}>${esc(l.name || 'Floor ' + (k + 1))}</option>`).join('');
+    sel.onchange = () => { useLevel(plan, +sel.value); viewer.setPlan(plan); };
+  }
+
+  function show(json, name, fromRecent) {
+    let P; try { P = JSON.parse(json); } catch (e) { err('That file isn’t a Plan3D plan. Pick a .plan3d file saved from Coll Plan3D.'); return; }
+    if (!P || !Array.isArray(P.walls)) { err('That file isn’t a Plan3D plan. Pick a .plan3d file saved from Coll Plan3D.'); return; }
+    err(''); plan = P;
+    const title = P.name || name.replace(/\.plan3d$/i, '');
+    $('#nm').textContent = title; document.title = title + ' · Plan3D Viewer';
+    document.body.classList.add('viewing');
+    if (!fromRecent) saveRecent(title, json).then(drawRecent);
+    // start on the ground floor of a house with several floors
+    if (P.levels && P.levels.length > 1) { const g = P.levels.findIndex(l => !l.below); if (g >= 0) useLevel(P, g); }
+    if (viewer) viewer.dispose();
+    $('#v').innerHTML = '';
+    viewer = Plan3DViewer.mount($('#v'), P, { joystick: TOUCH });
+    floorPicker();
+    history.pushState({ v: 1 }, '');
+  }
+  function close() { document.body.classList.remove('viewing'); if (viewer) { viewer.dispose(); viewer = null; } $('#v').innerHTML = ''; document.title = 'Plan3D Viewer · Coll Business Solutions LLC'; drawRecent(); }
+
+  $('#open').onclick = () => $('#file').click();
+  $('#file').onchange = async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return; if (f.size > 60 * 1024 * 1024) { err('That file is too big to open here.'); return; } show(await f.text(), f.name); };
+  document.querySelectorAll('[data-sample]').forEach(b => b.onclick = async () => { try { const r = await fetch('/plan3d-app/samples/' + encodeURIComponent(b.dataset.sample) + '.plan3d'); if (!r.ok) throw 0; show(await r.text(), b.dataset.sample, true); } catch (e) { err('Couldn’t load the sample. Check your connection and try again.'); } });
+  $('#back').onclick = () => { if (history.state && history.state.v) history.back(); else close(); };
+  addEventListener('popstate', () => { if (document.body.classList.contains('viewing')) close(); });
+  drawRecent();
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>

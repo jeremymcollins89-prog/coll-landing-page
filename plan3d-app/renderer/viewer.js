@@ -36,7 +36,7 @@ const CSS = `
 .p3v-chips::-webkit-scrollbar{display:none}
 .p3v-chips button{flex:0 0 auto;font-family:inherit;font-size:13px;font-weight:600;color:#eef2f3;background:rgba(18,23,25,.86);border:1px solid rgba(255,255,255,.13);border-radius:999px;padding:7px 13px;cursor:pointer;white-space:nowrap}
 .p3v-chips button.on{border-color:#f2c84b;color:#f2c84b}
-.p3v-hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;pointer-events:none;background:rgba(18,23,25,.86);border:1px solid rgba(255,255,255,.13);border-radius:999px;padding:9px 16px;font-size:14px;transition:opacity .6s;white-space:nowrap;max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis}
+.p3v-joy{position:absolute;left:16px;bottom:62px;width:124px;height:124px;border-radius:50%;background:rgba(18,23,25,.42);border:1px solid rgba(255,255,255,.22);z-index:6;touch-action:none;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);-webkit-user-select:none;user-select:none}.p3v-joy[hidden]{display:none}.p3v-joy i{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:rgba(255,255,255,.88);box-shadow:0 4px 14px rgba(0,0,0,.35);pointer-events:none}.p3v-joy b{position:absolute;left:0;right:0;top:-22px;text-align:center;font:600 11px system-ui,sans-serif;color:rgba(255,255,255,.75);letter-spacing:.04em;pointer-events:none}.p3v-hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;pointer-events:none;background:rgba(18,23,25,.86);border:1px solid rgba(255,255,255,.13);border-radius:999px;padding:9px 16px;font-size:14px;transition:opacity .6s;white-space:nowrap;max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis}
 .p3v-hint.gone{opacity:0}
 .p3v-labels{position:absolute;inset:0;pointer-events:none;z-index:3}
 .p3v-rl{position:absolute;left:0;top:0;background:rgba(18,23,25,.86);border:1px solid rgba(255,255,255,.13);border-radius:6px;padding:3px 8px;text-align:center;white-space:nowrap}
@@ -3969,6 +3969,7 @@ function mount(container, plan, opts) {
       <button class="p3v-panel p3v-cbtn" aria-pressed="false" hidden title="Click anything in the model to leave a comment on it">💬 Comment</button></div>
     </div>
     <div class="p3v-aim" aria-hidden="true"></div>
+    <div class="p3v-joy" hidden aria-hidden="true"><b>MOVE</b><i></i></div>
     <div class="p3v-bottom"><canvas class="p3v-mini p3v-panel" aria-label="Mini map. Click to jump there."></canvas><div class="p3v-chips"></div></div>
     <div class="p3v-hint"></div>
     <div class="p3v-panel p3v-clist" hidden></div>
@@ -4117,7 +4118,15 @@ function mount(container, plan, opts) {
     if (k >= 1) { const d = tween.done; tween = null; d && d(); }
   }
   function ease(k) { return k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; }
-  function setModeUI() { modeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === mode))); }
+  // touch screens: a joystick to walk with (push to move, further is faster; drag anywhere else to look)
+  const joyEl = $('.p3v-joy'), joyKnob = joyEl.querySelector('i'), joy = { f: 0, s: 0, id: null };
+  const touchy = !!opts.joystick || (global.matchMedia && global.matchMedia('(pointer: coarse)').matches);
+  const joySet = (dx, dy) => { const R = 44, d = Math.hypot(dx, dy), k = d > R ? R / d : 1; dx *= k; dy *= k; joyKnob.style.transform = `translate(${dx}px,${dy}px)`; joy.s = dx / R; joy.f = -dy / R; };
+  joyEl.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); joy.id = e.pointerId; joyEl.setPointerCapture(e.pointerId); const r = joyEl.getBoundingClientRect(); joy.cx = r.left + r.width / 2; joy.cy = r.top + r.height / 2; joySet(e.clientX - joy.cx, e.clientY - joy.cy); target = null; });
+  joyEl.addEventListener('pointermove', (e) => { if (e.pointerId !== joy.id) return; e.preventDefault(); e.stopPropagation(); joySet(e.clientX - joy.cx, e.clientY - joy.cy); });
+  const joyEnd = (e) => { if (e.pointerId !== joy.id) return; joy.id = null; joySet(0, 0); };
+  joyEl.addEventListener('pointerup', joyEnd); joyEl.addEventListener('pointercancel', joyEnd);
+  function setModeUI() { modeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === mode))); joyEl.hidden = !(touchy && mode === 'walk'); if (joyEl.hidden && joy.id == null) joySet(0, 0); }
   function goWalk(x, z, yaw, dur) {
     const p = freeSpot(x, z); target = null;
     const to = { pos: new THREE.Vector3(p.x, EYE, p.z), look: new THREE.Vector3(p.x - Math.sin(yaw) * 6, EYE, p.z - Math.cos(yaw) * 6), fov };
@@ -4453,9 +4462,11 @@ function mount(container, plan, opts) {
         if (keys.has('arrowleft') || keys.has('q')) turn += 1; if (keys.has('arrowright') || keys.has('e')) turn -= 1;
         // turning starts gentle for small corrections and speeds up while held
         if (turn) { turnHeld = Math.min(1, turnHeld + dt * 2.5); st.yaw += turn * (1.6 + 1.6 * turnHeld) * dt; } else turnHeld = 0;
+        // the joystick: forward and back walk, side to side turns (so one thumb can walk a room)
+        let jm = 0; if (joy.id != null && Math.hypot(joy.f, joy.s) > 0.12) { jm = Math.min(1, Math.hypot(joy.f, joy.s)); if (Math.abs(joy.f) > 0.15) f += joy.f; if (Math.abs(joy.s) > 0.18) st.yaw -= (joy.s - Math.sign(joy.s) * 0.18) * 2.4 * dt; }
         if (f || s) {
-          target = null; const sp = (running || keys.has('shift') ? 13 : 7) * dt, fx = -Math.sin(st.yaw), fz = -Math.cos(st.yaw), rx = Math.cos(st.yaw), rz = -Math.sin(st.yaw);
-          const vx = fx * f + rx * s, vz = fz * f + rz * s, n = Math.hypot(vx, vz); step(vx / n * sp, vz / n * sp);
+          target = null; const sp = (running || keys.has('shift') ? 13 : 7) * dt * (jm && !keys.size ? Math.max(0.25, Math.abs(f)) : 1), fx = -Math.sin(st.yaw), fz = -Math.cos(st.yaw), rx = Math.cos(st.yaw), rz = -Math.sin(st.yaw);
+          const vx = fx * f + rx * s, vz = fz * f + rz * s, n = Math.hypot(vx, vz); if (n > 1e-4) step(vx / n * sp, vz / n * sp);
         }
         if (target) {
           const dx = target.x - st.x, dz = target.z - st.z, d = Math.hypot(dx, dz);
