@@ -4594,40 +4594,77 @@ function mount(container, plan, opts) {
   // the drone: a small quadcopter you steer; the view follows a few feet behind it (V: look through its camera)
   const drone = new THREE.Group(); drone.visible = false; scene.add(drone);
   {
-    const dk = new THREE.MeshPhongMaterial({ color: 0x2b3034, specular: 0x555555, shininess: 60 }), lt = new THREE.MeshPhongMaterial({ color: 0xe9ecee, specular: 0x888888, shininess: 80 });
-    const glass = new THREE.MeshPhongMaterial({ color: 0x0d1418, specular: 0xffffff, shininess: 120 }), prop = new THREE.MeshBasicMaterial({ color: 0x9aa4a9, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.14, 0.62), lt); drone.add(body);
-    const top = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.4), dk); top.position.y = 0.1; drone.add(top);
+    // a sleek stealth-black quadcopter: rounded shell, carbon arms, chrome motor bells, prop blur discs, a gimbal
+    // camera under the nose, nav lights, and AREA 51 on both sides
+    const ph = (c, sp, sh, ex) => new THREE.MeshPhongMaterial(Object.assign({ color: c, specular: sp, shininess: sh }, ex || {}));
+    const shell = ph(0x1b1f24, 0x8a96a3, 90), carbon = ph(0x2a2e33, 0x444444, 30), chrome = ph(0xb9c2c8, 0xffffff, 140), accent = ph(0x39ff88, 0x39ff88, 60, { emissive: 0x0f5a2c });
+    const glass = ph(0x061018, 0xffffff, 160), blur = new THREE.MeshBasicMaterial({ color: 0xb8c4ca, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false });
+    const add = (geo, mat, x, y, z, sx, sy, sz) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); if (sx) m.scale.set(sx, sy, sz); drone.add(m); return m; };
+    // body: a flattened ellipsoid with a raised canopy and a bright stripe round the waist
+    add(new THREE.BoxGeometry(0.44, 0.15, 0.56), shell, 0, 0, 0);
+    add(new THREE.SphereGeometry(0.22, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), shell, 0, 0.07, 0, 0.92, 0.38, 1.25);
+    add(new THREE.SphereGeometry(0.22, 32, 16), shell, 0, 0, -0.28, 0.86, 0.34, 0.5);
+    add(new THREE.SphereGeometry(0.22, 32, 16), shell, 0, 0, 0.28, 0.86, 0.34, 0.4);
+    add(new THREE.SphereGeometry(0.13, 28, 14), glass, 0, 0.1, -0.12, 1, 0.45, 1.4);
+    for (const sd of [1, -1]) add(new THREE.BoxGeometry(0.006, 0.012, 0.6), accent, sd * 0.222, -0.06, 0);
     drone.userData.props = [];
     for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.62), dk); arm.position.set(sx * 0.3, 0.02, sz * 0.28); arm.rotation.y = sx * sz * 0.85; drone.add(arm);
-      const mot = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.08, 14), dk); mot.position.set(sx * 0.5, 0.05, sz * 0.48); drone.add(mot);
-      const pr = new THREE.Mesh(new THREE.CircleGeometry(0.24, 24), prop); pr.rotation.x = -Math.PI / 2; pr.position.set(sx * 0.5, 0.1, sz * 0.48); drone.add(pr);
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.01, 0.04), dk); blade.position.set(sx * 0.5, 0.105, sz * 0.48); drone.add(blade); drone.userData.props.push(blade);
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.16, 0.03), dk); leg.position.set(sx * 0.16, -0.14, sz * 0.2); drone.add(leg);
+      const ax = sx * 0.5, az = sz * 0.46, L = Math.hypot(ax, az);
+      const arm = add(new THREE.BoxGeometry(0.055, 0.035, L), carbon, ax / 2, 0.01, az / 2); arm.rotation.y = Math.atan2(ax, az);
+      add(new THREE.CylinderGeometry(0.055, 0.06, 0.07, 20), chrome, ax, 0.04, az);
+      add(new THREE.CylinderGeometry(0.02, 0.02, 0.03, 12), carbon, ax, 0.09, az);
+      const disc = add(new THREE.CircleGeometry(0.25, 36), blur, ax, 0.1, az); disc.rotation.x = -Math.PI / 2;
+      const ring = add(new THREE.TorusGeometry(0.25, 0.004, 4, 48), accent, ax, 0.1, az); ring.rotation.x = Math.PI / 2; ring.material = blur;
+      const blade = add(new THREE.BoxGeometry(0.48, 0.006, 0.035), carbon, ax, 0.1, az); drone.userData.props.push(blade);
+      // landing skid under each arm
+      add(new THREE.CylinderGeometry(0.012, 0.012, 0.15, 8), carbon, ax * 0.42, -0.12, az * 0.42);
     }
-    // camera on a gimbal under the nose, and the nav lights: green on the right, red on the left
-    const gim = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 12), dk); gim.position.set(0, -0.09, -0.3); drone.add(gim);
-    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.045, 16), glass); lens.position.set(0, -0.09, -0.382); lens.rotation.y = Math.PI; drone.add(lens);
-    const ledG = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), new THREE.MeshBasicMaterial({ color: 0x35e06a })); ledG.position.set(0.5, 0.0, -0.48); drone.add(ledG);
-    const ledR = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3b30 })); ledR.position.set(-0.5, 0.0, -0.48); drone.add(ledR);
-    drone.traverse(o => { o.renderOrder = 4; });
+    add(new THREE.CylinderGeometry(0.012, 0.012, 0.5, 8), carbon, 0.13, -0.19, 0).rotation.x = Math.PI / 2;
+    add(new THREE.CylinderGeometry(0.012, 0.012, 0.5, 8), carbon, -0.13, -0.19, 0).rotation.x = Math.PI / 2;
+    // gimbal camera under the nose
+    add(new THREE.BoxGeometry(0.1, 0.05, 0.06), carbon, 0, -0.08, -0.3);
+    add(new THREE.SphereGeometry(0.065, 20, 14), shell, 0, -0.13, -0.32);
+    const lens = add(new THREE.CircleGeometry(0.035, 20), glass, 0, -0.13, -0.386); lens.rotation.y = Math.PI;
+    add(new THREE.TorusGeometry(0.037, 0.006, 6, 24), chrome, 0, -0.13, -0.384);
+    // nav lights: green right, red left, white strobe at the tail
+    add(new THREE.SphereGeometry(0.022, 10, 8), new THREE.MeshBasicMaterial({ color: 0x35e06a }), 0.5, 0.02, -0.46);
+    add(new THREE.SphereGeometry(0.022, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff3b30 }), -0.5, 0.02, -0.46);
+    drone.userData.strobe = add(new THREE.SphereGeometry(0.02, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }), 0, 0.05, 0.35);
+    // AREA 51 decals on both sides
+    const dc = document.createElement('canvas'); dc.width = 512; dc.height = 160; const g = dc.getContext('2d');
+    g.clearRect(0, 0, 512, 160);
+    g.fillStyle = 'rgba(57,255,136,0.9)'; g.fillRect(8, 128, 496, 6);
+    // a little flying saucer badge
+    g.save(); g.translate(70, 70); g.fillStyle = '#39ff88'; g.beginPath(); g.ellipse(0, 6, 54, 16, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#c9ffe0'; g.beginPath(); g.ellipse(0, -6, 24, 20, 0, Math.PI, 0); g.fill();
+    g.fillStyle = '#0d1a12'; for (const x of [-30, -10, 10, 30]) { g.beginPath(); g.arc(x, 8, 4, 0, Math.PI * 2); g.fill(); }
+    g.strokeStyle = 'rgba(57,255,136,0.7)'; g.lineWidth = 3; g.beginPath(); g.moveTo(-18, 22); g.lineTo(-34, 54); g.moveTo(18, 22); g.lineTo(34, 54); g.stroke(); g.restore();
+    g.fillStyle = '#ffffff'; g.font = '900 86px Impact, "Arial Black", sans-serif'; g.textBaseline = 'middle'; g.fillText('AREA 51', 140, 66);
+    g.fillStyle = 'rgba(200,255,225,0.85)'; g.font = '700 22px Consolas, monospace'; g.fillText('RESTRICTED AIRSPACE', 144, 112);
+    const tex = new THREE.CanvasTexture(dc); tex.anisotropy = 4;
+    const dm = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.FrontSide });
+    for (const sd of [1, -1]) { const d = add(new THREE.PlaneGeometry(0.4, 0.125), dm, sd * 0.2225, 0.005, 0); d.lookAt(sd * 2, 0.005, 0); d.renderOrder = 5; }
+    drone.traverse(o => { if (o.renderOrder < 4) o.renderOrder = 4; });
   }
   let pilot = false, droneTilt = 0, droneRoll = 0, propSpin = 0;
-  const camOff = new THREE.Vector3();
+  const camOff = new THREE.Vector3(); let camYaw = null, camYawT = 0;
   function applyFlyCam() {
     const chase = mode === 'fly' && !pilot && !tween;
     drone.visible = chase;
     drone.position.set(st.x, st.y, st.z); drone.rotation.set(droneTilt, st.yaw, droneRoll, 'YXZ');
     if (!chase) { camera.position.set(st.x, st.y, st.z); camera.rotation.set(st.pitch, st.yaw, 0, 'YXZ'); return; }
-    // a little behind and above the drone, looking the way it looks
-    const cp = Math.cos(st.pitch); camOff.set(Math.sin(st.yaw) * cp * 3.2, 0.95 - Math.sin(st.pitch) * 3.2, Math.cos(st.yaw) * cp * 3.2);
-    camera.position.set(st.x + camOff.x, st.y + camOff.y, st.z + camOff.z); camera.rotation.set(st.pitch - 0.16, st.yaw, 0, 'YXZ');
+    // a little behind and above the drone; the camera swings round after it when it turns, so you see the drone
+    // bank and show its side on a turn
+    const now = performance.now(), dtc = Math.min(0.1, (now - (camYawT || now)) / 1000); camYawT = now;
+    if (camYaw == null) camYaw = st.yaw;
+    let dy = st.yaw - camYaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; camYaw += dy * Math.min(1, dtc * 2.2);
+    const cp = Math.cos(st.pitch); camOff.set(Math.sin(camYaw) * cp * 3.2, 0.95 - Math.sin(st.pitch) * 3.2, Math.cos(camYaw) * cp * 3.2);
+    camera.position.set(st.x + camOff.x, st.y + camOff.y, st.z + camOff.z); camera.rotation.set(st.pitch - 0.16, camYaw, 0, 'YXZ');
   }
   function poseFromCamera() { const d = camera.getWorldDirection(new THREE.Vector3()); return { x: camera.position.x, y: camera.position.y, z: camera.position.z, yaw: Math.atan2(-d.x, -d.z), pitch: Math.max(-1.3, Math.min(1.3, Math.asin(Math.max(-1, Math.min(1, d.y))))) }; }
   function goFly() {
     if (tween) return;
-    stopTour(); Object.assign(st, poseFromCamera()); target = null; pilot = false;
+    stopTour(); Object.assign(st, poseFromCamera()); target = null; pilot = false; camYaw = null;
     { const cp = Math.cos(st.pitch); st.x -= Math.sin(st.yaw) * cp * 3.2; st.z -= Math.cos(st.yaw) * cp * 3.2; st.y = Math.max(1.5, st.y - 0.95 + Math.sin(st.pitch) * 3.2); }
     controls.enabled = false; labelsEl.hidden = true; mode = 'fly';
     applyVis('fly'); setModeUI(); applyFlyCam();
@@ -4658,6 +4695,7 @@ function mount(container, plan, opts) {
     const lean = Math.min(1, Math.abs(f)) * Math.sign(f) * (running || keys.has('shift') ? 0.32 : 0.2), roll = -Math.max(-1, Math.min(1, s2 + turn * 0.6)) * 0.22;
     droneTilt += (-lean - droneTilt) * Math.min(1, dt * 5); droneRoll += (roll - droneRoll) * Math.min(1, dt * 5);
     propSpin += dt * 60; drone.userData.props.forEach((b, i) => { b.rotation.y = propSpin * (i % 2 ? 1 : -1); });
+    if (drone.userData.strobe) drone.userData.strobe.visible = (propSpin % 60) < 4;
     drone.position.y = st.y + Math.sin(propSpin * 0.05) * 0.02;
     const b = A.bounds; st.x = Math.max(b.minX - 120, Math.min(b.maxX + 120, st.x)); st.z = Math.max(b.minZ - 120, Math.min(b.maxZ + 120, st.z)); st.y = Math.max(0.3, Math.min(150, st.y));
     applyFlyCam();
