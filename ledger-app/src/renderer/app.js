@@ -124,7 +124,7 @@ const App = (() => {
     bill: '<svg viewBox="0 0 24 24"><path d="M18 2H6a2 2 0 0 0-2 2v18l3-2 3 2 2-1.5L14 22l3-2 3 2V4a2 2 0 0 0-2-2m-2 13H8v-2h8zm0-4H8V9h8zm0-4H8V5h8z"/></svg>',
     studio: '<svg viewBox="0 0 24 24"><path d="M20 6h-4V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2m-6 0h-4V4h4z"/></svg>'
   };
-  const TITLES = { journal: 'Journal entries', planning: 'Planning', mileage: 'Mileage', cleanup: 'Clean up', handbook: "Bookkeeper's Handbook", bills: 'Bills', studio: 'My studio', training: 'Practice / Training', clients: 'All clients', dashboard: 'Dashboard', review: 'To Review', transactions: 'Transactions', invoices: 'Invoices', contacts: 'Customers & Vendors', import: 'Import', reconcile: 'Reconcile', close: 'Close the month', accounts: 'Chart of Accounts', rules: 'Smart Rules', reports: 'Reports', settings: 'Settings' };
+  const TITLES = { lab: 'Study center', journal: 'Journal entries', planning: 'Planning', mileage: 'Mileage', cleanup: 'Clean up', handbook: "Bookkeeper's Handbook", bills: 'Bills', studio: 'My studio', training: 'Practice / Training', clients: 'All clients', dashboard: 'Dashboard', review: 'To Review', transactions: 'Transactions', invoices: 'Invoices', contacts: 'Customers & Vendors', import: 'Import', reconcile: 'Reconcile', close: 'Close the month', accounts: 'Chart of Accounts', rules: 'Smart Rules', reports: 'Reports', settings: 'Settings' };
 
   function go(page, params = {}) {
     if (page !== 'reconcile' && S.ui.recon) { S.ui.parkedRecon = S.ui.recon; S.ui.recon = null; }
@@ -186,7 +186,7 @@ const App = (() => {
     let c = client();
     if (!c && S.data.clients.length) { S.data.activeClientId = S.data.clients[0].id; c = client(); }
     let page = S.route.page;
-    if (!c && !['clients', 'settings', 'training', 'studio', 'handbook'].includes(page)) page = S.route.page = 'clients';
+    if (!c && !['clients', 'settings', 'training', 'studio', 'handbook', 'lab'].includes(page)) page = S.route.page = 'clients';
     renderChrome();
     const v = views[page] || views.dashboard;
     try {
@@ -238,6 +238,7 @@ const App = (() => {
         ['Add a client', 'Set up a new business', ICON.plus, () => actions['new-client']()],
         ['Help', 'How-to guides and shortcuts', ICON.help, () => help()],
         ['Practice / Training', 'The Academy: lessons, exams and a certificate', ICON.spark, () => go('training')],
+        ['Study center', 'Study plan, daily review, case studies, client emails, cheat sheets, portfolio', ICON.spark, () => go('lab')],
         ['Settings', 'Studio, client profile, backups', ICON.dots, () => go('settings')]
       ];
       for (const [l, s, i, f] of cmds) if ((c || /client|help|settings|training|time|handbook|dark/i.test(l)) && (match(l) || match(s))) add('Actions', l, s, i, f);

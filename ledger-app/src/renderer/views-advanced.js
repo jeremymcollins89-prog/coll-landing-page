@@ -110,6 +110,7 @@
       <p class="tm-learn">${DRAW} questions drawn from a bank of ${BANK.length}: accrual accounting, prepaids and accruals, fixed assets, inventory, loans, the close and cash flow, payroll and sales tax compliance, business and owner taxes, 1099s, internal controls, ethics and career paths. Several questions need a calculator.</p>
       <div class="exam-rules"><div><b>${DRAW}</b><span>questions</span></div><div><b>${Math.round(PASS * 100)}%</b><span>to pass (${Math.ceil(DRAW * PASS)} right)</span></div><div><b>~75 min</b><span>typical · no time limit</span></div><div><b>New</b><span>questions each try</span></div></div>
       ${T().advWritten.length ? `<div class="exam-history"><div class="cap-label">Your attempts</div>${T().advWritten.slice(-5).reverse().map(w => `<div><span>${fmtDate(w.date)}</span><b class="${w.pct >= PASS ? 'pos' : ''}">${w.score} / ${w.total} · ${Math.round(w.pct * 100)}%</b>${w.pct >= PASS ? '<span class="tag green">Passed</span>' : '<span class="tag">Not yet</span>'}</div>`).join('')}</div>` : ''}
+      ${App.examRulesNote ? App.examRulesNote(T().advWritten) : ''}
       <div class="tm-nav"><button class="btn ghost" data-nav="handbook">${ICON.help}Study the handbook</button><button class="btn primary" data-action="ax-start">${writtenPassed() ? 'Take it again' : 'Start the exam'} ${ICON.right}</button></div>`;
     if (E.done) {
       const r = E.result, missed = E.qs.filter(q => E.answers[q.i] !== BANK[q.i][3]);
@@ -208,7 +209,7 @@
       ${docs}
       <p class="muted">Plan on about 2 hours. Graded on 8 checks worth 100 points; closing the month is one of them and is required to pass. Pass with 80 points or more. A perfect 100, plus 92% or better on the written exam, earns distinction.</p>
       ${res ? `<div class="exam-result ${res.passed ? 'pass' : ''}"><div class="er-score">${res.score}<span>/ 100</span></div><div><h2 class="tm-title" style="margin:0">${res.passed ? 'You passed the practical!' : 'Not passed yet'}</h2><div class="muted">${res.passed ? (res.score === 100 ? 'A perfect close.' : 'Solid work.') : !res.closed ? 'Close the month once the entries are in.' : 'Fix the items marked below, then grade again.'}</div></div></div>
-        <div class="grade-list">${res.items.map(x => `<div class="gl ${x.ok ? 'ok' : ''}"><span class="tick ${x.ok ? 'on' : ''}">${x.ok ? ICON.check : ICON.close}</span><div class="grow"><b>${esc(x.label)}</b>${x.ok ? '' : `<div class="muted">${esc(x.why)}</div>`}</div><span class="num">${x.got}/${x.pts}</span></div>`).join('')}<div class="gl ${res.closed ? 'ok' : ''}"><span class="tick ${res.closed ? 'on' : ''}">${res.closed ? ICON.check : ICON.close}</span><div class="grow"><b>Month closed</b>${res.closed ? '' : '<div class="muted">Required to pass.</div>'}</div><span class="num">${res.closed ? 12 : 0}/12</span></div></div>` : ''}
+        <div class="grade-list">${res.items.map(x => `<div class="gl ${x.ok ? 'ok' : ''}"><span class="tick ${x.ok ? 'on' : ''}">${x.ok ? ICON.check : ICON.close}</span><div class="grow"><b>${esc(x.label)}</b>${x.ok ? '' : `<div class="muted">${res.passed ? esc(x.why) : 'Not right yet. Recheck the source documents and the lesson on this topic — the full answer key appears once you pass.'}</div>`}</div><span class="num">${x.got}/${x.pts}</span></div>`).join('')}<div class="gl ${res.closed ? 'ok' : ''}"><span class="tick ${res.closed ? 'on' : ''}">${res.closed ? ICON.check : ICON.close}</span><div class="grow"><b>Month closed</b>${res.closed ? '' : '<div class="muted">Required to pass.</div>'}</div><span class="num">${res.closed ? 12 : 0}/12</span></div></div>` : ''}
       <div class="tm-nav">${c ? `<button class="btn ghost" data-action="ax-prac-reset">${ICON.refresh}Start over</button><span style="flex:1"></span><button class="btn" data-action="ax-prac-open">Open Aspen Trail ${ICON.right}</button><button class="btn primary" data-action="ax-prac-grade">${ICON.check}Grade my work</button>` : `<span></span><button class="btn primary" data-action="ax-prac-start">Start the practical ${ICON.right}</button>`}</div>`;
   }
 
@@ -285,7 +286,7 @@
     $('[data-c=prog]', m).onclick = () => { U.closeModal(); programsModal(); };
     $('[data-c=reg]', m).onclick = () => {
       const entry = JSON.stringify({ id: cert.id, name: cert.name, awarded: cert.date, written: cert.written, practical: cert.practical, distinction: cert.distinction, program: 'advanced' });
-      const body = `Please register this Coll Ledger Academy advanced credential.\n\nName: ${cert.name}\nCredential ID: ${cert.id}\nAwarded: ${fmtDate(cert.date)}\nWritten exam: ${cert.written}%\nPractical close: ${cert.practical}/100${cert.distinction ? '\nWith distinction' : ''}\n\nRegistry entry (add to credentials.json):\n${entry}\n\nCredential link: ${AC().verifyUrl(cert.id)}`;
+      const body = `Please register this Coll Ledger Academy advanced credential.\n\nName: ${cert.name}\nCredential ID: ${cert.id}\nAwarded: ${fmtDate(cert.date)}\nWritten exam: ${cert.written}%\nPractical close: ${cert.practical}/100${cert.distinction ? '\nWith distinction' : ''}\n\nTo register: on GitHub open the coll-landing-page repository → Actions → Register credential → Run workflow, paste this entry, and click Run.\nRegistry entry:\n${entry}\n\nCredential link: ${AC().verifyUrl(cert.id)}`;
       AC().openLink(`mailto:collbusinesssolutions@gmail.com?subject=${encodeURIComponent('Credential registration ' + cert.id)}&body=${encodeURIComponent(body)}`);
       cert.registeredAsked = today(); save(); U.toast('Opening your email — just press Send');
     };
@@ -322,7 +323,7 @@
   }
 
   act({
-    'ax-start': () => { S.ui.exam = newAttempt(); render(); $('#view').scrollTop = 0; },
+    'ax-start': () => App.examGate('advWritten', T().advWritten, 'Advanced written exam', () => { S.ui.exam = newAttempt(); render(); $('#view').scrollTop = 0; }),
     'ax-close': () => { S.ui.exam = null; render(); },
     'ax-pick': el => { const E = S.ui.exam; E.answers[E.qs[E.at].i] = +el.dataset.a; render(); },
     'ax-move': el => { const E = S.ui.exam; E.at = Math.max(0, Math.min(E.qs.length - 1, E.at + +el.dataset.d)); render(); },
@@ -331,7 +332,7 @@
       const E = S.ui.exam;
       if (!await U.confirmBox({ title: 'Submit your answers?', body: 'You can\'t change them after this.', ok: 'Submit' })) return;
       const score = E.qs.filter(q => E.answers[q.i] === BANK[q.i][3]).length;
-      const res = { date: today(), score, total: E.qs.length, pct: score / E.qs.length, passed: score / E.qs.length >= PASS };
+      const res = { date: today(), score, total: E.qs.length, pct: score / E.qs.length, passed: score / E.qs.length >= PASS, at: Date.now(), mins: Math.round((Date.now() - E.started) / 60000) };
       T().advWritten.push(res); save(); E.done = true; E.result = res; render(); $('#view').scrollTop = 0;
     },
     'ax-prac-start': () => start(false),
