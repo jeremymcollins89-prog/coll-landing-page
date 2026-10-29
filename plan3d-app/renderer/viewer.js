@@ -4431,8 +4431,26 @@ function mount(container, plan, opts) {
     rComp.setSize(w, h); if (rSSAO) rSSAO.setSize(w * pr, h * pr); if (rBloom) rBloom.setSize(w * pr, h * pr); if (rFXAA) rFXAA.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr));
   }
   // an area light over each room, as wide as its ceiling fixtures, as bright as its lights
+  const FLOOR_GLOSS = {
+    uniforms: { color: { value: null }, tDiffuse: { value: null }, textureMatrix: { value: null }, opacity: { value: 0.2 }, texel: { value: new THREE.Vector2(1 / 512, 1 / 512) } },
+    vertexShader: 'uniform mat4 textureMatrix; varying vec4 vUv; void main() { vUv = textureMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    // a few taps, so the reflection is a little soft like a real epoxy floor rather than a mirror
+    fragmentShader: 'uniform vec3 color; uniform sampler2D tDiffuse; uniform float opacity; uniform vec2 texel; varying vec4 vUv; void main() { vec2 uv = vUv.xy / vUv.w; vec3 c = texture2D(tDiffuse, uv).rgb * 0.36; c += texture2D(tDiffuse, uv + texel * vec2(2.0, 0.0)).rgb * 0.16; c += texture2D(tDiffuse, uv - texel * vec2(2.0, 0.0)).rgb * 0.16; c += texture2D(tDiffuse, uv + texel * vec2(0.0, 2.5)).rgb * 0.16; c += texture2D(tDiffuse, uv - texel * vec2(0.0, 2.5)).rgb * 0.16; gl_FragColor = vec4(c * color, opacity); }'
+  };
+  let gloss = null;
+  function placeGloss() {
+    if (gloss) { scene.remove(gloss); gloss.getRenderTarget().dispose(); gloss.geometry.dispose(); gloss.material.dispose(); gloss = null; }
+    if (!real || !A || A.empty || !A.hardAny || !THREE.Reflector || (global.P3REAL || {}).gloss === false) return;
+    const b = A.bounds, pr = renderer.getPixelRatio(), tw = Math.max(256, Math.round((container.clientWidth || 800) * pr * 0.5)), th = Math.max(256, Math.round((container.clientHeight || 600) * pr * 0.5));
+    gloss = new THREE.Reflector(new THREE.PlaneGeometry(b.w + 0.5, b.d + 0.5), { textureWidth: tw, textureHeight: th, clipBias: 0.003, color: 0xffffff, shader: FLOOR_GLOSS });
+    gloss.material.transparent = true; gloss.material.depthWrite = false; gloss.material.uniforms.opacity.value = (global.P3REAL || {}).gl || 0.2; gloss.material.uniforms.texel.value.set(1 / tw, 1 / th);
+    gloss.rotation.x = -Math.PI / 2; gloss.position.set(b.minX + b.w / 2, 0.012, b.minZ + b.d / 2); gloss.renderOrder = 2; gloss.name = 'floor gloss';
+    const ob = gloss.onBeforeRender; gloss.onBeforeRender = function (r, sc, cam) { if (sc.overrideMaterial) return; ob.call(this, r, sc, cam); };   // not in the normals pass of the corner shading
+    upDone.add(gloss.material); scene.add(gloss);
+  }
   function placeRoomLights() {
     while (roomLights.children.length) roomLights.remove(roomLights.children[0]);
+    placeGloss();
     if (!real || !plan) return;
     let R = []; try { R = cleanroomCheck(plan).rooms; } catch (e) { R = []; }
     const list = [];
@@ -4452,7 +4470,7 @@ function mount(container, plan, opts) {
     const KN = global.P3REAL || {};
     if (real && !rComp) { try { THREE.RectAreaLightUniformsLib.init(); makeComposer(); } catch (e) { console.error(e); real = false; } }
     if (real && !envIn) { try { envIn = indoorEnv(); } catch (e) { envIn = null; } }
-    renderer.toneMapping = real ? (KN.tm === 'none' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping) : tmOut; renderer.toneMappingExposure = real ? (KN.exp || 0.92) : expOut; if (rSSAO) { rSSAO.enabled = KN.ao !== false; rPlain.enabled = !rSSAO.enabled; if (KN.kr) rSSAO.kernelRadius = KN.kr; if (KN.min) rSSAO.minDistance = KN.min; if (KN.max) rSSAO.maxDistance = KN.max; }
+    renderer.toneMapping = real ? (KN.tm === 'aces' ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping) : tmOut; renderer.toneMappingExposure = real ? (KN.exp || 1) : expOut; if (rSSAO) { rSSAO.enabled = KN.ao !== false; rPlain.enabled = !rSSAO.enabled; if (KN.kr) rSSAO.kernelRadius = KN.kr; if (KN.min) rSSAO.minDistance = KN.min; if (KN.max) rSSAO.maxDistance = KN.max; }
     scene.environment = real && envIn && KN.env !== false ? envIn : envOut;
     for (const m of upCache.values()) { tuneMat(m, real); m.needsUpdate = true; }
     scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); });
@@ -4460,7 +4478,7 @@ function mount(container, plan, opts) {
     scene.traverse(o => { const m = o.material; if (m && !Array.isArray(m) && /light lens/i.test(m.name || '') && m.color) { if (m.userData.c0 == null) m.userData.c0 = m.color.getHex(); m.color.setHex(m.userData.c0); if (real) m.color.multiplyScalar(3); } });
     const amb = KN.amb != null ? KN.amb : 0.5;
     scene.children.forEach(o => { if (o.isHemisphereLight || o.isAmbientLight) { if (o.userData.i0 == null) o.userData.i0 = o.intensity; o.intensity = o.userData.i0 * (real ? amb : 1); } });
-    lightGain = KN.k != null ? KN.k : 1.7;
+    lightGain = KN.k != null ? KN.k : 1.1;
     placeRoomLights(); roomLights.visible = KN.lights !== false;
     if (realBtn) realBtn.setAttribute('aria-pressed', String(real));
     try { localStorage.setItem('p3v.real', real ? '1' : '0'); } catch (e) { /* ok */ }
