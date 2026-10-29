@@ -1,7 +1,7 @@
 /* Dino Garden offline helper.
    Saves the game on the device the first time it opens, so it works with no internet.
    Pages load fresh when online (so updates show up) and from the saved copy when offline. */
-const CACHE = 'dino-garden-v22';
+const CACHE = 'dino-garden-v23';
 const CORE = ['./', './index.html', './apple-touch-icon.png', './icon-512.png', './manifest.json'];
 
 self.addEventListener('install', e => {
