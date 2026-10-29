@@ -160,7 +160,7 @@ function toDxf(plan, opts) {
     for (const f of V.ceilingFixtures(plan, A)) {
       const hw = (f.w || 1.9) / 2, hh = (f.h || 3.9) / 2;
       pline('A-CLNG-FIXT', [[f.x - hw, f.y - hh], [f.x + hw, f.y - hh], [f.x + hw, f.y + hh], [f.x - hw, f.y + hh]], true);
-      if (f.type === 'ffu') text('A-CLNG-FIXT', f.x, f.y, 'FFU', 0.3, hh >= hw ? 90 : 0);
+      if (f.type === 'ffu') { const rr = Math.min(hw, hh) * 0.68, pts = []; for (let k = 0; k < 32; k++) pts.push([f.x + Math.cos(k / 32 * Math.PI * 2) * rr, f.y + Math.sin(k / 32 * Math.PI * 2) * rr]); pline('A-CLNG-FIXT', pts, true); }   // an FFU: a circle in the middle
       else line('A-CLNG-FIXT', f.x - hw, f.y - hh, f.x + hw, f.y + hh);   // a light: the rectangle with a diagonal across it
     }
     for (const b0 of plan.beams || []) { const bm = V.beamSeat ? V.beamSeat(plan, A, b0) : b0; line('S-BEAM', bm.x1, bm.y1, bm.x2, bm.y2); text('S-BEAM', (bm.x1 + bm.x2) / 2, (bm.y1 + bm.y2) / 2, (b0.size || 'W12x26').toUpperCase(), 0.3, Math.abs(bm.x2 - bm.x1) >= Math.abs(bm.y2 - bm.y1) ? 0 : 90); }
