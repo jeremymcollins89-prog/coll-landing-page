@@ -3584,7 +3584,9 @@ function buildScene(THREE, plan, A) {
       const metal = M.remMetal || (M.remMetal = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xb8bfc3, specular: 0x8a9196, shininess: 70 }); m.name = 'Removable section frame, aluminum tube'; return m; })());
       const box = (s0, s1, y0, y1, th, mat, pk) => { const [p0x, p0z] = along(s0), [p1x, p1z] = along(s1); const m = segBox(p0x, p0z, p1x, p1z, y0, y1, th, mat); outline(m); if (pk) pick.push(m); return m; };
       // the metal tubes: a post each side, the header across the top
-      box(0, TW, 0, hd, tb, metal, true); box(i.len - TW, i.len, 0, hd, tb, metal, true); box(TW, i.len - TW, hd - TW, hd, tb, metal, true);
+      // the posts run on up to the lid (the top of the wall here), past the header panel over the section
+      const wt = Math.max(hd, top);
+      box(0, TW, 0, wt, tb, metal, true); box(i.len - TW, i.len, 0, wt, tb, metal, true); box(TW, i.len - TW, hd - TW, hd, tb, metal, true);
       // the white wall start inside the tubes
       box(TW, TW + ST, 0, hd - TW, tb, WP.trim); box(i.len - TW - ST, i.len - TW, 0, hd - TW, tb, WP.trim); box(TW + ST, i.len - TW - ST, hd - TW - ST, hd - TW, tb, WP.trim);
       // the removable panels, with an H-stud and its insert at each joint (one in the middle of a pair)
@@ -3603,7 +3605,12 @@ function buildScene(THREE, plan, A) {
       const sc = WP.face === 0xffffff ? stud : (() => { const m = stud.clone(); m.color.set(WP.face); m.emissive.set(WP.emissive); return m; })();
       for (let k = 0; k < n; k++) {
         const s0 = a0 + k * (pw + SW); box(s0, s0 + pw, 0, top0, t, [WP.edge, WP.edge, WP.edge, WP.edge, face, face], true);
-        if (k < n - 1) { const [p0x, p0z] = along(s0 + pw), [p1x, p1z] = along(s0 + pw + SW); pick.push(segBox(p0x, p0z, p1x, p1z, 0, top0, t + 0.006, [WP.edge, WP.edge, WP.edge, WP.edge, sc, sc])); }
+        if (k < n - 1) {
+          const [p0x, p0z] = along(s0 + pw), [p1x, p1z] = along(s0 + pw + SW);
+          pick.push(segBox(p0x, p0z, p1x, p1z, 0, top0, t + 0.006, [WP.edge, WP.edge, WP.edge, WP.edge, sc, sc]));
+          // the header panel over the section is split at the same line by a stud with its insert, up to the lid
+          if (wt - hd > 0.05) pick.push(segBox(p0x, p0z, p1x, p1z, hd, wt, t + 0.006, [WP.edge, WP.edge, WP.edge, WP.edge, sc, sc]));
+        }
       }
       segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base);
       shadow((ax + bx) / 2, (az + bz) / 2, i.len, t, Math.atan2(-i.uz, i.ux));
