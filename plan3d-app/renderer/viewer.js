@@ -3582,6 +3582,19 @@ function buildScene(THREE, plan, A) {
       // flat face with the frame lines round the section. Pull the panels out to bring equipment through.
       const PW = 2 / 12, WP = i.hard ? IP : wallPM(null), hd = Math.max(PW + 1, head), tb = t + 0.004;
       const [k1x, k1z] = along(PW), [k2x, k2z] = along(i.len - PW);
+      // an H-stud with its insert on each side, between the wall panels and the frame (as the wall's own studs)
+      const SW = 3 / 12, sm = M.studIns || (M.studIns = (() => { const tx = new THREE.CanvasTexture(cachedCanvas('studIns', () => makeCanvas(32, 64, (g, w, h) => {
+        const half = w / 2, ins = 0.6 * w / 3, cx = w / 2;
+        g.fillStyle = '#fbfbfb'; g.fillRect(0, 0, w, h);
+        g.fillStyle = '#a3aaae'; g.fillRect(0, 0, 1.4, h); g.fillRect(w - 1.4, 0, 1.4, h);
+        g.fillStyle = '#ffffff'; g.fillRect(1.6, 0, 1, h);
+        const ig = g.createLinearGradient(cx - ins, 0, cx + ins, 0); ig.addColorStop(0, '#e9ecec'); ig.addColorStop(0.5, '#f6f7f7'); ig.addColorStop(1, '#e3e6e7');
+        g.fillStyle = ig; g.fillRect(cx - ins, 0, ins * 2, h);
+        g.fillStyle = '#b3babd'; g.fillRect(cx - ins - 1, 0, 1, h); g.fillRect(cx + ins, 0, 1, h);
+        g.fillStyle = '#ffffff'; g.fillRect(cx - ins, 0, 0.8, h);
+      }))); tx.anisotropy = ANISO; const m = new THREE.MeshPhongMaterial({ map: tx, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 }); m.name = 'H-stud with insert'; return m; })());
+      const sc = (WP.face === 0xffffff) ? sm : (() => { const m = sm.clone(); m.color.set(WP.face); m.emissive.set(WP.emissive); return m; })();
+      for (const [s0, s1] of [[-SW, 0], [i.len, i.len + SW]]) { const [p0x, p0z] = along(s0), [p1x, p1z] = along(s1); const st = segBox(p0x, p0z, p1x, p1z, 0, Math.max(hd, top), t + 0.008, [WP.edge, WP.edge, WP.edge, WP.edge, sc, sc]); pick.push(st); }
       for (const [p, q] of [[[ax, az], [k1x, k1z]], [[k2x, k2z], [bx, bz]]]) { const j = segBox(p[0], p[1], q[0], q[1], 0, hd, tb, WP.trim); outline(j); pick.push(j); }
       const hb = segBox(k1x, k1z, k2x, k2z, hd - PW, hd, tb, WP.trim); outline(hb); pick.push(hb);
       const pw = i.len - 2 * PW, n = Math.max(1, Math.ceil(pw / 4 - 0.01));
