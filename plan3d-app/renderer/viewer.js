@@ -338,7 +338,7 @@ function levelPlans(plan) {
     // a lower floor keeps the roof only where no floor sits on it (an attached garage, a one-story wing)
     if (k < L.length - 1) {
       const cover = [];
-      if (!L[k].below) for (let j = k + 1; j < L.length; j++) { const up = Object.assign({}, plan, JSON.parse(JSON.stringify(levelData(plan, j)))); delete up.levels; up.level = 0; const fu = footprint(analyze(up), true); if (fu) cover.push(...fu.rects); }
+      if (!L[k].below) for (let j = k + 1; j < L.length; j++) { const up = Object.assign({}, plan, JSON.parse(JSON.stringify(levelData(plan, j)))); delete up.levels; up.level = 0; const Au = analyze(up), fu = footprint(Au, true), gw = Math.max(0.5, (up.wallT || 0.375) / 2 + 0.45); if (fu) cover.push(...fu.rects.map(r => [r[0] - gw, r[1] - gw, r[2] + gw, r[3] + gw])); }
       if (cover.length) lp.__roofCover = cover; else lp.roof = { type: 'none' };
     }
     const grade = !L[k].below && (k === 0 || L[k - 1].below);
@@ -346,7 +346,7 @@ function levelPlans(plan) {
     if (L[k].below) { lp.roof = { type: 'none' }; lp.__below = true; }
     lp.__top = k === L.length - 1; lp.__grade = grade;
     if (grade && k > 0) { const br = []; for (let j = 0; j < k; j++) if (L[j].below) { const dn = Object.assign({}, plan, JSON.parse(JSON.stringify(levelData(plan, j)))); delete dn.levels; dn.level = 0; const fd = footprint(analyze(dn), true); if (fd) { br.push(...fd.rects); let e = 0; for (let q = 0; q < fd.inside.length; q++) if (fd.inside[q]) { const i = q % fd.nx, jj = (q - i) / fd.nx; for (const [a2, b2] of [[i - 1, jj], [i + 1, jj], [i, jj - 1], [i, jj + 1]]) if (a2 < 0 || b2 < 0 || a2 >= fd.nx || b2 >= fd.nz || !fd.inside[b2 * fd.nx + a2]) e++; } lp.__basePerim = (lp.__basePerim || 0) + e * fd.cell; } } if (br.length) lp.__baseRects = br; }
-    lp.__rise = stairRise(plan, k);
+    lp.__rise = stairRise(plan, k); lp.__elev = elev;
     const holes = (items) => (items || []).filter(it => it.type === 'stairs' || it.type === 'stairsL').map(it => { const c = itemCorners(it); return { x0: Math.min(...c.map(q => q[0])), z0: Math.min(...c.map(q => q[1])), x1: Math.max(...c.map(q => q[0])), z1: Math.max(...c.map(q => q[1])) }; });
     lp.__ceilHoles = holes(d.items);
     if (k > 0) lp.__floorHoles = holes(levelData(plan, k - 1).items);
@@ -2805,13 +2805,35 @@ function roofField(A, plan, fp) {
   const type = R.type || 'gable', axis = type === 'gable' ? gAxis : null;
   const D = cheb(outside, axis), H = A.H, Z = new Float32Array(N);
   for (let k = 0; k < N; k++) Z[k] = !roofed[k] ? 0 : type === 'flat' ? H + 0.6 : H + slope * (D[k] * s - s / 2 - ov);
-  return { s, gx0, gz0, nx, nz, roofed, Z, H, ov, slope, type, at(x, z) { const i = Math.floor((x - gx0) / s), j = Math.floor((z - gz0) / s); if (i < 0 || j < 0 || i >= nx || j >= nz) return H; const k = j * nx + i; return roofed[k] ? Z[k] : H; } };
+  return { s, gx0, gz0, nx, nz, roofed, Z, H, ov, slope, type, cv: cov ? cv : null, at(x, z) { const i = Math.floor((x - gx0) / s), j = Math.floor((z - gz0) / s); if (i < 0 || j < 0 || i >= nx || j >= nz) return H; const k = j * nx + i; return roofed[k] ? Z[k] : H; } };
 }
 function buildRoof(THREE, group, A, plan, fp, sidingMat, M) {
   const F = roofField(A, plan, fp), { s, gx0, gz0, nx, nz, roofed, Z } = F;
   const pos = [], uv = [], h = (i, j) => { i = Math.max(0, Math.min(nx - 1, i)); j = Math.max(0, Math.min(nz - 1, j)); return Z[j * nx + i]; };
   // vertex heights at cell corners: the average of the roofed cells around them
-  const vz = (i, j) => { let t = 0, n = 0; for (const [a, b] of [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]]) { if (a < 0 || b < 0 || a >= nx || b >= nz || !roofed[b * nx + a]) continue; t += Z[b * nx + a]; n++; } return n ? t / n : F.H; };
+  // every roof plane runs true right out to its edge: a cell off the roof takes the height its roofed neighbour's
+  // slope carries out to it (so an eave edge sits at the eave height and a rake keeps climbing), and the vertex
+  // is the average of the four cells round it
+  const RF0 = (a, b) => a >= 0 && b >= 0 && a < nx && b < nz && roofed[b * nx + a];
+  const cov0 = (a, b) => a >= 0 && b >= 0 && a < nx && b < nz && F.cv && F.cv[b * nx + a];
+  const ext = (a, b, i, j) => {
+    // the cell (a, b) is off the roof: carry the slope out from a roofed neighbour inside the 2 × 2 at vertex (i, j)
+    const out = [];
+    for (const [da, db] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+      const c1 = [a + da, b + db]; if (c1[0] < i - 1 || c1[0] > i || c1[1] < j - 1 || c1[1] > j || !RF0(...c1)) continue;
+      const c2 = [a + 2 * da, b + 2 * db]; const z1 = Z[c1[1] * nx + c1[0]], z2 = RF0(...c2) ? Z[c2[1] * nx + c2[0]] : z1;
+      out.push(2 * z1 - z2); if (da && db) break;
+      if (out.length >= 2) break;
+    }
+    return out.length ? out.reduce((t, v) => t + v, 0) / out.length : null;
+  };
+  const vz = (i, j) => {
+    let t = 0, n = 0, any = false;
+    for (const [a, b] of [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]]) if (RF0(a, b)) { any = true; t += Z[b * nx + a]; n++; }
+    if (!any) return F.H;
+    for (const [a, b] of [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]]) if (!RF0(a, b) && !cov0(a, b)) { const e = ext(a, b, i, j); if (e != null) { t += e; n++; } }
+    return t / n;
+  };
   const V = new Float32Array((nx + 1) * (nz + 1)); for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) V[j * (nx + 1) + i] = vz(i, j);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     if (!roofed[j * nx + i]) continue;
@@ -2830,7 +2852,8 @@ function buildRoof(THREE, group, A, plan, fp, sidingMat, M) {
     else { for (let r = 0; r < 8; r++) { const off = r % 2 ? 8 : 0; for (let x = -16 + off; x < w; x += 16) { c.fillStyle = shade(rcol, 0.85 + Math.random() * 0.35); c.fillRect(x + 1, r * 16 + 1, 14, 14); } c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(0, r * 16, w, 2); } }
   }));
   const tex = new THREE.CanvasTexture(sh); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.anisotropy = ANISO;
-  group.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide })));
+  group.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, name: 'Roofing' })));
+  try { roofTrim(THREE, group, F, V, plan); } catch (e) { console.error(e); }
   // gable ends and any outside wall face under a rising roof: siding from the wall top up to the roof. The roof's
   // height is read just inside the wall (on the line itself it can read as the eave), and walls inside the
   // house get none (they stop at the ceiling; above them is attic).
@@ -2857,6 +2880,89 @@ function buildRoof(THREE, group, A, plan, fp, sidingMat, M) {
     }
   }
   if (gp.length) { const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3)); gg.setAttribute('uv', new THREE.Float32BufferAttribute(guv, 2)); gg.computeVertexNormals(); const gm = sidingMat(1, 1); gm.side = THREE.DoubleSide; group.add(new THREE.Mesh(gg, gm)); }
+}
+/* The roof's edges, built like a house: a fascia board along every edge (the eaves level, the rakes climbing the
+   gables), a K-style gutter hung on each eave's fascia with end caps, and a downspout from each end of a gutter
+   down the wall to the ground. Edges against a taller floor's wall (a garage roof running into the house) get
+   none: the roof stops at that wall. */
+function roofTrim(THREE, group, F, V, plan) {
+  const { s, gx0, gz0, nx, nz, roofed } = F, cv = F.cv;
+  const vh = (i, j) => V[j * (nx + 1) + i];
+  const RFc = (a, b) => a >= 0 && b >= 0 && a < nx && b < nz && roofed[b * nx + a];
+  const CVc = (a, b) => !!(cv && a >= 0 && b >= 0 && a < nx && b < nz && cv[b * nx + a]);
+  // the outline as straight runs of cell edges: [i0, j0, i1, j1] vertex indices, with the outward normal
+  const runs = [];
+  for (let j = 0; j < nz; j++) { let a = -1, b = -1; for (let i = 0; i <= nx; i++) { const e = i < nx && RFc(i, j) && !RFc(i, j - 1) && !CVc(i, j - 1); if (e && a < 0) a = i; if (!e && a >= 0) { runs.push({ i0: a, j0: j, i1: i, j1: j, n: [0, -1] }); a = -1; } } }
+  for (let j = 0; j < nz; j++) { let a = -1; for (let i = 0; i <= nx; i++) { const e = i < nx && RFc(i, j) && !RFc(i, j + 1) && !CVc(i, j + 1); if (e && a < 0) a = i; if (!e && a >= 0) { runs.push({ i0: a, j0: j + 1, i1: i, j1: j + 1, n: [0, 1] }); a = -1; } } }
+  for (let i = 0; i < nx; i++) { let a = -1; for (let j = 0; j <= nz; j++) { const e = j < nz && RFc(i, j) && !RFc(i - 1, j) && !CVc(i - 1, j); if (e && a < 0) a = j; if (!e && a >= 0) { runs.push({ i0: i, j0: a, i1: i, j1: j, n: [-1, 0] }); a = -1; } } }
+  for (let i = 0; i < nx; i++) { let a = -1; for (let j = 0; j <= nz; j++) { const e = j < nz && RFc(i, j) && !RFc(i + 1, j) && !CVc(i + 1, j); if (e && a < 0) a = j; if (!e && a >= 0) { runs.push({ i0: i + 1, j0: a, i1: i + 1, j1: j, n: [1, 0] }); a = -1; } } }
+  const P = (i, j) => [gx0 + i * s, gz0 + j * s];
+  const trimMat = new THREE.MeshLambertMaterial({ color: 0xf3f3f0, name: 'Fascia and rake trim, white' });
+  const gutMat = new THREE.MeshPhongMaterial({ color: 0xeef0f0, specular: 0x555555, shininess: 40, side: THREE.DoubleSide, name: 'Gutter, aluminum' });
+  const fp = [], gp = [];
+  const quad = (arr, a, b, c, d) => arr.push(...a, ...b, ...c, ...a, ...c, ...d);
+  const FH = 0.62, FT = 0.07;   // fascia 7½″ deep, ~1″ thick
+  const elev = plan.__elev || 0, downs = [];
+  // split each run into lengths where its height is level (eave) or climbing (rake)
+  for (const r of runs) {
+    const di = Math.sign(r.i1 - r.i0), dj = Math.sign(r.j1 - r.j0), L = Math.max(Math.abs(r.i1 - r.i0), Math.abs(r.j1 - r.j0));
+    const pts = []; for (let k = 0; k <= L; k++) { const i = r.i0 + di * k, j = r.j0 + dj * k; const [x, z] = P(i, j); pts.push([x, vh(i, j), z]); }
+    // fascia: a board under the edge all the way along, its face 1″ out from the roof edge
+    const ox = r.n[0] * FT, oz = r.n[1] * FT;
+    for (let k = 0; k < L; k++) {
+      const a = pts[k], b = pts[k + 1];
+      quad(fp, [a[0] + ox, a[1] - FH, a[2] + oz], [b[0] + ox, b[1] - FH, b[2] + oz], [b[0] + ox, b[1] + 0.05, b[2] + oz], [a[0] + ox, a[1] + 0.05, a[2] + oz]);
+      // its top edge (a cap over the roofing's edge) and its underside
+      quad(fp, [a[0], a[1] + 0.05, a[2]], [a[0] + ox, a[1] + 0.05, a[2] + oz], [b[0] + ox, b[1] + 0.05, b[2] + oz], [b[0], b[1] + 0.05, b[2]]);
+      quad(fp, [a[0], a[1] - FH, a[2]], [b[0], b[1] - FH, b[2]], [b[0] + ox, b[1] - FH, b[2] + oz], [a[0] + ox, a[1] - FH, a[2] + oz]);
+    }
+    // gutters on the level stretches (eaves): K-style, 5″ wide, 4½″ deep, hung just under the roof edge
+    const level = (k) => Math.abs(pts[k + 1][1] - pts[k][1]) < 0.02;
+    for (let k = 0; k < L;) {
+      if (!level(k)) { k++; continue; }
+      let e = k; while (e + 1 < L && level(e + 1)) e++;
+      const a = pts[k], b = pts[e + 1], len = Math.hypot(b[0] - a[0], b[2] - a[2]);
+      if (len >= 1.5) {
+        const ux = (b[0] - a[0]) / len, uz = (b[2] - a[2]) / len, ex = r.n[0], ez = r.n[1], y1 = a[1] - 0.08, y0 = y1 - 0.38, W = 0.42, o1 = FT, o2 = FT + W;
+        const G = (o, y, t) => [a[0] + ux * t + ex * o, y, a[2] + uz * t + ez * o];
+        const t0 = -0.04, t1 = len + 0.04;
+        // back, bottom, the front's ogee (a slope then straight up), a bead along the top, and the end caps
+        quad(gp, G(o1, y0, t0), G(o1, y0, t1), G(o1, y1, t1), G(o1, y1, t0));
+        quad(gp, G(o1, y0, t0), G(o2 - 0.07, y0, t0), G(o2 - 0.07, y0, t1), G(o1, y0, t1));
+        quad(gp, G(o2 - 0.07, y0, t0), G(o2, y0 + 0.14, t0), G(o2, y0 + 0.14, t1), G(o2 - 0.07, y0, t1));
+        quad(gp, G(o2, y0 + 0.14, t0), G(o2, y1, t0), G(o2, y1, t1), G(o2, y0 + 0.14, t1));
+        quad(gp, G(o2, y1, t0), G(o2 - 0.05, y1, t0), G(o2 - 0.05, y1, t1), G(o2, y1, t1));
+        for (const t of [t0, t1]) { gp.push(...G(o1, y0, t), ...G(o2 - 0.07, y0, t), ...G(o2, y0 + 0.14, t), ...G(o1, y0, t), ...G(o2, y0 + 0.14, t), ...G(o2, y1, t), ...G(o1, y0, t), ...G(o2, y1, t), ...G(o1, y1, t)); }
+        // a downspout near each end, on the wall under the overhang (ends against a taller wall have none)
+        const back = (F.ov || 1) - 0.12;
+        for (const [t, endI, endJ] of [[Math.min(len / 2, F.ov + 0.45), r.i0 + di * k, r.j0 + dj * k], [Math.max(len / 2, len - F.ov - 0.45), r.i0 + di * (e + 1), r.j0 + dj * (e + 1)]]) {
+          // an end that runs into a covered (taller-floor) area keeps its cap but no downspout
+          const ci = endI - (r.n[0] < 0 ? 1 : 0) + (di ? (t < len / 2 ? -1 : 0) : 0), cj = endJ - (r.n[1] < 0 ? 1 : 0) + (dj ? (t < len / 2 ? -1 : 0) : 0);
+          if (CVc(ci, cj) || CVc(ci - di, cj - dj) || CVc(ci + di, cj + dj)) continue;
+          downs.push({ x: a[0] + ux * t, z: a[2] + uz * t, ex, ez, back, top: y0, bottom: -elev + 0.12 });
+        }
+      }
+      k = e + 1;
+    }
+  }
+  const mk = (arr, mat) => { if (!arr.length) return; const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); g.computeVertexNormals(); const m = new THREE.Mesh(g, mat); group.add(m); return m; };
+  const fm = mk(fp, trimMat); if (fm) fm.material.side = THREE.DoubleSide;
+  mk(gp, gutMat);
+  // downspouts: 3″ × 4″: out of the gutter's bottom, an offset back under the soffit to the wall, straight down,
+  // and a short kick-out at the foot
+  const dsMat = new THREE.MeshPhongMaterial({ color: 0xeef0f0, specular: 0x555555, shininess: 40, name: 'Downspout, aluminum' });
+  const seen = [];
+  for (const d of downs) {
+    if (seen.some(q => Math.hypot(q.x - d.x, q.z - d.z) < 1.5)) continue; seen.push(d);
+    const wx = d.x - d.ex * d.back, wz = d.z - d.ez * d.back, gx = d.x + d.ex * (FT + 0.2), gz = d.z + d.ez * (FT + 0.2);
+    const yOff = d.top - 0.45, len = yOff - d.bottom; if (len < 1) continue;
+    const add = (sx, sy, sz, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), dsMat); m.position.set(x, y, z); group.add(m); };
+    const along = Math.abs(d.ex) > 0.5;   // the offset runs across x when the eave faces ±x
+    add(0.25, 0.4, 0.25, gx, d.top - 0.2, gz);   // outlet
+    const ol = Math.hypot(gx - wx, gz - wz); add(along ? ol : 0.25, 0.22, along ? 0.25 : ol, (gx + wx) / 2, yOff + 0.05, (gz + wz) / 2);   // offset to the wall
+    add(along ? 0.25 : 0.33, len, along ? 0.33 : 0.25, wx, d.bottom + len / 2, wz);   // down the wall
+    add(along ? 0.7 : 0.33, 0.2, along ? 0.33 : 0.7, wx + d.ex * 0.3, d.bottom + 0.1, wz + d.ez * 0.3);   // kick-out
+  }
 }
 /* a house item as a small 3D model */
 /* A machine from a drawing in 3D: each line of its plan stands up as a thin panel the machine's height (its
