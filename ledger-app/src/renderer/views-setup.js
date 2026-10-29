@@ -194,7 +194,7 @@
     after() { if (window.desktop) window.desktop.info().then(i => { const el = $('#app-ver'); if (el) el.textContent = `Coll Ledger ${i.version} · Coll Business Solutions LLC`; }); }
   });
 
-  let setTimer;
+  const setTimers = new Map();
   act({
     'theme': el => { S.data.theme = el.dataset.v; commit(); },
     'client-color': el => { client().color = el.dataset.v; commit(); },
@@ -224,8 +224,8 @@
   document.addEventListener('input', e => {
     const el = e.target;
     if (!el.dataset.cset && !el.dataset.fset) return;
-    clearTimeout(setTimer);
-    setTimer = setTimeout(() => {
+    clearTimeout(setTimers.get(el));
+    setTimers.set(el, setTimeout(() => {
       const c = client();
       if (el.dataset.fset) { S.data.firm[el.dataset.fset] = el.value; save(); App.renderChrome(); return; }
       if (!c) return;
@@ -235,7 +235,7 @@
       if (key === 'name' && !v.trim()) return;
       if (key === 'startDate' && !v) return;
       c[key] = v; save(); App.renderChrome();
-    }, 350);
+    }, 300));
   });
   document.addEventListener('change', e => { if (e.target.dataset.cset === 'fyStartMonth' || e.target.dataset.cset === 'startDate') e.target.dispatchEvent(new Event('input', { bubbles: true })); });
 

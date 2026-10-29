@@ -72,6 +72,9 @@
     'import-undo': async el => {
       const c = client(); const h = (c.imports || []).find(x => x.id === el.dataset.id); if (!h) return;
       if (!await U.confirmBox({ title: 'Undo this import?', body: `Removes what <b>${esc(h.file)}</b> added: ${esc(h.summary)}. Anything you changed since stays changed.`, ok: 'Undo import' })) return;
+      const doomed = c.transactions.filter(x => h.txns.includes(x.id));
+      if (!await App.guardLock(c, ...doomed.map(x => x.date))) return;
+      if (doomed.some(x => x.reconciled) && !await U.confirmBox({ title: 'Some of these are reconciled', body: `${plural(doomed.filter(x => x.reconciled).length, 'transaction')} from this import were already reconciled. Removing them will change those reconciled balances.`, ok: 'Remove anyway' })) return;
       const t = new Set(h.txns), p = new Set(h.contacts), a = new Set(h.accounts);
       c.transactions = c.transactions.filter(x => !t.has(x.id));
       c.contacts = c.contacts.filter(x => !p.has(x.id) || c.invoices.some(i => i.contactId === x.id));
@@ -126,12 +129,13 @@
     const colOpts = sel => `<option value="-1">—</option>` + header.map((h, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${esc(h || 'Column ' + (i + 1))}</option>`).join('');
     const order = C.guessDateOrder(body.map(r => r[g.date]));
     let md = g.amount >= 0 ? 'single' : 'split';
+    const picks = new Map(); // row key -> { categoryId, payee } chosen in the preview
+    let current = [];
+    const SRC = { rule: [ICON.bolt, 'Smart rule'], history: [ICON.spark, 'Same as last time'], guess: [ICON.spark, 'Best guess'], you: [ICON.check, 'You chose'] };
     const m = U.openModal(`${U.modalHead('Bank or card statement', `<b>${esc(name)}</b> · ${plural(body.length, 'row')}`)}
       <div class="modal-body">
         ${recognized('bank')}
-        <div class="grid2">
-          <div class="field span2"><label for="m-acc">Which account is this statement for?</label><select class="input" id="m-acc">${App.accountOptions(banks, guessAcc.id)}</select></div>
-        </div>
+        <div class="field"><label for="m-acc">Which account is this statement for?</label><select class="input" id="m-acc">${App.accountOptions(banks, guessAcc.id)}</select></div>
         <details class="more" id="m-cols"><summary>Columns <span class="muted" id="m-colsum"></span></summary>
           <div class="grid2" style="margin-top:12px">
             <div class="field"><label for="m-date">Date</label><select class="input" id="m-date">${colOpts(g.date)}</select></div>
@@ -144,14 +148,14 @@
           </div>
         </details>
         <label class="check" id="flip-wrap"><input type="checkbox" id="m-flip">Purchases show as positive numbers in this file (common for credit cards) — flip them</label>
-        <div class="preview-tbl" id="m-prev"></div>
+        <div class="fill-head"><div><b>Here's what Coll Ledger filled in.</b> <span class="muted">Check each category — click one to change it. You can still edit any transaction later.</span></div></div>
+        <div class="preview-tbl tall" id="m-prev"></div>
       </div>
-      <div class="modal-foot"><span class="muted left" id="m-count"></span><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" id="m-go">${ICON.upload}Import</button></div>`, { wide: true, onClose: done });
+      <div class="modal-foot"><span class="muted left" id="m-count"></span><button class="btn" id="m-review">Import to To Review</button><button class="btn primary" id="m-go">${ICON.check}Looks right — import</button></div>`, { wide: true, onClose: done });
     const parse = () => {
       const di = +$('#m-date', m).value, de = +$('#m-desc', m).value, ai = +$('#m-amt', m).value, dbi = +$('#m-deb', m).value, cri = +$('#m-cred', m).value;
       const flip = $('#m-flip', m).checked, ord = $('#m-order', m).value, acc = $('#m-acc', m).value;
       const out = [];
-      const existing = c.transactions.filter(t => t.accountId === acc);
       for (const r of body) {
         const date = C.parseDate(r[di], ord);
         let amt;
@@ -162,46 +166,69 @@
         const desc = String(r[de] ?? '').trim() || 'Bank transaction';
         out.push({ date, desc, amt: C.round2(amt) });
       }
-      // a row is a duplicate if the account already has the same date, amount and description —
-      // counted, so two identical coffees on one day both import the first time
+      // already in: same account, date, amount and description (counted, so two identical coffees both import the first time),
+      // or the other side of a transfer already recorded from another account's statement
       const pool = new Map();
-      for (const t of existing) { const k = `${t.date}|${t.amount.toFixed(2)}|${C.keyOf(t.description)}`; pool.set(k, (pool.get(k) || 0) + 1); }
-      for (const x of out) { const k = `${x.date}|${x.amt.toFixed(2)}|${C.keyOf(x.desc)}`; const n = pool.get(k) || 0; x.dup = n > 0; if (n) pool.set(k, n - 1); }
+      for (const t of c.transactions.filter(t => t.accountId === acc)) { const k = `${t.date}|${t.amount.toFixed(2)}|${C.keyOf(t.description)}`; pool.set(k, (pool.get(k) || 0) + 1); }
+      const transfers = c.transactions.filter(t => t.accountId !== acc && t.status !== 'review' && t.categoryId === acc);
+      const seenKey = new Map();
+      for (const x of out) {
+        const k = `${x.date}|${x.amt.toFixed(2)}|${C.keyOf(x.desc)}`; const n = pool.get(k) || 0;
+        x.dup = n > 0; if (n) pool.set(k, n - 1);
+        if (!x.dup) { const ti = transfers.findIndex(t => Math.abs(t.amount + x.amt) < 0.005 && Math.abs(C.daysBetween(t.date, x.date)) <= 4); if (ti >= 0) { x.dup = true; x.transfer = true; transfers.splice(ti, 1); } }
+        const sk = k + '|' + (seenKey.get(k) || 0); seenKey.set(k, (seenKey.get(k) || 0) + 1); x.key = sk;
+        if (!x.dup) {
+          const tmp = { description: x.desc, payee: '', amount: x.amt, accountId: acc };
+          const sg = C.suggest(c, tmp);
+          const p = picks.get(sk);
+          x.categoryId = p ? p.categoryId : (sg ? sg.categoryId : '');
+          x.source = p ? 'you' : (sg ? sg.source : null);
+          x.payee = (sg && sg.payee) || C.cleanPayee(x.desc);
+          x.rule = sg && sg.rule;
+        }
+      }
       return out;
     };
     const refresh = () => {
       $$('[data-show]', m).forEach(el => el.hidden = el.dataset.show !== md);
       const acc = C.acct(c, $('#m-acc', m).value);
-      const p = parse();
-      const fresh = p.filter(x => !x.dup);
+      const p = parse(); current = p;
+      const fresh = p.filter(x => !x.dup), filled = fresh.filter(x => x.categoryId);
       const ok = $('#m-date', m).value !== '-1' && (md === 'single' ? $('#m-amt', m).value !== '-1' : ($('#m-deb', m).value !== '-1' || $('#m-cred', m).value !== '-1'));
       $('#m-colsum', m).textContent = ok ? '— matched automatically' : '— please pick the date and amount columns';
       if (!ok) $('#m-cols', m).open = true;
-      const outs = p.filter(x => x.amt < 0).length, ins = p.length - outs;
-      $('#m-prev', m).innerHTML = `<table class="tbl"><thead><tr><th>Date</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>${p.slice(0, 8).map(x => `<tr><td>${fmtDate(x.date)}</td><td>${esc(x.desc)}</td><td class="num">${U.signed(x.amt)}</td><td>${x.dup ? '<span class="tag">Already in</span>' : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Pick the columns above to see a preview.</td></tr>'}</tbody></table>`;
-      const sus = acc && acc.sub === 'credit' && ins > outs * 2 && !$('#m-flip', m).checked;
+      $('#m-prev', m).innerHTML = `<table class="tbl"><thead><tr><th style="width:96px">Date</th><th>Payee</th><th style="width:240px">Category</th><th class="num">Amount</th></tr></thead><tbody>${p.map((x, i) => `<tr class="${x.dup ? 'dim' : ''}"><td class="muted">${U.fmtDateShort(x.date)}</td><td><div class="desc-main ellip">${esc(x.dup ? C.cleanPayee(x.desc) : x.payee)}</div><div class="desc-sub ellip">${esc(x.desc)}</div></td><td>${x.dup ? `<span class="tag">${x.transfer ? 'Transfer already recorded' : 'Already in'}</span>` : `<button class="cat-btn ${x.categoryId ? '' : 'empty'}" data-pi="${i}" data-menu>${x.categoryId ? esc((C.acct(c, x.categoryId) || {}).name) : 'Needs you'}${ICON.chev}</button>${x.source ? `<div class="suggest ${x.source === 'guess' ? 'soft' : ''}">${SRC[x.source][0]}${SRC[x.source][1]}</div>` : ''}`}</td><td class="num">${U.signed(x.amt)}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Pick the columns above to see a preview.</td></tr>'}</tbody></table>`;
+      $$('[data-pi]', m).forEach(b => b.onclick = e => { e.preventDefault(); const x = current[+b.dataset.pi]; U.categoryPicker(b, c, { selected: x.categoryId, excludeId: acc && acc.id, amount: x.amt, allowClear: true, onPick: id => { picks.set(x.key, { categoryId: id }); refresh(); } }); });
+      const sus = acc && acc.sub === 'credit' && p.filter(x => x.amt > 0).length > p.filter(x => x.amt < 0).length * 2 && !$('#m-flip', m).checked;
       $('#flip-wrap', m).classList.toggle('attn', !!sus);
-      $('#m-count', m).innerHTML = `${plural(fresh.length, 'new transaction')}${p.length - fresh.length ? ` · ${p.length - fresh.length} already in` : ''}${sus ? ' · <span class="neg">most rows look like money in — flip?</span>' : ''}`;
+      $('#m-count', m).innerHTML = `${plural(fresh.length, 'new transaction')} · <b>${filled.length} filled in</b>${fresh.length - filled.length ? ` · ${fresh.length - filled.length} need you` : ''}${p.length - fresh.length ? ` · ${p.length - fresh.length} already in` : ''}${sus ? ' · <span class="neg">most rows look like money in — flip?</span>' : ''}`;
       $('#m-go', m).disabled = !fresh.length;
+      $('#m-review', m).disabled = !fresh.length;
+      $('#m-go', m).innerHTML = `${ICON.check}${filled.length === fresh.length ? `Looks right — import ${plural(fresh.length, 'transaction')}` : `Accept ${filled.length} filled in · ${fresh.length - filled.length} to To Review`}`;
     };
-    $$('select, input', m).forEach(el => el.onchange = refresh);
+    $$('#m-acc, #m-date, #m-desc, #m-amt, #m-deb, #m-cred, #m-order, #m-flip', m).forEach(el => el.onchange = refresh);
     $$('[data-mode]', m).forEach(b => b.onclick = () => { md = b.dataset.mode; $$('[data-mode]', m).forEach(x => x.classList.toggle('on', x === b)); refresh(); });
     refresh();
-    $('#m-go', m).onclick = () => {
+    const run = async acceptFilled => {
       const acc = $('#m-acc', m).value;
-      const fresh = parse().filter(x => !x.dup);
-      let auto = 0; const ids = [];
+      const fresh = current.filter(x => !x.dup);
+      if (!await App.guardLock(c, ...fresh.map(x => x.date))) return;
+      let posted = 0; const ids = [];
       for (const x of fresh) {
-        const t = { id: C.uid(), date: x.date, description: x.desc, payee: C.cleanPayee(x.desc), amount: x.amt, accountId: acc, categoryId: null, memo: '', status: 'review', cleared: true, reconciled: false, imported: true };
-        const r = C.ruleFor(c, t);
-        if (r && r.autoAccept && C.acct(c, r.categoryId) && r.categoryId !== acc) { t.categoryId = r.categoryId; t.payee = r.payee || t.payee; t.status = 'posted'; auto++; }
+        const t = { id: C.uid(), date: x.date, description: x.desc, payee: x.payee, amount: x.amt, accountId: acc, categoryId: null, memo: '', status: 'review', cleared: true, reconciled: false, imported: true };
+        const auto = x.rule && x.rule.autoAccept && x.source === 'rule';
+        if (x.categoryId && C.acct(c, x.categoryId) && x.categoryId !== acc && (acceptFilled || auto)) { t.categoryId = x.categoryId; if (x.rule && x.rule.payee) t.payee = x.rule.payee; t.status = 'posted'; posted++; }
+        else if (x.source === 'you' && x.categoryId) t.suggestedId = x.categoryId;
         c.transactions.push(t); ids.push(t.id);
       }
       c.transactions.sort((a, b) => a.date.localeCompare(b.date));
       logImport(c, 'bank', name, `${plural(fresh.length, 'transaction')} into ${(C.acct(c, acc) || {}).name}`, { txns: ids });
       U.closeModal();
-      finish(c, fresh.length - auto ? 'review' : 'transactions', `Imported ${plural(fresh.length, 'transaction')}${auto ? ` · ${auto} sorted automatically` : ''}`);
+      const waiting = fresh.length - posted;
+      finish(c, waiting ? 'review' : 'transactions', posted ? `Imported ${plural(fresh.length, 'transaction')} · ${posted} accepted${waiting ? ` · ${waiting} waiting in To Review` : ''} — you can still edit any of them` : `Imported ${plural(fresh.length, 'transaction')} — check them in To Review`);
     };
+    $('#m-go', m).onclick = () => run(true);
+    $('#m-review', m).onclick = () => run(false);
   }
 
   // ------------------------------------------------------------------
@@ -233,7 +260,8 @@
         ${days.length - fresh.length ? `<div class="muted">${plural(days.length - fresh.length, 'day')} already imported — skipped.</div>` : ''}${skipped ? `<div class="muted">${plural(skipped, 'row')} skipped (no date or a failed/cancelled payment).</div>` : ''}
       </div>
       <div class="modal-foot"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" id="sq-go" ${fresh.length ? '' : 'disabled'}>${ICON.upload}Import ${plural(fresh.length, 'day')}</button></div>`, { wide: true, onClose: done });
-    $('#sq-go', m).onclick = () => {
+    $('#sq-go', m).onclick = async () => {
+      if (!await App.guardLock(c, ...fresh.map(d => d.date))) return;
       const created = [];
       const ensure = (spec) => { const before = c.accounts.length; const a = C.ensureAccount(c, spec); if (c.accounts.length > before) created.push(a.id); return a; };
       const sq = sqAcc || ensure({ name: 'Square', type: 'asset', sub: 'clearing', code: '1050' });
@@ -339,6 +367,8 @@
   // ------------------------------------------------------------------
   function qbTxnFlow(c, name, rows, at, done) {
     const lines = I.qbTransactions(rows, at);
+    // a stable id per QuickBooks line: repeats of the same line get #2, #3 so none are lost
+    const stampIds = list => { const n = new Map(); for (const t of list) { const base = 'qb:' + [t.date, t.accountId, t.amount.toFixed(2), t.description, t.payee].join('|'); const k = (n.get(base) || 0) + 1; n.set(base, k); t.extId = base + '#' + k; } };
     if (!lines.length) { U.toast('No transactions found in that report', null, 'warn'); return done(); }
     c.qbNames = c.qbNames || {};
     // every account name the report mentions, with how it's used
@@ -380,7 +410,7 @@
       }
       const res = I.buildQbTransactions(copy, lines, n => map[n] || null);
       const existing = new Set(c.transactions.map(t => t.extId).filter(Boolean));
-      res.txns.forEach(t => { t.extId = 'qb:' + [t.date, t.accountId, t.amount.toFixed(2), C.keyOf(t.description)].join('|'); });
+      stampIds(res.txns);
       res.fresh = res.txns.filter(t => !existing.has(t.extId));
       return { res, map };
     };
@@ -392,7 +422,7 @@
       return res;
     };
     summarize();
-    $('#qb-go', m).onclick = () => {
+    $('#qb-go', m).onclick = async () => {
       const created = [];
       const map = {};
       for (const p of plan) {
@@ -404,8 +434,10 @@
       const existing = new Set(c.transactions.map(t => t.extId).filter(Boolean));
       const ids = [];
       let review = 0;
+      stampIds(res.txns);
+      if (!await App.guardLock(c, ...res.txns.filter(x => !existing.has(x.extId)).map(x => x.date))) return;
       for (const x of res.txns) {
-        const extId = 'qb:' + [x.date, x.accountId, x.amount.toFixed(2), C.keyOf(x.description)].join('|');
+        const extId = x.extId;
         if (existing.has(extId)) continue;
         existing.add(extId);
         const t = { id: C.uid(), date: x.date, description: x.description, payee: x.payee, amount: x.amount, accountId: x.accountId, categoryId: x.categoryId, memo: x.memo, status: x.review ? 'review' : 'posted', cleared: true, reconciled: false, extId, imported: true };

@@ -21,6 +21,8 @@ Download: https://collbusinesssolutions.com/projects.html#coll-ledger
 - **Close the month**: checklist, then lock the month so sent numbers never change by accident.
 - **Reports**: Profit & Loss, Balance Sheet, Spending by Category, Month by Month, Who Owes Money, General Ledger — PDF or spreadsheet, click any line to see what's in it.
 - **Client package**: one polished PDF (summary page, P&L, Balance Sheet, unpaid invoices) prepared under the bookkeeper's studio name.
+- **Practice / Training** (sidebar and Help): a pretend bakery, eleven short lessons with explanations, quizzes, a coach that checks each task, and a certificate.
+- **Imports fill in categories automatically** (smart rules, past choices, and built-in knowledge of common vendors) and show them in the preview to confirm or change before importing. Everything stays editable afterward.
 - **Search anything** with Ctrl K. Help (?) with short how-to guides.
 - Double-entry underneath, so the Balance Sheet always balances. Data stays on the computer, with 30 days of daily backups. Updates install themselves.
 

@@ -12,7 +12,8 @@ const isMac = process.platform === 'darwin';
 let win;
 
 // One window only, so two copies never write the same books file.
-if (!app.requestSingleInstanceLock()) { app.quit(); }
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) app.exit(0);
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 
 function dataDir() {
@@ -84,7 +85,7 @@ function createWindow() {
 let updater = null;
 function sendUpdate(info) { if (win && !win.isDestroyed()) win.webContents.send('update', info); }
 function checkForUpdates() {
-  if (!app.isPackaged) return;
+  if (!app.isPackaged || updater) return;
   try { updater = require('electron-updater').autoUpdater; } catch (e) { return; }
   updater.autoDownload = true;
   updater.autoInstallOnAppQuit = true;
@@ -156,6 +157,7 @@ ipcMain.handle('app:info', () => ({ version: app.getVersion(), platform: process
 ipcMain.handle('app:openExternal', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
 
 app.whenReady().then(() => {
+  if (!gotLock) return;
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });

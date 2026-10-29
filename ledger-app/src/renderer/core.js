@@ -303,18 +303,68 @@ const Core = (() => {
     return null;
   }
 
-  function suggest(c, t) {
-    const r = ruleFor(c, t);
-    if (r && acct(c, r.categoryId)) return { categoryId: r.categoryId, payee: r.payee || '', source: 'rule', rule: r };
-    const k = keyOf(t.description);
-    if (!k) return null;
-    let best = null;
-    for (const x of c.transactions) {
-      if (x === t || x.status === 'review' || !x.categoryId || x.invoiceId) continue;
-      if (Math.sign(x.amount) !== Math.sign(t.amount)) continue;
-      if (keyOf(x.description) === k && (!best || x.date > best.date)) best = x;
+  // Built-in knowledge of common vendors, used when there is no rule or history yet
+  const GUESSES = [
+    [/transfer to owner|owner draw|owner'?s draw|to personal/, 'out', { key: 'draw' }],
+    [/payment to .*card|card payment|credit card (payment|autopay)|amex (payment|epayment)|capital one (payment|card)|chase card|discover (payment|e-payment)|citi card|thank you payment/, 'any', { sub: 'credit' }],
+    [/payroll|gusto|adp |paychex|intuit payroll|rippling/, 'out', { name: 'Payroll & Wages' }],
+    [/\brent\b|properties|property mgmt|lease pmt|landlord/, 'out', { name: 'Rent & Lease' }],
+    [/xcel|energy|electric|power co|water|sewer|waste|trash|republic services|gas co|natural gas|utility/, 'out', { name: 'Utilities' }],
+    [/comcast|xfinity|verizon|at&t|t-mobile|spectrum|centurylink|lumen|google fi|internet|wireless/, 'out', { name: 'Phone & Internet' }],
+    [/shell|chevron|exxon|conoco|phillips 66|sinclair|maverik|valero|bp |circle k|fuel|gas station|jiffy lube|autozone|o'?reilly|car wash|parking/, 'out', { name: 'Car & Truck' }],
+    [/uber|lyft|airline|delta|united air|southwest|american air|frontier|hotel|marriott|hilton|hyatt|airbnb|expedia/, 'out', { name: 'Travel' }],
+    [/restaurant(?! depot)|doordash|grubhub|uber eats|starbucks|mcdonald|chipotle|subway|cafe|coffee shop|pizza|diner|grill/, 'out', { name: 'Meals' }],
+    [/facebk|facebook|meta ads|google \*?ads|yelp|nextdoor|mailchimp|vistaprint|constant contact/, 'out', { name: 'Advertising & Marketing' }],
+    [/adobe|microsoft|google \*?(gsuite|workspace)|canva|dropbox|zoom|intuit|quickbooks|squarespace|wix|godaddy|shopify|slack|openai|apple\.com\/bill|jobber|subscription/, 'out', { name: 'Software & Subscriptions' }],
+    [/amazon|staples|office depot|officemax|walmart|target|usps|ups store|fedex/, 'out', { name: 'Office Supplies' }],
+    [/home depot|lowe'?s|ace hardware|menards|harbor freight|repair|plumb|hvac/, 'out', { name: 'Repairs & Maintenance' }],
+    [/insurance|geico|state farm|progressive|allstate|hiscox|next insurance|farmers ins/, 'out', { name: 'Insurance' }],
+    [/\birs\b|treasury|tax pmt|dept of revenue|department of revenue|license|city of|county of|state of|secretary of state/, 'out', { name: 'Taxes & Licenses' }],
+    [/cpa|attorney|law office|legal|accounting|bookkeep/, 'out', { name: 'Legal & Professional Fees' }],
+    [/service fee|monthly fee|maintenance fee|overdraft|nsf|wire fee|interest charge|merchant fee|processing fee|stripe fee/, 'out', { name: 'Bank & Merchant Fees' }],
+    [/costco|sam'?s club|restaurant depot|sysco|us foods|king soopers|safeway|kroger|whole foods|wholesale|packaging|supply co/, 'out', { name: 'Cost of Goods Sold' }],
+    [/interest (paid|earned|credit)|dividend/, 'in', { name: 'Other Income' }],
+    [/deposit|square|stripe|paypal|venmo|zelle|shopify pay|mobile dep|counter sales|sales/, 'in', { income: true }]
+  ];
+  function guess(c, t) {
+    const text = norm(t.description + ' ' + (t.payee || ''));
+    const dir = t.amount > 0 ? 'in' : 'out';
+    for (const [re, d, target] of GUESSES) {
+      if (d !== 'any' && d !== dir) continue;
+      if (!re.test(text)) continue;
+      let a = null;
+      if (target.key) a = acctByKey(c, target.key);
+      else if (target.sub) a = c.accounts.find(x => x.sub === target.sub && !x.archived && x.id !== t.accountId);
+      else if (target.name) a = findAccount(c, target.name);
+      else if (target.income) {
+        // the income account this client uses most, else Sales
+        const counts = {};
+        for (const x of c.transactions) { const ac = x.categoryId && acct(c, x.categoryId); if (ac && ac.type === 'income' && !ac.key?.startsWith('unc')) counts[ac.id] = (counts[ac.id] || 0) + 1; }
+        for (const i of c.invoices) for (const l of i.lines) if (l.accountId) counts[l.accountId] = (counts[l.accountId] || 0) + 1;
+        const top = Object.entries(counts).sort((x, y) => y[1] - x[1])[0];
+        a = top ? acct(c, top[0]) : acctByKey(c, 'sales');
+      }
+      if (a && !a.archived && a.id !== t.accountId) return a;
     }
-    if (best) return { categoryId: best.categoryId, payee: best.payee || '', source: 'history' };
+    return null;
+  }
+
+  function suggest(c, t) {
+    if (t.suggestedId && acct(c, t.suggestedId) && t.suggestedId !== t.accountId) return { categoryId: t.suggestedId, payee: '', source: 'you' };
+    const r = ruleFor(c, t);
+    if (r && acct(c, r.categoryId) && r.categoryId !== t.accountId) return { categoryId: r.categoryId, payee: r.payee || '', source: 'rule', rule: r };
+    const k = keyOf(t.description);
+    if (k) {
+      let best = null;
+      for (const x of c.transactions) {
+        if (x === t || x.status === 'review' || !x.categoryId || x.invoiceId || x.categoryId === t.accountId) continue;
+        if (Math.sign(x.amount) !== Math.sign(t.amount)) continue;
+        if (keyOf(x.description) === k && (!best || x.date > best.date)) best = x;
+      }
+      if (best) return { categoryId: best.categoryId, payee: best.payee || '', source: 'history' };
+    }
+    const g = guess(c, t);
+    if (g) return { categoryId: g.id, payee: '', source: 'guess' };
     return null;
   }
 

@@ -25,7 +25,7 @@ const App = (() => {
     update: null
   };
   const client = () => (S.data && S.data.clients.find(c => c.id === S.data.activeClientId)) || null;
-  const views = {}, actions = {};
+  const views = {}, actions = {}, hooks = [];
   const view = (name, def) => { views[name] = def; };
   const act = obj => Object.assign(actions, obj);
 
@@ -109,10 +109,10 @@ const App = (() => {
     file: ICON.file, people: ICON.people, upload: ICON.upload, check: ICON.check, lock: ICON.lock, report: ICON.report,
     list: '<svg viewBox="0 0 24 24"><path d="M3 5h18v2H3zm0 6h18v2H3zm0 6h12v2H3z"/></svg>', bolt: ICON.bolt
   };
-  const TITLES = { clients: 'All clients', dashboard: 'Dashboard', review: 'To Review', transactions: 'Transactions', invoices: 'Invoices', contacts: 'Customers & Vendors', import: 'Import', reconcile: 'Reconcile', close: 'Close the month', accounts: 'Chart of Accounts', rules: 'Smart Rules', reports: 'Reports', settings: 'Settings' };
+  const TITLES = { training: 'Practice / Training', clients: 'All clients', dashboard: 'Dashboard', review: 'To Review', transactions: 'Transactions', invoices: 'Invoices', contacts: 'Customers & Vendors', import: 'Import', reconcile: 'Reconcile', close: 'Close the month', accounts: 'Chart of Accounts', rules: 'Smart Rules', reports: 'Reports', settings: 'Settings' };
 
   function go(page, params = {}) {
-    if (page !== 'reconcile' && S.ui.recon) S.ui.recon = null;
+    if (page !== 'reconcile' && S.ui.recon) { S.ui.parkedRecon = S.ui.recon; S.ui.recon = null; }
     S.route = { page, params };
     document.body.classList.remove('nav-open');
     U.closeMenus();
@@ -171,12 +171,13 @@ const App = (() => {
     let c = client();
     if (!c && S.data.clients.length) { S.data.activeClientId = S.data.clients[0].id; c = client(); }
     let page = S.route.page;
-    if (!c && !['clients', 'settings'].includes(page)) page = S.route.page = 'clients';
+    if (!c && !['clients', 'settings', 'training'].includes(page)) page = S.route.page = 'clients';
     renderChrome();
     const v = views[page] || views.dashboard;
     try {
       $('#view').innerHTML = `<div class="view-inner" data-page="${page}">${v.render(c, S.route.params)}</div>`;
       if (v.after) v.after(c);
+      for (const fn of hooks) { try { fn(c, page); } catch (err) { console.error(err); } }
     } catch (e) {
       console.error(e);
       $('#view').innerHTML = `<div class="view-inner"><div class="card"><div class="empty"><div class="big">Something went wrong on this screen</div>Your books are safe. Try another screen, or restart the app.<div class="muted" style="margin-top:10px">${esc(e.message)}</div></div></div></div>`;
@@ -186,6 +187,7 @@ const App = (() => {
   // ---------------- command palette ----------------
   function palette(initial = '') {
     const c = client();
+    if (S.data.training) { S.data.training.flags = S.data.training.flags || {}; S.data.training.flags.palette = true; }
     const m = U.openModal(`<div class="palette"><div class="palette-search">${ICON.search}<input id="pal-q" placeholder="Search or jump to anything — clients, payees, amounts, invoices, screens…" value="${esc(initial)}" autocomplete="off" autofocus><span class="kbd">Esc</span></div><div class="palette-list" id="pal-list"></div></div>`, { size: 'palette-modal' });
     const inp = $('#pal-q', m), list = $('#pal-list', m);
     let items = [], hi = 0;
@@ -207,9 +209,10 @@ const App = (() => {
         ['Client package PDF', 'Monthly report pack for the client', ICON.pdf, () => actions['client-package']()],
         ['Add a client', 'Set up a new business', ICON.plus, () => actions['new-client']()],
         ['Help', 'How-to guides and shortcuts', ICON.help, () => help()],
+        ['Practice / Training', 'Mini class with a practice account', ICON.spark, () => go('training')],
         ['Settings', 'Studio, client profile, backups', ICON.dots, () => go('settings')]
       ];
-      for (const [l, s, i, f] of cmds) if ((c || /client|help|settings/i.test(l)) && (match(l) || match(s))) add('Actions', l, s, i, f);
+      for (const [l, s, i, f] of cmds) if ((c || /client|help|settings|training/i.test(l)) && (match(l) || match(s))) add('Actions', l, s, i, f);
       if (c) for (const [k, t] of Object.entries(TITLES)) if (q && match(t) && !cmds.some(x => x[0] === t)) add('Go to', t, '', NAV_ICON.dash, () => go(k));
       for (const x of S.data.clients) if (q && match(x.name) && x !== c) add('Switch client', x.name, x.industry || '', `<span class="avatar xs" style="background:${x.color}">${esc(U.initials(x.name))}</span>`, () => switchClient(x.id, 'dashboard'));
       if (c && q) {
@@ -253,6 +256,7 @@ const App = (() => {
     const mod = window.desktop && window.desktop.platform === 'darwin' ? '⌘' : 'Ctrl';
     const m = U.openModal(`${U.modalHead('Help', 'Short answers to the everyday questions')}
       <div class="modal-body">
+        <div class="train-cta"><div class="train-cta-ic">${ICON.spark}</div><div><b>Practice account / Training</b><div class="muted">A mini class with a pretend bakery to practice on. Eleven short lessons with explanations, quizzes and a coach that checks your work.</div></div><button class="btn primary" data-g="train">Start training</button></div>
         <div class="guides">${GUIDES.map(([t, d, page], i) => `<div class="guide"><div><b>${t}</b><div class="muted">${d}</div></div><button class="btn sm" data-g="${i}">Show me</button></div>`).join('')}</div>
         <div class="card" style="box-shadow:none"><div class="card-head"><h3>Keyboard shortcuts</h3></div><div class="card-body shortcuts">
           <div><span class="kbd">${mod}</span> <span class="kbd">K</span> Search & jump anywhere</div>
@@ -265,7 +269,7 @@ const App = (() => {
         </div></div>
         <div class="muted">Coll Ledger by Coll Business Solutions LLC · collbusinesssolutions@gmail.com</div>
       </div>`, { wide: true });
-    $$('[data-g]', m).forEach(b => b.onclick = () => { U.closeModal(); const g = GUIDES[+b.dataset.g]; if (client()) go(g[2]); });
+    $$('[data-g]', m).forEach(b => b.onclick = () => { U.closeModal(); if (b.dataset.g === 'train') return go('training'); const g = GUIDES[+b.dataset.g]; if (client()) go(g[2]); });
   }
 
   // ---------------- events ----------------
@@ -358,5 +362,5 @@ const App = (() => {
     render();
   }
 
-  return { migrate, S, C, U, client, view, act, actions, views, go, render, renderChrome, commit, save, flush, snapshot, guardLock, switchClient, reviewCount, palette, help, today, boot, TITLES };
+  return { hooks, migrate, S, C, U, client, view, act, actions, views, go, render, renderChrome, commit, save, flush, snapshot, guardLock, switchClient, reviewCount, palette, help, today, boot, TITLES };
 })();

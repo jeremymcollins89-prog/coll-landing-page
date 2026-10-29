@@ -350,7 +350,7 @@ const Imports = (() => {
   // Turn QuickBooks lines into Coll Ledger transactions for one client.
   // `resolve(name)` returns an account id (or null) for a QuickBooks account name.
   function buildQbTransactions(c, lines, resolve) {
-    const out = [], seen = new Set();
+    const out = [], seen = new Map();
     let unmatched = new Map(), splitCount = 0;
     for (const L of lines) {
       const accId = resolve(L.account);
@@ -363,12 +363,17 @@ const Imports = (() => {
       if (multi) splitCount++;
       // QuickBooks shows a card charge as money owed going up; in Coll Ledger money out of any account is negative
       let amount = L.amount;
-      if (acc.type === 'liability') amount = -amount;
+      if (acc.type === 'liability' && !L.usedDebitCredit) amount = -amount;
       // a transfer between two money accounts appears under both — keep it once
       const cat = catId && C.acct(c, catId);
+      // count each side separately so two genuine identical transfers on one day both survive
       const key = [L.date, L.num, Math.abs(amount).toFixed(2), [accId, catId || ''].sort().join('|')].join('~');
-      if (cat && C.isMoneyAccount(cat) && seen.has(key)) continue;
-      seen.add(key);
+      if (cat && C.isMoneyAccount(cat)) {
+        const side = seen.get(key) || { [accId]: 0 };
+        const mine = (side[accId] || 0) + 1; side[accId] = mine; seen.set(key, side);
+        const other = side[catId] || 0;
+        if (mine <= other) continue; // already kept from the other account's section
+      }
       out.push({
         date: L.date, accountId: accId, categoryId: catId, amount: C.round2(amount),
         payee: L.name || C.cleanPayee(L.memo), description: [L.type, L.num ? '#' + L.num : '', L.memo].filter(Boolean).join(' · ') || L.name || 'QuickBooks entry',

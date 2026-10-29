@@ -165,7 +165,7 @@
     on('save', async () => { collect(); if (draft.status !== 'void' && !valid()) return; if (!await guardLock(c, draft.date, inv && inv.date)) return; persist(); U.closeModal(); commit(); U.toast('Invoice saved'); });
     on('pdf', () => { collect(); U.printDoc(invoiceHTML(c, draft), `${draft.number} ${(C.contact(c, draft.contactId) || {}).name || ''}.pdf`.trim()); });
     on('email', () => { collect(); emailInvoice(c, draft); });
-    on('pay', () => { collect(); if (!valid()) return; persist(); save(); U.closeModal(); paymentModal(c, draft); });
+    on('pay', async () => { collect(); if (!valid()) return; if (inv && JSON.stringify(inv) !== JSON.stringify(draft) && !await guardLock(c, draft.date, inv.date)) return; persist(); save(); U.closeModal(); paymentModal(c, draft); });
     on('more', e => {
       const menu = U.openMenu(e.currentTarget, `<div class="mi" data-m="dup">${ICON.copy}Duplicate as a new draft</div>${draft.status !== 'void' && draft.status !== 'draft' ? `<div class="mi" data-m="void">${ICON.close}Void (keep a record, owe nothing)</div>` : ''}${draft.status === 'void' ? `<div class="mi" data-m="unvoid">${ICON.refresh}Restore this invoice</div>` : ''}<div class="sep"></div><div class="mi danger-mi" data-m="del">${ICON.trash}Delete</div>`);
       menu.onclick = async ev => {
@@ -173,7 +173,7 @@
         const k = it.dataset.m;
         if (k === 'dup') { U.closeModal(); const copy = JSON.parse(JSON.stringify(draft)); Object.assign(copy, { id: C.uid(), number: c.invoicePrefix + c.nextInvoice, date: today(), dueDate: C.addDays(today(), C.daysBetween(draft.date, draft.dueDate)), status: 'draft' }); copy.lines.forEach(l => l.id = C.uid()); c.invoices.push(copy); c.nextInvoice++; commit(); invoiceModal(c, copy); }
         if (k === 'void') { if (payments.length) return U.toast('Remove the payments first, then void it', null, 'warn'); if (!await guardLock(c, draft.date)) return; const undo = snapshot(c); draft.status = 'void'; persist(); U.closeModal(); commit(); U.toast(`Invoice ${draft.number} voided`, undo); }
-        if (k === 'unvoid') { draft.status = 'sent'; persist(); U.closeModal(); commit(); U.toast('Invoice restored'); }
+        if (k === 'unvoid') { if (!await guardLock(c, draft.date)) return; const undo = snapshot(c); draft.status = 'sent'; persist(); U.closeModal(); commit(); U.toast('Invoice restored', undo); }
         if (k === 'del') {
           if (payments.length) return U.toast('Remove its payments first', null, 'warn');
           if (!await U.confirmBox({ title: 'Delete this invoice?', body: `Invoice <b>${esc(draft.number)}</b> will be removed. If it was already sent, voiding keeps a cleaner record.`, ok: 'Delete', danger: true })) return;
@@ -473,8 +473,9 @@
     'recon-finish': () => {
       const c = client(); const R = S.ui.recon;
       const ids = [];
-      for (const id of R.checked) {
-        const t = c.transactions.find(x => x.id === id); if (!t) continue;
+      const counted = reconItems(c, R.accountId, R.date).filter(x => R.checked.has(x.t.id)).map(x => x.t);
+      for (const t of counted) {
+        const id = t.id;
         if (t.accountId === R.accountId) { t.cleared = true; t.reconciled = true; }
         else { t.reconciledFor = Object.assign(t.reconciledFor || {}, { [R.accountId]: true }); }
         ids.push(id);

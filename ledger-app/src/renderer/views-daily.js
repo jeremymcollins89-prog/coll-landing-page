@@ -42,12 +42,13 @@
       const h = new Date().getHours();
       const greet = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
       const all = list.map(c => ({ c, h: health(c) }));
-      const totals = all.reduce((t, x) => ({ review: t.review + x.h.review, unrec: t.unrec + x.h.unrec.length, overdue: t.overdue + x.h.overdue.length }), { review: 0, unrec: 0, overdue: 0 });
-      const sorted = [...all].sort((a, b) => b.h.score - a.h.score || a.c.name.localeCompare(b.c.name));
+      const real = all.filter(x => !x.c.practice);
+      const totals = real.reduce((t, x) => ({ review: t.review + x.h.review, unrec: t.unrec + x.h.unrec.length, overdue: t.overdue + x.h.overdue.length }), { review: 0, unrec: 0, overdue: 0 });
+      const sorted = [...all].sort((a, b) => (a.c.practice ? 1 : 0) - (b.c.practice ? 1 : 0) || b.h.score - a.h.score || a.c.name.localeCompare(b.c.name));
       return `
         <div class="page-head">
           <div><h1>${greet}${firstName ? ', ' + esc(firstName) : ''}</h1>
-          <div class="sub">${list.length ? (totals.review + totals.unrec + totals.overdue ? `Across ${plural(list.length, 'client')}: <b>${plural(totals.review, 'transaction')}</b> to review, <b>${plural(totals.unrec, 'account')}</b> to reconcile${totals.overdue ? `, <b>${plural(totals.overdue, 'overdue invoice')}</b>` : ''}.` : `All ${plural(list.length, 'client')} are up to date. Nicely done.`) : 'Add the first business you keep books for.'}</div></div>
+          <div class="sub">${real.length ? (totals.review + totals.unrec + totals.overdue ? `Across ${plural(real.length, 'client')}: <b>${plural(totals.review, 'transaction')}</b> to review, <b>${plural(totals.unrec, 'account')}</b> to reconcile${totals.overdue ? `, <b>${plural(totals.overdue, 'overdue invoice')}</b>` : ''}.` : `All ${plural(real.length, 'client')} are up to date. Nicely done.`) : 'Add the first business you keep books for — or practice first in Practice / Training.'}</div></div>
           <div class="actions"><button class="btn primary" data-action="new-client">${ICON.plus}Add client</button></div>
         </div>
         <div class="client-grid">
@@ -55,7 +56,7 @@
             <div class="card client-card" data-action="open-client" data-id="${c.id}" tabindex="0">
               <div class="cc-top"><div class="avatar lg" style="background:${c.color}">${esc(U.initials(c.name))}</div>
                 <div style="min-width:0"><div class="cc-name">${esc(c.name)}</div><div class="muted">${esc(c.industry || 'Client')}</div></div>
-                ${h.score ? '' : `<span class="tag green cc-ok">${ICON.check}Up to date</span>`}</div>
+                ${c.practice ? `<span class="tag gold cc-ok">Practice</span>` : h.score ? '' : `<span class="tag green cc-ok">${ICON.check}Up to date</span>`}</div>
               <div class="cc-stats">
                 <div class="${h.review ? 'warn' : ''}"><span>${h.review}</span>to review</div>
                 <div class="${h.unrec.length ? 'warn' : ''}"><span>${h.unrec.length}</span>to reconcile</div>
@@ -237,7 +238,7 @@
             </div>
             <div>
               <button class="cat-btn ${cat ? '' : 'empty'}" data-action="review-pick" data-id="${t.id}" data-menu>${cat ? esc(catName(c, cat)) : 'Choose a category'}${ICON.chev}</button>
-              ${s && cat === s.categoryId ? `<div class="suggest">${s.source === 'rule' ? ICON.bolt + 'From a smart rule' : ICON.spark + 'Same as last time'}</div>` : cat ? `<label class="check small"><input type="checkbox" data-action="review-rule" data-id="${t.id}" ${rule ? 'checked' : ''}>Always use for “${esc(C.keyOf(t.description) || 'this')}”</label>` : '<div class="muted small-note">Press C or click to choose</div>'}
+              ${s && cat === s.categoryId ? `<div class="suggest ${s.source === 'guess' ? 'soft' : ''}">${{ rule: ICON.bolt + 'From a smart rule', history: ICON.spark + 'Same as last time', guess: ICON.spark + 'Best guess — please check', you: ICON.check + 'You chose this when importing' }[s.source]}</div>` : cat ? `<label class="check small"><input type="checkbox" data-action="review-rule" data-id="${t.id}" ${rule ? 'checked' : ''}>Always use for “${esc(C.keyOf(t.description) || 'this')}”</label>` : '<div class="muted small-note">Press C or click to choose</div>'}
             </div>
             <div class="amt ${t.amount > 0 ? 'pos' : ''}">${t.amount > 0 ? '+' : ''}${money(t.amount)}</div>
             <div class="ri-actions">
@@ -273,7 +274,7 @@
   }
   function acceptOne(c, t) {
     const ch = reviewChoice(c, t);
-    if (!ch.categoryId || !C.acct(c, ch.categoryId)) return false;
+    if (!ch.categoryId || !C.acct(c, ch.categoryId) || ch.categoryId === t.accountId) return false;
     t.categoryId = ch.categoryId;
     t.payee = ch.payee || t.payee;
     t.status = 'posted';
@@ -330,8 +331,8 @@
   // Transactions — with bulk changes and quick re-categorizing
   // ------------------------------------------------------------------
   function registerRows(c, f) {
-    const range = f.period === 'all' ? {} : C.periodRange(f.period, c);
-    const q = f.q.trim().toLowerCase();
+    const range = f.period === 'all' ? {} : App.range(f.period, c);
+    const q = f.q.trim().toLowerCase().replace(/[$,]/g, '');
     const acc = f.account !== 'all' ? C.acct(c, f.account) : null;
     if (f.account !== 'all' && !acc) f.account = 'all';
     let rows = [];
@@ -339,29 +340,28 @@
       let amt = t.amount, isTransferSide = false;
       if (acc) {
         if (t.accountId === acc.id) amt = t.amount;
-        else if (t.status !== 'review' && (t.categoryId === acc.id || (t.splits || []).some(sp => sp.categoryId === acc.id))) {
-          const sp = (t.splits || []).find(x => x.categoryId === acc.id);
-          amt = -(sp ? sp.amount : t.amount); isTransferSide = true;
+        else if (t.status !== 'review' && (t.splits && t.splits.length ? t.splits.some(sp => sp.categoryId === acc.id) : t.categoryId === acc.id)) {
+          amt = -(t.splits && t.splits.length ? t.splits.filter(sp => sp.categoryId === acc.id).reduce((s2, sp) => s2 + sp.amount, 0) : t.amount); isTransferSide = true;
         } else continue;
       }
-      if (f.category && t.categoryId !== f.category && !(t.splits || []).some(sp => sp.categoryId === f.category)) continue;
-      if (f.type === 'in' && amt <= 0) continue;
-      if (f.type === 'out' && amt >= 0) continue;
-      if (f.type === 'review' && t.status !== 'review') continue;
-      if (q) {
-        const hay = `${t.description} ${t.payee} ${t.memo} ${catName(c, t.categoryId)} ${Math.abs(t.amount).toFixed(2)}`.toLowerCase();
-        if (!hay.includes(q.replace(/[$,]/g, ''))) continue;
-      }
-      rows.push({ t, amt, isTransferSide });
+      rows.push({ t, amt: C.round2(amt), isTransferSide });
     }
     rows.sort((a, b) => a.t.date.localeCompare(b.t.date) || (a.t.id < b.t.id ? -1 : 1));
     if (acc) {
-      // running balance in the account's own terms: cash for banks, amount owed for cards
+      // running balance over every row of the account (cash for banks, amount owed for cards), before any filter
       let run = (acc.opening || 0);
       const debit = C.isDebitNormal(acc.type);
       for (const r of rows) { run = C.round2(run + (debit ? r.amt : -r.amt)); r.run = run; }
     }
-    if (range.from) rows = rows.filter(r => r.t.date >= range.from && r.t.date <= range.to);
+    rows = rows.filter(({ t, amt }) => {
+      if (range.from && (t.date < range.from || t.date > range.to)) return false;
+      if (f.category && t.categoryId !== f.category && !(t.splits || []).some(sp => sp.categoryId === f.category)) return false;
+      if (f.type === 'in' && amt <= 0) return false;
+      if (f.type === 'out' && amt >= 0) return false;
+      if (f.type === 'review' && t.status !== 'review') return false;
+      if (q) { const hay = `${t.description} ${t.payee} ${t.memo} ${catName(c, t.categoryId)} ${Math.abs(t.amount).toFixed(2)}`.toLowerCase(); if (!hay.includes(q)) return false; }
+      return true;
+    });
     return rows.reverse();
   }
   App.registerRows = registerRows;
@@ -395,7 +395,7 @@
         <div class="card">
           <div class="toolbar">
             <select class="input sm" style="width:210px" data-change="txn-account" aria-label="Account"><option value="all">All accounts</option>${accountOptions(moneyAccounts(c), f.account)}</select>
-            <select class="input sm" style="width:160px" data-change="txn-period" aria-label="Dates">${PERIODS.map(([k, l]) => `<option value="${k}" ${f.period === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+            <select class="input sm" style="width:160px" data-change="txn-period" aria-label="Dates">${PERIODS.some(p => p[0] === f.period) ? '' : `<option value="${esc(f.period)}" selected>${esc(App.range(f.period, c).label)}</option>`}${PERIODS.map(([k, l]) => `<option value="${k}" ${f.period === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
             <div class="seg">${[['all', 'All'], ['in', 'Money in'], ['out', 'Money out'], ['review', 'Needs review']].map(([k, l]) => `<button class="${f.type === k ? 'on' : ''}" data-action="txn-type" data-v="${k}">${l}</button>`).join('')}</div>
             <div class="grow"></div>
             <div class="search-inline">${ICON.search}<input class="input sm" placeholder="Find a payee, amount, memo…" value="${esc(f.q)}" data-input="txn-q" id="txn-q"></div>
@@ -488,7 +488,8 @@
     const d = t ? JSON.parse(JSON.stringify(t)) : { id: C.uid(), date: today(), description: '', payee: '', amount: 0, accountId: banks[0].id, categoryId: '', memo: '', status: 'posted', cleared: false, reconciled: false };
     if (d.status === 'review' && !d.categoryId) { const s = C.suggest(c, d); if (s) d.categoryId = s.categoryId; }
     let dir = d.amount > 0 ? 1 : -1;
-    let splits = d.splits && d.splits.length ? d.splits.map(s => ({ ...s, amount: Math.abs(s.amount) })) : null;
+    // split amounts are shown in the transaction's own direction, so a fee inside a day of sales shows as a minus
+    let splits = d.splits && d.splits.length ? d.splits.map(s => ({ ...s, amount: C.round2(s.amount * dir) })) : null;
     if (opts.startSplit && !splits) splits = [{ id: C.uid(), categoryId: d.categoryId || '', amount: Math.abs(d.amount) }, { id: C.uid(), categoryId: '', amount: 0 }];
     const inv = d.invoiceId && c.invoices.find(i => i.id === d.invoiceId);
     const locked = !isNew && C.isLocked(c, d.date);
@@ -532,7 +533,7 @@
       $('#no-split', m).onclick = e => { e.preventDefault(); d.categoryId = splits[0] && splits[0].categoryId || d.categoryId; splits = null; drawCat(); };
       $('#add-split', m).onclick = e => { e.preventDefault(); splits.push({ id: C.uid(), categoryId: '', amount: Math.max(0, left) }); drawCat(); };
       $$('[data-sp]', w).forEach(b => b.onclick = e => { e.preventDefault(); const i = +b.dataset.sp; U.categoryPicker(b, c, { selected: splits[i].categoryId, excludeId: $('#t-acc', m).value, amount: dir, onPick: id => { splits[i].categoryId = id; drawCat(); } }); });
-      $$('[data-sa]', w).forEach(inp => { inp.oninput = () => { splits[+inp.dataset.sa].amount = Math.abs(C.parseAmount(inp.value) || 0); const used2 = C.round2(splits.reduce((s, x) => s + (+x.amount || 0), 0)); const l2 = C.round2(amtNow() - used2); const el = $('#split-left', m); el.className = Math.abs(l2) < 0.005 ? 'pos' : 'neg'; el.innerHTML = Math.abs(l2) < 0.005 ? `${ICON.check} Adds up to ${money(amtNow())}` : l2 > 0 ? `${money(l2)} left to assign` : `${money(-l2)} too much`; }; });
+      $$('[data-sa]', w).forEach(inp => { inp.oninput = () => { splits[+inp.dataset.sa].amount = C.parseAmount(inp.value) || 0; const used2 = C.round2(splits.reduce((s, x) => s + (+x.amount || 0), 0)); const l2 = C.round2(amtNow() - used2); const el = $('#split-left', m); el.className = Math.abs(l2) < 0.005 ? 'pos' : 'neg'; el.innerHTML = Math.abs(l2) < 0.005 ? `${ICON.check} Adds up to ${money(amtNow())}` : l2 > 0 ? `${money(l2)} left to assign` : `${money(-l2)} too much`; }; });
       $$('[data-sr]', w).forEach(b => b.onclick = e => { e.preventDefault(); splits.splice(+b.dataset.sr, 1); if (splits.length < 2) { d.categoryId = splits[0] ? splits[0].categoryId : d.categoryId; splits = null; } drawCat(); });
     };
     drawCat();
@@ -541,7 +542,7 @@
 
     m.querySelector('[data-x=save]').onclick = async () => {
       const amt = amtNow();
-      if (!amt) { $('#t-amt', m).focus(); return U.toast('Enter the amount', null, 'warn'); }
+      if (!amt && !splits) { $('#t-amt', m).focus(); return U.toast('Enter the amount', null, 'warn'); }
       const date = $('#t-date', m).value;
       if (!date) return U.toast('Pick a date', null, 'warn');
       if (splits) {
