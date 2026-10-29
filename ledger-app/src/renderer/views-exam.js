@@ -266,7 +266,7 @@
             </div>
             <div style="margin-top:auto;width:100%;display:flex;justify-content:space-between;align-items:flex-end;font-size:11px;color:#6B756F">
               <div style="text-align:left"><div style="font-family:Georgia,serif;font-size:15px;color:#16201C;border-bottom:1px solid #16201C;padding-bottom:4px;margin-bottom:4px">Coll Business Solutions LLC</div>Issuer</div>
-              <div style="text-align:right"><div style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#16201C;margin-bottom:4px">${id}</div>Credential ID</div>
+              <div style="text-align:right"><div style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#16201C;margin-bottom:4px">${id}</div>Credential ID · verify at collbusinesssolutions.com/verify</div>
             </div>
           </div>
         </div>
@@ -280,10 +280,152 @@
           <div style="display:flex;justify-content:space-between;border-bottom:1px solid #E6E2D9;padding:5px 0"><span>Practical examination — month-end close with planted errors, auto-graded</span><b>${p}/100</b></div>
           <p class="muted" style="margin-top:26px;font-size:11px;line-height:1.6">Skills demonstrated: double-entry fundamentals; categorizing transfers, owner activity, credit card and sales-tax payments; invoices and receivables; bills and payables; split transactions and smart rules; bank and card reconciliation, including finding duplicates and transposed amounts; receipts and record-keeping; month-end close and client reporting; cash-flow and budget review; quarterly estimated-tax planning; 1099 contractor reporting; professional practice.<br><br>This certificate is issued by Coll Business Solutions LLC for completion of its Coll Ledger training program. It is not a state license or a credential from a professional accounting body.</p>
         </div>`), `Coll Ledger Professional Bookkeeping Certificate - ${name}.pdf`);
+      setTimeout(credentialModal, 600);
+    };
+  }
+
+
+
+  // ------------------------------------------------------------------
+  // Next step after the Academy: QuickBooks ProAdvisor certification
+  // (links and benefits from Intuit's own pages, checked October 2026)
+  // ------------------------------------------------------------------
+  const QB = {
+    signup: 'https://quickbooks.intuit.com/accountants/pricing/',
+    academy: 'https://proadvisoracademy.intuit.com',
+    program: 'https://quickbooks.intuit.com/accountants/proadvisor/',
+    cert: 'https://quickbooks.intuit.com/accountants/training-certification/certification/',
+    directory: 'https://quickbooks.intuit.com/learn-support/en-us/help-article/proadvisor-program/learn-proadvisor-profile-find-proadvisor/L5Ipn6a0q_US_en_US'
+  };
+  const openLink = url => window.desktop ? window.desktop.openExternal(url) : window.open(url, '_blank');
+  function proAdvisorModal() {
+    const m = U.openModal(`${U.modalHead('Your next step: QuickBooks ProAdvisor', 'You know how bookkeeping works — now add the credential small businesses search for')}
+      <div class="modal-body">
+        <div class="pa-hero"><div class="pa-ic">${ICON.spark}</div><div><b>Why it's worth it</b><div class="muted">The Coll Ledger Academy proves you can do the work. The QuickBooks Online certification is the name clients and firms already recognize — and it unlocks a way for new clients to find you.</div></div></div>
+        <div class="pa-reasons">
+          <div><b>Get found by new clients</b><span>Intuit's <i>Find-a-ProAdvisor</i> directory is where small businesses look for QuickBooks help. You need a current QuickBooks Online certification to publish a profile there — with your services, industries, and client reviews and ratings.</span></div>
+          <div><b>A name people already know</b><span>Many of the businesses you'll meet already run on QuickBooks. Being certified means you can take them on as they are, or move them to Coll Ledger — your choice, not a limit.</span></div>
+          <div><b>Badges for your profiles</b><span>Intuit gives certified ProAdvisors badges to show on websites, directories and social profiles — right next to your Coll Ledger badge on LinkedIn.</span></div>
+          <div><b>Discounts you can pass on</b><span>ProAdvisors get client discounts on QuickBooks Online, QuickBooks Payments, Bill Pay, and checks and tax forms.</span></div>
+          <div><b>Free training that keeps going</b><span>ProAdvisor Academy courses, more certifications (like advisory) and CPE credits. Program tiers — Silver to Elite — add perks like premium support as you grow.</span></div>
+          <div><b>Stronger résumé and rates</b><span>Two credentials — hands-on bookkeeping from the Academy plus QuickBooks certification — make it easier to win clients, apply at firms, and charge professional rates.</span></div>
+        </div>
+        <div class="cap-label" style="margin-top:16px">How to start — about an afternoon of study</div>
+        <div class="cred-steps">
+          <div class="cred-step"><span class="n">1</span><div class="grow"><b>Create a free QuickBooks Online Accountant account</b><div class="muted">It comes with a free ProAdvisor Program membership.</div></div><button class="btn primary" data-q="signup">Sign up free</button></div>
+          <div class="cred-step"><span class="n">2</span><div class="grow"><b>Take the QuickBooks Online Certification in ProAdvisor Academy</b><div class="muted">Study the course modules, then take the exam.</div></div><button class="btn" data-q="academy">ProAdvisor Academy</button></div>
+          <div class="cred-step"><span class="n">3</span><div class="grow"><b>Publish your Find-a-ProAdvisor profile</b><div class="muted">Add your services, industries and both credentials. Intuit reviews each profile before it goes live.</div></div><button class="btn" data-q="directory">How it works</button></div>
+          <div class="cred-step"><span class="n">4</span><div class="grow"><b>Add it to LinkedIn next to your Coll Ledger certificate</b><div class="muted">Certification renews once a year — Intuit sends a reminder.</div></div><button class="btn ghost" data-q="program">About the program</button></div>
+        </div>
+        <p class="muted" style="font-size:11.5px;margin:12px 0 0">Benefits and steps are from Intuit's ProAdvisor pages as of October 2026; Intuit notes that additional terms and fees may apply to some services. Coll Ledger and Coll Business Solutions LLC aren't affiliated with Intuit.</p>
+      </div>
+      <div class="modal-foot"><button class="btn" data-action="close-modal">Maybe later</button><button class="btn primary" data-q="signup">Sign up free ${ICON.right}</button></div>`, { wide: true });
+    $$('[data-q]', m).forEach(b => b.onclick = () => { T().proAdvisorOpened = today(); save(); openLink(QB[b.dataset.q]); });
+  }
+  App.proAdvisorModal = proAdvisorModal;
+  const proAdvisorCard = () => `<div class="pa-card"><div class="pa-ic">${ICON.spark}</div><div class="grow"><b>Next step: QuickBooks ProAdvisor</b><div class="muted">Get listed where small businesses look for help.</div></div><button class="btn sm primary" data-action="pa-open">See why</button></div>`;
+  // ------------------------------------------------------------------
+  // Digital badge, LinkedIn, and the public verification link
+  // ------------------------------------------------------------------
+  const VERIFY = 'https://collbusinesssolutions.com/verify.html';
+  const ISSUER = 'Coll Business Solutions LLC';
+  const CRED_NAME = 'Coll Ledger Professional Bookkeeping Certificate';
+  const verifyUrl = id => `${VERIFY}?id=${encodeURIComponent(id)}`;
+  // The medallion. Same artwork as the website's badge image.
+  function badgeSVG(o = {}) {
+    const dist = !!o.distinction, year = o.year === '' ? '' : (o.year || today().slice(0, 4));
+    const dot = a => `<circle cx="${600 + 474 * Math.cos(a)}" cy="${600 + 474 * Math.sin(a)}" r="9" fill="#0F2A21"/>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+      <defs>
+        <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F6DEA0"/><stop offset=".45" stop-color="#D9AE5C"/><stop offset="1" stop-color="#9A6E2B"/></linearGradient>
+        <radialGradient id="green" cx=".38" cy=".3" r=".85"><stop offset="0" stop-color="#2F8A6A"/><stop offset=".55" stop-color="#1E6B53"/><stop offset="1" stop-color="#0F3B2D"/></radialGradient>
+        <path id="top" d="M 600 600 m -458 0 a 458 458 0 1 1 916 0"/>
+        <path id="bot" d="M 600 600 m -492 0 a 492 492 0 0 0 984 0"/>
+      </defs>
+      <circle cx="600" cy="600" r="560" fill="url(#gold)"/>
+      <circle cx="600" cy="600" r="520" fill="#0F2A21"/>
+      <circle cx="600" cy="600" r="505" fill="url(#gold)"/>
+      ${dot(0)}${dot(Math.PI)}
+      <circle cx="600" cy="600" r="440" fill="url(#green)"/>
+      <circle cx="600" cy="600" r="428" fill="none" stroke="#F1D79A" stroke-opacity=".55" stroke-width="3"/>
+      <text font-family="Georgia, 'Times New Roman', serif" font-size="44" letter-spacing="9" fill="#0F2A21" font-weight="700"><textPath href="#top" startOffset="50%" text-anchor="middle">COLL LEDGER ACADEMY</textPath></text>
+      <text font-family="Georgia, 'Times New Roman', serif" font-size="40" letter-spacing="7" fill="#0F2A21" font-weight="700"><textPath href="#bot" startOffset="50%" text-anchor="middle">PROFESSIONAL BOOKKEEPER</textPath></text>
+      <circle cx="600" cy="560" r="150" fill="none" stroke="url(#gold)" stroke-width="10"/>
+      <text x="600" y="628" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="210" fill="url(#gold)">C</text>
+      <path d="M330 760 h540 l-38 52 38 52 h-540 l38 -52z" fill="url(#gold)"/>
+      <text x="600" y="830" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="58" font-weight="700" fill="#16201C" letter-spacing="5">${dist ? 'DISTINCTION' : ('CERTIFIED ' + year).trim()}</text>
+      ${dist ? `<text x="600" y="925" text-anchor="middle" font-family="Georgia, serif" font-size="46" fill="#F1D79A" letter-spacing="8">${year}</text>` : ''}
+      <g fill="#F1D79A">${[-1, 0, 1].map(k => `<path transform="translate(${600 + k * 70} ${k ? 300 : 286}) scale(${k ? 1.1 : 1.5})" d="M0-16 4.7-5.2 16.2-4.9 7.1 2.4 10.4 13.5 0 7 -10.4 13.5 -7.1 2.4 -16.2-4.9 -4.7-5.2z"/>`).join('')}</g>
+    </svg>`;
+  }
+  async function svgToPngBase64(svg, w, h) {
+    const img = new Image();
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    await img.decode();
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    cv.getContext('2d').drawImage(img, 0, 0, w, h);
+    return cv.toDataURL('image/png').split(',')[1];
+  }
+  // A LinkedIn-sized share image: badge, name and what was earned
+  function shareSVG(cert) {
+    const b = badgeSVG({ distinction: cert.distinction, year: cert.date.slice(0, 4) }).replace('<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">', '<svg x="70" y="63" width="500" height="500" viewBox="0 0 1200 1200">');
+    const nm = esc(cert.name);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="627" viewBox="0 0 1200 627">
+      <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#16362B"/><stop offset="1" stop-color="#0B1712"/></linearGradient></defs>
+      <rect width="1200" height="627" fill="url(#bg)"/>
+      <rect x="18" y="18" width="1164" height="591" fill="none" stroke="#B8893B" stroke-opacity=".6" stroke-width="2"/>
+      ${b}
+      <text x="620" y="190" font-family="Arial, sans-serif" font-size="22" letter-spacing="6" fill="#C9D3CD">COLL LEDGER ACADEMY</text>
+      <text x="620" y="268" font-family="Georgia, serif" font-size="${nm.length > 22 ? 46 : 58}" fill="#FFFFFF">${nm}</text>
+      <text x="620" y="330" font-family="Arial, sans-serif" font-size="26" fill="#C9D3CD">earned the</text>
+      <text x="620" y="380" font-family="Georgia, serif" font-size="40" fill="#F1D79A">Professional Bookkeeping</text>
+      <text x="620" y="428" font-family="Georgia, serif" font-size="40" fill="#F1D79A">Certificate${cert.distinction ? ' · with distinction' : ''}</text>
+      <text x="620" y="500" font-family="Arial, sans-serif" font-size="20" fill="#8FA39A">Issued by ${ISSUER} · ${esc(fmtDate(cert.date))}</text>
+      <text x="620" y="532" font-family="Arial, sans-serif" font-size="20" fill="#8FA39A">Credential ${esc(cert.id)}</text>
+    </svg>`;
+  }
+  async function saveImage(b64, name) {
+    if (window.desktop) { const p = await window.desktop.saveFile({ defaultName: name, base64: b64, filters: [{ name: 'PNG image', extensions: ['png'] }] }); if (p) U.toast('Image saved'); return; }
+    const a = document.createElement('a'); a.href = 'data:image/png;base64,' + b64; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  }
+  function linkedInUrl(cert) {
+    const q = new URLSearchParams({ startTask: 'CERTIFICATION_NAME', name: CRED_NAME, organizationName: ISSUER, issueYear: cert.date.slice(0, 4), issueMonth: String(+cert.date.slice(5, 7)), certUrl: verifyUrl(cert.id), certId: cert.id });
+    return 'https://www.linkedin.com/profile/add?' + q.toString();
+  }
+  function registryEntry(cert) { return JSON.stringify({ id: cert.id, name: cert.name, awarded: cert.date, written: cert.written, practical: cert.practical, distinction: cert.distinction }); }
+  function credentialModal() {
+    const cert = T().cert; if (!cert) return;
+    const open = url => window.desktop ? window.desktop.openExternal(url) : window.open(url, '_blank');
+    const m = U.openModal(`${U.modalHead('Your credential', 'Share it on LinkedIn, add the badge anywhere, and let anyone check it\'s real')}
+      <div class="modal-body">
+        <div class="cred-top"><div class="cred-badge">${badgeSVG({ distinction: cert.distinction, year: cert.date.slice(0, 4) })}</div>
+          <div class="cred-info"><div class="cap-label">${esc(ISSUER)}</div><h3>${esc(CRED_NAME)}${cert.distinction ? ' <span class="tag gold">with distinction</span>' : ''}</h3>
+            <div class="cred-rows"><div><span>Name</span><b>${esc(cert.name)}</b></div><div><span>Issued</span><b>${fmtDate(cert.date)}</b></div><div><span>Credential ID</span><b class="mono">${esc(cert.id)}</b></div><div><span>Credential URL</span><b class="mono ellip">${esc(verifyUrl(cert.id))}</b></div></div></div></div>
+        <div class="cred-steps">
+          <div class="cred-step"><span class="n">1</span><div class="grow"><b>Add it to LinkedIn</b><div class="muted">Opens LinkedIn with the name, issuer, date, credential ID and link already filled in. Click <b>Save</b>.</div></div><button class="btn primary" data-c="li">Add to LinkedIn</button></div>
+          <div class="cred-step"><span class="n">2</span><div class="grow"><b>Save the badge</b><div class="muted">A square image for your profile's media, résumé, website or email signature.</div></div><button class="btn" data-c="badge">${ICON.download}Badge</button></div>
+          <div class="cred-step"><span class="n">3</span><div class="grow"><b>Post it</b><div class="muted">A share image sized for LinkedIn and Facebook posts, with your name on it.</div></div><button class="btn" data-c="share">${ICON.download}Share image</button></div>
+          <div class="cred-step"><span class="n">4</span><div class="grow"><b>Get it registered for verification</b><div class="muted">${cert.registeredAsked ? 'Request sent — once Coll Business Solutions adds it, the credential link shows "Verified".' : 'Sends your credential to Coll Business Solutions so the link above shows "Verified" for anyone who checks.'}</div></div><button class="btn" data-c="reg">${ICON.mail}${cert.registeredAsked ? 'Send again' : 'Request'}</button></div>
+          <div class="cred-step pa-step"><span class="n">5</span><div class="grow"><b>Next: QuickBooks ProAdvisor certification</b><div class="muted">Free to join — gets you listed in Intuit's Find-a-ProAdvisor directory, where small businesses look for help.</div></div><button class="btn primary" data-c="pa">See why ${ICON.right}</button></div>
+          <div class="cred-step"><span class="n">${ICON.check}</span><div class="grow"><b>Certificate PDF and link</b><div class="muted">The printable certificate and transcript, or copy the credential link.</div></div><button class="btn ghost" data-c="copy">${ICON.copy}Copy link</button><button class="btn" data-c="pdf">${ICON.pdf}Certificate</button></div>
+        </div>
+      </div>
+      <div class="modal-foot"><button class="btn primary" data-action="close-modal">Done</button></div>`, { wide: true });
+    $('[data-c=li]', m).onclick = () => open(linkedInUrl(cert));
+    $('[data-c=pa]', m).onclick = () => { U.closeModal(); proAdvisorModal(); };
+    $('[data-c=badge]', m).onclick = async () => saveImage(await svgToPngBase64(badgeSVG({ distinction: cert.distinction, year: cert.date.slice(0, 4) }), 1200, 1200), 'Coll Ledger Academy badge.png');
+    $('[data-c=share]', m).onclick = async () => saveImage(await svgToPngBase64(shareSVG(cert), 1200, 627), `Coll Ledger certificate - ${cert.name}.png`);
+    $('[data-c=copy]', m).onclick = () => U.copyText(verifyUrl(cert.id));
+    $('[data-c=pdf]', m).onclick = () => { U.closeModal(); App.actions['t-cert-pdf'](); };
+    $('[data-c=reg]', m).onclick = () => {
+      const body = `Please register this Coll Ledger Academy credential so it shows as verified.\n\nName: ${cert.name}\nCredential ID: ${cert.id}\nAwarded: ${fmtDate(cert.date)}\nWritten exam: ${cert.written}%\nPractical exam: ${cert.practical}/100${cert.distinction ? '\nWith distinction' : ''}\n\nRegistry entry (add to credentials.json on the website):\n${registryEntry(cert)}\n\nCredential link: ${verifyUrl(cert.id)}`;
+      open(`mailto:collbusinesssolutions@gmail.com?subject=${encodeURIComponent('Credential registration ' + cert.id)}&body=${encodeURIComponent(body)}`);
+      cert.registeredAsked = today(); save(); U.toast('Opening your email — just press Send');
     };
   }
 
   act({
+    'pa-open': () => proAdvisorModal(),
     'ex-start': () => { S.ui.exam = Object.assign(newAttempt(), { kind: 'written' }); render(); $('#view').scrollTop = 0; },
     'ex-close': () => { S.ui.exam = null; render(); },
     'ex-pick': el => { const E = S.ui.exam; const q = E.qs[E.at]; E.answers[q.i] = +el.dataset.a; render(); },
@@ -311,5 +453,5 @@
     }
   });
 
-  App.academy = { renderWritten, renderPractical, writtenPassed, practicalPassed: () => !!(T().practical && T().practical.passed), certificate, examClient, BANK, grade, buildExam };
+  App.academy = { proAdvisorCard, proAdvisorModal, credentialModal, badgeSVG, shareSVG, linkedInUrl, renderWritten, renderPractical, writtenPassed, practicalPassed: () => !!(T().practical && T().practical.passed), certificate, examClient, BANK, grade, buildExam };
 })();

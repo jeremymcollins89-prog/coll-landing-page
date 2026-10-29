@@ -546,7 +546,8 @@
           <button class="tl ${t.current === 'exam-practical' ? 'on' : ''} ${pOk ? 'done' : ''} ${allLessons ? '' : 'locked'}" data-action="t-go" data-id="exam-practical"><span class="step-n">${pOk ? ICON.check : allLessons ? 'P' : ICON.lock}</span><span><b>Practical exam</b><span class="muted">A graded month-end</span></span></button>
           <div class="tl-group">Bonus</div>${LESSONS.filter(l => l.bonus).map(x => sideItem(x, 0)).join('')}
         </div>
-        ${earned ? `<div class="cert-cta">${ICON.spark}<div><b>${t.cert ? 'Certificate earned' : 'You earned it!'}</b><div class="muted">${t.cert ? esc(t.cert.id) : 'Professional Bookkeeping Certificate'}</div></div><button class="btn sm gold" data-action="t-cert">${t.cert ? 'Download' : 'Get it'}</button></div>` : `<div class="cert-req"><div class="cap-label">To earn the certificate</div><div class="${allLessons ? 'ok' : ''}">${allLessons ? ICON.check : '○'} All ${CORE.length} lessons <span class="muted">(${lessonsDone} done)</span></div><div class="${wOk ? 'ok' : ''}">${wOk ? ICON.check : '○'} Written exam, 80% or better</div><div class="${pOk ? 'ok' : ''}">${pOk ? ICON.check : '○'} Practical exam, 80+ and balanced</div></div>`}`;
+        ${earned ? AC.proAdvisorCard() : ''}
+        ${earned ? `<div class="cert-cta">${ICON.spark}<div><b>${t.cert ? 'Certificate earned' : 'You earned it!'}</b><div class="muted">${t.cert ? esc(t.cert.id) : 'Professional Bookkeeping Certificate'}</div></div><button class="btn sm gold" data-action="t-cert">${t.cert ? 'Badge & LinkedIn' : 'Get it'}</button></div>` : `<div class="cert-req"><div class="cap-label">To earn the certificate</div><div class="${allLessons ? 'ok' : ''}">${allLessons ? ICON.check : '○'} All ${CORE.length} lessons <span class="muted">(${lessonsDone} done)</span></div><div class="${wOk ? 'ok' : ''}">${wOk ? ICON.check : '○'} Written exam, 80% or better</div><div class="${pOk ? 'ok' : ''}">${pOk ? ICON.check : '○'} Practical exam, 80+ and balanced</div></div>`}`;
       let main;
       if (examView) {
         main = !allLessons ? `<div class="tm-head"><span class="tag gold">Final exams</span></div><h2 class="tm-title">Finish the lessons first</h2><p class="tm-learn">The exams cover all three levels. You have ${plural(CORE.length - lessonsDone, 'lesson')} to go — the exams unlock as soon as they're done.</p><div class="tm-nav"><span></span><button class="btn primary" data-action="t-go" data-id="${(CORE.find(l => !lessonDone(l)) || CORE[0]).id}">Go to the next lesson ${ICON.right}</button></div>`
@@ -602,7 +603,8 @@
       if (S.data.activeClientId && !S.data.clients.some(x => x.id === S.data.activeClientId)) S.data.activeClientId = c.id;
       commit(); U.toast('Practice account reset');
     },
-    't-cert': () => App.academy.certificate(levelsWithLessons()),
+    't-cert': () => T().cert ? App.academy.credentialModal() : App.academy.certificate(levelsWithLessons()),
+    't-cert-pdf': () => App.academy.certificate(levelsWithLessons()),
     't-coach-hide': () => { T().coachHidden = true; save(); coach(); },
     't-coach-show': () => { T().coachHidden = false; save(); coach(); }
   });

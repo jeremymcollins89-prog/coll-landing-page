@@ -81,7 +81,8 @@
       ['Set a monthly rhythm', 'Agree on a date each month for statements to arrive and a date you deliver reports. My studio tracks your time and bills monthly.'],
       ['Price for value', 'Monthly flat fees (by number of accounts and transactions) are easier for clients than hourly. Charge separately for catch-up work.'],
       ['Protect the books', 'Turn on the password lock and cloud backup in Settings. The books hold private financial information.'],
-      ['Keep a clear trail', 'Questions and answers go in client to-dos and notes, with dates. It protects you and the client.']
+      ['Keep a clear trail', 'Questions and answers go in client to-dos and notes, with dates. It protects you and the client.'],
+      ['Add a recognized credential', 'After the Coll Ledger Academy, get the free <b>QuickBooks Online certification</b> through Intuit\'s ProAdvisor Academy. Certified ProAdvisors can publish a profile in Intuit\'s <b>Find-a-ProAdvisor</b> directory, where small businesses look for help. <a href="#" data-action="pa-open">See why and how</a>.']
     ]],
     ['faq', 'FAQs', 'help', 'Quick answers about using Coll Ledger.', [
       ['A transaction shows up twice. What do I do?', 'Run <b>Clean up</b> — it lists likely duplicates side by side with a <b>Remove the second one</b> button. Imports also skip exact duplicates automatically.'],
