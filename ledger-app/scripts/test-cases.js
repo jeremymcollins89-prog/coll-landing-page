@@ -22,8 +22,10 @@ t('every written calculation adds up', () => {
   const val = s => { s = s.replace(/[$,]/g, ''); return s.endsWith('%') ? parseFloat(s) / 100 : parseFloat(s); };
   let checked = 0; const bad = [];
   for (const m of src.matchAll(expr)) {
-    const lhs = m[1], rhs = m[2];
+    let lhs = m[1]; const rhs = m[2];
     if (!/[×÷+−*/]/.test(lhs)) continue;
+    // prose like "(3 × $118 = $354 for…)" opens a bracket the match doesn't close
+    if ((lhs.match(/\(/g) || []).length > (lhs.match(/\)/g) || []).length) lhs = lhs.replace(/^\(\s*/, '');
     const js = lhs.replace(/\$?\d[\d,]*(?:\.\d+)?%?/g, x => String(val(x))).replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-').replace(/\bx\b/g, '*');
     let got; try { got = Function('return (' + js + ')')(); } catch (e) { continue; }
     const want = val(rhs);
@@ -175,7 +177,7 @@ t('emails: model emails pass every automatic check; a weak draft does not', () =
     S.ui.lab.email = e.id; assert(LC.renderEmails().includes('Copy model email'));
   }
   S.ui.lab.email = null; assert(LC.renderEmails().includes('5 of 5 done'));
-  assert(LC.AUTO.noblame('Hi Dana, could you send these?') && !LC.AUTO.noblame('Hi Dana, you forgot the receipts again, which is your fault.'));
+  assert(LC.AUTO.noblame('Hi Dana, could you send these receipts by Friday? Thank you!') && !LC.AUTO.noblame('Hi Dana, you forgot the receipts again, which is your fault.'));
 });
 
 console.log(`All ${n} Study center checks passed.`);

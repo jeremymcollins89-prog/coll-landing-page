@@ -1231,3 +1231,21 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.55; resize: ve
 .honor ul { padding-left: 20px; line-height: 1.6; margin: 8px 0 14px; }
 @media (max-width: 900px) { .lab-grid { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .rv-stats { grid-template-columns: repeat(2, 1fr); } .lab-tabs button { flex: 1 1 30%; font-size: 12px; padding: 7px 6px; } .fl-front { font-size: 19px; } .sheet-view { overflow-x: auto; } }
+
+/* ---------- Case studies and client emails ---------- */
+.lc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin: 16px 0; }
+.lc-card .card-head { justify-content: space-between; }
+.lc-title { font-family: var(--serif); font-weight: 500; font-size: 20px; margin: 0 0 2px; }
+.lc-sum { margin: 10px 0 14px; color: var(--ink-2); font-size: 13.5px; line-height: 1.55; }
+.lc-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.lc-top { margin-bottom: 4px; }
+.lc-rules li { color: var(--ink-2); font-size: 13.5px; line-height: 1.55; }
+.gl .grow { flex: 1; min-width: 0; }
+.lc-tick { cursor: pointer; background: none; padding: 0; }
+.lc-tick:not(.on) { color: transparent; }
+.gl:not(.ok) .lc-tick { background: transparent; border: 1.5px solid var(--line-strong); }
+.lc-draft { min-height: 260px; font-size: 14px; width: 100%; }
+.lc-model { margin: 4px 0 10px; }
+.lc-model-text { white-space: pre-wrap; font-size: 13.5px; line-height: 1.6; }
+@media (max-width: 760px) { .lc-grid { grid-template-columns: 1fr; } }
+.lab-body .tm-title { margin: 2px 0 8px; line-height: 1.2; } .lab-body .tm-learn { line-height: 1.6; } .lab-body .card-body > .tm-head:first-child { margin-bottom: 8px; }

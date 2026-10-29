@@ -1,7 +1,7 @@
 {
   "name": "coll-ledger",
   "productName": "Coll Ledger",
-  "version": "1.8.4",
+  "version": "1.9.0",
   "description": "Premium bookkeeping for independent bookkeepers. Coll Business Solutions LLC.",
   "author": "Coll Business Solutions LLC <collbusinesssolutions@gmail.com>",
   "license": "UNLICENSED",
@@ -12,7 +12,7 @@
     "dist": "electron-builder --win nsis",
     "dist:mac": "electron-builder --mac dmg",
     "preview": "node scripts/bundle-preview.js",
-    "test": "node scripts/test-core.js && node scripts/test-academy.js"
+    "test": "node scripts/test-core.js && node scripts/test-academy.js && node scripts/test-cases.js"
   },
   "dependencies": {
     "@tesseract.js-data/eng": "1.0.0",

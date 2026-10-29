@@ -385,7 +385,7 @@
       tasks: [
         'Categorize the net-pay withdrawal and split the tax withdrawal so gross wages land in Payroll & Wages and employer taxes in Payroll Taxes.',
         'Move the ski passes out of Travel to Shareholder Distributions.',
-        `Accrue Wren & Ash CPAs' invoice for work done in ${mname(M)} — enter it as a bill dated the invoice date, or post an accrual journal entry.`
+        'Accrue Wren & Ash CPAs\' invoice for work done this month — enter it as a bill dated the invoice date, or post an accrual journal entry.'
       ],
       rules: [
         'S-corp distributions aren\'t subject to payroll taxes, which is exactly why the IRS requires owners who work in the business to take a reasonable salary through payroll first.',
