@@ -160,7 +160,8 @@ function toDxf(plan, opts) {
     for (const f of V.ceilingFixtures(plan, A)) {
       const hw = (f.w || 1.9) / 2, hh = (f.h || 3.9) / 2;
       pline('A-CLNG-FIXT', [[f.x - hw, f.y - hh], [f.x + hw, f.y - hh], [f.x + hw, f.y + hh], [f.x - hw, f.y + hh]], true);
-      text('A-CLNG-FIXT', f.x, f.y, f.type === 'ffu' ? 'FFU' : 'LED', 0.3, hh >= hw ? 90 : 0);
+      if (f.type === 'ffu') text('A-CLNG-FIXT', f.x, f.y, 'FFU', 0.3, hh >= hw ? 90 : 0);
+      else line('A-CLNG-FIXT', f.x - hw, f.y - hh, f.x + hw, f.y + hh);   // a light: the rectangle with a diagonal across it
     }
     for (const b0 of plan.beams || []) { const bm = V.beamSeat ? V.beamSeat(plan, A, b0) : b0; line('S-BEAM', bm.x1, bm.y1, bm.x2, bm.y2); text('S-BEAM', (bm.x1 + bm.x2) / 2, (bm.y1 + bm.y2) / 2, (b0.size || 'W12x26').toUpperCase(), 0.3, Math.abs(bm.x2 - bm.x1) >= Math.abs(bm.y2 - bm.y1) ? 0 : 90); }
     for (const q of (V.isBuilt && V.isBuilt(plan) ? V.builtLines(plan) : plan.ceilingGrid && plan.ceilingGrid.length && V.ceilingLines ? V.ceilingLines(plan, A) : plan.ceilingGrid || [])) line('A-CLNG-GRID', q[0], q[1], q[2], q[3]);
