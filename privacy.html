@@ -131,7 +131,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
       <div class="data">
         <div><b>Your name</b><span>To print on your certificate and show on the verify page.</span></div>
         <div><b>Your email</b><span>To reach you about your exams and credentials, and to confirm it's you when you ask for a change or deletion. We don't verify it or send marketing.</span></div>
-        <div><b>A hashed sign-in token</b><span>So you can sign in with your student code. We store a scrambled (hashed) form, not the code itself.</span></div>
+        <div><b>A hashed sign-in token</b><span>So you can sign in on your devices. We store a scrambled (hashed) form, not the code itself.</span></div>
         <div><b>Exam attempts and scores</b><span>To grade exams, enforce the retake wait, and decide whether to issue a certificate.</span></div>
         <div><b>Practical-exam submissions</b><span>The practice-company books you hand in, so they can be graded. These contain practice data only, never real clients.</span></div>
         <div><b>Synced Academy progress</b><span>Which lessons you've finished, so your progress follows you between devices and counts toward exam eligibility.</span></div>
@@ -162,7 +162,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
     <section id="public">
       <h2><i>4</i>What's public</h2>
       <p>When we issue a credential, anyone who has its credential ID can look it up on our <a href="/verify.html">verify page</a>. They will see <b>your name, the certificate, your scores and the dates</b>, and whether it is valid or revoked. They can also download the signed credential file (an Open Badges 3.0–style file), which contains the same details.</p>
-      <p>Your email, student code and exam answers are never shown publicly. We don't publish a list of holders; someone needs your credential ID to look you up.</p>
+      <p>Your email, sign-in details and exam answers are never shown publicly. We don't publish a list of holders; someone needs your credential ID to look you up.</p>
     </section>
 
     <section id="retention">
@@ -187,7 +187,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
 
     <section id="security">
       <h2><i>7</i>Security</h2>
-      <p>Connections to our site and server are encrypted (HTTPS). Sign-in tokens are stored hashed, and credentials are digitally signed so they can't be altered without detection. We collect as little as we can. No system is perfectly secure, so keep your student code private and tell us if you think it has been exposed.</p>
+      <p>Connections to our site and server are encrypted (HTTPS). Sign-in tokens are stored hashed, and credentials are digitally signed so they can't be altered without detection. We collect as little as we can. No system is perfectly secure, so keep your sign-in codes private and tell us if you think it has been exposed.</p>
     </section>
 
     <section id="children">
@@ -198,7 +198,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
     <section id="choices">
       <h2><i>9</i>Your choices</h2>
       <ul>
-        <li><b>Delete your data.</b> Ask us to delete your account, progress, exam records and credentials. Email us from the address you signed up with, or use the delete option in the Academy where it's offered. Once deleted, your credentials will no longer verify.</li>
+        <li><b>Delete your data.</b> Ask us to delete your account, progress, exam records and credentials. Email us from the address you signed up with, or use Delete account in the Academy (tap your name on the Academy page). Once deleted, your credentials will no longer verify.</li>
         <li><b>Correct your name.</b> Email us and we'll fix it and reissue your credential.</li>
         <li><b>Download your credential.</b> Get your signed credential file any time from the verify page.</li>
         <li><b>Use it offline.</b> You can skip the official exams and use every lesson without giving us any information.</li>
