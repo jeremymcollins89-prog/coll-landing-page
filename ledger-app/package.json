@@ -1,0 +1,63 @@
+{
+  "name": "coll-ledger",
+  "productName": "Coll Ledger",
+  "version": "1.1.0",
+  "description": "Premium bookkeeping for independent bookkeepers. Coll Business Solutions LLC.",
+  "author": "Coll Business Solutions LLC <collbusinesssolutions@gmail.com>",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis",
+    "dist:mac": "electron-builder --mac dmg",
+    "preview": "node scripts/bundle-preview.js",
+    "test": "node scripts/test-core.js"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.10"
+  },
+  "devDependencies": {
+    "electron": "44.7.1",
+    "electron-builder": "26.17.0"
+  },
+  "build": {
+    "appId": "com.collbusinesssolutions.ledger",
+    "productName": "Coll Ledger",
+    "copyright": "Coll Business Solutions LLC",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Coll Ledger",
+      "artifactName": "Coll-Ledger-Setup.${ext}"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.finance",
+      "icon": "build/icon.png",
+      "artifactName": "Coll-Ledger.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://github.com/jeremymcollins89-prog/coll-landing-page/releases/download/coll-ledger/"
+      }
+    ]
+  }
+}

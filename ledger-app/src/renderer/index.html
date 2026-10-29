@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; script-src 'self'; connect-src 'self' data: blob:">
+  <title>Coll Ledger</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="drag-strip"></div>
+      <div class="brand">
+        <img src="icon.png" alt="" class="brand-mark">
+        <div style="min-width:0">
+          <div class="brand-name">Coll Ledger</div>
+          <div class="brand-sub ellip" id="firmName">Bookkeeping Studio</div>
+        </div>
+      </div>
+      <button class="client-switch" data-action="open-client-menu" data-menu id="clientSwitch" aria-label="Switch client"></button>
+      <nav class="nav" id="nav" aria-label="Main"></nav>
+      <div class="update-bar" id="updateBar" hidden></div>
+      <div class="sidebar-foot">
+        <a href="#" data-action="help"><svg viewBox="0 0 24 24"><path d="M11 18h2v-2h-2zm1-16a10 10 0 1 0 10 10A10 10 0 0 0 12 2m0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8m0-14a4 4 0 0 0-4 4h2a2 2 0 0 1 4 0c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5a4 4 0 0 0-4-4"/></svg><span>Help</span></a>
+        <a href="#" data-nav="settings"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1l-.4-2.6h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.6h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.4zM12 15.5A3.5 3.5 0 1 1 15.5 12 3.5 3.5 0 0 1 12 15.5"/></svg><span>Settings</span></a>
+        <div class="maker">Coll Business Solutions LLC</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-toggle" data-action="menu-toggle" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
+        <div class="crumbs" id="crumbs"></div>
+        <button class="search" data-action="palette" aria-label="Search">
+          <svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14"/></svg>
+          <span class="search-ph">Search or jump to…</span><span class="kbd" id="searchHint">Ctrl K</span>
+        </button>
+        <button class="btn primary" data-action="quick-add" data-menu>
+          <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>New
+        </button>
+        <div class="window-pad"></div>
+      </header>
+      <section class="view" id="view"></section>
+    </main>
+  </div>
+
+  <div class="drop-overlay"><div><svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5zm7-16-5 5h3v5h4V9h3z"/></svg><b>Drop to import</b><span>Bank statements, Square or QuickBooks files</span></div></div>
+  <div id="toasts" aria-live="polite"></div>
+  <script src="core.js"></script>
+  <script src="imports.js"></script>
+  <script src="ui.js"></script>
+  <script src="app.js"></script>
+  <script src="views-daily.js"></script>
+  <script src="views-books.js"></script>
+  <script src="views-reports.js"></script>
+  <script src="views-import.js"></script>
+  <script src="views-setup.js"></script>
+</body>
+</html>

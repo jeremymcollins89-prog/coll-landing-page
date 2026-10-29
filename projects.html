@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Other projects · Coll Business Solutions LLC</title>
-<meta name="description" content="Smaller things from Coll Business Solutions LLC: Coll Plan3D, which turns floor plans into 3D models, Dino Garden, a calm learning game for little kids, and Marble Atelier, a 3D marble-run game for grown-ups.">
+<meta name="description" content="Smaller things from Coll Business Solutions LLC: Coll Plan3D, which turns floor plans into 3D models, Coll Ledger, bookkeeping software for independent bookkeepers, Dino Garden, a calm learning game for little kids, and Marble Atelier, a 3D marble-run game for grown-ups.">
 <link rel="icon" href="/brand/coll-icon.svg" type="image/svg+xml">
 <link rel="icon" href="/brand/coll-favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="/brand/coll-apple-touch-icon.png">
@@ -64,6 +64,19 @@ header nav a[aria-current]{font-weight:600}
 .p3 .btn.ghost:hover{background:rgba(255,255,255,.06)}
 .p3 .note{font-size:13px;color:#9AA4AB;margin:12px 0 0;max-width:520px}
 .p3 .note strong{color:#D7DDE1}
+
+/* Coll Ledger: deep ledger green and gold, like the app */
+.cl{background:radial-gradient(120% 80% at 0% 0%,#1D4537 0%,transparent 60%),#0F1A16;color:#EEF2EE}
+.cl .mark h2{font-family:"Bodoni Moda",Georgia,serif;font-weight:400;font-size:32px;letter-spacing:-.01em}
+.cl .mark .ic{border-radius:14px;box-shadow:0 8px 20px rgba(0,0,0,.35)}
+.cl p,.cl ul{color:#B9C6BF}
+.cl li{border-top:1px solid rgba(255,255,255,.08)}
+.cl li::before{background:linear-gradient(180deg,#E9C77E,#B98A3A)}
+.cl .btn{background:linear-gradient(180deg,#F1D79A 0%,#D9B05F 55%,#B98A3A 100%);color:#1A1408}
+.cl .art{background:#0B1310}
+.cl .art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:0% 0%}
+.cl .note{font-size:13px;color:#8FA197;margin:12px 0 0;max-width:520px}
+.cl .note strong{color:#DCE5DF}
 
 /* Dino Garden: night-sky purple and pink, like the game */
 .dg{background:var(--dino);color:#F4ECFF;font-family:"Nunito","Inter",sans-serif}
@@ -150,6 +163,27 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
         <p class="note">If Windows says it protected your PC, click <strong>More info</strong>, then <strong>Run anyway</strong>. The installer comes from Coll Business Solutions LLC.</p>
       </div>
       <div class="art"><picture><source media="(max-width:900px)" srcset="/img/plan3d-hero-wide.webp"><img src="/img/plan3d-hero.webp" alt="A cleanroom in Coll Plan3D, rising in 3D out of its floor plan: an ISO 5 core with fan filter units, viewing glass and process rooms" width="1300" height="1500" loading="lazy"></picture></div>
+    </article>
+
+    <article class="proj cl" id="coll-ledger">
+      <div class="info">
+        <div class="mark">
+          <div class="ic"><img src="/img/coll-ledger-icon.png" alt="" width="56" height="56"></div>
+          <div><b>For bookkeepers</b><h2>Coll Ledger</h2></div>
+        </div>
+        <p>Bookkeeping software for independent bookkeepers who look after several small businesses. Bring in bank, Square and QuickBooks files, sort the month in a few keystrokes, and hand each client a polished report.</p>
+        <ul>
+          <li>Every client on one screen, with what needs doing at a glance</li>
+          <li>Smart rules and suggestions categorize most bank activity for you</li>
+          <li>Invoices, reconciling, closing the month and client-ready report packages</li>
+        </ul>
+        <div class="act">
+          <a class="btn" href="https://github.com/jeremymcollins89-prog/coll-landing-page/releases/download/coll-ledger/Coll-Ledger-Setup.exe">Download for Windows</a>
+          <span class="meta">Windows 10 and 11 · about 100 MB · updates itself · books stay on your computer</span>
+        </div>
+        <p class="note">If Windows says it protected your PC, click <strong>More info</strong>, then <strong>Run anyway</strong>. The installer comes from Coll Business Solutions LLC.</p>
+      </div>
+      <div class="art"><picture><source media="(max-width:900px)" srcset="/img/coll-ledger-wide.webp"><img src="/img/coll-ledger.webp" alt="Coll Ledger showing a café client's dashboard: cash in the bank, profit this year, a year of income and expenses, and what needs attention" width="1300" height="1500" loading="lazy"></picture></div>
     </article>
 
     <article class="proj dg" id="dino-garden">
