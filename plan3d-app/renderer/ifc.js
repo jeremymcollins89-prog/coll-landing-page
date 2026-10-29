@@ -495,11 +495,11 @@ function toIfc(plan, opts) {
         `,${num((head - sill) * MM)},${num(i.len * MM)},.WINDOW.,.SINGLE_PANEL.,$`, S.glass);
     } else if (o.type === 'removable' && V.removableOf) {
       // removable wall section: each removable panel and header panel its own wall element (so Revit schedules
-      // them), the 2″ aluminum tube posts and header tube as members, the H-studs with inserts as members
+      // them), the 3″ × 3″ steel tube posts and header tube as members, the H-studs with inserts as members
       const RL = V.removableOf(plan, A, i), sg = (q, th, st) => { const [p0x, p0y] = along(q.s0), [p1x, p1y] = along(q.s1); return seg(p0x, p0y, p1x, p1y, q.y0, q.y1, th, st); };
       RL.panels.forEach((q, k) => put('IFCWALL', 'Removable wall panel ' + (k + 1) + ' of ' + RL.panels.length, 'Coll removable wall panel (equipment access)', shape([sg(q, t, ws)]), ',.STANDARD.', ws));
       RL.headers.forEach(q => put('IFCWALL', 'Header panel over removable section', wName, shape([sg(q, t, ws)]), ',.STANDARD.', ws));
-      put('IFCMEMBER', 'Removable section frame, 2″ aluminum tube', 'Coll removable section frame', shape([...RL.posts.map(q => sg(q, t + 0.004, S.steel)), sg(RL.headerTube, t + 0.004, S.steel), ...RL.starts.map(q => sg(q, t + 0.004, S.white))]), ',.MEMBER.', S.steel);
+      put('IFCMEMBER', 'Removable section frame, 3″ × 3″ steel tube', 'Coll removable section frame', shape([...RL.posts.map(q => sg(q, t + 0.004, S.steel)), sg(RL.headerTube, t + 0.004, S.steel), ...RL.starts.map(q => sg(q, t + 0.004, S.white))]), ',.MEMBER.', S.steel);
       if (RL.studs.length || RL.hstuds.length) put('IFCMEMBER', 'H-stud with insert, removable section', 'Coll H-stud 3″', shape(RL.studs.concat(RL.hstuds).map(q => sg(q, t + 0.006, S.white))), ',.STUD.', S.white);
       { const [p0x, p0y] = along(0), [p1x, p1y] = along(i.len); put('IFCMEMBER', 'Rubber base', 'Coll rubber base', shape([seg(p0x, p0y, p1x, p1y, 0, 0.333, t + 0.022, S.base)]), ',.MEMBER.', S.base); }
     } else if (o.type === 'overhead') {
