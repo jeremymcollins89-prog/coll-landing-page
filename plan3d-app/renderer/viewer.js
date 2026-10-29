@@ -4083,6 +4083,14 @@ function buildScene(THREE, plan, A) {
     if (f.id) m.userData.ref = { kind: 'fixture', id: f.id };
     if (f.type !== 'ffu') m.userData.light = lightKey(f);
     fixtures.add(m);
+    // an emergency light: the battery's charge indicator and test button, a small red-and-green pod on the lens
+    if (f.type !== 'ffu' && f.em) {
+      const along = (nw || 2) >= (nh || 4), ex = along ? (nw || 2) / 2 - 0.35 : 0, ez = along ? 0 : (nh || 4) / 2 - 0.35;
+      const pod = new THREE.Mesh(new THREE.BoxGeometry(along ? 0.28 : 0.16, 0.05, along ? 0.16 : 0.28), M.emPod || (M.emPod = new THREE.MeshBasicMaterial({ color: 0xd33b2c, name: 'Emergency light test button' })));
+      pod.position.set(f.x + ex, fh - 0.1, f.y + ez); if (f.id) pod.userData.ref = m.userData.ref; fixtures.add(pod);
+      const dot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 0.06), M.emDot || (M.emDot = new THREE.MeshBasicMaterial({ color: 0x35d06e, name: 'Emergency light charge indicator' })));
+      dot.position.set(f.x + ex + (along ? -0.2 : 0), fh - 0.115, f.y + ez + (along ? 0 : -0.2)); fixtures.add(dot);
+    }
     // a light model picked in the Plan panel (plan.lightModel): its door frame round the lens, in its finish;
     // a troffer's lens sits up inside the frame
     const LMo = f.type !== 'ffu' && plan.lightModel ? plan.lightModel : null;

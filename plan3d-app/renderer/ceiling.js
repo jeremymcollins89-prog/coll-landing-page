@@ -172,5 +172,113 @@ function drawPreview(canvas, plan, placed, img) {
   }
 }
 
-global.Plan3DCeiling = { fixtureGroups, gridLayerList, placeCad, placeImage, shiftCeiling, removeCeiling, drawPreview, clipSeg };
+/* Light fixtures out of a lighting drawing, however they were drawn: blocks and closed polylines, or four loose
+   lines (an exploded fixture). The symbol inside says what it is:
+     a diagonal across it            a light
+     cross-hatching (a fill)          an emergency light (battery backup)
+     a circle / arcs in the middle    an FFU
+   k: feet per drawing unit. Returns [{ cx, cy (drawing units), w, h (feet, long side first), along ('x'|'y' on
+   the sheet), type: 'led'|'ffu', em }]. */
+function lightsFromDrawing(data, k) {
+  const segs = data.segs || [], tol = (0.6 / 12) / k, lo = 0.9 / k, hi = 6.2 / k;
+  const key = (x, y) => Math.round(x / tol) + ',' + Math.round(y / tol);
+  const at = new Map();
+  segs.forEach((q, i) => { for (const e of [0, 1]) { const x = q[e * 2], y = q[e * 2 + 1], kk = key(x, y); (at.get(kk) || at.set(kk, []).get(kk)).push(i); } });
+  const near = (x, y) => { const gx = Math.round(x / tol), gy = Math.round(y / tol), out = []; for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const s of at.get((gx + i) + ',' + (gy + j)) || []) out.push(s); return out; };
+  const len = (q) => Math.hypot(q[2] - q[0], q[3] - q[1]);
+  const other = (q, x, y) => Math.hypot(q[0] - x, q[1] - y) < tol * 1.5 ? [q[2], q[3]] : Math.hypot(q[2] - x, q[3] - y) < tol * 1.5 ? [q[0], q[1]] : null;
+  const segBetween = (a, b) => near(a[0], a[1]).some(i => { const o = other(segs[i], a[0], a[1]); return o && Math.hypot(o[0] - b[0], o[1] - b[1]) < tol * 1.5; });
+  const rects = [], seen = new Set();
+  const addRect = (P, Q, R, S, layer) => {
+    const cx = (P[0] + Q[0] + R[0] + S[0]) / 4, cy = (P[1] + Q[1] + R[1] + S[1]) / 4, a = Math.hypot(Q[0] - P[0], Q[1] - P[1]), b = Math.hypot(R[0] - Q[0], R[1] - Q[1]);
+    const ky = Math.round(cx / (tol * 4)) + ',' + Math.round(cy / (tol * 4)) + ',' + Math.round(Math.max(a, b) / (tol * 4));
+    if (seen.has(ky)) return; seen.add(ky);
+    const longX = a >= b ? Q[0] - P[0] : R[0] - Q[0], longY = a >= b ? Q[1] - P[1] : R[1] - Q[1], L = Math.max(a, b), W = Math.min(a, b);
+    rects.push({ cx, cy, L, W, ang: Math.atan2(longY, longX), layer, pts: [P, Q, R, S] });
+  };
+  // closed rectangles already found (blocks, polylines)
+  for (const r of data.rects || []) { const L = Math.max(r.w, r.h), W = Math.min(r.w, r.h); if (W < lo || L > hi) continue; addRect([r.cx - r.w / 2, r.cy - r.h / 2], [r.cx + r.w / 2, r.cy - r.h / 2], [r.cx + r.w / 2, r.cy + r.h / 2], [r.cx - r.w / 2, r.cy + r.h / 2], r.layer); }
+  // four loose lines meeting at right angles
+  segs.forEach((a) => {
+    const la = len(a); if (la < lo || la > hi) return;
+    for (const [P, Q] of [[[a[0], a[1]], [a[2], a[3]]], [[a[2], a[3]], [a[0], a[1]]]]) {
+      const ux = (Q[0] - P[0]) / la, uy = (Q[1] - P[1]) / la;
+      for (const i of near(Q[0], Q[1])) {
+        const b = segs[i]; if (b === a) continue; const R = other(b, Q[0], Q[1]); if (!R) continue;
+        const lb = Math.hypot(R[0] - Q[0], R[1] - Q[1]); if (lb < lo || lb > hi) continue;
+        if (Math.abs(((R[0] - Q[0]) * ux + (R[1] - Q[1]) * uy) / lb) > 0.04) continue;   // square to the first side
+        const S = [R[0] - (Q[0] - P[0]), R[1] - (Q[1] - P[1])];
+        if (segBetween(R, S) && segBetween(S, P)) addRect(P, Q, R, S, a[4]);
+      }
+    }
+  });
+  // what's drawn inside each one
+  const arcs = data.arcs || [];
+  const out = [];
+  for (const r of rects) {
+    if (r.W * k < 0.9 || r.L * k > 6.2 || r.L / r.W > 4.5) continue;
+    const c = Math.cos(r.ang), s2 = Math.sin(r.ang), loc = (x, y) => { const dx = x - r.cx, dy = y - r.cy; return [dx * c + dy * s2, -dx * s2 + dy * c]; };
+    const inside = (x, y) => { const [u, v] = loc(x, y); return Math.abs(u) <= r.L / 2 + tol && Math.abs(v) <= r.W / 2 + tol; };
+    const diag = Math.hypot(r.L, r.W);
+    let nDiag = 0, nHatch = 0, nArc = 0;
+    // only the lines near it: the ones touching its corners' cells and its middle, by a coarse scan
+    for (const q of segs) {
+      if (Math.abs((q[0] + q[2]) / 2 - r.cx) > r.L || Math.abs((q[1] + q[3]) / 2 - r.cy) > r.L) continue;
+      if (!inside(q[0], q[1]) || !inside(q[2], q[3])) continue;
+      const lq = len(q); if (lq < tol) continue;
+      const [u1, v1] = loc(q[0], q[1]), [u2, v2] = loc(q[2], q[3]), du = Math.abs(u2 - u1) / lq, dv = Math.abs(v2 - v1) / lq;
+      if (du > 0.995 || dv > 0.995) continue;   // the outline itself (or a line along it)
+      if (Math.abs(lq - diag) < diag * 0.06) nDiag++; else nHatch++;
+    }
+    for (const q of arcs) if (inside(q.x, q.y) && q.r * 2 < r.W * 1.05) nArc++;
+    const txt = (r.layer || '');
+    let type = null, em = false;
+    if (nHatch >= 6) { type = 'led'; em = true; }
+    else if (nDiag >= 1) type = 'led';
+    else if (nArc >= 1) type = 'ffu';
+    else if (RX_LED.test(txt)) type = 'led';
+    if (!type) continue;
+    const alongX = Math.abs(Math.cos(r.ang)) >= Math.abs(Math.sin(r.ang));
+    out.push({ cx: r.cx, cy: r.cy, w: alongX ? r.L * k : r.W * k, h: alongX ? r.W * k : r.L * k, type, em, turned: Math.min(Math.abs(Math.sin(r.ang)), Math.abs(Math.cos(r.ang))) > 0.08 });
+  }
+  // cross-hatching the size of a fixture with no complete outline round it (a side left off, or drawn a hair
+  // apart): the fill alone is an emergency light, at the hatch's extent
+  {
+    const H = [];
+    // (fill lines run up to a fixture's width on the slant)
+    segs.forEach((q) => { const lq = len(q); if (lq < tol || lq * k > 3.2) return; const ax = Math.abs(q[2] - q[0]) / lq, ay = Math.abs(q[3] - q[1]) / lq; if (ax > 0.97 || ay > 0.97) return; H.push(q); });
+    const par = H.map((_, i) => i), find = (i) => (par[i] === i ? i : (par[i] = find(par[i])));
+    const cell = 3 / 12 / k, grid = new Map(), cKey = (x, y) => Math.floor(x / cell) + ',' + Math.floor(y / cell);
+    H.forEach((q, i) => { for (const [x, y] of [[q[0], q[1]], [q[2], q[3]]]) { const kk = cKey(x, y); (grid.get(kk) || grid.set(kk, []).get(kk)).push(i); } });
+    for (const [kk, ids] of grid) { const [gx, gy] = kk.split(',').map(Number); for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const b of grid.get((gx + i) + ',' + (gy + j)) || []) if (b !== ids[0]) par[find(b)] = find(ids[0]); }
+    const groups = new Map(); H.forEach((q, i) => { const r = find(i); (groups.get(r) || groups.set(r, []).get(r)).push(q); });
+    // pieces of one fill (split where the fixture's diagonal or a gap crosses it) join when their extents touch
+    let boxes = [...groups.values()].map(G => { let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18; for (const q of G) { x0 = Math.min(x0, q[0], q[2]); x1 = Math.max(x1, q[0], q[2]); y0 = Math.min(y0, q[1], q[3]); y1 = Math.max(y1, q[1], q[3]); } return { x0, y0, x1, y1, n: G.length }; });
+    const gap = 3 / 12 / k;
+    for (let again = true; again;) {
+      again = false;
+      for (let i = 0; i < boxes.length && !again; i++) for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i], b = boxes[j];
+        if (a.x0 - gap > b.x1 || b.x0 - gap > a.x1 || a.y0 - gap > b.y1 || b.y0 - gap > a.y1) continue;
+        const m = { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1), n: a.n + b.n };
+        if (Math.max(m.x1 - m.x0, m.y1 - m.y0) * k > 6.2) continue;   // two fixtures side by side stay two
+        boxes.splice(j, 1); boxes[i] = m; again = true; break;
+      }
+    }
+    for (const B0 of boxes) {
+      if (B0.n < 12) continue;
+      const { x0, y0, x1, y1 } = B0;
+      const w = (x1 - x0) * k, h = (y1 - y0) * k, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      if (Math.min(w, h) < 1.5 || Math.max(w, h) > 6.2 || Math.max(w, h) / Math.min(w, h) > 3.2) continue;   // a real fixture size, not a scrap of a fill
+      if (out.some(f => Math.abs(f.cx - cx) * k < Math.max(f.w, f.h) / 2 && Math.abs(f.cy - cy) * k < Math.max(f.w, f.h) / 2)) continue;
+      out.push({ cx, cy, w, h, type: 'led', em: true, turned: false });
+    }
+  }
+  // an emergency fixture is often drawn as a light outline with its fill on top: one fixture, emergency
+  const merged = [];
+  for (const f of out) { const m = merged.find(g => Math.hypot(g.cx - f.cx, g.cy - f.cy) < tol * 4); if (m) { m.em = m.em || f.em; if (f.type === 'led') m.type = 'led'; } else merged.push(f); }
+  return merged;
+}
+
+global.Plan3DCeiling = { lightsFromDrawing, fixtureGroups, gridLayerList, placeCad, placeImage, shiftCeiling, removeCeiling, drawPreview, clipSeg };
 })(window);

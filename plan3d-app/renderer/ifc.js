@@ -737,7 +737,7 @@ function toIfc(plan, opts) {
         const inr = [[f.x - hw + band, f.y - hh + band], [f.x + hw - band, f.y - hh + band], [f.x + hw - band, f.y + hh - band], [f.x - hw + band, f.y + hh - band]], fst = LM && LM.finish === 'sst' ? S.steel || S.frame : S.frame;
         const lensZ = LM && (LM.style === 'troffer' || LM.style === 'rss') ? [H - 0.005, H + 0.005] : [H - 0.04, H - 0.03];
         const LZ = LM && global.Plan3DEquipment ? global.Plan3DEquipment.lightSize(LM, f) : null;
-        put('IFCLIGHTFIXTURE', LM ? (LM.maker && LM.name.indexOf(LM.maker) !== 0 ? LM.maker + ' ' : '') + LM.name + (LZ ? ' ' + LZ.model : '') : 'LED light', LM ? (LM.model || LM.name) + ', ' + (LM.finishLabel || '') : 'LED flat panel', shape([solid(pts, H - dep, H, fst), solid(pts, H + 0.052, H + (LM ? Math.max(0.1, LM.hh) : 0.33), S.housing), solid(inr, lensZ[0], lensZ[1], S.led)]), ',.DIRECTIONSOURCE.', S.led);
+        put('IFCLIGHTFIXTURE', f.em ? 'Emergency light, battery backup' : LM ? (LM.maker && LM.name.indexOf(LM.maker) !== 0 ? LM.maker + ' ' : '') + LM.name + (LZ ? ' ' + LZ.model : '') : 'LED light', f.em ? 'LED flat panel with 90-minute battery backup' : LM ? (LM.model || LM.name) + ', ' + (LM.finishLabel || '') : 'LED flat panel', shape([solid(pts, H - dep, H, fst), solid(pts, H + 0.052, H + (LM ? Math.max(0.1, LM.hh) : 0.33), S.housing), solid(inr, lensZ[0], lensZ[1], S.led)]), ',.DIRECTIONSOURCE.', S.led);
       }
     }
   }

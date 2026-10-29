@@ -16,7 +16,7 @@ const LAYERS = [
   ['A-WALL', 7, 'CONTINUOUS'], ['A-WALL-SP', 2, 'CONTINUOUS'], ['A-WALL-JOINT', 8, 'CONTINUOUS'], ['A-WALL-POST', 7, 'CONTINUOUS'], ['A-WALL-BLDG', 8, 'CONTINUOUS'],
   ['A-DOOR', 4, 'CONTINUOUS'], ['A-DOOR-SWING', 4, 'DASHED'], ['A-GLAZ', 5, 'CONTINUOUS'], ['A-PASS', 6, 'CONTINUOUS'],
   ['A-OPEN', 4, 'DASHED'], ['A-CHASE', 8, 'CONTINUOUS'], ['A-CHASE-HATCH', 9, 'CONTINUOUS'], ['A-GRILLE', 7, 'CONTINUOUS'],
-  ['A-CLNG-FIXT', 8, 'DASHED'], ['A-CLNG-GRID', 9, 'CONTINUOUS'], ['S-BEAM', 30, 'DASHED'], ['A-DIMS', 3, 'CONTINUOUS'], ['A-ANNO-ROOM', 7, 'CONTINUOUS'], ['A-ANNO-TAG', 2, 'CONTINUOUS'],
+  ['A-CLNG-FIXT', 8, 'DASHED'], ['A-CLNG-FIXT-EMER', 1, 'CONTINUOUS'], ['A-CLNG-GRID', 9, 'CONTINUOUS'], ['S-BEAM', 30, 'DASHED'], ['A-DIMS', 3, 'CONTINUOUS'], ['A-ANNO-ROOM', 7, 'CONTINUOUS'], ['A-ANNO-TAG', 2, 'CONTINUOUS'],
   [DATA_LAYER, 8, 'CONTINUOUS', true]
 ];
 // Layers whose lines make up the walls (used to tell whether the drawing was changed in AutoCAD)
@@ -162,6 +162,16 @@ function toDxf(plan, opts) {
       pline('A-CLNG-FIXT', [[f.x - hw, f.y - hh], [f.x + hw, f.y - hh], [f.x + hw, f.y + hh], [f.x - hw, f.y + hh]], true);
       if (f.type === 'ffu') { const rr = Math.min(hw, hh) * 0.68, pts = []; for (let k = 0; k < 32; k++) pts.push([f.x + Math.cos(k / 32 * Math.PI * 2) * rr, f.y + Math.sin(k / 32 * Math.PI * 2) * rr]); pline('A-CLNG-FIXT', pts, true); }   // an FFU: a circle in the middle
       else line('A-CLNG-FIXT', f.x - hw, f.y - hh, f.x + hw, f.y + hh);   // a light: the rectangle with a diagonal across it
+      if (f.type !== 'ffu' && f.em) {
+        // an emergency light: cross-hatched, 45° every 3″, clipped to the fixture
+        const st = 0.25, x0 = f.x - hw, x1 = f.x + hw, y0 = f.y - hh, y1 = f.y + hh;
+        for (let c = x0 - (y1 - y0); c < x1; c += st) {
+          // the line x − y = c − y0 … as (x, y) from y = y0 up; clip to the box
+          let ax = c, ay = y0, bx = c + (y1 - y0), by = y1;
+          if (ax < x0) { ay += x0 - ax; ax = x0; } if (bx > x1) { by -= bx - x1; bx = x1; }
+          if (bx - ax > 0.01) line('A-CLNG-FIXT-EMER', ax, ay, bx, by);
+        }
+      }
     }
     for (const b0 of plan.beams || []) { const bm = V.beamSeat ? V.beamSeat(plan, A, b0) : b0; line('S-BEAM', bm.x1, bm.y1, bm.x2, bm.y2); text('S-BEAM', (bm.x1 + bm.x2) / 2, (bm.y1 + bm.y2) / 2, (b0.size || 'W12x26').toUpperCase(), 0.3, Math.abs(bm.x2 - bm.x1) >= Math.abs(bm.y2 - bm.y1) ? 0 : 90); }
     for (const q of (V.isBuilt && V.isBuilt(plan) ? V.builtLines(plan) : plan.ceilingGrid && plan.ceilingGrid.length && V.ceilingLines ? V.ceilingLines(plan, A) : plan.ceilingGrid || [])) line('A-CLNG-GRID', q[0], q[1], q[2], q[3]);

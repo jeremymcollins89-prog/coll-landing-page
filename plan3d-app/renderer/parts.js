@@ -396,7 +396,8 @@ function partsList(plan) {
       continue;
     }
     const LM = plan.lightModel, LZ = LM && f.type !== 'ffu' && global.Plan3DEquipment ? global.Plan3DEquipment.lightSize(LM, f) : null;
-    if (LZ) { const [nm0] = fxSize(f); add('Ceiling', (LM.maker ? LM.maker + ' ' : '') + LM.model + ' LED panel, ' + nm0 + ', ' + LZ.model, LZ.watts + ', ' + LZ.lm + ', ' + LZ.cct, 1, 'ea', 60); continue; }
+    if (LZ && !f.em) { const [nm0] = fxSize(f); add('Ceiling', (LM.maker ? LM.maker + ' ' : '') + LM.model + ' LED panel, ' + nm0 + ', ' + LZ.model, LZ.watts + ', ' + LZ.lm + ', ' + LZ.cct, 1, 'ea', 60); continue; }
+    if (f.type !== 'ffu' && f.em) { const [nm1, sz1] = fxSize(f); add('Ceiling', 'Emergency light, LED ' + nm1 + ', battery backup (90 minutes)', sz1, 1, 'ea', 60.5); continue; }
     const [nm, sz] = fxSize(f); add('Ceiling', f.type === 'ffu' ? 'Fan filter unit, ' + nm : (LM ? (LM.maker ? LM.maker + ' ' : '') + LM.name + ', ' : 'LED light, ') + nm, LM && f.type !== 'ffu' ? sz + (sz ? ', ' : '') + (LM.finishLabel || '') : sz, 1, 'ea', f.type === 'ffu' ? 61 : 60);
   }
   if (ffuN && ffuLb) add('Ceiling', 'FFU weight on the grid, total', '', Math.round(ffuLb), 'lb', 65);
