@@ -64,7 +64,7 @@ test('in workerd: enroll → exams → certificate, signed and verifiable', { sk
   // written exam
   const st = (await call('POST', '/api/exam/start', { token: t, body: { exam: 'pro' } })).body;
   assert.equal(st.questions.length, 30);
-  assert(!/"why"|correct/i.test(JSON.stringify(st)));
+  assert(st.questions.every(q => Object.keys(q).sort().join() === 'id,options,question,topic'), 'only question fields are sent');
   const w = (await call('POST', '/api/exam/submit', { token: t, body: { attemptId: st.attemptId, answers: answerSheet('pro', st.questions, 1) } })).body;
   assert.deepEqual([w.score, w.passed, w.review.length], [29, true, 1]);
 

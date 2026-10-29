@@ -12,6 +12,8 @@ import { assertVerifies } from './helpers/verify.js';
 import PRO_BANK from '../src/banks/pro.js';
 import ADV_BANK from '../src/banks/adv.js';
 
+// Every property name anywhere inside a value.
+const deepKeys = (v, out = []) => { if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { out.push(k); deepKeys(x, out); } return out; };
 let emailN = 0;
 async function enroll(app, opts = {}) {
   const r = await app.call('POST', '/api/enroll', { body: { name: opts.name || 'Avery Quinn', email: opts.email || `student${++emailN}@example.com` } });
@@ -213,7 +215,8 @@ describe('written exams', () => {
       assert.deepEqual([...q.options].sort(), [...entry[2]].sort());
       assert(!text.includes(entry[4]), 'explanation leaked');
     }
-    assert(!/correct|"why"|answerIndex/i.test(text), 'answer fields leaked');
+    assert.deepEqual(Object.keys(b).sort(), ['attemptId', 'exam', 'expiresAt', 'needed', 'passPercent', 'questions', 'resumed', 'startedAt', 'title', 'total', 'triesLeft']);
+    assert(!/"(correct\w*|why|answer\w*)"\s*:/i.test(text), 'answer fields leaked');
     // asking again resumes the same attempt
     const again = await app.call('POST', '/api/exam/start', { token: s.token, body: { exam: 'pro' } });
     assert.equal(again.body.attemptId, b.attemptId); assert.equal(again.body.resumed, true);
@@ -334,8 +337,8 @@ describe('practical exams', () => {
     assert.deepEqual(pa.client.examKey.month, { from: '2026-09-01', to: '2026-09-30' });
     assert.equal(pa.client.academy.practicalId, pa.practicalId);
     for (const p of [pa, pb]) {
-      const text = JSON.stringify(p);
-      assert(!/"expect"|"amounts"|answer_?key|"work"/i.test(text), 'answer key leaked');
+      assert(!deepKeys(p).some(k => /^(expect|work|amounts|answer_?key)$/i.test(k)), 'answer key leaked');
+      assert.deepEqual(Object.keys(p.client.examKey).sort(), ['begin', 'card', 'check', 'checkNo', 'dep', 'draw', 'flor', 'gas', 'goog', 'ins', 'inv', 'month', 'payroll', 'sav', 'statement', 'tax', 'teatro', 'xcel1', 'xcel2']);
       assert.equal(p.client.exam, true);
       assert.equal(p.client.transactions.filter(t => t.status === 'review').length, 10);
       assert.equal(p.brief.documents.length, 4); assert.equal(p.brief.tasks.length, 7);
@@ -407,9 +410,8 @@ describe('practical exams', () => {
     for (let i = 0; i < 20; i++) {
       const st = (await app.call('POST', '/api/practical/start', { token: s.token, body: { exam: 'adv', fresh: true } })).body;
       assert(!('expect' in st.client.advKey)); assert.deepEqual(Object.keys(st.client.advKey.month), ['from', 'to']);
-      const key = JSON.parse(app.env.DB.db.prepare('SELECT answer_key FROM practicals WHERE id = ?').get(st.practicalId).answer_key);
-      const clientText = JSON.stringify(st.client);
-      for (const n of ['Loans Payable', 'Prepaid Expenses', 'Accrued Liabilities']) assert(!clientText.includes(':' + key.expect[n] + ','), n + ' leaked');
+      assert.deepEqual(Object.keys(st.client.advKey).sort(), ['deposit', 'loan', 'month', 'tax'], 'advKey holds only transaction ids and the month');
+      assert(!deepKeys(st).some(k => /^(expect|work|amounts|answer_?key)$/i.test(k)), 'answer key leaked');
       seen.add(st.brief.documents.map(d => d.text).join('|'));
       const solved = solveAdv(st.client, st.brief);
       if (i === 0) {
