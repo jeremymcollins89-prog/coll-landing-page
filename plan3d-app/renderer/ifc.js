@@ -270,7 +270,7 @@ function toIfc(plan, opts) {
     steel: style('Coll stainless steel', 0.75, 0.77, 0.78, 0, 0.6, 55, 'METAL'),
     grille: style('Coll return grille', 0.8, 0.82, 0.83, 0, 0.1, 16),
     floor: style('Coll floor, gray epoxy', 0.6, 0.62, 0.63, 0, 0.06, 22),
-    ceiling: style('Coll ceiling tile, white', 0.95, 0.95, 0.94, 0, 0.02, 4, 'MATT'),
+    ceiling: V.tileTypeOf(plan) === 'alum' ? style('Coll ceiling tile, aluminum', 0.8, 0.82, 0.83, 0, 0.6, 50, 'METAL') : style('Coll ceiling tile, vinyl-covered gypsum, white', 0.95, 0.95, 0.94, 0, 0.12, 12),
     grid: style('Coll ceiling grid, white', 0.96, 0.97, 0.97, 0, 0.13, 24),
     led: style('Coll LED light lens', 1, 1, 1, 0, 0.05, 8),
     ffu: style('Coll FFU, white powder coat', 0.95, 0.96, 0.96, 0, 0.13, 18),
