@@ -2857,7 +2857,7 @@ function buildRoof(THREE, group, A, plan, fp, sidingMat, M) {
   // gable ends and any outside wall face under a rising roof: siding from the wall top up to the roof. The roof's
   // height is read just inside the wall (on the line itself it can read as the eave), and walls inside the
   // house get none (they stop at the ceiling; above them is attic).
-  const gp = [], guv = [];
+  const gp = [], guv = [], gn = [];
   // the wall pieces and the openings in them (a window under a gable needs the gable over it too)
   const runs = A.pieces.filter(p => p.frame).concat(A.opInfo.filter(i => i.frame).map(i => ({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, len: i.len, t: i.t, h: i.wallH, s0: 0, frame: true })));
   for (const p of runs) {
@@ -2875,11 +2875,15 @@ function buildRoof(THREE, group, A, plan, fp, sidingMat, M) {
       // set the face just outside the wall's outer face so it lines up with the siding below
       const ox = nx * -ins * (p.t || 0.375) / 2, oz = nz * -ins * (p.t || 0.375) / 2;
       const A0 = [xa + ox, p.h, za + oz], B0 = [xb + ox, p.h, zb + oz], B1 = [xb + ox, yb, zb + oz], A1 = [xa + ox, ya, za + oz];
-      gp.push(...A0, ...B0, ...B1, ...A0, ...B1, ...A1);
-      guv.push(sa, p.h, sb, p.h, sb, yb, sa, p.h, sb, yb, sa, ya);
+      // wound to face out (a run drawn the other way round would otherwise be lit as its back face), lit like the wall below
+      const L2 = Math.hypot(ox, oz) || 1, ex = B0[0] - A0[0], ez = B0[2] - A0[2];
+      // (B0 − A0) × up = (−ez, 0, ex): A0, B0, B1 is counter-clockwise from outside when that points out
+      if (-ez * ox + ex * oz > 0) { gp.push(...A0, ...B0, ...B1, ...A0, ...B1, ...A1); guv.push(sa, p.h, sb, p.h, sb, yb, sa, p.h, sb, yb, sa, ya); }
+      else { gp.push(...A0, ...B1, ...B0, ...A0, ...A1, ...B1); guv.push(sa, p.h, sb, yb, sb, p.h, sa, p.h, sa, ya, sb, yb); }
+      for (let q = 0; q < 6; q++) gn.push(ox / L2, 0, oz / L2);
     }
   }
-  if (gp.length) { const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3)); gg.setAttribute('uv', new THREE.Float32BufferAttribute(guv, 2)); gg.computeVertexNormals(); const gm = sidingMat(1, 1); gm.side = THREE.DoubleSide; group.add(new THREE.Mesh(gg, gm)); }
+  if (gp.length) { const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3)); gg.setAttribute('uv', new THREE.Float32BufferAttribute(guv, 2)); gg.setAttribute('normal', new THREE.Float32BufferAttribute(gn, 3)); const gm = sidingMat(1, 1); gm.side = THREE.DoubleSide; group.add(new THREE.Mesh(gg, gm)); }
 }
 /* The roof's edges, built like a house: a fascia board along every edge (the eaves level, the rakes climbing the
    gables), a K-style gutter hung on each eave's fascia with end caps, and a downspout from each end of a gutter
@@ -3287,16 +3291,17 @@ function buildScene(THREE, plan, A) {
     else if (k === 'stone') { g.fillStyle = '#c9c3b8'; g.fillRect(0, 0, w, h); let y = 1; while (y < h) { const ch = 10 + Math.random() * 8; let x = -Math.random() * 20; while (x < w) { const sw = 14 + Math.random() * 26; const l = 42 + Math.random() * 22; g.fillStyle = `hsl(${25 + Math.random() * 20},${6 + Math.random() * 12}%,${l}%)`; const r = 3; g.beginPath(); g.moveTo(x + r, y); g.lineTo(x + sw - r, y); g.quadraticCurveTo(x + sw, y, x + sw, y + r); g.lineTo(x + sw, y + ch - r); g.quadraticCurveTo(x + sw, y + ch, x + sw - r, y + ch); g.lineTo(x + r, y + ch); g.quadraticCurveTo(x, y + ch, x, y + ch - r); g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y); g.fill(); g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x + 1, y + ch - 2, sw - 2, 2); x += sw + 2; } y += ch + 2; } speck(600, .06); }
     else { speck(3000, .05); }
   }));
-  const sidingMat = (len, h) => { const t = new THREE.CanvasTexture(sidingCanvas); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = ANISO; const r = SID_REP[FIN.siding] || [8, 9.33]; t.repeat.set(len / r[0], h / r[1]); return new THREE.MeshLambertMaterial({ map: t }); };
+  // y0: where the piece starts, so the courses line up with the wall beside it (over a window, under a sill)
+  const sidingMat = (len, h, y0) => { const t = new THREE.CanvasTexture(sidingCanvas); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = ANISO; const r = SID_REP[FIN.siding] || [8, 9.33]; t.repeat.set(len / r[0], h / r[1]); t.offset.set(0, (y0 || 0) / r[1]); return new THREE.MeshLambertMaterial({ map: t }); };
   const drywall = new THREE.MeshLambertMaterial({ color: parseInt(((FINISH.paint[FIN.paint] || [])[1] || '#f1eee8').slice(1), 16) });
   // which face of a framed wall is outside: the side with no building behind it
   const FPout = footprint(A, true);
   const outsideAt = (x, z) => !FPout || !FPout.has(x, z);
-  const frameMats = (x1, z1, x2, z2, t, h, ext) => {
+  const frameMats = (x1, z1, x2, z2, t, h, ext, y0) => {
     const L = Math.hypot(x2 - x1, z2 - z1) || 1, nx = -(z2 - z1) / L, nz = (x2 - x1) / L, cx = (x1 + x2) / 2, cz = (z1 + z2) / 2, off = t / 2 + 0.8;
     let left = outsideAt(cx + nx * off, cz + nz * off), right = outsideAt(cx - nx * off, cz - nz * off);
     if (ext === false) left = right = false;
-    const sm = (left || right) ? sidingMat(L, h) : null;
+    const sm = (left || right) ? sidingMat(L, h, y0) : null;
     return { mats: [M.edge, M.edge, M.edge, M.edge, left ? sm : drywall, right ? sm : drywall], left, right, nx, nz };
   };
   // the ceiling track (the angle the grid rests on) shows only on walls taller than one 12′ panel; a single
@@ -3413,8 +3418,33 @@ function buildScene(THREE, plan, A) {
   }
   curRef = null;
   // an upper floor's floor system (rim joist, subfloor) between it and the floor below, sided on the outside
+  // corner boards: a white 1×5 on both faces of every outside corner of the house, floor band to wall top, so the
+  // siding of the two walls meets under trim (as built) instead of in a raw seam
+  if (A.frameAny && !A.hardAny) {
+    try {
+      const EW = houseExtWalls(plan, A), FPc = footprint(A, true), cbMat = M.cornerBoard || (M.cornerBoard = new THREE.MeshLambertMaterial({ color: 0xf3f3f0, name: 'Corner board, white' }));
+      const ends = []; for (const w of EW) for (const [x, z, ox, oz] of [[w.x1, w.y1, w.x2, w.y2], [w.x2, w.y2, w.x1, w.y1]]) { const L = Math.hypot(ox - x, oz - z); ends.push({ w, x, z, ux: (ox - x) / L, uz: (oz - z) / L }); }
+      const done = [];
+      for (let i = 0; i < ends.length; i++) for (let j = i + 1; j < ends.length; j++) {
+        const a = ends[i], b = ends[j]; if (a.w === b.w || Math.hypot(a.x - b.x, a.z - b.z) > 0.08 || Math.abs(a.ux * b.ux + a.uz * b.uz) > 0.2) continue;
+        if (done.some(q => Math.hypot(q[0] - a.x, q[1] - a.z) < 0.1)) continue;
+        // an outside corner: the point diagonally out from it, away from both walls, is outside the house
+        const t = Math.max(a.w.t || 0.375, b.w.t || 0.375), ox = -(a.ux + b.ux), oz = -(a.uz + b.uz), on = Math.hypot(ox, oz) || 1;
+        if (FPc && FPc.has(a.x + ox / on * (t + 0.5), a.z + oz / on * (t + 0.5))) continue;
+        done.push([a.x, a.z]);
+        const top = Math.max(a.w.h || A.H, b.w.h || A.H, A.H), bot = -(plan.__floorBand || 0) + 0.02, W = 5 / 12, T = 1 / 12;
+        // outer corner of the framing, then a board along each wall's outer face
+        const px = a.x - a.ux * t / 2 - b.ux * t / 2, pz = a.z - a.uz * t / 2 - b.uz * t / 2;
+        for (const [u, v] of [[a, b], [b, a]]) {
+          // the face of wall u: offset out (away from v's direction) by half a board's thickness
+          const fx = px - v.ux * T / 2, fz = pz - v.uz * T / 2;
+          segBox(fx - u.ux * T, fz - u.uz * T, fx + u.ux * W, fz + u.uz * W, bot, top, T, cbMat);
+        }
+      }
+    } catch (e) { /* trim is a nicety */ }
+  }
   if (A.frameAny && plan.__floorBand > 0) {
-    for (const w of houseExtWalls(plan, A)) { const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), ux = (w.x2 - w.x1) / L, uz = (w.y2 - w.y1) / L, e = (w.t || 0.375) / 2; const sm = sidingMat(L + 2 * e, plan.__floorBand); const m = segBox(w.x1 - ux * e, w.y1 - uz * e, w.x2 + ux * e, w.y2 + uz * e, -plan.__floorBand, 0, (w.t || 0.375), [M.edge, M.edge, M.edge, M.edge, sm, sm]); pick.push(m); }
+    for (const w of houseExtWalls(plan, A)) { const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), ux = (w.x2 - w.x1) / L, uz = (w.y2 - w.y1) / L, e = (w.t || 0.375) / 2; const sm = sidingMat(L + 2 * e, plan.__floorBand, -plan.__floorBand); const m = segBox(w.x1 - ux * e, w.y1 - uz * e, w.x2 + ux * e, w.y2 + uz * e, -plan.__floorBand, 0, (w.t || 0.375), [M.edge, M.edge, M.edge, M.edge, sm, sm]); pick.push(m); }
   }
   // a house's foundation where it shows above grade: a concrete band at the foot of the outside walls (the slab
   // edge, or the stem / basement wall), siding starting above it
@@ -3518,7 +3548,7 @@ function buildScene(THREE, plan, A) {
     curRef = o.id ? { kind: 'opening', id: o.id } : null;
     const ceilHere = i.hard ? wallCeil(plan, A, { x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t }) : H;
     const head = Math.min(i.hard ? Math.min(ceilHere, i.wallH || ceilHere) : (i.wallH || H), o.head || 7);
-    const IP = i.hard ? wallPM(i.host && i.host.id) : null, top = i.wallH || H, hm = i.hard ? IP.trim : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head).mats : shellMat(i.kind, i.len, top - head, 0);
+    const IP = i.hard ? wallPM(i.host && i.host.id) : null, top = i.wallH || H, hm = i.hard ? IP.trim : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head, undefined, head).mats : shellMat(i.kind, i.len, top - head, 0);
     if (top - head > 0.01) { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); if (i.hard && ceilHere - head > 0.2 && trackOK(top)) { if (top > ceilHere + 0.05) trackFaces(o.x1, o.y1, o.x2, o.y2, t, H, top); else segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); } }
     const ax = o.x1, az = o.y1, bx = o.x2, bz = o.y2;
     const along = (s) => [ax + i.ux * s, az + i.uz * s];
