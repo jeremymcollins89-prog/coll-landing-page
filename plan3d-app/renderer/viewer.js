@@ -55,6 +55,8 @@ const CSS = `
 .p3v-clist ol{margin:6px 0;padding-left:20px}.p3v-clist li{margin:3px 0}.p3v-clist small{color:#9fb0b7}.p3v-clist button{font:600 12px inherit;margin:6px 6px 0 0;padding:6px 10px;border-radius:7px;border:0;background:#f2c84b;color:#1a1f22;cursor:pointer}.p3v-clist button.x{background:transparent;color:#9fb0b7;padding:0 4px;margin:0}
 .p3v-cform{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:8;display:flex;flex-direction:column;gap:8px;padding:14px;width:min(340px,calc(100% - 40px));color:#e8edef;font:13px system-ui,sans-serif;pointer-events:auto}
 .p3v-cform textarea,.p3v-cform input{font:13px system-ui,sans-serif;padding:7px 8px;border-radius:7px;border:1px solid #3d4a50;background:#1b2226;color:#e8edef}
+.p3v-clist button.p3v-abtn{display:block;width:100%;margin:2px 0 8px;padding:9px 10px;font-size:13px;background:#3fb36b;color:#fff}.p3v-clist button.p3v-abtn.done{background:#28343a;color:#8fd9a8}
+.p3v-adec button{flex:1;margin:0!important;background:#28343a!important;color:#e8edef!important}.p3v-adec button[aria-pressed=true]{background:#3fb36b!important;color:#fff!important}.p3v-adec button[data-dec=changes][aria-pressed=true]{background:#f2c84b!important;color:#1a1f22!important}
 .p3v-cform button{font:600 13px inherit;padding:7px 12px;border-radius:7px;border:0;margin-right:6px;cursor:pointer;background:#f2c84b;color:#1a1f22}.p3v-cform .p3v-ccancel{background:#3d4a50;color:#e8edef}
 .p3v-empty{position:absolute;inset:0;display:grid;place-items:center;color:#5b676d;font-size:16px;pointer-events:none;z-index:2}
 `;
@@ -4280,6 +4282,7 @@ function mount(container, plan, opts) {
     <div class="p3v-bottom"><canvas class="p3v-mini p3v-panel" aria-label="Mini map. Click to jump there."></canvas><div class="p3v-chips"></div></div>
     <div class="p3v-hint"></div>
     <div class="p3v-panel p3v-clist" hidden></div>
+    <form class="p3v-panel p3v-cform p3v-aform" hidden><b>Approve this design?</b><small class="p3v-ainfo" style="color:#9fb0b7">Your designer gets your answer right away.</small><div class="p3v-adec" style="display:flex;gap:6px"><button type="button" data-dec="approve" aria-pressed="true">✓ Approve</button><button type="button" data-dec="changes" aria-pressed="false">✎ Request changes</button></div><textarea rows="3" placeholder="Anything to add (optional)"></textarea><input placeholder="Your name" maxlength="60" required><div><button type="submit">Send</button><button type="button" class="p3v-ccancel">Cancel</button></div><small class="p3v-aerr" style="color:#f0a3a3"></small></form>
     <form class="p3v-panel p3v-cform" hidden><b>Comment</b><textarea rows="3" placeholder="What should change here?" required></textarea><input placeholder="Your name" maxlength="60"><div><button type="submit">Save</button><button type="button" class="p3v-ccancel">Cancel</button></div></form>
     <div class="p3v-empty" hidden>Draw or import walls to see them in 3D.</div>`;
   const $ = (s) => container.querySelector(s);
@@ -5157,12 +5160,14 @@ function mount(container, plan, opts) {
     finally { hid.forEach(o => { o.visible = true; }); srBtn.disabled = false; srBtn.textContent = lbl; }
   }
   srBtn.onclick = (e) => { e.stopPropagation(); superRender(); };
-  const cBtn = $('.p3v-cbtn'), cList = $('.p3v-clist'), cForm = $('.p3v-cform');
+  const cBtn = $('.p3v-cbtn:not(.p3v-abtn)'), cList = $('.p3v-clist'), cForm = $('.p3v-cform:not(.p3v-aform)');
   const pins = new THREE.Group(); scene.add(pins);
   let commentMode = false, pendingAt = null, myComments = [];
   const storeKey = () => 'p3v-comments:' + ((plan && (plan.name || '')) + ':' + ((plan && plan.walls) ? plan.walls.length : 0));
   const loadMine = () => { if (!opts.comments) { myComments = []; return; } try { myComments = JSON.parse(localStorage.getItem(storeKey()) || '[]') || []; } catch (e) { myComments = []; } };
   const saveMine = () => { try { localStorage.setItem(storeKey(), JSON.stringify(myComments)); } catch (e) { /* private window: kept for this visit only */ } };
+  // the customer's copy (a walkthrough link: a share id, no private key) can approve or ask for changes
+  const aOk = () => !!(opts.comments && opts.approve !== false && plan && plan.share && plan.share.id && !plan.share.key);
   const allComments = () => [...((plan && plan.comments) || []).map(c => ({ ...c, theirs: true })), ...myComments];
   const pinTex = {};
   function pinSprite(n, done) {
@@ -5177,10 +5182,11 @@ function mount(container, plan, opts) {
     if (!opts.comments && !L.length) { cList.hidden = true; return; }
     cList.hidden = !opts.comments && !L.length;
     const esc2 = (t) => String(t || '').replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
-    cList.innerHTML = `<b>Comments${L.length ? ' (' + L.length + ')' : ''}</b>` + (L.length ? '<ol>' + L.map((c, i) => `<li>${esc2(c.text)}<br><small>${esc2(c.by || '')}${c.by ? ' · ' : ''}${esc2((c.at || '').slice(0, 10))}${c.done ? ' · done' : ''}</small>${!c.theirs && opts.comments ? ` <button class="x" data-del="${esc2(c.id)}" title="Delete">✕</button>` : ''}</li>`).join('') + '</ol>' : '<br><small>Turn on 💬 Comment, then click anything in the model.</small>')
+    cList.innerHTML = (aOk() ? '<button class="p3v-abtn" title="Tell your designer this design is approved, or what should change">✓ Approve or request changes</button>' : '') + `<b>Comments${L.length ? ' (' + L.length + ')' : ''}</b>` + (L.length ? '<ol>' + L.map((c, i) => `<li>${esc2(c.text)}<br><small>${esc2(c.by || '')}${c.by ? ' · ' : ''}${esc2((c.at || '').slice(0, 10))}${c.done ? ' · done' : ''}</small>${!c.theirs && opts.comments ? ` <button class="x" data-del="${esc2(c.id)}" title="Delete">✕</button>` : ''}</li>`).join('') + '</ol>' : '<br><small>Turn on 💬 Comment, then click anything in the model.</small>')
       + (opts.comments && myComments.some(c => !c.sent) ? '<button class="p3v-csend">Send comments</button>' : opts.comments && myComments.length ? '<p><small>All sent to your designer ✓</small></p>' : '');
     cList.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { myComments = myComments.filter(c => c.id !== b.dataset.del); saveMine(); drawPins(); });
     const sb = cList.querySelector('.p3v-csend'); if (sb) sb.onclick = () => sendComments(false);
+    const ab = cList.querySelector('.p3v-abtn'); if (ab) { ab.onclick = (e) => { e.stopPropagation(); openApprove(); }; aState(); }
   }
   // with a share id (set by the app), comments go straight to the designer's app through the server;
   // without one, or with no connection, they're saved as a file to email back
@@ -5241,6 +5247,46 @@ function mount(container, plan, opts) {
     saveMine(); pendingAt = null; cForm.hidden = true; drawPins();
   });
   cForm.querySelector('.p3v-ccancel').onclick = () => { pendingAt = null; cForm.hidden = true; };
+  // ---- Approve or request changes (a walkthrough link only: a plan with a share id and no private key, i.e.
+  // the customer's copy). It goes to the designer's app like a comment, marked as a decision on this version.
+  const aForm = $('.p3v-aform');
+  const aKey = () => 'p3v-decision:' + ((plan && plan.share && plan.share.id) || '') + ':' + ((plan && plan.ver) || '');
+  function aState() {
+    let d = null; try { d = JSON.parse(localStorage.getItem(aKey()) || 'null'); } catch (e) { d = null; }
+    const b = cList.querySelector('.p3v-abtn');
+    if (b) { b.classList.toggle('done', !!d); b.textContent = d ? (d.decision === 'approve' ? '✓ You approved this design' : '✎ You asked for changes') + ' · change' : '✓ Approve or request changes'; }
+    return d;
+  }
+  function aSetup() { aForm.hidden = true; }
+  function openApprove() {
+    const d = aState();
+    aForm.querySelector('.p3v-ainfo').textContent = d ? `You sent “${d.decision === 'approve' ? 'approved' : 'changes requested'}” on ${new Date(d.at).toLocaleDateString()}. You can send a new answer.` : 'Your designer gets your answer right away.';
+    aForm.querySelector('.p3v-aerr').textContent = ''; setDec(d && d.decision === 'changes' ? 'changes' : 'approve');
+    try { aForm.querySelector('input[maxlength]').value = localStorage.getItem('p3v-name') || ''; } catch (err) { /* ok */ }
+    aForm.hidden = false;
+  };
+  aForm.querySelector('.p3v-ccancel').onclick = () => { aForm.hidden = true; };
+  let aDec = 'approve';
+  const setDec = (d) => { aDec = d; aForm.querySelectorAll('[data-dec]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.dec === d))); const ta = aForm.querySelector('textarea'); ta.placeholder = d === 'changes' ? 'What should change?' : 'Anything to add (optional)'; ta.required = d === 'changes'; };
+  aForm.querySelectorAll('[data-dec]').forEach(b => b.onclick = (e) => { e.preventDefault(); setDec(b.dataset.dec); });
+  aForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const decision = aDec;
+    const note = aForm.querySelector('textarea').value.trim(), by = aForm.querySelector('input[maxlength]').value.trim();
+    if (!by) return; if (decision === 'changes' && !note) return;
+    try { localStorage.setItem('p3v-name', by); } catch (err) { /* ok */ }
+    const b = A && A.bounds, at = new Date().toISOString();
+    const c = { id: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: (decision === 'approve' ? 'Approved the design.' : 'Requested changes.') + (note ? ' ' + note : ''), by, at, x: b ? b.minX + b.w / 2 : 0, y: b ? b.minZ + b.d / 2 : 0, h: 0, ref: { kind: 'approval', id: String((plan && plan.ver) || '') }, target: decision };
+    const sb = aForm.querySelector('button[type=submit]'); sb.disabled = true; sb.textContent = 'Sending…';
+    let err = '';
+    try { const r = await fetch(COMMENTS_URL + encodeURIComponent(plan.share.id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ comments: [c], project: (plan && plan.name) || '' }) }); if (!r.ok) err = 'The server said ' + r.status + '.'; }
+    catch (x) { err = navigator.onLine === false ? 'No internet connection right now.' : 'Couldn’t reach the server.'; }
+    sb.disabled = false; sb.textContent = 'Send';
+    if (err) { aForm.querySelector('.p3v-aerr').textContent = 'Not sent: ' + err + ' Try again in a moment.'; return; }
+    try { localStorage.setItem(aKey(), JSON.stringify({ decision, at })); } catch (x) { /* ok */ }
+    aForm.hidden = true; drawPins();
+    hint.textContent = decision === 'approve' ? 'Sent ✓ Your designer has your approval.' : 'Sent ✓ Your designer has your requested changes.'; hint.classList.remove('gone'); setTimeout(() => hint.classList.add('gone'), 4500);
+  });
   if (opts.comments) { cBtn.hidden = false; cBtn.onclick = (e) => { e.stopPropagation(); commentMode = !commentMode; cBtn.setAttribute('aria-pressed', commentMode); hint.textContent = commentMode ? 'Click anything to comment on it' : ''; hint.classList.toggle('gone', !commentMode); }; }
   canvas.addEventListener('pointerup', endPointer);
   canvas.addEventListener('pointercancel', endPointer);
@@ -5394,7 +5440,7 @@ function mount(container, plan, opts) {
     try { refreshAir(); applySwitches(); } catch (e) { console.error(e); }
     try { stopTour(); refreshTour(); } catch (e) { console.error(e); }
     try { upgradeScene(scene); let top = (A && A.H) || 10; try { const LP = levelPlans(p); top = LP[LP.length - 1].elev + 30; } catch (e) { } fitSun(A && A.bounds, top); } catch (e) { console.error(e); }
-    if (typeof drawPins === 'function' && cList) { loadMine(); drawPins(); }
+    if (typeof drawPins === 'function' && cList) { loadMine(); drawPins(); aSetup(); }
     emptyEl.hidden = !A.empty;
     // the Plenum view only when there is a plenum
     const pb = modeBtns.find(b => b.dataset.m === 'plenum'); if (pb) pb.hidden = !(A.PL > 0);

@@ -212,6 +212,8 @@ function ensureViewer() {
   return viewer;
 }
 // the 3D view doesn't need the background drawing or the snapshot pictures (big), so they stay out of its copy
+// a copy for the customer: no prices, markup, purchase orders or the app's own records
+function linkPlan() { const p = clonePlan(); for (const k of ['quote', 'pos', 'baseline', 'changeOrders', 'published', 'approvals', 'submittal', 'install']) delete p[k]; return p; }
 function clonePlan() { const sn = ed.plan.snaps; if (sn) delete ed.plan.snaps; let p; try { p = JSON.parse(JSON.stringify(ed.plan)); } finally { if (sn) ed.plan.snaps = sn; } delete p.background; return p; }
 function queue3D() {
   if (view === '2d' || !viewer) return;
@@ -990,8 +992,29 @@ async function registerShare() {
   const S = ed.plan.share; if (!S || !S.key || shareReg === S.id) return;
   try { const r = await fetch(PLAN3D_CLOUD + '/shares', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shareId: S.id, key: S.key, project: ed.plan.name || '' }) }); if (r.ok) shareReg = S.id; } catch (e) { /* offline: tried again on the next check */ }
 }
+// a customer's decision on a walkthrough link (Approve / Request changes) arrives as a comment marked
+// ref.kind 'approval', ref.id the version of the link they looked at
+const isApproval = (c) => !!(c && c.ref && c.ref.kind === 'approval');
+function mergeApprovals(list) {
+  const got = [];
+  for (const c of list) {
+    if (!isApproval(c) || (ed.plan.approvals || []).some(a => a.id === String(c.id))) continue;
+    const a = { id: String(c.id), decision: c.target === 'approve' ? 'approve' : 'changes', by: String(c.by || '').slice(0, 60), at: String(c.at || ''), text: String(c.text || '').slice(0, 2000), ver: String(c.ref.id || '') };
+    const pubs = ed.plan.published || [], pub = pubs.find(q => q.ver === a.ver);
+    a.matched = !!pub;
+    ed.edit(Q => { Q.approvals = (Q.approvals || []).concat([a]); if (a.decision === 'approve' && pub) Q.baseline = Object.assign({}, pub.snap, { label: 'approved by ' + (a.by || 'the customer') + ' on the walkthrough link', date: a.at || pub.snap.date }); });
+    got.push(a);
+  }
+  for (const a of got) {
+    if (a.decision === 'approve') toast(`✓ ${a.by || 'Your customer'} approved “${ed.plan.name || 'this plan'}”.` + (a.matched ? ' Saved as the approved version: change orders compare against it.' : ' (an earlier version of the link than this plan: mark the approved version yourself if it still matches)'), a.matched ? null : { label: 'Mark approved', fn: () => markApproved('approved by ' + (a.by || 'the customer')) });
+    else toast(`${a.by || 'Your customer'} asked for changes on “${ed.plan.name || 'this plan'}”${a.text ? ': ' + a.text.slice(0, 120) : '.'}`);
+  }
+  if (got.length) { renderProps(); updateChrome(); }
+  return got.length;
+}
 function mergeComments(list) {
   let n = 0; const who = new Set();
+  n += mergeApprovals(list); list = list.filter(c => !isApproval(c));
   ed.edit(Pl => { Pl.comments = Pl.comments || []; for (const c of list) { if (!c || !c.text || !isFinite(c.x) || !isFinite(c.y)) continue; const old = Pl.comments.find(q => q.id === String(c.id)); if (old) { if (old.text !== c.text) { old.text = String(c.text).slice(0, 2000); n++; } continue; } Pl.comments.push({ id: String(c.id || Plan3DEditor.uid()), x: +c.x, y: +c.y, h: +c.h || 0, text: String(c.text).slice(0, 2000), by: String(c.by || '').slice(0, 60), at: String(c.at || ''), ref: c.ref || null }); n++; if (c.by) who.add(c.by); } });
   return { n, who: [...who] };
 }
@@ -1061,7 +1084,8 @@ async function openJob(id) {
 function desktopNotify(o, n) {
   try {
     if (!('Notification' in window)) return;
-    const go = () => { const nt = new Notification(`${n} new comment${n === 1 ? '' : 's'} on ${o.name || 'a job'}`, { body: (o.lastBy ? o.lastBy + ': ' : '') + (o.lastText || ''), silent: false }); nt.onclick = () => { window.focus(); openJob(o.id); }; };
+    const title = o.lastDecision === 'approve' ? `✓ ${o.lastBy || 'Your customer'} approved ${o.name || 'a job'}` : o.lastDecision === 'changes' ? `${o.lastBy || 'Your customer'} asked for changes on ${o.name || 'a job'}` : `${n} new comment${n === 1 ? '' : 's'} on ${o.name || 'a job'}`;
+    const go = () => { const nt = new Notification(title, { body: (o.lastBy ? o.lastBy + ': ' : '') + (o.lastText || ''), silent: false }); nt.onclick = () => { window.focus(); openJob(o.id); }; };
     if (Notification.permission === 'granted') go(); else if (Notification.permission !== 'denied') Notification.requestPermission().then(p => { if (p === 'granted') go(); });
   } catch (e) { /* no notifications here */ }
 }
@@ -1084,7 +1108,7 @@ async function pollJobs() {
         const d = await r.json(), list = (d.comments || []).filter(c => c && c.text);
         if (d.last > (o.notified || 0)) { o.notified = d.last; changed = true; }
         if (list.length) {
-          const c = list[list.length - 1]; o.lastText = String(c.text).slice(0, 160); o.lastBy = String(c.by || '').slice(0, 60); o.lastAt = c.at || new Date().toISOString(); o.newAt = Date.now();
+          const c = list[list.length - 1]; o.lastText = String(c.text).slice(0, 160); o.lastDecision = isApproval(c) ? (c.target === 'approve' ? 'approve' : 'changes') : ''; o.lastBy = String(c.by || '').slice(0, 60); o.lastAt = c.at || new Date().toISOString(); o.newAt = Date.now();
           // the job that's open and on screen gets them straight into its comments (checkComments); still listed
           const open = ed.plan.share && ed.plan.share.id === o.id && document.hasFocus();
           if (!open) { o.unread = (o.unread || 0) + list.length; fresh.push([o, list.length]); }
@@ -1119,7 +1143,9 @@ function bindSnaps(P) {
 function commentsGroupHtml(P) {
   const L = P.comments || [];
   const rows = L.map((c, i) => `<div class="pl-row"><span><b>${i + 1}.</b> ${esc(c.text)}<small>${esc(c.by || 'Customer')} · ${esc((c.at || '').slice(0, 10))}${c.done ? ' · done' : ''}</small></span><b><button class="btn small" data-cdone="${esc(c.id)}" title="${c.done ? 'Mark open' : 'Mark done'}">${c.done ? '↺' : '✓'}</button><button class="btn small danger" data-cdel="${esc(c.id)}" title="Delete">✕</button></b></div>`).join('');
-  return `<div class="grp"><h3>Customer comments</h3>${L.length ? `<div class="pl">${rows}</div>` : '<p class="note">Export a walkthrough page and send it, or open the plan in the phone viewer. Your customer clicks 💬 Comment, leaves notes on anything and taps Send comments: they show up here on their own, with pins where they were left.</p>'}
+  const AP = (P.approvals || []).slice(-4).reverse();
+  const apHtml = AP.length ? `<div class="pl" style="margin-bottom:8px">${AP.map(a => `<div class="pl-row"><span>${a.decision === 'approve' ? '<b style="color:#3fb36b">✓ Approved</b>' : '<b style="color:#e0a43a">Changes requested</b>'} ${esc(a.text && a.decision !== 'approve' ? a.text : '')}<small>${esc(a.by || 'Customer')} · ${esc((a.at || '').slice(0, 10))}${a.decision === 'approve' && !a.matched ? ' · an earlier version of the link' : ''}</small></span></div>`).join('')}</div>` : '';
+  return `<div class="grp"><h3>Customer comments</h3>${apHtml}${L.length ? `<div class="pl">${rows}</div>` : '<p class="note">Export a walkthrough page and send it, or open the plan in the phone viewer. Your customer clicks 💬 Comment, leaves notes on anything and taps Send comments: they show up here on their own, with pins where they were left.</p>'}
     <div class="row">${P.share && P.share.key ? '<button class="btn small" id="pCChk">Check for comments</button>' : ''}<button class="btn small" id="pCImp">Import comments file…</button></div>
     ${L.length ? '<p class="note">Numbered pins show on the plan and in 3D where each comment was left. Comments go out with the next walkthrough you send, so your customer sees what you marked done.</p>' : ''}</div>`;
 }
@@ -2854,13 +2880,15 @@ async function openSample() {
 async function save(as) {
   if (!api.saveProject) return null;
   if (ed.plan.walls.length) ensureShare();
+  // a plan sent as a link: the version the link is about to show is recorded in the file being saved
+  const pubVer = ed.plan.share && ed.plan.share.pub ? recordPublished() : null;
   const p = await api.saveProject(JSON.stringify(ed.plan), as ? null : projectPath, ed.plan.name);
   if (p) {
     projectPath = p; ed.dirty = false; updateChrome(); trackJob();
     // a plan sent as a link: the link now shows what was just saved
     const pub = ed.plan.share && ed.plan.share.pub;
     toast(pub ? 'Saved. Updating the walkthrough link…' : 'Saved', { label: 'Show in folder', fn: () => api.showInFolder(p) });
-    if (pub) publishLink().then(() => toast('Saved. The walkthrough link shows this version.', { label: 'Show in folder', fn: () => api.showInFolder(p) })).catch(() => toast('Saved. The walkthrough link couldn’t update (no connection?); it will next time you save.'));
+    if (pub) publishLink(pubVer).then(() => toast('Saved. The walkthrough link shows this version.', { label: 'Show in folder', fn: () => api.showInFolder(p) })).catch(() => toast('Saved. The walkthrough link couldn’t update (no connection?); it will next time you save.'));
   }
   return p;
 }
@@ -2868,9 +2896,15 @@ async function save(as) {
    and opens from collbusinesssolutions.com/plan3d-viewer/?w=… on any phone or browser: nothing to attach or
    download. Saving the plan afterwards updates what the link shows. */
 const VIEWER_LINK = 'https://collbusinesssolutions.com/plan3d-viewer/?w=';
-async function publishLink() {
+function recordPublished() {
+  const ver = new Date().toISOString();
+  try { const snap = Plan3DDocs.snapshot(ed.plan, 'walkthrough link ' + ver.slice(0, 10)); ed.plan.published = (ed.plan.published || []).concat([{ ver, snap }]).slice(-6); } catch (e) { console.error(e); }
+  return ver;
+}
+async function publishLink(verIn) {
   const S = ensureShare();
-  const put = async () => { await registerShare(); const plan = clonePlan(); plan.share = { id: S.id }; return fetch(PLAN3D_CLOUD + '/walkthroughs/' + encodeURIComponent(S.id), { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Plan3D-Key': S.key }, body: JSON.stringify({ plan }) }); };
+  const ver = verIn || recordPublished(); if (!verIn) ed.dirty = true;
+  const put = async () => { await registerShare(); const plan = linkPlan(); plan.share = { id: S.id }; plan.ver = ver; return fetch(PLAN3D_CLOUD + '/walkthroughs/' + encodeURIComponent(S.id), { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Plan3D-Key': S.key }, body: JSON.stringify({ plan }) }); };
   let r = await put();
   if (r.status === 404) { shareReg = ''; r = await put(); }  // the server didn't have this plan's key yet
   if (!r.ok) { let m = ''; try { m = (await r.json()).error; } catch (e) { /* not json */ } throw new Error(m || 'The server said ' + r.status + '.'); }
@@ -2895,7 +2929,8 @@ async function exportHtml() {
   const a = await api.getAssets();
   const safe = (s) => s.replace(/<\/script/gi, '<\\/script');
   const S = ensureShare();
-  const plan = clonePlan(); plan.share = { id: S.id };  // the walkthrough can send comments, never read them
+  const plan = linkPlan(); plan.share = { id: S.id };  // the walkthrough can send comments, never read them
+  plan.ver = recordPublished(); ed.dirty = true;
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(plan.name)} — 3D Walkthrough</title>
@@ -3046,5 +3081,5 @@ window.addEventListener('drop', async e => {
 
 renderProps(); updateChrome(); toolHint('select');
 if (api.rendererReady) api.rendererReady();
-window.__app = { ensureShare, checkComments, exportHtml, wallHeightDialog, setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
+window.__app = { ensureShare, checkComments, recordPublished, linkPlan, mergeComments, markApproved, changeOrderDialog, exportHtml, wallHeightDialog, setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
 })();
