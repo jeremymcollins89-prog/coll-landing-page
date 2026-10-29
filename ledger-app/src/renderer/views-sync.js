@@ -18,7 +18,9 @@
   // ------------------------------------------------------------------
   // Merge two training records — never loses progress, keeps the stricter tries
   // ------------------------------------------------------------------
-  const better = (a, b) => !a ? b : !b ? a : (b.passed && !a.passed) || (!!b.passed === !!a.passed && (b.score || 0) > (a.score || 0)) ? b : a;
+  // An official (server-graded) result always beats a local one; otherwise a pass, then the higher score
+  const better = (a, b) => !a ? b : !b ? a : !!a.official !== !!b.official ? (b.official ? b : a) : (b.passed && !a.passed) || (!!b.passed === !!a.passed && (b.score || 0) > (a.score || 0)) ? b : a;
+  const pickCert = (a, b) => !a ? b : !b ? a : b.official && !a.official ? b : a;
   function mergeTraining(L, R, takeRemoteClients) {
     L = L || {}; R = R || {};
     const out = Object.assign({}, R, L); // local wins for simple fields (track, current, plan…)
@@ -29,8 +31,11 @@
     for (const [k, v] of Object.entries(L.flags || {})) out.flags[k] = out.flags[k] || v;
     const attempts = key => { const seen = new Set(), all = []; for (const w of (L[key] || []).concat(R[key] || [])) { const id = (w.at || '') + '|' + w.date + '|' + w.score + '|' + w.total; if (!seen.has(id)) { seen.add(id); all.push(w); } } return all.sort((a, b) => (a.at || 0) - (b.at || 0) || String(a.date).localeCompare(String(b.date))); };
     out.written = attempts('written'); out.advWritten = attempts('advWritten');
+    out.writtenPractice = attempts('writtenPractice'); out.advWrittenPractice = attempts('advWrittenPractice');
     out.practical = better(L.practical, R.practical); out.advPractical = better(L.advPractical, R.advPractical);
-    out.cert = L.cert || R.cert; out.certAdv = L.certAdv || R.certAdv;
+    out.cert = pickCert(L.cert, R.cert); out.certAdv = pickCert(L.certAdv, R.certAdv);
+    // The Academy account (sign-in token) belongs to this device only
+    if (L.account) out.account = L.account; else delete out.account;
     out.honor = attempts('honor');
     out.tries = Object.assign({}, R.tries || {});
     for (const [k, v] of Object.entries(L.tries || {})) { const r = out.tries[k]; out.tries[k] = !r ? v : { fails: Math.max(v.fails || 0, r.fails || 0), lockUntil: Math.max(v.lockUntil || 0, r.lockUntil || 0) }; }
@@ -52,8 +57,10 @@
   // ------------------------------------------------------------------
   // Export and import
   // ------------------------------------------------------------------
+  // Never includes the Academy sign-in token, and never a real client's books
   function payload() {
-    return { type: 'coll-academy-progress', version: 1, exportedAt: Date.now(), from: ACADEMY ? 'phone' : 'desktop', owner: S.data.firm.owner || '', training: T(), clients: S.data.clients.filter(c => c.practice) };
+    const training = Object.assign({}, T()); delete training.account;
+    return { type: 'coll-academy-progress', version: 1, exportedAt: Date.now(), from: ACADEMY ? 'phone' : 'desktop', owner: S.data.firm.owner || '', training, clients: S.data.clients.filter(c => c.practice) };
   }
   async function exportProgress() {
     const p = payload(), name = `Coll Academy progress ${C.todayISO()}.collacademy`;

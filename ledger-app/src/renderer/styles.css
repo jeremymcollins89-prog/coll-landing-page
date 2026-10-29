@@ -1252,3 +1252,24 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.55; resize: ve
 .tries-line { font-size: 12px; margin: -4px 0 10px; }
 .sync-meta { margin-top: 12px; font-size: 12px; }
 .academy-mode [data-action="new-client"], .academy-mode [data-nav="studio"] { display: none !important; }
+/* Academy account, online exams and sync (views-online.js) */
+.online-cta { display: flex; gap: 12px; align-items: center; padding: 14px 16px; margin: 14px 0; border-radius: 12px; background: linear-gradient(90deg, var(--accent-soft), transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); font-size: 13.5px; line-height: 1.5; }
+.online-cta > svg { width: 20px; height: 20px; flex: none; color: var(--accent); }
+.online-cta .grow { flex: 1; min-width: 0; }
+.online-cta.warn { background: var(--warn-soft); border-color: transparent; }
+.online-cta.warn > svg { color: var(--warn); }
+.practice-card { display: flex; gap: 12px; align-items: center; padding: 12px 14px; margin: 14px 0 4px; border-radius: 12px; border: 1px dashed var(--line-strong); font-size: 13px; line-height: 1.5; }
+.practice-card .grow { flex: 1; min-width: 0; }
+.practice-note { display: flex; gap: 10px; align-items: center; padding: 10px 14px; margin-bottom: 14px; border-radius: 12px; background: var(--gold-soft); font-size: 13px; color: var(--ink-2); }
+.practice-note > svg { width: 16px; height: 16px; flex: none; color: var(--warn); }
+.practice-note span { flex: 1; }
+.oa-code { font-family: ui-monospace, Consolas, monospace; font-size: 40px; font-weight: 700; letter-spacing: .12em; text-align: center; padding: 18px 10px; margin: 6px 0 10px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); user-select: all; }
+.oa-code-input { font-family: ui-monospace, Consolas, monospace; font-size: 24px; letter-spacing: .12em; text-transform: uppercase; text-align: center; }
+.oa-alt { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; }
+.oa-form { display: flex; flex-direction: column; gap: 12px; }
+.online-sync { display: flex; gap: 12px; align-items: center; padding: 14px 16px; border-radius: 12px; background: var(--accent-soft); font-size: 13.5px; }
+.online-sync > svg { width: 20px; height: 20px; flex: none; color: var(--accent); }
+.online-sync .grow { flex: 1; min-width: 0; }
+.adv-doc .pre { white-space: pre-line; }
+.adv-docs.pro .adv-doc b:first-child { color: var(--warn); }
+@media (max-width: 640px) { .online-cta, .practice-card, .online-sync { flex-wrap: wrap; } .oa-code { font-size: 30px; } }

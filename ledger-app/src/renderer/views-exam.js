@@ -99,11 +99,16 @@
     const qs = shuffle([...picked], seed + 7).map(i => ({ i, order: shuffle([0, 1, 2], seed + i) }));
     return { qs, at: 0, answers: {}, started: Date.now() };
   }
-  const writtenBest = () => T().written.reduce((b, w) => (!b || w.pct > b.pct ? w : b), null);
-  const writtenPassed = () => T().written.some(w => w.pct >= PASS);
+  // With an Academy account only official (server-graded) results count. Results from
+  // before accounts existed still count when the certificate was already earned with them.
+  const counts = r => !!r && (r.official || !(App.online && App.online.signedIn()) || !!T().cert);
+  const writtenBest = () => T().written.filter(counts).reduce((b, w) => (!b || w.pct > b.pct ? w : b), null);
+  const writtenPassed = () => T().written.some(w => w.pct >= PASS && counts(w));
 
   function renderWritten() {
     const E = S.ui.exam && S.ui.exam.kind === 'written' ? S.ui.exam : null;
+    // The official exam runs on the Academy server; this local one is the practice exam
+    if (!E && App.online) return App.online.writtenPage('pro');
     const best = writtenBest();
     if (!E) {
       return `<div class="tm-head"><span class="tag gold">Final exam · part 1 of 2</span>${writtenPassed() ? `<span class="tag green">${ICON.check}Passed · ${Math.round(best.pct * 100)}%</span>` : ''}</div>
@@ -118,13 +123,13 @@
     if (E.done) {
       const res = E.result;
       const missed = E.qs.filter(q => E.answers[q.i] !== BANK[q.i][3]);
-      return `<div class="exam-result ${res.passed ? 'pass' : ''}"><div class="er-score">${res.score}<span>/ ${res.total}</span></div><div><h2 class="tm-title" style="margin:0">${res.passed ? 'You passed!' : 'Not quite yet'}</h2><div class="muted">${Math.round(res.pct * 100)}% · ${res.passed ? (res.pct >= 0.92 ? 'Distinction-level score.' : 'Nicely done.') : `You need ${Math.ceil(DRAW * PASS)} right to pass. Review what you missed, then try again — you'll get a fresh set of questions.`}</div></div></div>
+      return `${E.practice ? '<div class="practice-note">' + ICON.spark + '<span><b>Practice exam</b> — this score doesn\'t count toward the certificate. Take the official exam from the exam page.</span></div>' : ''}<div class="exam-result ${res.passed ? 'pass' : ''}"><div class="er-score">${res.score}<span>/ ${res.total}</span></div><div><h2 class="tm-title" style="margin:0">${res.passed ? (E.practice ? 'You passed the practice exam!' : 'You passed!') : 'Not quite yet'}</h2><div class="muted">${Math.round(res.pct * 100)}% · ${res.passed ? (res.pct >= 0.92 ? 'Distinction-level score.' : 'Nicely done.') : `You need ${Math.ceil(DRAW * PASS)} right to pass. Review what you missed, then try again — you'll get a fresh set of questions.`}</div></div></div>
         ${missed.length ? `<div class="cap-label" style="margin-top:18px">Review what you missed</div>${missed.map(q => { const [tp, qq, a, c, why] = BANK[q.i]; return `<div class="qz"><div class="muted" style="font-size:11.5px;text-transform:uppercase;letter-spacing:.08em">${esc(tp)}</div><div class="qz-q">${esc(qq)}</div><div class="qz-a">${q.order.map(ai => `<div class="qa ${ai === c ? 'right answer' : E.answers[q.i] === ai ? 'wrong' : ''}">${esc(a[ai])}</div>`).join('')}</div><div class="qz-why right">${ICON.check}${esc(why)}</div></div>`; }).join('')}` : '<p class="pos"><b>Perfect score.</b></p>'}
-        <div class="tm-nav"><button class="btn ghost" data-action="ex-close">Back to the exam page</button>${!res.passed ? `<button class="btn primary" data-action="ex-start">Try again ${ICON.right}</button>` : `<button class="btn primary" data-action="t-go" data-id="exam-practical">On to the practical exam ${ICON.right}</button>`}</div>`;
+        <div class="tm-nav"><button class="btn ghost" data-action="ex-close">Back to the exam page</button>${E.practice ? `<button class="btn primary" data-action="ex-start">Another practice exam ${ICON.right}</button>` : !res.passed ? `<button class="btn primary" data-action="ex-start">Try again ${ICON.right}</button>` : `<button class="btn primary" data-action="t-go" data-id="exam-practical">On to the practical exam ${ICON.right}</button>`}</div>`;
     }
     const q = E.qs[E.at], [tp, qq, a] = BANK[q.i];
     const answered = Object.keys(E.answers).length;
-    return `<div class="tm-head"><span class="tag gold">Written exam</span><span class="muted">Question ${E.at + 1} of ${E.qs.length} · ${answered} answered</span></div>
+    return `<div class="tm-head"><span class="tag gold">${E.practice ? 'Practice exam' : 'Written exam'}</span>${E.practice ? '<span class="tag">Doesn\'t count toward the certificate</span>' : ''}<span class="muted">Question ${E.at + 1} of ${E.qs.length} · ${answered} answered</span></div>
       <div class="progress" style="margin:6px 0 18px"><div style="width:${(answered / E.qs.length * 100).toFixed(1)}%"></div></div>
       <div class="muted" style="font-size:11.5px;text-transform:uppercase;letter-spacing:.08em">${esc(tp)}</div>
       <h2 class="tm-title" style="font-size:22px;line-height:1.35">${esc(qq)}</h2>
@@ -238,6 +243,7 @@
   }
 
   function renderPractical() {
+    if (App.online) return App.online.practicalPage('pro');
     const t = T(); const c = examClient(); const M = examMonth();
     const res = S.ui.examGrade && c ? S.ui.examGrade : null;
     const prev = t.practical;
@@ -263,6 +269,8 @@
   const credId = (name, date, w, p) => { const h = fnv(`${name}|${date}|${w}|${p}`).toString(36).toUpperCase().padStart(7, '0'); return `CL-${date.slice(0, 4)}-${h.slice(0, 4)}-${h.slice(4, 7)}${(fnv(h) % 36).toString(36).toUpperCase()}`; };
   function certificate(levels) {
     const t = T();
+    // A certificate issued by the Academy server: its ID, date and scores are fixed
+    if (t.cert && t.cert.official) { printCert(t.cert, levels); setTimeout(credentialModal, 600); return; }
     const best = writtenBest(), prac = t.practical;
     const m = U.openModal(`${U.modalHead('Your certificate', 'Check how your name should appear — it can\'t be changed on this certificate later')}
       <div class="modal-body"><div class="field"><label for="ce-name">Full name</label><input id="ce-name" class="input" value="${esc((t.cert && t.cert.name) || S.data.firm.owner || '')}" placeholder="Your full name"></div>
@@ -276,6 +284,12 @@
       const id = credId(name, date, w, p);
       t.cert = { name, date, id, written: w, practical: p, distinction }; save();
       U.closeModal();
+      printCert(t.cert, levels);
+      setTimeout(credentialModal, 600);
+    };
+  }
+  function printCert(cert, levels) {
+      const t = T(), { name, date, id, distinction } = cert, w = cert.written, p = cert.practical;
       const gold = '#B8893B', green = '#1E6B53';
       const transcript = levels.map(L => `<div style="margin-bottom:16px"><div style="font-weight:700;color:${green};margin-bottom:6px">${esc(L.title)}</div>${L.lessons.map(l => `<div style="display:flex;justify-content:space-between;border-bottom:1px solid #E6E2D9;padding:5px 0"><span>${esc(l.title)}</span><span class="muted">${t.done[l.id] ? fmtDate(t.done[l.id]) : ''}</span></div>`).join('')}</div>`).join('');
       U.printDoc(App.docShell('Certificate', `
@@ -316,8 +330,6 @@
           <div style="display:flex;justify-content:space-between;border-bottom:1px solid #E6E2D9;padding:5px 0"><span>Practical examination — month-end close with planted errors, auto-graded</span><b>${p}/100</b></div>
           <p class="muted" style="margin-top:26px;font-size:11px;line-height:1.6">Skills demonstrated: double-entry fundamentals and debit/credit entries; payroll recording; journal and adjusting entries; categorizing transfers, owner activity, credit card and sales-tax payments; invoices and receivables; bills and payables; split transactions and smart rules; bank and card reconciliation, including finding duplicates and transposed amounts; receipts and record-keeping; month-end close and client reporting; cash-flow and budget review; quarterly estimated-tax planning; business types and owner compensation; financial-health analysis; 1099 contractor reporting; client onboarding, pricing and engagement letters; catch-up projects; ethics and data security.<br><br>This certificate is issued by Coll Business Solutions LLC for completion of its Coll Ledger training program. It is not a state license or a credential from a professional accounting body.</p>
         </div>`), `Coll Ledger Professional Bookkeeping Certificate - ${name}.pdf`);
-      setTimeout(credentialModal, 600);
-    };
   }
 
 
@@ -441,7 +453,8 @@
           <div class="cred-step"><span class="n">1</span><div class="grow"><b>Add it to LinkedIn</b><div class="muted">Opens LinkedIn with the name, issuer, date, credential ID and link already filled in. Click <b>Save</b>.</div></div><button class="btn primary" data-c="li">Add to LinkedIn</button></div>
           <div class="cred-step"><span class="n">2</span><div class="grow"><b>Save the badge</b><div class="muted">A square image for your profile's media, résumé, website or email signature.</div></div><button class="btn" data-c="badge">${ICON.download}Badge</button></div>
           <div class="cred-step"><span class="n">3</span><div class="grow"><b>Post it</b><div class="muted">A share image sized for LinkedIn and Facebook posts, with your name on it.</div></div><button class="btn" data-c="share">${ICON.download}Share image</button></div>
-          <div class="cred-step"><span class="n">4</span><div class="grow"><b>Get it registered for verification</b><div class="muted">${cert.registeredAsked ? 'Request sent — once Coll Business Solutions adds it, the credential link shows "Verified".' : 'Sends your credential to Coll Business Solutions so the link above shows "Verified" for anyone who checks.'}</div></div><button class="btn" data-c="reg">${ICON.mail}${cert.registeredAsked ? 'Send again' : 'Request'}</button></div>
+          ${cert.official ? `<div class="cred-step"><span class="n">4</span><div class="grow"><b>Already verified</b><div class="muted">Your credential is live at <b>collbusinesssolutions.com/verify.html?id=${esc(cert.id)}</b> — digitally signed, so anyone can check it's real.</div></div><button class="btn" data-c="open">Open it ${ICON.right}</button></div>`
+            : `<div class="cred-step"><span class="n">4</span><div class="grow"><b>Get it registered for verification</b><div class="muted">${cert.registeredAsked ? 'Request sent — once Coll Business Solutions adds it, the credential link shows "Verified".' : 'Sends your credential to Coll Business Solutions so the link above shows "Verified" for anyone who checks.'}</div></div><button class="btn" data-c="reg">${ICON.mail}${cert.registeredAsked ? 'Send again' : 'Request'}</button></div>`}
           <div class="cred-step pa-step"><span class="n">5</span><div class="grow"><b>Next: QuickBooks ProAdvisor certification</b><div class="muted">Free to join — gets you listed in Intuit's Find-a-ProAdvisor directory, where small businesses look for help.</div></div><button class="btn primary" data-c="pa">See why ${ICON.right}</button></div>
           <div class="cred-step"><span class="n">${ICON.check}</span><div class="grow"><b>Certificate PDF and link</b><div class="muted">The printable certificate and transcript, or copy the credential link.</div></div><button class="btn ghost" data-c="copy">${ICON.copy}Copy link</button><button class="btn" data-c="pdf">${ICON.pdf}Certificate</button></div>
         </div>
@@ -453,6 +466,7 @@
     $('[data-c=share]', m).onclick = async () => saveImage(await svgToPngBase64(shareSVG(cert), 1200, 627), `Coll Ledger certificate - ${cert.name}.png`);
     $('[data-c=copy]', m).onclick = () => U.copyText(verifyUrl(cert.id));
     $('[data-c=pdf]', m).onclick = () => { U.closeModal(); App.actions['t-cert-pdf'](); };
+    if (cert.official) { $('[data-c=open]', m).onclick = () => open(verifyUrl(cert.id)); return; }
     $('[data-c=reg]', m).onclick = () => {
       const body = `Please register this Coll Ledger Academy credential so it shows as verified.\n\nName: ${cert.name}\nCredential ID: ${cert.id}\nAwarded: ${fmtDate(cert.date)}\nWritten exam: ${cert.written}%\nPractical exam: ${cert.practical}/100${cert.distinction ? '\nWith distinction' : ''}\n\nTo register: on GitHub open the coll-landing-page repository → Actions → Register credential → Run workflow, paste this entry, and click Run.\nRegistry entry:\n${registryEntry(cert)}\n\nCredential link: ${verifyUrl(cert.id)}`;
       open(`mailto:collbusinesssolutions@gmail.com?subject=${encodeURIComponent('Credential registration ' + cert.id)}&body=${encodeURIComponent(body)}`);
@@ -462,7 +476,8 @@
 
   act({
     'pa-open': () => proAdvisorModal(),
-    'ex-start': () => App.examGate('written', T().written, 'Professional written exam', () => { S.ui.exam = Object.assign(newAttempt(), { kind: 'written' }); render(); $('#view').scrollTop = 0; }),
+    // The local exam is the practice exam: it doesn't count toward the certificate
+    'ex-start': () => { S.ui.exam = Object.assign(newAttempt(), { kind: 'written', practice: true }); render(); $('#view').scrollTop = 0; },
     'ex-close': () => { S.ui.exam = null; render(); },
     'ex-pick': el => { const E = S.ui.exam; const q = E.qs[E.at]; E.answers[q.i] = +el.dataset.a; render(); },
     'ex-move': el => { const E = S.ui.exam; E.at = Math.max(0, Math.min(E.qs.length - 1, E.at + +el.dataset.d)); render(); },
@@ -471,10 +486,10 @@
       const E = S.ui.exam;
       if (!await U.confirmBox({ title: 'Submit your answers?', body: 'You can\'t change them after this.', ok: 'Submit' })) return;
       const score = E.qs.filter(q => E.answers[q.i] === BANK[q.i][3]).length;
-      const res = { date: today(), score, total: E.qs.length, pct: score / E.qs.length, passed: score / E.qs.length >= PASS, at: Date.now(), mins: Math.round((Date.now() - E.started) / 60000) };
-      T().written.push(res); save(); App.tries.record('written', res.passed);
+      const res = { date: today(), score, total: E.qs.length, pct: score / E.qs.length, passed: score / E.qs.length >= PASS, at: Date.now(), mins: Math.round((Date.now() - E.started) / 60000), practice: true };
+      const t = T(); t.writtenPractice = t.writtenPractice || []; t.writtenPractice.push(res); save();
       E.done = true; E.result = res; render(); $('#view').scrollTop = 0;
-      U.toast(res.passed ? `Passed — ${score} of ${res.total}` : `${score} of ${res.total} — ${App.tries.afterMiss('written')}`);
+      U.toast(`Practice exam: ${score} of ${res.total}${res.passed ? ' — a passing score' : ''}`);
     },
     'ex-prac-start': () => startPractical(false),
     'ex-prac-open': () => startPractical(false),
@@ -491,5 +506,5 @@
     }
   });
 
-  App.academy = { svgToPngBase64, saveImage, verifyUrl, credId, openLink, T, proAdvisorCard, proAdvisorModal, credentialModal, badgeSVG, shareSVG, linkedInUrl, renderWritten, renderPractical, writtenPassed, practicalPassed: () => !!(T().practical && T().practical.passed), certificate, examClient, BANK, grade, buildExam };
+  App.academy = { svgToPngBase64, saveImage, verifyUrl, credId, openLink, T, proAdvisorCard, proAdvisorModal, credentialModal, badgeSVG, shareSVG, linkedInUrl, renderWritten, renderPractical, writtenPassed, writtenBest, counts, practicalPassed: () => !!(T().practical && T().practical.passed && counts(T().practical)), certificate, printCert, examClient, BANK, grade, buildExam };
 })();
