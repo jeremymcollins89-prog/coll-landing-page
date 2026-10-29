@@ -2987,8 +2987,13 @@ function machineMesh(THREE, it) {
   // a dark line along the top and the foot of every panel, so the shape reads from any side
   const lp = []; for (const q of it.lines || []) { lp.push(q[0], h + 0.01, q[1], q[2], h + 0.01, q[3], q[0], 0.02, q[1], q[2], 0.02, q[3]); }
   const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3)); g.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x2c3438 })));
-  // its top: a see-through cover over its footprint box, so it shows as one machine from above
-  if (it.w > 0 && it.d > 0) { const top = new THREE.Mesh(new THREE.BoxGeometry(it.w, 0.02, it.d), new THREE.MeshLambertMaterial({ color: 0x7d8c95, transparent: true, opacity: 0.6, depthWrite: false, name: 'Equipment outline (helper)' })); top.position.set(0, h, 0); g.add(top); }
+  // its extent: a thin line round its footprint box at the top (a see-through cover there read as a slab of
+  // ceiling from inside the rooms it crosses), and an invisible cover so it still clicks as one machine
+  if (it.w > 0 && it.d > 0) {
+    const hw = it.w / 2, hd = it.d / 2, bp = [-hw, h + 0.01, -hd, hw, h + 0.01, -hd, hw, h + 0.01, -hd, hw, h + 0.01, hd, hw, h + 0.01, hd, -hw, h + 0.01, hd, -hw, h + 0.01, hd, -hw, h + 0.01, -hd];
+    const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3)); g.add(new THREE.LineSegments(bg, new THREE.LineBasicMaterial({ color: 0x5c6a72, name: 'Equipment outline (helper)' })));
+    const top = new THREE.Mesh(new THREE.BoxGeometry(it.w, 0.02, it.d), new THREE.MeshBasicMaterial()); top.visible = false; top.position.set(0, h, 0); top.userData.pickOnly = true; g.add(top);
+  }
   g.position.set(it.x, 0, it.y); g.rotation.y = -(it.a || 0);
   return g;
 }
