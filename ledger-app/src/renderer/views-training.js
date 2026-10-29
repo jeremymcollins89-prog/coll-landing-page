@@ -983,6 +983,14 @@
   // Training screen
   // ------------------------------------------------------------------
   const TIPS = window.ACADEMY_TIPS || {};
+  // Realistic time: reading plus the hands-on task, drill and quiz (rounded to 5 minutes)
+  const workMins = l => Math.max(5, Math.round((l.mins + (l.task ? 10 : 0) + (l.drill ? 10 : 0) + (l.quiz || []).length * 2) / 5) * 5);
+  // Typical time for the finals plus a review of the handbook before them
+  const EXAM_MINS = { pro: { written: 60, practical: 120, review: 60 }, adv: { written: 75, practical: 120, review: 60 } };
+  const fmtMins = m => m < 60 ? `${m} min` : `${(Math.round(m / 30) / 2).toString().replace('.5', '½')} hr${m >= 90 ? 's' : ''}`;
+  const trackMins = k => { const list = k === 'adv' ? ADV : CORE, e = EXAM_MINS[k]; return list.reduce((s, l) => s + workMins(l), 0) + e.written + e.practical + e.review; };
+  const leftMins = (k, wOk, pOk) => { const list = k === 'adv' ? ADV : CORE, e = EXAM_MINS[k]; return list.filter(l => !lessonDone(l)).reduce((s, l) => s + workMins(l), 0) + (wOk ? 0 : e.written + e.review) + (pOk ? 0 : e.practical); };
+  const hoursLine = (k, wOk, pOk) => { const total = trackMins(k), left = leftMins(k, wOk, pOk); return `<div class="tp-hours muted">About ${fmtMins(total)} in all${left && left < total ? ` · about ${fmtMins(left)} to go` : left ? '' : ' · complete'}</div>`; };
   // One lesson's main panel (used by both programs)
   function lessonMain(l, list, levels, finalId) {
     const t = T();
@@ -992,7 +1000,7 @@
     const nextId = l.bonus ? null : (idx < list.length - 1 ? list[idx + 1].id : finalId);
     const tips = TIPS[l.id] || [];
     return `
-      <div class="tm-head"><span class="tag ${l.bonus ? 'gold' : l.track === 'adv' ? 'navy' : 'blue'}">${l.bonus ? 'Bonus lesson' : `${esc(L.title)} · lesson ${idx + 1} of ${list.length}`} · about ${l.mins} minutes</span>${lessonDone(l) ? `<span class="tag green">${ICON.check}Complete</span>` : ''}</div>
+      <div class="tm-head"><span class="tag ${l.bonus ? 'gold' : l.track === 'adv' ? 'navy' : 'blue'}">${l.bonus ? 'Bonus lesson' : `${esc(L.title)} · lesson ${idx + 1} of ${list.length}`} · ${l.mins} min read · about ${fmtMins(workMins(l))} with practice</span>${lessonDone(l) ? `<span class="tag green">${ICON.check}Complete</span>` : ''}</div>
       <h2 class="tm-title">${esc(l.title)}</h2>
       <p class="tm-learn"><b>You'll learn:</b> ${esc(l.learn)}</p>
       <div class="tm-body">${l.body.join('')}</div>
@@ -1026,17 +1034,17 @@
         const req = CORE.length + 2, doneN = lessonsDone + (wOk ? 1 : 0) + (pOk ? 1 : 0);
         const examView = t.current === 'exam-written' || t.current === 'exam-practical';
         const cur = currentLesson('pro');
-        const sideItem = (x, n) => `<button class="tl ${x.id === t.current || (!examView && x === cur) ? 'on' : ''} ${lessonDone(x) ? 'done' : ''}" data-action="t-go" data-id="${x.id}"><span class="step-n">${lessonDone(x) ? ICON.check : x.bonus ? '★' : n}</span><span><b>${esc(x.title)}</b><span class="muted">${x.mins} min${x.bonus ? ' · bonus' : ''}</span></span></button>`;
+        const sideItem = (x, n) => `<button class="tl ${x.id === t.current || (!examView && x === cur) ? 'on' : ''} ${lessonDone(x) ? 'done' : ''}" data-action="t-go" data-id="${x.id}"><span class="step-n">${lessonDone(x) ? ICON.check : x.bonus ? '★' : n}</span><span><b>${esc(x.title)}</b><span class="muted">about ${fmtMins(workMins(x))}${x.bonus ? ' · bonus' : ''}</span></span></button>`;
         let n = 0;
-        sub = 'Four levels of hands-on lessons on a pretend bakery, then a written exam and a graded month-end. Pass both to earn the Professional Bookkeeping Certificate.';
+        sub = `Four levels of hands-on lessons on a pretend bakery, then a written exam and a graded month-end. Pass both to earn the Professional Bookkeeping Certificate. Plan on about ${fmtMins(trackMins('pro'))} in all, at your own pace.`;
         side = `
-          <div class="train-prog"><div class="tp-top"><b>${doneN} of ${req} steps</b><span class="muted">${Math.round(doneN / req * 100)}%</span></div><div class="progress"><div style="width:${doneN / req * 100}%"></div></div>
+          <div class="train-prog"><div class="tp-top"><b>${doneN} of ${req} steps</b><span class="muted">${Math.round(doneN / req * 100)}%</span></div><div class="progress"><div style="width:${doneN / req * 100}%"></div></div>${hoursLine('pro', wOk, pOk)}
             <div class="lvl-badges">${levels.map(L => `<span class="lvl-badge ${lvlDone(L) ? 'on' : ''}" title="${esc(L.title)}">${lvlDone(L) ? ICON.check : L.n}</span>`).join('')}<span class="lvl-badge exam ${wOk && pOk ? 'on' : ''}" title="Final exams">${wOk && pOk ? ICON.check : 'E'}</span></div></div>
           <div class="train-list">
             ${levels.map(L => `<div class="tl-group">${esc(L.title)}${lvlDone(L) ? ` <span class="tag green">${ICON.check}</span>` : ''}</div>${L.lessons.map(x => sideItem(x, ++n)).join('')}`).join('')}
             <div class="tl-group">Final exams${allLessons ? '' : ` <span class="muted" style="text-transform:none;letter-spacing:0">· after all lessons</span>`}</div>
-            <button class="tl ${t.current === 'exam-written' ? 'on' : ''} ${wOk ? 'done' : ''} ${allLessons ? '' : 'locked'}" data-action="t-go" data-id="exam-written"><span class="step-n">${wOk ? ICON.check : allLessons ? 'W' : ICON.lock}</span><span><b>Written exam</b><span class="muted">30 questions · 80% to pass</span></span></button>
-            <button class="tl ${t.current === 'exam-practical' ? 'on' : ''} ${pOk ? 'done' : ''} ${allLessons ? '' : 'locked'}" data-action="t-go" data-id="exam-practical"><span class="step-n">${pOk ? ICON.check : allLessons ? 'P' : ICON.lock}</span><span><b>Practical exam</b><span class="muted">A graded month-end</span></span></button>
+            <button class="tl ${t.current === 'exam-written' ? 'on' : ''} ${wOk ? 'done' : ''} ${allLessons ? '' : 'locked'}" data-action="t-go" data-id="exam-written"><span class="step-n">${wOk ? ICON.check : allLessons ? 'W' : ICON.lock}</span><span><b>Written exam</b><span class="muted">30 questions · about 1 hr</span></span></button>
+            <button class="tl ${t.current === 'exam-practical' ? 'on' : ''} ${pOk ? 'done' : ''} ${allLessons ? '' : 'locked'}" data-action="t-go" data-id="exam-practical"><span class="step-n">${pOk ? ICON.check : allLessons ? 'P' : ICON.lock}</span><span><b>Practical exam</b><span class="muted">A graded month-end · about 2 hrs</span></span></button>
             <div class="tl-group">Bonus</div>${LESSONS.filter(l => l.bonus).map(x => sideItem(x, 0)).join('')}
           </div>
           ${proEarned ? AC.proAdvisorCard() : ''}
@@ -1054,15 +1062,15 @@
         const cur = currentLesson('adv');
         const unlocked = allLessons && !!t.cert;
         let n = 0;
-        sub = 'For working bookkeepers ready to go further: accrual accounting, fixed assets, inventory, loans, payroll and sales tax compliance, business and owner taxes, internal controls and professional standards. Ends with a written exam and a graded month-end close.';
+        sub = `For working bookkeepers ready to go further: accrual accounting, fixed assets, inventory, loans, payroll and sales tax compliance, business and owner taxes, internal controls and professional standards. Ends with a written exam and a graded month-end close. Plan on about ${fmtMins(trackMins('adv'))} in all.`;
         side = `
-          <div class="train-prog"><div class="tp-top"><b>${doneN} of ${req} steps</b><span class="muted">${Math.round(doneN / req * 100)}%</span></div><div class="progress navy"><div style="width:${doneN / req * 100}%"></div></div>
+          <div class="train-prog"><div class="tp-top"><b>${doneN} of ${req} steps</b><span class="muted">${Math.round(doneN / req * 100)}%</span></div><div class="progress navy"><div style="width:${doneN / req * 100}%"></div></div>${hoursLine('adv', wOk, pOk)}
             <div class="lvl-badges">${levels.map((L, i) => `<span class="lvl-badge navy ${lvlDone(L) ? 'on' : ''}" title="${esc(L.title)}">${lvlDone(L) ? ICON.check : 'ABC'[i]}</span>`).join('')}<span class="lvl-badge exam ${wOk && pOk ? 'on' : ''}" title="Final exams">${wOk && pOk ? ICON.check : 'E'}</span></div></div>
           <div class="train-list">
-            ${levels.map(L => `<div class="tl-group">${esc(L.title)}${lvlDone(L) ? ` <span class="tag green">${ICON.check}</span>` : ''}</div>${L.lessons.map(x => `<button class="tl ${!examView && x === cur ? 'on' : ''} ${lessonDone(x) ? 'done' : ''}" data-action="t-go" data-id="${x.id}"><span class="step-n">${lessonDone(x) ? ICON.check : ++n}</span><span><b>${esc(x.title)}</b><span class="muted">${x.mins} min</span></span></button>`).join('')}`).join('')}
+            ${levels.map(L => `<div class="tl-group">${esc(L.title)}${lvlDone(L) ? ` <span class="tag green">${ICON.check}</span>` : ''}</div>${L.lessons.map(x => `<button class="tl ${!examView && x === cur ? 'on' : ''} ${lessonDone(x) ? 'done' : ''}" data-action="t-go" data-id="${x.id}"><span class="step-n">${lessonDone(x) ? ICON.check : ++n}</span><span><b>${esc(x.title)}</b><span class="muted">about ${fmtMins(workMins(x))}</span></span></button>`).join('')}`).join('')}
             <div class="tl-group">Final exams${unlocked ? '' : ` <span class="muted" style="text-transform:none;letter-spacing:0">· locked</span>`}</div>
-            <button class="tl ${t.currentAdv === 'adv-exam-written' ? 'on' : ''} ${wOk ? 'done' : ''} ${unlocked ? '' : 'locked'}" data-action="t-go" data-id="adv-exam-written"><span class="step-n">${wOk ? ICON.check : unlocked ? 'W' : ICON.lock}</span><span><b>Advanced written exam</b><span class="muted">35 questions · 80% to pass</span></span></button>
-            <button class="tl ${t.currentAdv === 'adv-exam-practical' ? 'on' : ''} ${pOk ? 'done' : ''} ${unlocked ? '' : 'locked'}" data-action="t-go" data-id="adv-exam-practical"><span class="step-n">${pOk ? ICON.check : unlocked ? 'P' : ICON.lock}</span><span><b>Practical: month-end close</b><span class="muted">Adjusting entries, graded</span></span></button>
+            <button class="tl ${t.currentAdv === 'adv-exam-written' ? 'on' : ''} ${wOk ? 'done' : ''} ${unlocked ? '' : 'locked'}" data-action="t-go" data-id="adv-exam-written"><span class="step-n">${wOk ? ICON.check : unlocked ? 'W' : ICON.lock}</span><span><b>Advanced written exam</b><span class="muted">35 questions · about 1¼ hrs</span></span></button>
+            <button class="tl ${t.currentAdv === 'adv-exam-practical' ? 'on' : ''} ${pOk ? 'done' : ''} ${unlocked ? '' : 'locked'}" data-action="t-go" data-id="adv-exam-practical"><span class="step-n">${pOk ? ICON.check : unlocked ? 'P' : ICON.lock}</span><span><b>Practical: month-end close</b><span class="muted">Adjusting entries · about 2 hrs</span></span></button>
           </div>
           ${advEarned ? `<div class="cert-cta navy">${ICON.spark}<div><b>${t.certAdv ? 'Certificate earned' : 'You earned it!'}</b><div class="muted">${t.certAdv ? esc(t.certAdv.id) : 'Advanced Accounting & Tax'}</div></div><button class="btn sm gold" data-action="adv-cert">${t.certAdv ? 'Badge & LinkedIn' : 'Get it'}</button></div>` : `<div class="cert-req"><div class="cap-label">To earn this certificate</div><div class="${t.cert ? 'ok' : ''}">${t.cert ? ICON.check : '○'} Professional Bookkeeping Certificate</div><div class="${allLessons ? 'ok' : ''}">${allLessons ? ICON.check : '○'} All ${ADV.length} advanced lessons <span class="muted">(${lessonsDone} done)</span></div><div class="${wOk ? 'ok' : ''}">${wOk ? ICON.check : '○'} Written exam, 80% or better</div><div class="${pOk ? 'ok' : ''}">${pOk ? ICON.check : '○'} Practical close, 80+ and closed</div></div>`}
           <div class="pa-card"><div class="pa-ic">${ICON.spark}</div><div class="grow"><b>Accredited programs</b><div class="muted">College credit, tax credentials and the CPA path.</div></div><button class="btn sm" data-action="adv-programs">See them</button></div>`;
@@ -1166,5 +1174,5 @@
   document.addEventListener('click', e => { if (e.target.closest('[data-action="month-email"]') && inPractice()) { T().flags.monthEmail = true; save(); setTimeout(sweep, 50); } }, true);
   // keep the coach fresh after quick actions that don't re-render a screen
   document.addEventListener('click', () => setTimeout(() => { if (inPractice()) coach(); }, 400));
-  App.practice = { ensurePractice, LESSONS, CORE, ADV, advLevels, levelsWithLessons, T, sweep };
+  App.practice = { workMins, trackMins, fmtMins, ensurePractice, LESSONS, CORE, ADV, advLevels, levelsWithLessons, T, sweep };
 })();

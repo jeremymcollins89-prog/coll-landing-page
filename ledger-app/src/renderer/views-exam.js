@@ -109,7 +109,7 @@
       return `<div class="tm-head"><span class="tag gold">Final exam · part 1 of 2</span>${writtenPassed() ? `<span class="tag green">${ICON.check}Passed · ${Math.round(best.pct * 100)}%</span>` : ''}</div>
         <h2 class="tm-title">Written exam</h2>
         <p class="tm-learn">${DRAW} questions drawn at random from a bank of ${BANK.length}, covering every level: bookkeeping basics, categorizing, invoices and bills, reconciling, month end, taxes, records and professional practice.</p>
-        <div class="exam-rules"><div><b>${DRAW}</b><span>questions</span></div><div><b>${Math.round(PASS * 100)}%</b><span>to pass (${Math.ceil(DRAW * PASS)} right)</span></div><div><b>No</b><span>time limit</span></div><div><b>New</b><span>questions each try</span></div></div>
+        <div class="exam-rules"><div><b>${DRAW}</b><span>questions</span></div><div><b>${Math.round(PASS * 100)}%</b><span>to pass (${Math.ceil(DRAW * PASS)} right)</span></div><div><b>~1 hr</b><span>typical · no time limit</span></div><div><b>New</b><span>questions each try</span></div></div>
         <p class="muted">Answers aren't shown until you finish. Take your time — the Bookkeeper's Handbook is fair game to study from before you start.</p>
         ${T().written.length ? `<div class="exam-history"><div class="cap-label">Your attempts</div>${T().written.slice(-5).reverse().map(w => `<div><span>${fmtDate(w.date)}</span><b class="${w.pct >= PASS ? 'pos' : ''}">${w.score} / ${w.total} · ${Math.round(w.pct * 100)}%</b>${w.pct >= PASS ? `<span class="tag green">Passed</span>` : '<span class="tag">Not yet</span>'}</div>`).join('')}</div>` : ''}
         <div class="tm-nav"><button class="btn ghost" data-nav="handbook">${ICON.help}Study the handbook</button><button class="btn primary" data-action="ex-start">${writtenPassed() ? 'Take it again' : 'Start the exam'} ${ICON.right}</button></div>`;
@@ -244,7 +244,7 @@
         <p><b>The job:</b> Juniper Flower Co. is a new client. Do ${U.fmtMonth(M.from)}'s month-end the way you would for a real client — and catch the problems a careless bookkeeper would miss.</p>
         <ol class="t-list"><li>Categorize everything in <b>To Review</b>. Watch for transfers, the owner, the credit card and sales tax.</li><li>Hotel Teatro paid invoice <b>J-201</b>. Make sure that money isn't counted twice.</li><li>Split the <b>Gusto payroll</b> from the payroll report: gross wages <b>$2,950.00</b>, employer taxes <b>$232.40</b> (total $3,182.40).</li><li>Post the CPA's <b>AJE #1</b>: depreciation of <b>$175.00</b> for the month (debit Depreciation Expense, credit Accumulated Depreciation), dated the month's last day.</li><li>Run <b>Clean up</b> for anything doubled.</li><li><b>Reconcile</b> Business Checking to the statement below — it won't balance until the books are right.</li><li><b>Close</b> ${U.fmtMonth(M.from)}.</li></ol>
         <div class="t-stmt"><div class="stmt-bank">FRONT RANGE COMMUNITY BANK</div><div class="stmt-row"><span>Juniper Flower Co. LLC · Business Checking ····2290</span></div><div class="stmt-row"><span>Statement period</span><b>${fmtDate(M.from)} – ${fmtDate(M.to)}</b></div><div class="stmt-row"><span>Beginning balance</span><b>${money(8000)}</b></div><div class="stmt-row"><span>Checks paid</span><b>#1187 · ${money(182.5)}</b></div><div class="stmt-row big"><span>Ending balance</span><b>${c && c.examKey ? money(c.examKey.statement) : '<span class="muted" style="font-weight:400">shown when you start</span>'}</b></div></div>
-        <p class="muted">Graded on 12 checks worth 100 points. To pass: <b>80 points</b>, a balanced reconciliation and the month closed. All 100 earns the certificate's distinction.</p></div>`;
+        <p class="muted">Plan on about 2 hours. Graded on 12 checks worth 100 points. To pass: <b>80 points</b>, a balanced reconciliation and the month closed. All 100 earns the certificate's distinction.</p></div>`;
     return `<div class="tm-head"><span class="tag gold">Final exam · part 2 of 2</span>${prev && prev.passed ? `<span class="tag green">${ICON.check}Passed · ${prev.score}/100</span>` : ''}</div>
       <h2 class="tm-title">Practical exam: a real month-end</h2>
       ${brief}
@@ -308,7 +308,7 @@
         <div class="page">
           <div class="cap muted">Coll Ledger Academy · Transcript</div>
           <h1 class="serif" style="font-weight:400;font-size:28px;margin:4px 0 2px">${esc(name)}</h1>
-          <div class="muted" style="margin-bottom:22px">Credential ${id} · awarded ${fmtDate(date)}${distinction ? ' · with distinction' : ''}</div>
+          <div class="muted" style="margin-bottom:22px">Credential ${id} · awarded ${fmtDate(date)}${distinction ? ' · with distinction' : ''} · about ${App.practice.fmtMins(App.practice.trackMins('pro'))} of coursework and exams</div>
           ${transcript}
           <div style="font-weight:700;color:${green};margin:8px 0 6px">Examinations</div>
           <div style="display:flex;justify-content:space-between;border-bottom:1px solid #E6E2D9;padding:5px 0"><span>Written examination — ${DRAW} questions from a ${BANK.length}-question bank, ${Math.round(PASS * 100)}% to pass</span><b>${w}%</b></div>
