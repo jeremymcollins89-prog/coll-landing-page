@@ -4440,7 +4440,7 @@ function mount(container, plan, opts) {
   // view stays exactly as it was when it's off.
   const realBtn = container.querySelector('.p3v-real');
   const canReal = GFX && !!(THREE.EffectComposer && THREE.SSAOPass && THREE.RectAreaLight && THREE.RectAreaLightUniformsLib) && renderer.capabilities.isWebGL2 && !opts.preserve;
-  let lightGain = 1.7, real = false, rComp = null, rPlain = null, rSSAO = null, rFXAA = null, rBloom = null, envIn = null;
+  let lightGain = 1.7, real = false, rGrade = null, rComp = null, rPlain = null, rSSAO = null, rFXAA = null, rBloom = null, envIn = null;
   const envOut = scene.environment, tmOut = renderer.toneMapping, expOut = renderer.toneMappingExposure;
   const roomLights = new THREE.Group(); roomLights.name = 'room lights'; scene.add(roomLights);
   const matOrig = new Map();
@@ -4484,6 +4484,14 @@ function mount(container, plan, opts) {
     rComp.addPass(rSSAO);
     if (THREE.UnrealBloomPass) { rBloom = new THREE.UnrealBloomPass(new THREE.Vector2(256, 256), 0.4, 0.5, 1.4); rComp.addPass(rBloom); }   // only what's brighter than white glows: the light lenses
     rComp.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));
+    // a photographer's finish, like the Super render's filmic colour: a gentle S-curve, a touch of warmth and
+    // saturation, and a soft vignette
+    rGrade = new THREE.ShaderPass({
+      uniforms: { tDiffuse: { value: null }, con: { value: 0.1 }, sat: { value: 1.05 }, vig: { value: 0.16 }, warm: { value: 0.012 } },
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform sampler2D tDiffuse; uniform float con, sat, vig, warm; varying vec2 vUv; void main() { vec4 t = texture2D(tDiffuse, vUv); vec3 c = clamp(t.rgb, 0.0, 1.0); c = c + con * (c - c * c) * (2.0 * c - 1.0) * 4.0; float l = dot(c, vec3(0.2126, 0.7152, 0.0722)); c = mix(vec3(l), c, sat); c *= vec3(1.0 + warm, 1.0, 1.0 - warm * 1.2); vec2 d = vUv - 0.5; c *= 1.0 - vig * smoothstep(0.25, 0.75, dot(d, d) * 2.2); gl_FragColor = vec4(clamp(c, 0.0, 1.0), t.a); }'
+    });
+    rComp.addPass(rGrade);
     rFXAA = new THREE.ShaderPass(THREE.FXAAShader); rComp.addPass(rFXAA);
     sizeReal();
   }
@@ -4495,22 +4503,79 @@ function mount(container, plan, opts) {
   const FLOOR_GLOSS = {
     uniforms: { color: { value: null }, tDiffuse: { value: null }, textureMatrix: { value: null }, opacity: { value: 0.2 }, texel: { value: new THREE.Vector2(1 / 512, 1 / 512) } },
     vertexShader: 'uniform mat4 textureMatrix; varying vec4 vUv; void main() { vUv = textureMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    // a few taps, so the reflection is a little soft like a real epoxy floor rather than a mirror
-    fragmentShader: 'uniform vec3 color; uniform sampler2D tDiffuse; uniform float opacity; uniform vec2 texel; varying vec4 vUv; void main() { vec2 uv = vUv.xy / vUv.w; vec3 c = texture2D(tDiffuse, uv).rgb * 0.36; c += texture2D(tDiffuse, uv + texel * vec2(2.0, 0.0)).rgb * 0.16; c += texture2D(tDiffuse, uv - texel * vec2(2.0, 0.0)).rgb * 0.16; c += texture2D(tDiffuse, uv + texel * vec2(0.0, 2.5)).rgb * 0.16; c += texture2D(tDiffuse, uv - texel * vec2(0.0, 2.5)).rgb * 0.16; gl_FragColor = vec4(c * color, opacity); }'
+    // a satin epoxy floor, not a mirror: the reflection is blurred (more along the line of sight, like a real
+    // floor's sheen) and only the bright things, the light panels, really show in it; the room is a faint haze
+    fragmentShader: 'uniform vec3 color; uniform sampler2D tDiffuse; uniform float opacity; uniform vec2 texel; varying vec4 vUv; vec3 tap(vec2 uv) { return texture2D(tDiffuse, uv).rgb; } void main() { vec2 uv = vUv.xy / vUv.w; vec3 c = tap(uv) * 0.2; float wsum = 0.2; for (int i = 1; i <= 6; i++) { float k = float(i), g = exp(-k * k / 14.0); c += (tap(uv + texel * vec2(0.0, 3.0 * k)) + tap(uv - texel * vec2(0.0, 3.0 * k))) * g; c += (tap(uv + texel * vec2(1.6 * k, 0.0)) + tap(uv - texel * vec2(1.6 * k, 0.0))) * g * 0.6; wsum += g * 3.2; } c /= wsum; float l = dot(c, vec3(0.2126, 0.7152, 0.0722)); float h = smoothstep(0.9, 2.2, l); gl_FragColor = vec4(c * color, opacity * mix(0.12, 1.0, h)); }'
   };
   let gloss = null;
   function placeGloss() {
     if (gloss) { scene.remove(gloss); gloss.getRenderTarget().dispose(); gloss.geometry.dispose(); gloss.material.dispose(); gloss = null; }
     if (!real || !A || A.empty || !A.hardAny || !THREE.Reflector || (global.P3REAL || {}).gloss === false || gov.level >= 1) return;
-    const b = A.bounds, pr = renderer.getPixelRatio(), tw = Math.max(256, Math.round((container.clientWidth || 800) * pr * 0.5)), th = Math.max(256, Math.round((container.clientHeight || 600) * pr * 0.5));
+    const b = A.bounds, pr = renderer.getPixelRatio(), tw = Math.max(192, Math.round((container.clientWidth || 800) * pr * 0.3)), th = Math.max(192, Math.round((container.clientHeight || 600) * pr * 0.3));
     gloss = new THREE.Reflector(new THREE.PlaneGeometry(b.w + 0.5, b.d + 0.5), { textureWidth: tw, textureHeight: th, clipBias: 0.003, color: 0xffffff, shader: FLOOR_GLOSS });
-    gloss.material.transparent = true; gloss.material.depthWrite = false; gloss.material.uniforms.opacity.value = (global.P3REAL || {}).gl || 0.2; gloss.material.uniforms.texel.value.set(1 / tw, 1 / th);
+    { const rt = gloss.getRenderTarget(); rt.texture.type = THREE.HalfFloatType; rt.texture.minFilter = THREE.LinearFilter; }
+    gloss.material.transparent = true; gloss.material.depthWrite = false; gloss.material.uniforms.opacity.value = (global.P3REAL || {}).gl || 0.32; gloss.material.uniforms.texel.value.set(1 / tw, 1 / th);
     gloss.rotation.x = -Math.PI / 2; gloss.position.set(b.minX + b.w / 2, 0.012, b.minZ + b.d / 2); gloss.renderOrder = 2; gloss.name = 'floor gloss';
-    const ob = gloss.onBeforeRender; gloss.onBeforeRender = function (r, sc, cam) { if (sc.overrideMaterial) return; ob.call(this, r, sc, cam); };   // not in the normals pass of the corner shading
+    // not in the normals pass of the corner shading; and you (the drone, the game, the cursor ring and comment
+    // pins) aren't in the floor's reflection, only the room is
+    const ob = gloss.onBeforeRender; gloss.onBeforeRender = function (r, sc, cam) {
+      if (sc.overrideMaterial) return;
+      const hide = [drone, ring, pulse, pins, sc.getObjectByName('p3g')].filter(o => o && o.visible);
+      hide.forEach(o => { o.visible = false; });
+      try { ob.call(this, r, sc, cam); } finally { hide.forEach(o => { o.visible = true; }); }
+    };
     upDone.add(gloss.material); scene.add(gloss);
+  }
+  // Each light fixture near you is its own area light, the way the Super render lights a room: pools of light
+  // under the fixtures, walls brighter near them and falling off between. A fixed set (so nothing recompiles as
+  // you move) follows the camera to the nearest fixtures; the room-wide light stays on, dimmer, as the fill.
+  const FXN = 10, fxGroup = new THREE.Group(), fxList = []; let fxT = -1, fxOn = false;
+  fxGroup.name = 'fixture lights'; scene.add(fxGroup);
+  function fxPool() {
+    if (fxGroup.children.length) return;
+    for (let i = 0; i < FXN; i++) { const l = new THREE.RectAreaLight(0xfff4e6, 0, 2, 4); l.position.set(0, -50, 0); l.lookAt(0, -100, 0); fxGroup.add(l); }
+  }
+  function updateFx(now, force) {
+    if (!real || !fxGroup.children.length || !fxGroup.parent) return;
+    if (!force && now - fxT < 350) return; fxT = now;
+    const KN = global.P3REAL || {}, inside = mode === 'walk' || (mode === 'fly' && A && st.x > A.bounds.minX && st.x < A.bounds.maxX && st.z > A.bounds.minZ && st.z < A.bounds.maxZ);
+    const on = inside && KN.fx !== false && fxList.length > 0;
+    if (on !== fxOn) { fxOn = on; const fill = KN.fill != null ? KN.fill : 0.45; roomLights.children.forEach(l => { if (l.userData.i0 == null) l.userData.i0 = l.intensity; l.intensity = l.userData.i0 * (on ? fill : 1); }); }
+    const cx = camera.position.x, cz = camera.position.z;
+    const near = on ? fxList.map(f => [f, (f.x - cx) * (f.x - cx) + (f.z - cz) * (f.z - cz)]).sort((a, b) => a[1] - b[1]).slice(0, FXN).map(x => x[0]) : [];
+    fxGroup.children.forEach((l, i) => {
+      const f = near[i];
+      if (!f) { l.intensity = 0; return; }
+      if (l.userData.f !== f) { l.userData.f = f; l.width = f.w; l.height = f.h; l.position.set(f.x, f.H - 0.04, f.z); l.lookAt(f.x, 0, f.z); }
+      // fade the farthest one in and out so lights don't pop as you walk
+      l.intensity = f.I * (i === FXN - 1 && near.length === FXN ? 0.5 : 1);
+    });
+  }
+  // Ceiling light shadows: a soft light straight down over where you are, so equipment, tables and carts cast
+  // shadows on the floor the way they do under a cleanroom's light panels (Realistic, inside). The ceiling,
+  // lid and fixtures (everything above head height) don't block it.
+  const downL = new THREE.DirectionalLight(0xfff4e6, 0); scene.add(downL, downL.target);
+  downL.shadow.mapSize.set(1024, 1024); downL.shadow.bias = -0.0006; downL.shadow.normalBias = 0.04;
+  let downOn = false, downBuilt = null;
+  function setCeilCast(on) {
+    if (!built) return; const bb = new THREE.Box3();
+    built.root.traverse(o => {
+      if (!o.isMesh) return;
+      if (on) { if (!o.castShadow || !o.geometry) return; if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); bb.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); if (bb.min.y > 6.2) { o.userData.cs0 = true; o.castShadow = false; } }
+      else if (o.userData.cs0) { o.castShadow = true; delete o.userData.cs0; }
+    });
+  }
+  function updateDown() {
+    const KN = global.P3REAL || {}, on = !!(real && fxOn && GFX && renderer.shadowMap.enabled && KN.down !== false && gov.level < 1 && A);
+    if (on !== downOn || (on && downBuilt !== built)) { downOn = on; downL.castShadow = on; downL.intensity = on ? (KN.dk != null ? KN.dk : 0.32) : 0; if (built) built.root.updateMatrixWorld(); setCeilCast(on); downBuilt = on ? built : null; }
+    if (!on) return;
+    const r = 22, cx = Math.round(camera.position.x / 4) * 4, cz = Math.round(camera.position.z / 4) * 4;
+    downL.position.set(cx, (A.H || 9) + 25, cz + 0.01); downL.target.position.set(cx, 0, cz);
+    const C = downL.shadow.camera; if (C.right !== r) { C.left = -r; C.right = r; C.top = r; C.bottom = -r; C.near = 1; C.far = 80; C.updateProjectionMatrix(); }
   }
   function placeRoomLights() {
     while (roomLights.children.length) roomLights.remove(roomLights.children[0]);
+    fxList.length = 0; fxOn = false; fxT = -1;
     placeGloss();
     if (!real || !plan) return;
     let R = []; try { R = cleanroomCheck(plan).rooms; } catch (e) { R = []; }
@@ -4519,12 +4584,17 @@ function mount(container, plan, opts) {
       const fx = q.fixtures || []; if (!fx.length) continue;
       let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; for (const f of fx) { const hw = (f.w || 2) / 2, hh = (f.h || 4) / 2; x0 = Math.min(x0, f.x - hw); x1 = Math.max(x1, f.x + hw); z0 = Math.min(z0, f.y - hh); z1 = Math.max(z1, f.y + hh); }
       const nL = fx.filter(f => f.type !== 'ffu').length, w = Math.max(2, x1 - x0), d = Math.max(2, z1 - z0), H = q.H || (A && A.H) || 8;
-      list.push({ cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, w, d, H, k: Math.min(3.2, 0.55 + 1.9 * nL * 8 / (w * d)) });
+      const k = Math.min(3.2, 0.55 + 1.9 * nL * 8 / (w * d));
+      list.push({ cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, w, d, H, k });
+      // the room's light, shared out over its fixtures (same total light, from where the fixtures are)
+      const KN = global.P3REAL || {}, I = k * lightGain * (w * d) / Math.max(1, nL * 8) * (KN.fxs != null ? KN.fxs : 0.75);
+      for (const f of fx) if (f.type !== 'ffu') fxList.push({ x: f.x, z: f.y, w: Math.max(0.5, f.w || 2), h: Math.max(0.5, f.h || 4), H, I: Math.min(I, 14) });
     }
     if (!list.length && A && !A.empty && A.hardAny) { const b = A.bounds; list.push({ cx: b.minX + b.w / 2, cz: b.minZ + b.d / 2, w: b.w * 0.9, d: b.d * 0.9, H: A.H || 8, k: 1.2 }); }
     list.sort((a, b) => b.w * b.d - a.w * a.d).slice(0, 16).forEach(L => {
       const l = new THREE.RectAreaLight(0xfff6ea, L.k * lightGain, L.w, L.d); l.position.set(L.cx, L.H - 0.03, L.cz); l.lookAt(L.cx, 0, L.cz); roomLights.add(l);
     });
+    if (fxList.length) { fxPool(); updateFx(performance.now(), true); }
   }
   function setReal(on) {
     govReset();
@@ -4538,10 +4608,11 @@ function mount(container, plan, opts) {
     scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); });
     // light lenses brighter than white in the realistic view, so they (and nothing else) glow
     scene.traverse(o => { const m = o.material; if (m && !Array.isArray(m) && /light lens/i.test(m.name || '') && m.color) { if (m.userData.c0 == null) m.userData.c0 = m.color.getHex(); m.color.setHex(m.userData.c0); if (real) m.color.multiplyScalar(3); } });
-    const amb = KN.amb != null ? KN.amb : 0.5;
+    const amb = KN.amb != null ? KN.amb : 0.3;
     scene.children.forEach(o => { if (o.isHemisphereLight || o.isAmbientLight) { if (o.userData.i0 == null) o.userData.i0 = o.intensity; o.intensity = o.userData.i0 * (real ? amb : 1); } });
     lightGain = KN.k != null ? KN.k : 1.1;
-    placeRoomLights(); roomLights.visible = KN.lights !== false;
+    placeRoomLights(); roomLights.visible = KN.lights !== false; if (rGrade) { rGrade.enabled = KN.grade !== false; const U = rGrade.uniforms; U.con.value = KN.con != null ? KN.con : 0.06; U.warm.value = KN.warm != null ? KN.warm : 0.004; U.vig.value = KN.vig != null ? KN.vig : 0.14; U.sat.value = KN.sat != null ? KN.sat : 1.04; }
+    if (!real) fxGroup.children.forEach(l => { l.intensity = 0; });
     if (realBtn) realBtn.setAttribute('aria-pressed', String(real));
     try { localStorage.setItem('p3v.real', real ? '1' : '0'); } catch (e) { /* ok */ }
   }
@@ -5481,7 +5552,7 @@ function mount(container, plan, opts) {
      anything back up on its own; turning Realistic off and on starts it over. */
   const PR0 = renderer.getPixelRatio();
   const gov = { ema: 1 / 60, slow: 0, level: 0 };
-  function govReset() { gov.ema = 1 / 60; gov.slow = 0; if (gov.level) { gov.level = 0; aoOff = false; if (renderer.getPixelRatio() !== PR0) { renderer.setPixelRatio(PR0); resize(); } } }
+  function govReset() { gov.ema = 1 / 60; gov.slow = 0; if (gov.level) { gov.level = 0; if (!fxGroup.parent) scene.add(fxGroup); aoOff = false; if (renderer.getPixelRatio() !== PR0) { renderer.setPixelRatio(PR0); resize(); } } }
   function govStep(rawDt) {
     if (rawDt <= 0 || rawDt > 0.5 || document.hidden || global.P3NOAUTO) return;
     gov.ema += (rawDt - gov.ema) * 0.08;
@@ -5489,7 +5560,7 @@ function mount(container, plan, opts) {
     if (gov.slow < 3 || gov.level >= 3) return;
     gov.slow = 0; gov.level++;
     if (gov.level === 1) { if (real && gloss) { scene.remove(gloss); gloss.getRenderTarget().dispose(); gloss = null; } aoOff = true; }
-    else if (gov.level === 2) { if (renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); resize(); } }
+    else if (gov.level === 2) { if (renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); resize(); } scene.remove(fxGroup); fxOn = false; roomLights.children.forEach(l => { if (l.userData.i0 != null) l.intensity = l.userData.i0; }); }
     else if (gov.level === 3) { if (rSSAO && real) { rSSAO.enabled = false; rPlain.enabled = true; } }
   }
   function loop(now) {
@@ -5545,7 +5616,9 @@ function mount(container, plan, opts) {
     }
     if (gas.length) stepGas(dt);
     if (GFX && (++sweepN % 30) === 0) upgradeScene(scene);
-    if (GFX) { const sh = mode !== 'walk' && mode !== 'plenum'; if (sun.castShadow !== sh) sun.castShadow = sh; }
+    if (GFX) { const sh = mode !== 'walk' && mode !== 'plenum' && !downOn; if (sun.castShadow !== sh) sun.castShadow = sh; }   // inside under the ceiling lights, the sun doesn't reach
+    if (real) updateFx(now);
+    if (real || downOn) updateDown();
     if (real && rComp && !ctxLost) rComp.render(); else if (composer && !aoOff) composer.render(); else renderer.render(scene, camera);
     raf = requestAnimationFrame(loop);
   }
