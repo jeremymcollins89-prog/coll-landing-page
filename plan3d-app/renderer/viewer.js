@@ -827,7 +827,8 @@ function footprint(A, all) {
   for (const w of A.walls) for (const [x, z] of [[w.x1, w.y1], [w.x2, w.y2]]) {
     if (!use(isHard(w) || isFrame(w))) continue;
     const t = w.t || 0.25;
-    if (A.walls.some(o => o !== w && segD(x, z, o) < Math.max(t, o.t || 0.25) * 0.8)) continue;
+    // an end that stops just short of another wall (a drafting gap of an inch or three) still meets it
+    if (A.walls.some(o => o !== w && segD(x, z, o) < Math.max(Math.max(t, o.t || 0.25) * 0.8, (t + (o.t || 0.25)) / 2 + 0.02))) continue;
     // an end beside an opening is a door jamb (the opening closes it), unless the opening sits inside this
     // same wall: then the end is the wall's real end and still needs closing
     if (A.opInfo.some(i => {
@@ -924,25 +925,49 @@ function footprint(A, all) {
   for (const g of A.ghost || []) segs.push([g.x1, g.y1, g.x2, g.y2, g.t || 0.25]);
   segs.push(...joins);
   // side at v (x = v when alongZ, else z = v), spanning lo..hi on the other axis
-  const snapSide = (v, lo, hi, alongZ) => {
+  const snapSide = (v, lo, hi, alongZ, more = 0) => {
     let best = v, bd = Infinity;
     for (const q of segs) {
-      const [ua, va, ub, vb] = alongZ ? [q[0], q[1], q[2], q[3]] : [q[1], q[0], q[3], q[2]], t = q[4], R = Math.max(t / 2, cell * 0.75) + cell + 0.02;
+      const [ua, va, ub, vb] = alongZ ? [q[0], q[1], q[2], q[3]] : [q[1], q[0], q[3], q[2]], t = q[4], R = Math.max(t / 2, cell * 0.75) + cell + 0.02 + more;
       if (Math.abs(ua - ub) < 0.02) { // the wall runs along the side
         if (Math.max(va, vb) < lo - 0.01 || Math.min(va, vb) > hi + 0.01) continue;
         const d = Math.abs(v - ua); if (d <= R && d < bd) { bd = d; best = ua; }
       } else if (Math.abs(va - vb) < 0.02) { // the wall runs across: the side may stick out past its end
         if (va < lo - R || va > hi + R || hi - lo > 2 * R + cell) continue; // only the short bump round the end
-        for (const [e, o] of [[ua, ub], [ub, ua]]) { const d = Math.abs(v - e); if (d <= R && d < bd && (v - e) * (e - o) > 0) { bd = d; best = e; } }
+        // (a wall cut in pieces, at a door or a post, carries on past the cut: only its real ends count)
+        const goesOn = (e) => segs.some(o => { if (o === q) return false; const [pa, pv, pb, pw] = alongZ ? [o[0], o[1], o[2], o[3]] : [o[1], o[0], o[3], o[2]]; return Math.abs(pv - va) < 0.02 && Math.abs(pw - va) < 0.02 && Math.min(pa, pb) < e + 0.02 && Math.max(pa, pb) > e - 0.02 && (Math.abs(pa - e) > 0.02 || Math.abs(pb - e) > 0.02); });
+        for (const [e, o] of [[ua, ub], [ub, ua]]) { const d = Math.abs(v - e); if (d <= R && d < bd && (v - e) * (e - o) > 0 && !goesOn(e)) { bd = d; best = e; } }
       }
     }
     return best;
   };
-  for (let k = rects.length - 1; k >= 0; k--) {
-    const r = rects[k], x0s = snapSide(r[0], r[1], r[3], true), x1s = snapSide(r[2], r[1], r[3], true), z0s = snapSide(r[1], r[0], r[2], false), z1s = snapSide(r[3], r[0], r[2], false);
-    if (x1s - x0s < 0.01 || z1s - z0s < 0.01) { rects.splice(k, 1); continue; }
-    rects[k] = [x0s, z0s, x1s, z1s];
+  // A long side can run along several walls that don't line up (a room's wall a few inches further in than
+  // the next room's): one snap for the whole side would carry the furthest wall's line along all of it, and the
+  // ceiling and floor would stick out past the nearer walls. So the rectangle is cut where those walls end and
+  // each piece snaps to its own wall.
+  const ends = (v, lo, hi, alongZ) => {
+    const out = [];
+    for (const q of segs) {
+      const [ua, va, ub, vb] = alongZ ? [q[0], q[1], q[2], q[3]] : [q[1], q[0], q[3], q[2]], R = Math.max(q[4] / 2, cell * 0.75) + cell + 0.02;
+      if (Math.abs(ua - ub) >= 0.02 || Math.abs(v - ua) > R) continue;
+      for (const e of [va, vb]) if (e > lo + 0.05 && e < hi - 0.05) out.push(e);
+    }
+    return out;
+  };
+  const cuts = (a, b, L) => { const P = [...new Set([a, ...L.map(e => +e.toFixed(4)), b])].sort((m, n) => m - n), o = []; for (let i = 0; i + 1 < P.length; i++) if (P[i + 1] - P[i] > 0.01) o.push([P[i], P[i + 1]]); return o; };
+  const snapped = [];
+  for (const r of rects) {
+    for (const [xa, xb] of cuts(r[0], r[2], ends(r[1], r[0], r[2], false).concat(ends(r[3], r[0], r[2], false)))) {
+      for (const [za, zb] of cuts(r[1], r[3], ends(xa, r[1], r[3], true).concat(ends(xb, r[1], r[3], true)))) {
+        // a small piece is the bump round a wall corner: it may reach a little further to its wall
+        const more = xb - xa < 0.75 && zb - za < 0.75 ? cell + 0.1 : 0;
+        const x0s = snapSide(xa, za, zb, true, more), x1s = snapSide(xb, za, zb, true, more), z0s = snapSide(za, xa, xb, false, more), z1s = snapSide(zb, xa, xb, false, more);
+        if (x1s - x0s < 0.01 || z1s - z0s < 0.01) continue;
+        snapped.push([x0s, z0s, x1s, z1s]);
+      }
+    }
   }
+  rects.length = 0; rects.push(...snapped);
   const fp = { cell, x0, z0, nx, nz, inside, wall, rects, area: n * cell * cell,
     has(x, z) { const i = Math.floor((x - x0) / cell), j = Math.floor((z - z0) / cell); return i >= 0 && j >= 0 && i < nx && j < nz && !!inside[j * nx + i]; } };
   A[KEY] = fp;
@@ -1072,7 +1097,9 @@ function ceilingRects0(plan, FP, A) {
     const base = FP ? FP.rects : [], all = A ? footprint(A, true) : null;
     let extra = drawingCover(own, plan.walls); if (all) extra = [].concat(...all.rects.map(a => clipRects(extra, { x0: a[0], z0: a[1], x1: a[2], z1: a[3] })));
     if (base.length && extra.length) extra = subtractRects(extra, base.map(r => ({ x0: r[0], z0: r[1], x1: r[2], z1: r[3] })));
-    return base.concat(extra.filter(r => r[2] - r[0] > 0.05 && r[3] - r[1] > 0.05));
+    // what is left beside a wall is a thin strip (the drawing's lines sit a little off the walls): that strip is
+    // not ceiling, it would stick out past the wall over the room next door. Real extra grid (a hall) is wider.
+    return base.concat(extra.filter(r => r[2] - r[0] > 1.01 && r[3] - r[1] > 1.01));
   }
   if (!R) return FP ? FP.rects : [];
   const all = A ? footprint(A, true) : null, base = all ? all.rects : FP ? FP.rects : [], out = [];
@@ -3306,7 +3333,8 @@ function buildScene(THREE, plan, A) {
   };
   // the ceiling track (the angle the grid rests on) shows only on walls taller than one 12′ panel; a single
   // panel reads as one smooth face, with no band or blocks at the ceiling line
-  const trackOK = (h) => h > 12 + 1 / 96;
+  // (no ceiling track band on any wall: each panel is 12′ or less, and the walls read as smooth faces)
+  const trackOK = () => false;
   let wallCA = null;
   const M = {
     white: new THREE.MeshPhongMaterial({ color: 0xf7f8f8, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 }),
@@ -3406,12 +3434,8 @@ function buildScene(THREE, plan, A) {
       const FPw = footprint(A), CAw = wallCA || (wallCA = ceilAreas(plan, A)), side = (sd) => { for (const t of [0.5, 0.2, 0.8]) { const x = p.x1 + (p.x2 - p.x1) * t + nx * sd * (p.t / 2 + 0.4), z = p.z1 + (p.z2 - p.z1) * t + nz * sd * (p.t / 2 + 0.4); if (inCeiling(plan, FPw, x, z)) return ceilingAt(CAw, H, x, z); } return 0; };
       for (const sd of [1, -1]) { const hc = side(sd); if (!hc || p.h <= hc + 0.05) continue; const o = sd * (p.t / 2 + 0.016); segBox(p.x1 + nx * o, p.z1 + nz * o, p.x2 + nx * o, p.z2 + nz * o, hc - 0.17, hc, 0.024, M.track); }
     }
-    // panels come up to 12′ tall in one piece; a taller wall is a panel with a second one stacked on it. The
-    // joint looks like the vertical ones: a 3″ batten flush with the face, a hairline either side (not a band)
-    { let y = 0; const st = panelStack(p.h, wallCeil(plan, A, p)); for (let k = 0; k + 1 < st.length; k++) { y += st[k];
-      segBox(p.x1, p.z1, p.x2, p.z2, y - 0.125, y + 0.125, p.t + 0.006, WP.trim);
-      for (const e of [-0.125, 0.125]) segBox(p.x1, p.z1, p.x2, p.z2, y + e - 0.006, y + e + 0.006, p.t + 0.008, M.seamLine || (M.seamLine = new THREE.MeshBasicMaterial({ color: 0xa3aaae, name: 'Wall panel joint' })));
-    } }
+    // panels come up to 12′ tall in one piece; a taller wall has a second one stacked on it. The joint is not drawn:
+    // the wall reads as one smooth face (no band at the stack line)
     // a section that stops short of (or runs past) the top of the cleanroom gets a cap along its top
     if (Math.abs(p.h - WH) > 0.02) segBox(p.x1, p.z1, p.x2, p.z2, p.h - 0.03, p.h + 0.04, p.t + 0.03, WP.trim);
     shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
@@ -5543,7 +5567,7 @@ function mount(container, plan, opts) {
     if (tour && /^(w|a|s|d|q|e|arrow\w+|escape)$/.test(k)) stopTour();
     if (k === 'l' && !e.repeat) { toggleLook(); e.preventDefault(); return; }
     if (k === 'm' && !e.repeat && (container.contains(e.target) || container.clientWidth > global.innerWidth * 0.6)) { setMeasure(!measureOn); e.preventDefault(); return; }
-    if (k === 'p' && !e.repeat && (container.contains(e.target) || container.clientWidth > global.innerWidth * 0.6)) { takeSnapshot(); e.preventDefault(); return; }
+    if (k === 'p' && !e.shiftKey && !e.repeat && (container.contains(e.target) || container.clientWidth > global.innerWidth * 0.6)) { takeSnapshot(); e.preventDefault(); return; }
     if (k === 'escape' && mPending) { cancelPending(); }
     if (k === 'v' && !e.repeat && mode === 'fly') { pilot = !pilot; applyFlyCam(); e.preventDefault(); return; }
     // Only take keys that are meant for the walkthrough: when you're in it, or when it fills the window.
