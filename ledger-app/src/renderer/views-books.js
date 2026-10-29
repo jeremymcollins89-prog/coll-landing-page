@@ -167,10 +167,11 @@
     on('email', () => { collect(); emailInvoice(c, draft); });
     on('pay', async () => { collect(); if (!valid()) return; if (inv && JSON.stringify(inv) !== JSON.stringify(draft) && !await guardLock(c, draft.date, inv.date)) return; persist(); save(); U.closeModal(); paymentModal(c, draft); });
     on('more', e => {
-      const menu = U.openMenu(e.currentTarget, `<div class="mi" data-m="dup">${ICON.copy}Duplicate as a new draft</div>${draft.status !== 'void' && draft.status !== 'draft' ? `<div class="mi" data-m="void">${ICON.close}Void (keep a record, owe nothing)</div>` : ''}${draft.status === 'void' ? `<div class="mi" data-m="unvoid">${ICON.refresh}Restore this invoice</div>` : ''}<div class="sep"></div><div class="mi danger-mi" data-m="del">${ICON.trash}Delete</div>`);
+      const menu = U.openMenu(e.currentTarget, `<div class="mi" data-m="recur">${ICON.refresh}Repeat this invoice…</div><div class="mi" data-m="dup">${ICON.copy}Duplicate as a new draft</div>${draft.status !== 'void' && draft.status !== 'draft' ? `<div class="mi" data-m="void">${ICON.close}Void (keep a record, owe nothing)</div>` : ''}${draft.status === 'void' ? `<div class="mi" data-m="unvoid">${ICON.refresh}Restore this invoice</div>` : ''}<div class="sep"></div><div class="mi danger-mi" data-m="del">${ICON.trash}Delete</div>`);
       menu.onclick = async ev => {
         const it = ev.target.closest('[data-m]'); if (!it) return; U.closeMenus();
         const k = it.dataset.m;
+        if (k === 'recur') { collect(); if (!valid()) return; persist(); save(); U.closeModal(); App.recurModal(c, 'invoice', draft); return; }
         if (k === 'dup') { U.closeModal(); const copy = JSON.parse(JSON.stringify(draft)); Object.assign(copy, { id: C.uid(), number: c.invoicePrefix + c.nextInvoice, date: today(), dueDate: C.addDays(today(), C.daysBetween(draft.date, draft.dueDate)), status: 'draft' }); copy.lines.forEach(l => l.id = C.uid()); c.invoices.push(copy); c.nextInvoice++; commit(); invoiceModal(c, copy); }
         if (k === 'void') { if (payments.length) return U.toast('Remove the payments first, then void it', null, 'warn'); if (!await guardLock(c, draft.date)) return; const undo = snapshot(c); draft.status = 'void'; persist(); U.closeModal(); commit(); U.toast(`Invoice ${draft.number} voided`, undo); }
         if (k === 'unvoid') { if (!await guardLock(c, draft.date)) return; const undo = snapshot(c); draft.status = 'sent'; persist(); U.closeModal(); commit(); U.toast('Invoice restored', undo); }
@@ -326,15 +327,18 @@
         <div class="field span2"><label for="c-addr">Address</label><textarea class="input" id="c-addr" rows="2">${esc(x.address)}</textarea></div>
         <div class="field span2"><label for="c-notes">Notes</label><input class="input" id="c-notes" value="${esc(x.notes)}" placeholder="Terms, contact person, anything useful"></div>
         <div class="field"><label for="c-kind">This is a</label><select class="input" id="c-kind"><option value="customer" ${x.kind === 'customer' ? 'selected' : ''}>Customer (pays us)</option><option value="vendor" ${x.kind === 'vendor' ? 'selected' : ''}>Vendor (we pay them)</option></select></div>
+        <div class="field" id="c-1099" ${x.kind === 'vendor' ? '' : 'hidden'}><label for="c-tin">Tax ID from their W-9</label><input class="input" id="c-tin" value="${esc(x.tin || '')}" placeholder="SSN or EIN — optional"></div>
+        <label class="check span2" id="c-1099b" ${x.kind === 'vendor' ? '' : 'hidden'}><input type="checkbox" id="c-is1099" ${x.is1099 ? 'checked' : ''}>Contractor who gets a 1099 (an individual or partnership paid for services — not a corporation)</label>
       </div></div>
       <div class="modal-foot">${!isNew ? `<button class="btn danger left" data-x="del">${ICON.trash}Delete</button>` : '<span class="left"></span>'}${!isNew && x.kind === 'customer' ? `<button class="btn" data-x="inv">${ICON.file}New invoice</button>` : ''}<button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-x="save">${ICON.check}Save</button></div>`);
     const doSave = () => {
       const name = $('#c-name', m).value.trim();
       if (!name) { U.toast('Add a name', null, 'warn'); return false; }
-      Object.assign(x, { name, email: $('#c-email', m).value.trim(), phone: $('#c-phone', m).value.trim(), address: $('#c-addr', m).value.trim(), notes: $('#c-notes', m).value.trim(), kind: $('#c-kind', m).value });
+      Object.assign(x, { name, email: $('#c-email', m).value.trim(), phone: $('#c-phone', m).value.trim(), address: $('#c-addr', m).value.trim(), notes: $('#c-notes', m).value.trim(), kind: $('#c-kind', m).value, is1099: $('#c-kind', m).value === 'vendor' && $('#c-is1099', m).checked, tin: $('#c-tin', m).value.trim() });
       if (isNew) c.contacts.push(x);
       return true;
     };
+    $('#c-kind', m).onchange = e => { $('#c-1099', m).hidden = $('#c-1099b', m).hidden = e.target.value !== 'vendor'; };
     m.querySelector('[data-x=save]').onclick = () => { if (!doSave()) return; U.closeModal(); commit(); U.toast('Saved'); };
     const inv = m.querySelector('[data-x=inv]');
     if (inv) inv.onclick = () => { if (!doSave()) return; U.closeModal(); commit(); invoiceModal(c); setTimeout(() => { const s = $('#i-cust'); if (s) s.value = x.id; }, 30); };

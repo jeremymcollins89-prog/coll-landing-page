@@ -161,6 +161,9 @@
         const lr = lastRecon(c, a);
         attention.push(`<div class="row"><span class="tag blue">${a.sub === 'credit' ? ICON.card : ICON.bank}</span><div class="grow"><b>Reconcile ${esc(a.name)}</b><div class="muted">${lr ? 'Done through ' + fmtDate(lr.date) : 'Not reconciled yet'}</div></div><button class="btn sm" data-action="start-recon" data-id="${a.id}">Start</button></div>`);
       }
+      const billSt = (c.bills || []).map(b => C.billState(c, b));
+      const billsDue = billSt.filter(s => s.status === 'soon' || s.status === 'overdue');
+      if (billsDue.length) attention.push(`<div class="row"><span class="tag ${billsDue.some(s => s.status === 'overdue') ? 'red' : 'gold'}"><span class="dot"></span>${billsDue.length}</span><div class="grow"><b>Bill${billsDue.length > 1 ? 's' : ''} to pay</b><div class="muted">${money(billsDue.reduce((s, x) => s + x.due, 0))} due within a week${billsDue.some(s => s.status === 'overdue') ? ' or late' : ''}</div></div><button class="btn sm" data-action="bill-filter" data-v="${billsDue.some(s => s.status === 'overdue') ? 'overdue' : 'soon'}">Pay</button></div>`);
       const drafts = invStates.filter(x => x.s.status === 'draft');
       if (drafts.length) attention.push(`<div class="row"><span class="tag">${drafts.length}</span><div class="grow"><b>Draft invoice${drafts.length > 1 ? 's' : ''}</b><div class="muted">Ready to finish and send</div></div><button class="btn sm" data-action="inv-filter" data-v="draft">Open</button></div>`);
       const lastClose = c.lockDate;
@@ -419,7 +422,7 @@
                 ${accSel ? '' : `<td class="muted">${esc(acc ? acc.name : '')}</td>`}
                 <td class="num" style="font-weight:600">${signed(amt)}</td>
                 ${accSel ? `<td class="num muted">${run != null ? money(run) : ''}</td>` : ''}
-                <td>${C.isLocked(c, t.date) || t.reconciled ? `<span title="${t.reconciled ? 'Reconciled' : 'In a closed month'}" class="lock-ic">${ICON.lock}</span>` : t.cleared ? '<span title="Cleared" class="muted" style="font-weight:700">C</span>' : ''}</td>
+                <td>${t.attachments && t.attachments.length ? `<span title="${t.attachments.length} attached" class="clip-ic">${ICON.clip}</span>` : ''}${C.isLocked(c, t.date) || t.reconciled ? `<span title="${t.reconciled ? 'Reconciled' : 'In a closed month'}" class="lock-ic">${ICON.lock}</span>` : t.cleared ? '<span title="Cleared" class="muted" style="font-weight:700">C</span>' : ''}</td>
               </tr>`;
             }).join('') : `<tr><td colspan="8"><div class="empty"><div class="big">No transactions here</div>Try another account or date range${f.q ? ', or clear the search' : ''}.</div></td></tr>`}</tbody>
           </table></div>
@@ -505,6 +508,7 @@
         </div>
         <div class="field" id="cat-wrap"></div>
         <div class="field"><label for="t-memo">Note</label><input class="input" id="t-memo" value="${esc(d.memo || '')}" placeholder="Optional — for you or the client"></div>
+        <div id="att-wrap"></div>
         <details ${isNew ? '' : 'open'} class="more"><summary>Bank description${d.description ? '' : ' (optional)'}</summary><input class="input" id="t-desc" value="${esc(d.description)}" placeholder="As it appears on the statement" style="margin-top:8px"></details>
         ${!isNew && !inv ? `<label class="check" id="rule-wrap"><input type="checkbox" id="t-rule">Use this category for similar transactions from now on (smart rule)</label>` : ''}
       </div>
@@ -537,6 +541,9 @@
       $$('[data-sr]', w).forEach(b => b.onclick = e => { e.preventDefault(); splits.splice(+b.dataset.sr, 1); if (splits.length < 2) { d.categoryId = splits[0] ? splits[0].categoryId : d.categoryId; splits = null; } drawCat(); });
     };
     drawCat();
+    const attTarget = isNew ? d : (c.transactions.find(x => x.id === t.id) || d);
+    const drawAtt = () => { const w = $('#att-wrap', m); w.innerHTML = App.attach.attachStrip(attTarget); App.attach.wireStrip(w, attTarget, drawAtt); };
+    drawAtt();
     $('#t-amt', m).addEventListener('change', () => { if (splits) drawCat(); });
     $$('[data-dir]', m).forEach(b => b.onclick = () => { dir = b.dataset.dir === 'out' ? -1 : 1; $$('[data-dir]', m).forEach(x => x.classList.toggle('on', x === b)); m.querySelector('label[for=t-acc]').textContent = dir < 0 ? 'Paid from' : 'Deposited to'; });
 

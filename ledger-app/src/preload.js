@@ -13,5 +13,14 @@ contextBridge.exposeInMainWorld('desktop', {
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   info: () => ipcRenderer.invoke('app:info'),
   installUpdate: () => ipcRenderer.invoke('app:installUpdate'),
-  onUpdate: (fn) => ipcRenderer.on('update', (_e, info) => fn(info))
+  onUpdate: (fn) => ipcRenderer.on('update', (_e, info) => fn(info)),
+  onClosing: (fn) => ipcRenderer.on('app:closing', () => fn()),
+  readyToClose: () => ipcRenderer.send('app:readyToClose'),
+  backupStatus: () => ipcRenderer.invoke('backup:status'),
+  chooseBackupFolder: () => ipcRenderer.invoke('backup:choose'),
+  clearBackupFolder: () => ipcRenderer.invoke('backup:clear'),
+  openBackupFolder: () => ipcRenderer.invoke('backup:open'),
+  saveAttachment: (id, base64) => ipcRenderer.invoke('att:save', { id, base64 }),
+  readAttachment: (id) => ipcRenderer.invoke('att:read', id),
+  deleteAttachment: (id) => ipcRenderer.invoke('att:delete', id)
 });

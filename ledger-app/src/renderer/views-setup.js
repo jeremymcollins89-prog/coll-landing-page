@@ -173,6 +173,7 @@
               <div class="field span2"><label for="cs-note">Default message</label><input class="input" id="cs-note" data-cset="invoiceNote" value="${esc(c.invoiceNote || 'Thank you for your business!')}"></div>
               <div class="field span2"><label>Color</label><div class="swatches">${C.CLIENT_COLORS.map(col => `<button class="swatch ${c.color === col ? 'on' : ''}" style="background:${col}" data-action="client-color" data-v="${col}" aria-label="Use this color"></button>`).join('')}</div></div>
             </div></div></div>` : ''}
+            ${App.securityCard ? App.securityCard() : ''}
             <div class="card"><div class="card-head"><h3>Look</h3></div><div class="card-body"><div class="seg">${[['system', 'Match my computer'], ['light', 'Light'], ['dark', 'Dark']].map(([k, l]) => `<button class="${(S.data.theme || 'system') === k ? 'on' : ''}" data-action="theme" data-v="${k}">${l}</button>`).join('')}</div></div></div>
             <div class="card"><div class="card-head"><h3>Your data</h3></div><div class="card-body stack-sm">
               <div class="muted" style="line-height:1.6">Everything is saved on this computer as you work${window.desktop ? ', and a backup is kept for each of the last 30 days' : ''}. Export a backup now and then to keep a copy somewhere safe, like a USB drive or cloud folder.</div>

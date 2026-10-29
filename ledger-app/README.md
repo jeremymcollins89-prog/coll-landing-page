@@ -23,6 +23,11 @@ Download: https://collbusinesssolutions.com/projects.html#coll-ledger
 - **Client package**: one polished PDF (summary page, P&L, Balance Sheet, unpaid invoices) prepared under the bookkeeper's studio name.
 - **Practice / Training** (sidebar and Help): a pretend bakery, eleven short lessons with explanations, quizzes, a coach that checks each task, and a certificate.
 - **Imports fill in categories automatically** (smart rules, past choices, and built-in knowledge of common vendors) and show them in the preview to confirm or change before importing. Everything stays editable afterward.
+- **Bills (accounts payable)**: enter vendor bills when they arrive, see what's due soon or overdue, pay in one click. Receipts and files attach to bills and transactions.
+- **Repeating invoices and bills**: weekly, every two weeks, monthly, quarterly or yearly — created automatically.
+- **Tax time**: Trial Balance, 1099 Contractors ($600 threshold through 2025, $2,000 from 2026), Sales Tax, and a one-click year-end PDF package for the CPA with the General Ledger as a spreadsheet.
+- **My studio**: the bookkeeper's own clients, a start/stop timer, monthly fees plus hourly time, and branded invoices ("Bill this month" does every client at once).
+- **Password lock** (Settings → Protection & backups): AES-256 encryption of the books, backups and receipts, a recovery code, and auto-lock when idle. **Cloud backup**: pick a OneDrive, Google Drive or Dropbox folder and a dated copy is written there every day.
 - **Search anything** with Ctrl K. Help (?) with short how-to guides.
 - Double-entry underneath, so the Balance Sheet always balances. Data stays on the computer, with 30 days of daily backups. Updates install themselves.
 
@@ -44,6 +49,12 @@ Bump `version` in package.json so installed copies update themselves.
 
 - Windows: `%APPDATA%\Coll Ledger\books\ledger.json` (daily backups in `books\backups`)
 - Mac: `~/Library/Application Support/Coll Ledger/books/`
+
+## Still to come (need outside accounts)
+
+- Phone companion: needs a small sync server.
+- Live bank feeds (Plaid): a Plaid account and a server.
+- Code signing so Windows shows no warning: Microsoft's signing service (about $10/month).
 
 ## Live Square / QuickBooks connections (future)
 

@@ -27,14 +27,14 @@ const Core = (() => {
   };
   const SUBTYPES = {
     asset: ['bank', 'clearing', 'ar', 'current', 'fixed'],
-    liability: ['credit', 'current', 'loan'],
+    liability: ['credit', 'ap', 'current', 'loan'],
     equity: ['equity'],
     income: ['income', 'otherincome'],
     expense: ['cogs', 'expense', 'otherexpense']
   };
   const SUB_LABEL = {
     bank: 'Bank account', clearing: 'Payment processor (Square, Stripe, PayPal)', ar: 'Accounts receivable', current: 'Other current', fixed: 'Fixed asset',
-    credit: 'Credit card', loan: 'Loan / long-term', equity: 'Equity',
+    credit: 'Credit card', ap: 'Accounts payable', loan: 'Loan / long-term', equity: 'Equity',
     income: 'Income', otherincome: 'Other income', cogs: 'Cost of goods sold', expense: 'Operating expense', otherexpense: 'Other expense'
   };
   const isDebitNormal = type => TYPES[type].normal === 'debit';
@@ -46,6 +46,7 @@ const Core = (() => {
     ['1200', 'Accounts Receivable', 'asset', 'ar', 'ar'],
     ['1500', 'Equipment & Vehicles', 'asset', 'fixed', null],
     ['2000', 'Business Credit Card', 'liability', 'credit', null],
+    ['2100', 'Accounts Payable', 'liability', 'ap', 'ap'],
     ['2200', 'Sales Tax Payable', 'liability', 'current', 'tax'],
     ['2500', 'Loans Payable', 'liability', 'loan', null],
     ['3000', "Owner's Contributions", 'equity', 'equity', 'contrib'],
@@ -107,6 +108,8 @@ const Core = (() => {
       accounts: DEFAULT_ACCOUNTS.map(([code, name, type, sub, key]) => ({ id: uid(), code, name, type, sub, key, opening: 0, archived: false })),
       transactions: [],
       invoices: [],
+      bills: [],
+      recurring: [],
       contacts: [],
       rules: [],
       reconciliations: [],
@@ -212,6 +215,23 @@ const Core = (() => {
         out.push({ acc: first ? first.accountId : (acctByKey(c, 'service') || acctByKey(c, 'sales')).id, date: inv.date, dr: tot.discount, cr: 0, inv });
       }
     }
+
+    // vendor bills: the expense is recorded on the bill date, owed in Accounts Payable until paid
+    if ((c.bills || []).some(b => b.status !== 'draft' && b.status !== 'void')) {
+      const ap = ensureAP(c);
+      for (const b of c.bills) {
+        if (b.status === 'draft' || b.status === 'void') continue;
+        const total = billTotal(b);
+        if (!total) continue;
+        out.push({ acc: ap.id, date: b.date, dr: 0, cr: total, bill: b });
+        for (const ln of b.lines) {
+          const v = round2(+ln.amount || 0);
+          if (!v) continue;
+          const accId = ln.accountId && acct(c, ln.accountId) ? ln.accountId : acctByKey(c, 'unc_exp').id;
+          out.push({ acc: accId, date: b.date, dr: v > 0 ? v : 0, cr: v < 0 ? -v : 0, bill: b });
+        }
+      }
+    }
     return out;
   }
 
@@ -270,6 +290,91 @@ const Core = (() => {
     const tax = round2(taxable * (+inv.taxRate || 0) / 100);
     return { subtotal, discount, tax, total: round2(taxable + tax) };
   }
+  // ---------- Bills ----------
+  function ensureAP(c) {
+    let a = acctByKey(c, 'ap');
+    if (!a) { a = { id: uid(), code: c.accounts.some(x => x.code === '2100') ? '2105' : '2100', name: 'Accounts Payable', type: 'liability', sub: 'ap', key: 'ap', opening: 0, archived: false }; c.accounts.push(a); }
+    return a;
+  }
+  const billTotal = b => round2((b.lines || []).reduce((s, l) => s + (+l.amount || 0), 0));
+  const billPaid = (c, b) => round2(c.transactions.filter(t => t.billId === b.id).reduce((s, t) => s + Math.abs(t.amount), 0));
+  function billState(c, b) {
+    const total = billTotal(b), paid = billPaid(c, b), due = round2(total - paid);
+    if (b.status === 'void') return { status: 'void', label: 'Void', tone: '', paid, due: 0, total };
+    if (b.status === 'draft') return { status: 'draft', label: 'Draft', tone: '', paid, due, total };
+    if (due <= 0.004) return { status: 'paid', label: 'Paid', tone: 'green', paid, due: 0, total };
+    const days = daysBetween(todayISO(), b.dueDate);
+    if (days < 0) return { status: 'overdue', label: `Overdue ${-days}d`, tone: 'red', paid, due, total };
+    if (days <= 7) return { status: 'soon', label: days === 0 ? 'Due today' : `Due in ${days}d`, tone: 'gold', paid, due, total };
+    return { status: 'open', label: paid > 0 ? 'Partly paid' : 'Unpaid', tone: 'blue', paid, due, total };
+  }
+
+  // ---------- Recurring ----------
+  function nextDate(iso, every) {
+    if (every === 'week') return addDays(iso, 7);
+    if (every === 'twoweeks') return addDays(iso, 14);
+    const d = parseISO(iso);
+    const step = { month: 1, quarter: 3, year: 12 }[every] || 1;
+    const want = d.getDate();
+    const n = new Date(d.getFullYear(), d.getMonth() + step, 1);
+    const last = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate();
+    n.setDate(Math.min(want, last));
+    return isoOf(n);
+  }
+
+  // ---------- Tax-time reports ----------
+  function trialBalance(c, asOf) {
+    const bal = balances(c, { to: asOf });
+    const fy = fyStart(c, asOf);
+    const yearBal = balances(c, { from: fy, to: asOf });
+    const rows = [];
+    let dr = 0, cr = 0;
+    for (const a of [...c.accounts].sort((x, y) => x.code.localeCompare(y.code))) {
+      // income and expenses show this business year only; earlier years roll into retained earnings
+      const v = (a.type === 'income' || a.type === 'expense') ? yearBal.get(a.id) : bal.get(a.id);
+      if (Math.abs(v) < 0.005) continue;
+      const debitSide = isDebitNormal(a.type) ? v >= 0 : v < 0;
+      const amt = round2(Math.abs(v));
+      rows.push({ a, debit: debitSide ? amt : 0, credit: debitSide ? 0 : amt });
+      if (debitSide) dr += amt; else cr += amt;
+    }
+    const retained = round2(profitLoss(c, null, addDays(fy, -1)).net);
+    if (Math.abs(retained) > 0.004) {
+      rows.push({ a: { code: '3950', name: 'Retained earnings (earlier years)', type: 'equity' }, debit: retained < 0 ? -retained : 0, credit: retained > 0 ? retained : 0 });
+      if (retained > 0) cr += retained; else dr -= retained;
+    }
+    return { rows, debit: round2(dr), credit: round2(cr) };
+  }
+  // Payments to 1099 contractors in a calendar year. Card and processor payments are left out —
+  // the card company reports those on a 1099-K.
+  const threshold1099 = year => (+year >= 2026 ? 2000 : 600);
+  function contractorPayments(c, year) {
+    const from = `${year}-01-01`, to = `${year}-12-31`;
+    return c.contacts.filter(x => x.kind === 'vendor' && x.is1099).map(v => {
+      const n = normName(v.name), k = keyOf(v.name);
+      let total = 0, card = 0;
+      for (const t of c.transactions) {
+        if (t.date < from || t.date > to || t.amount >= 0) continue;
+        const bill = t.billId && (c.bills || []).find(b => b.id === t.billId);
+        const match = (bill && bill.vendorId === v.id) || t.vendorId === v.id || normName(t.payee) === n || (k && keyOf(t.description).startsWith(k));
+        if (!match) continue;
+        const acc = acct(c, t.accountId);
+        if (acc && (acc.sub === 'credit' || acc.sub === 'clearing')) card += -t.amount; else total += -t.amount;
+      }
+      return { v, total: round2(total), card: round2(card), needs: total >= threshold1099(year) };
+    }).sort((a, b) => b.total - a.total);
+  }
+  function salesTax(c, from, to) {
+    const tax = acctByKey(c, 'tax');
+    let collected = 0, paid = 0;
+    if (!tax) return { collected, paid, owed: 0 };
+    for (const p of postings(c)) {
+      if (p.acc !== tax.id || p.date < from || p.date > to) continue;
+      collected += p.cr; paid += p.dr;
+    }
+    return { collected: round2(collected), paid: round2(paid), owed: round2(balances(c, { to }).get(tax.id)) };
+  }
+
   function invoicePaid(c, inv) {
     return round2(c.transactions.filter(t => t.invoiceId === inv.id).reduce((s, t) => s + Math.abs(t.amount), 0));
   }
@@ -554,6 +659,14 @@ const Core = (() => {
           c.transactions.push({ id: uid(), date: pd, description: 'MOBILE DEPOSIT - LARIMER TECH', payee: cust.name, amount: invoiceTotals(inv).total, accountId: A('Business Checking'), categoryId: acctByKey(c, 'ar').id, invoiceId: inv.id, memo: 'Payment for ' + inv.number, status: 'posted', cleared: pd <= reconTo, reconciled: pd <= reconTo });
         }
       }
+      // a few bills waiting to be paid
+      const roast = c.contacts.find(x => x.name === 'Roastworks Coffee Supply');
+      const plumb = { id: uid(), kind: 'vendor', name: 'Mile High Plumbing', email: 'billing@milehighplumbing.example', phone: '', address: '', notes: 'Fixed the dish sink', is1099: true };
+      c.contacts.push(plumb);
+      c.bills.push(
+        { id: uid(), vendorId: roast.id, ref: 'RW-20418', date: addDays(today, -9), dueDate: addDays(today, 6), status: 'open', memo: 'Espresso beans, house blend', lines: [{ id: uid(), desc: 'Espresso beans — 60 lb', accountId: A('Cost of Goods Sold'), amount: 1180 }] },
+        { id: uid(), vendorId: plumb.id, ref: '3391', date: addDays(today, -34), dueDate: addDays(today, -4), status: 'open', memo: '', lines: [{ id: uid(), desc: 'Dish sink repair', accountId: A('Repairs & Maintenance'), amount: 340 }] }
+      );
       c.transactions.sort((a, b) => a.date.localeCompare(b.date));
       out.push(c);
     }
@@ -643,6 +756,7 @@ const Core = (() => {
     isDebitNormal, isMoneyAccount, newData, newClient, acct, acctByKey, acctByName, contact, findAccount, ensureAccount, normName, isLocked, guessDateOrder,
     postings, balances, profitLoss, balanceSheet, fyStart,
     invoiceTotals, invoicePaid, invoiceState, suggest, ruleFor, cleanPayee, keyOf,
+    ensureAP, billTotal, billPaid, billState, nextDate, trialBalance, contractorPayments, threshold1099, salesTax,
     parseCSV, toCSV, parseDate, parseAmount, guessColumns, periodRange, demoClients
   };
 })();

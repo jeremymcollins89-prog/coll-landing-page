@@ -103,4 +103,34 @@ t('matches QuickBooks account names', () => {
   assert.strictEqual(C.findAccount(c, 'Checking').name, 'Business Checking');
 });
 
-console.log(`All ${n} checks passed.`);
+t('bills post to Accounts Payable and payments clear it', () => {
+  const c = C.newClient({ startDate: '2026-01-01' });
+  const v = { id: 'v', kind: 'vendor', name: 'Flour Co', is1099: true }; c.contacts.push(v);
+  c.bills.push({ id: 'b', vendorId: 'v', date: '2026-02-01', dueDate: '2026-03-01', status: 'open', lines: [{ id: 'l', desc: 'Flour', accountId: C.acctByKey(c, 'cogs').id, amount: 400 }] });
+  const ap = C.acctByKey(c, 'ap');
+  assert.strictEqual(C.balances(c).get(ap.id), 400); assert(balanced(c));
+  c.transactions.push({ id: 'p', date: '2026-02-20', amount: -400, accountId: C.acctByName(c, 'Business Checking').id, categoryId: ap.id, billId: 'b', vendorId: 'v', payee: 'Flour Co', status: 'posted' });
+  assert.strictEqual(C.balances(c).get(ap.id), 0); assert.strictEqual(C.billState(c, c.bills[0]).status, 'paid'); assert(balanced(c));
+  assert.strictEqual(C.contractorPayments(c, 2026)[0].total, 400);
+});
+
+t('trial balance debits equal credits', () => {
+  for (const c of C.demoClients()) { const tb = C.trialBalance(c, C.todayISO()); assert(Math.abs(tb.debit - tb.credit) < 0.01, c.name); }
+});
+
+t('1099 thresholds and repeating dates', () => {
+  assert.strictEqual(C.threshold1099(2025), 600); assert.strictEqual(C.threshold1099(2026), 2000);
+  assert.strictEqual(C.nextDate('2026-01-31', 'month'), '2026-02-28'); assert.strictEqual(C.nextDate('2026-11-15', 'quarter'), '2027-02-15'); assert.strictEqual(C.nextDate('2026-01-01', 'twoweeks'), '2026-01-15');
+});
+
+(async () => {
+  const Sec = require('../src/renderer/secure.js');
+  const lock = await Sec.create('correct horse', 'hint');
+  const blob = JSON.parse(await Sec.encryptBooks(lock.header, lock.dek, { ok: 1 }));
+  assert(Sec.isEncrypted(blob));
+  assert.strictEqual((await Sec.decryptBooks((await Sec.unlock(blob.header, 'correct horse')).dek, blob)).ok, 1);
+  assert.strictEqual(await Sec.unlock(blob.header, 'wrong'), null);
+  assert((await Sec.unlock(blob.header, lock.code)).byRecovery);
+  n++; console.log('  ✓ password lock and recovery code');
+  console.log(`All ${n} checks passed.`);
+})().catch(e => { console.error(e); process.exit(1); });

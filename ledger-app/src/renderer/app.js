@@ -25,7 +25,7 @@ const App = (() => {
     update: null
   };
   const client = () => (S.data && S.data.clients.find(c => c.id === S.data.activeClientId)) || null;
-  const views = {}, actions = {}, hooks = [];
+  const views = {}, actions = {}, hooks = [], onLoad = [];
   const view = (name, def) => { views[name] = def; };
   const act = obj => Object.assign(actions, obj);
 
@@ -37,7 +37,9 @@ const App = (() => {
       if (window.desktop) d = await window.desktop.load();
       else { const raw = localStorage.getItem(LS_KEY); if (raw) d = JSON.parse(raw); }
     } catch (e) { console.warn('load failed', e); }
+    if (Secure.isEncrypted(d)) { S.lockedFile = d; return false; }
     S.data = migrate(d || C.newData());
+    return true;
   }
   // Older books get any fields newer versions expect
   function migrate(d) {
@@ -48,7 +50,11 @@ const App = (() => {
       c.contacts = c.contacts || []; c.rules = c.rules || []; c.reconciliations = c.reconciliations || []; c.invoices = c.invoices || [];
       c.closes = c.closes || []; c.imports = c.imports || []; c.lockDate = c.lockDate || null; c.checklistDismissed = !!c.checklistDismissed;
       for (const a of c.accounts) if (a.sub === 'clearing' && a.type !== 'asset') a.type = 'asset';
+      c.bills = c.bills || []; c.recurring = c.recurring || [];
+      if (!C.acctByKey(c, 'ap')) C.ensureAP(c);
     }
+    d.studio = d.studio || { customers: [], time: [], invoices: [], nextInvoice: 1001, prefix: 'S-', rate: 50 };
+    d.security = d.security || { idle: 15 };
     return d;
   }
   let saveTimer = null, dirty = false;
@@ -58,16 +64,16 @@ const App = (() => {
     saveTimer = setTimeout(flush, 300);
   }
   async function flush() {
-    if (!dirty) return;
+    if (!dirty || !S.data) return;
     dirty = false;
-    const raw = JSON.stringify(S.data);
+    const raw = S.sec ? await Secure.encryptBooks(S.sec.header, S.sec.dek, S.data) : JSON.stringify(S.data);
     try {
       if (window.desktop) await window.desktop.save(raw);
       else localStorage.setItem(LS_KEY, raw);
     } catch (e) { console.warn('save failed', e); U.toast('Could not save — check that the disk has space', null, 'warn'); }
   }
   window.addEventListener('beforeunload', () => {
-    if (!dirty) return;
+    if (!dirty || S.sec || !S.data) return;
     const raw = JSON.stringify(S.data);
     try { if (window.desktop) window.desktop.saveSync(raw); else localStorage.setItem(LS_KEY, raw); } catch (e) { }
   });
@@ -96,9 +102,9 @@ const App = (() => {
 
   // ---------------- navigation ----------------
   const NAV = [
-    { label: null, items: [['clients', 'All clients', 'home']] },
+    { label: null, items: [['clients', 'All clients', 'home'], ['studio', 'My studio', 'studio']] },
     { label: 'Overview', items: [['dashboard', 'Dashboard', 'dash']] },
-    { label: 'Daily work', items: [['review', 'To Review', 'inbox'], ['transactions', 'Transactions', 'swap'], ['invoices', 'Invoices', 'file'], ['contacts', 'Customers & Vendors', 'people'], ['import', 'Import', 'upload']] },
+    { label: 'Daily work', items: [['review', 'To Review', 'inbox'], ['transactions', 'Transactions', 'swap'], ['invoices', 'Invoices', 'file'], ['bills', 'Bills', 'bill'], ['contacts', 'Customers & Vendors', 'people'], ['import', 'Import', 'upload']] },
     { label: 'Month end', items: [['reconcile', 'Reconcile', 'check'], ['close', 'Close the month', 'lock'], ['reports', 'Reports', 'report']] },
     { label: 'Setup', items: [['accounts', 'Chart of Accounts', 'list'], ['rules', 'Smart Rules', 'bolt']] }
   ];
@@ -107,9 +113,11 @@ const App = (() => {
     inbox: '<svg viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2m0 12h-4a3 3 0 0 1-6 0H5V5h14z"/></svg>',
     swap: '<svg viewBox="0 0 24 24"><path d="M7 7h11l-3-3 1.4-1.4L22.8 9l-6.4 6.4L15 14l3-3H7zm10 10H6l3 3-1.4 1.4L1.2 15l6.4-6.4L9 10l-3 3h11z"/></svg>',
     file: ICON.file, people: ICON.people, upload: ICON.upload, check: ICON.check, lock: ICON.lock, report: ICON.report,
-    list: '<svg viewBox="0 0 24 24"><path d="M3 5h18v2H3zm0 6h18v2H3zm0 6h12v2H3z"/></svg>', bolt: ICON.bolt
+    list: '<svg viewBox="0 0 24 24"><path d="M3 5h18v2H3zm0 6h18v2H3zm0 6h12v2H3z"/></svg>', bolt: ICON.bolt,
+    bill: '<svg viewBox="0 0 24 24"><path d="M18 2H6a2 2 0 0 0-2 2v18l3-2 3 2 2-1.5L14 22l3-2 3 2V4a2 2 0 0 0-2-2m-2 13H8v-2h8zm0-4H8V9h8zm0-4H8V5h8z"/></svg>',
+    studio: '<svg viewBox="0 0 24 24"><path d="M20 6h-4V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2m-6 0h-4V4h4z"/></svg>'
   };
-  const TITLES = { training: 'Practice / Training', clients: 'All clients', dashboard: 'Dashboard', review: 'To Review', transactions: 'Transactions', invoices: 'Invoices', contacts: 'Customers & Vendors', import: 'Import', reconcile: 'Reconcile', close: 'Close the month', accounts: 'Chart of Accounts', rules: 'Smart Rules', reports: 'Reports', settings: 'Settings' };
+  const TITLES = { bills: 'Bills', studio: 'My studio', training: 'Practice / Training', clients: 'All clients', dashboard: 'Dashboard', review: 'To Review', transactions: 'Transactions', invoices: 'Invoices', contacts: 'Customers & Vendors', import: 'Import', reconcile: 'Reconcile', close: 'Close the month', accounts: 'Chart of Accounts', rules: 'Smart Rules', reports: 'Reports', settings: 'Settings' };
 
   function go(page, params = {}) {
     if (page !== 'reconcile' && S.ui.recon) { S.ui.parkedRecon = S.ui.recon; S.ui.recon = null; }
@@ -135,7 +143,7 @@ const App = (() => {
     const c = client();
     const n = reviewCount(c);
     $('#nav').innerHTML = NAV.map(g => `${g.label ? `<div class="nav-label">${g.label}</div>` : ''}${g.items.map(([k, label, ic]) =>
-      `<a data-nav="${k}" class="${S.route.page === k ? 'active' : ''} ${!c && k !== 'clients' ? 'disabled' : ''}" href="#">${NAV_ICON[ic]}<span>${label}</span>${k === 'review' && n ? `<span class="pill">${n}</span>` : ''}${k === 'clients' && S.data.clients.length ? `<span class="count">${S.data.clients.length}</span>` : ''}</a>`).join('')}`).join('');
+      `<a data-nav="${k}" class="${S.route.page === k ? 'active' : ''} ${!c && k !== 'clients' && k !== 'studio' ? 'disabled' : ''}" href="#">${NAV_ICON[ic]}<span>${label}</span>${k === 'review' && n ? `<span class="pill">${n}</span>` : ''}${k === 'clients' && S.data.clients.length ? `<span class="count">${S.data.clients.length}</span>` : ''}</a>`).join('')}`).join('');
   }
 
   function renderChrome() {
@@ -171,7 +179,7 @@ const App = (() => {
     let c = client();
     if (!c && S.data.clients.length) { S.data.activeClientId = S.data.clients[0].id; c = client(); }
     let page = S.route.page;
-    if (!c && !['clients', 'settings', 'training'].includes(page)) page = S.route.page = 'clients';
+    if (!c && !['clients', 'settings', 'training', 'studio'].includes(page)) page = S.route.page = 'clients';
     renderChrome();
     const v = views[page] || views.dashboard;
     try {
@@ -200,6 +208,8 @@ const App = (() => {
       const cmds = [
         ['New transaction', 'Record money in or out', ICON.plus, () => actions['new-txn']()],
         ['New invoice', 'Bill a customer', ICON.file, () => actions['new-invoice']()],
+        ['New bill', 'Record a bill from a vendor', ICON.file, () => actions['new-bill']()],
+        ['Log time', 'Track hours for one of your clients', ICON.calendar, () => go('studio')],
         ['Import a file', 'Bank statement, Square or QuickBooks', ICON.upload, () => go('import')],
         ['Review transactions', 'Categorize new bank activity', ICON.check, () => go('review')],
         ['Reconcile an account', 'Match the books to a statement', ICON.bank, () => go('reconcile')],
@@ -212,7 +222,7 @@ const App = (() => {
         ['Practice / Training', 'Mini class with a practice account', ICON.spark, () => go('training')],
         ['Settings', 'Studio, client profile, backups', ICON.dots, () => go('settings')]
       ];
-      for (const [l, s, i, f] of cmds) if ((c || /client|help|settings|training/i.test(l)) && (match(l) || match(s))) add('Actions', l, s, i, f);
+      for (const [l, s, i, f] of cmds) if ((c || /client|help|settings|training|time/i.test(l)) && (match(l) || match(s))) add('Actions', l, s, i, f);
       if (c) for (const [k, t] of Object.entries(TITLES)) if (q && match(t) && !cmds.some(x => x[0] === t)) add('Go to', t, '', NAV_ICON.dash, () => go(k));
       for (const x of S.data.clients) if (q && match(x.name) && x !== c) add('Switch client', x.name, x.industry || '', `<span class="avatar xs" style="background:${x.color}">${esc(U.initials(x.name))}</span>`, () => switchClient(x.id, 'dashboard'));
       if (c && q) {
@@ -348,7 +358,11 @@ const App = (() => {
     if (window.desktop && window.desktop.platform === 'darwin') document.body.classList.add('mac');
     const mod = window.desktop && window.desktop.platform === 'darwin' ? '⌘K' : 'Ctrl K';
     $('#searchHint').textContent = mod;
-    await load();
+    if (window.desktop && window.desktop.onClosing) window.desktop.onClosing(async () => { clearTimeout(saveTimer); try { await flush(); } catch (e) { } window.desktop.readyToClose(); });
+    if (!await load()) { App.showLock(true); return; }
+    afterLoad();
+  }
+  function afterLoad() {
     if (window.COLL_PREVIEW && !S.data.clients.length) {
       const demo = C.demoClients();
       S.data.clients.push(...demo);
@@ -358,9 +372,10 @@ const App = (() => {
     }
     if (S.data.clients.length && !client()) S.data.activeClientId = S.data.clients[0].id;
     if (S.data.clients.length > 1) S.route.page = 'clients';
+    for (const fn of onLoad) { try { fn(); } catch (e) { console.error(e); } }
     if (window.desktop && window.desktop.onUpdate) window.desktop.onUpdate(info => { S.update = Object.assign(S.update || {}, info); renderUpdate(); if (info.state === 'ready') U.toast('A new version is ready — restart when convenient'); });
     render();
   }
 
-  return { hooks, migrate, S, C, U, client, view, act, actions, views, go, render, renderChrome, commit, save, flush, snapshot, guardLock, switchClient, reviewCount, palette, help, today, boot, TITLES };
+  return { onLoad, afterLoad, LS_KEY, hooks, migrate, S, C, U, client, view, act, actions, views, go, render, renderChrome, commit, save, flush, snapshot, guardLock, switchClient, reviewCount, palette, help, today, boot, TITLES };
 })();

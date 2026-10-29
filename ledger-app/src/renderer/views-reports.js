@@ -38,7 +38,11 @@
     ['exp', 'Spending by Category', 'Where the money went, biggest first.'],
     ['cmp', 'Month by Month', 'Income, expenses and profit for each month.'],
     ['ar', 'Who Owes Money', 'Unpaid invoices by customer and how late they are.'],
-    ['gl', 'General Ledger', 'Every entry, account by account — the full audit trail.']
+    ['gl', 'General Ledger', 'Every entry, account by account — the full audit trail.'],
+    ['ap', 'Bills to Pay', 'Unpaid vendor bills and when they are due.'],
+    ['tb', 'Trial Balance', 'Every account balance in debit and credit columns — what CPAs ask for.'],
+    ['1099', '1099 Contractors', 'What each contractor was paid this year, and who needs a 1099.'],
+    ['tax', 'Sales Tax', 'Sales tax collected, paid to the state, and still owed.']
   ];
 
   function reportData(c, opts = {}) {
@@ -125,6 +129,49 @@
         return `<table class="rpt" style="margin-bottom:12px"><tr class="sec"><td colspan="2">${esc(a.code)} · ${esc(a.name)}</td><td class="num">Debit</td><td class="num">Credit</td></tr>${rowsH}${list.length > limit ? `<tr><td colspan="4" class="muted">…and ${list.length - limit} more (all included in the PDF and spreadsheet)</td></tr>` : ''}<tr class="total"><td colspan="2">Total ${esc(a.name)}</td><td class="num">${money(dr)}</td><td class="num">${money(cr)}</td></tr></table>`;
       }).join('');
     }
+    else if (R.type === 'ap') {
+      const buckets = ['Not due yet', '1–30 days late', '31–60', '61+'];
+      const rows = {};
+      for (const b of c.bills || []) {
+        const s = C.billState(c, b);
+        if (!['open', 'soon', 'overdue'].includes(s.status)) continue;
+        const late = C.daysBetween(b.dueDate, today());
+        const k = late <= 0 ? 0 : late <= 30 ? 1 : late <= 60 ? 2 : 3;
+        const v = (C.contact(c, b.vendorId) || {}).name || 'Unknown vendor';
+        rows[v] = rows[v] || [0, 0, 0, 0]; rows[v][k] += s.due;
+      }
+      const names = Object.keys(rows).sort();
+      const totals = buckets.map((_, j) => names.reduce((t, n) => t + rows[n][j], 0));
+      csv.push(['Vendor', ...buckets, 'Total']); names.forEach(n => csv.push([n, ...rows[n].map(v => v.toFixed(2)), rows[n].reduce((a, v) => a + v, 0).toFixed(2)]));
+      html = head('Bills to Pay', `Unpaid bills as of ${fmtDate(today())}`) + `<div class="table-wrap"><table class="rpt"><tr class="sec"><td>Vendor</td>${buckets.map(b => `<td class="num">${b}</td>`).join('')}<td class="num">Total</td></tr>
+        ${names.map(n => `<tr><td>${esc(n)}</td>${rows[n].map((v, j) => `<td class="num ${v ? (j >= 1 ? 'neg' : '') : 'muted'}">${v ? money(v) : '—'}</td>`).join('')}<td class="num"><b>${money(rows[n].reduce((a, v) => a + v, 0))}</b></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No unpaid bills.</td></tr>'}
+        <tr class="grand"><td>Total</td>${totals.map(v => `<td class="num">${money(v)}</td>`).join('')}<td class="num">${money(totals.reduce((a, v) => a + v, 0))}</td></tr></table></div>`;
+    } else if (R.type === 'tb') {
+      const asOf = opts.asOf || R.asOf;
+      const tb = C.trialBalance(c, asOf);
+      csv.push(['Code', 'Account', 'Debit', 'Credit']); tb.rows.forEach(r => csv.push([r.a.code, r.a.name, r.debit ? r.debit.toFixed(2) : '', r.credit ? r.credit.toFixed(2) : '']));
+      csv.push(['', 'Total', tb.debit.toFixed(2), tb.credit.toFixed(2)]);
+      html = head('Trial Balance', `As of ${fmtDate(asOf)} · business year from ${fmtDate(C.fyStart(c, asOf))}`) + `<table class="rpt"><tr class="sec"><td style="width:80px">Code</td><td>Account</td><td class="num">Debit</td><td class="num">Credit</td></tr>
+        ${tb.rows.map(r => `<tr><td class="muted">${esc(r.a.code)}</td><td>${esc(r.a.name)}</td><td class="num">${r.debit ? money(r.debit) : ''}</td><td class="num">${r.credit ? money(r.credit) : ''}</td></tr>`).join('')}
+        <tr class="grand"><td></td><td>Total</td><td class="num">${money(tb.debit)}</td><td class="num">${money(tb.credit)}</td></tr></table>
+        <div class="muted" style="text-align:center;margin-top:14px">${Math.abs(tb.debit - tb.credit) < 0.01 ? 'Debits equal credits.' : '<span class="neg">Debits and credits differ — check opening balances.</span>'}</div>`;
+    } else if (R.type === '1099') {
+      const year = opts.year || R.year || (new Date().getFullYear() - (new Date().getMonth() < 3 ? 1 : 0));
+      const list = C.contractorPayments(c, year), limit = C.threshold1099(year);
+      csv.push(['Vendor', 'Tax ID', 'Paid by check/bank', 'Paid by card (not on 1099-NEC)', 'Needs 1099-NEC']); list.forEach(x => csv.push([x.v.name, x.v.tin || '', x.total.toFixed(2), x.card.toFixed(2), x.needs ? 'Yes' : 'No']));
+      html = head('1099 Contractors', `Calendar year ${year} · 1099-NEC needed at ${money(limit)} or more`) + (opts.print ? '' : `<div class="toolbar-inline"><label class="muted" for="y1099">Year</label><select id="y1099" class="input sm" style="width:110px" data-change="report-year">${[0, 1, 2].map(k => new Date().getFullYear() - k).map(y => `<option ${y === +year ? 'selected' : ''}>${y}</option>`).join('')}</select></div>`) +
+        (list.length ? `<table class="rpt"><tr class="sec"><td>Contractor</td><td>Tax ID</td><td class="num">Paid by check or bank</td><td class="num">Paid by card</td><td class="num">1099-NEC?</td></tr>
+        ${list.map(x => `<tr><td>${esc(x.v.name)}</td><td class="muted">${x.v.tin ? '•••' + esc(String(x.v.tin).slice(-4)) : '<span class="neg">Missing W-9</span>'}</td><td class="num">${money(x.total)}</td><td class="num muted">${money(x.card)}</td><td class="num">${x.needs ? '<b>Yes</b>' : 'No'}</td></tr>`).join('')}</table>` : `<div class="muted" style="text-align:center;padding:20px">No vendors are marked as 1099 contractors yet. Open a vendor in Customers & Vendors and tick “Contractor who gets a 1099”.</div>`) +
+        `<div class="muted" style="margin-top:16px;line-height:1.6;font-size:12.5px">Card and payment-app payments are left out: the card company reports those on a 1099-K. The threshold is $600 for payments made through 2025 and $2,000 starting in 2026 (adjusted for inflation after that). Confirm filing requirements with the client's tax preparer.</div>`;
+    } else if (R.type === 'tax') {
+      const t = C.salesTax(c, rg.from, rg.to);
+      csv.push(['Sales tax collected', t.collected.toFixed(2)], ['Sales tax paid to the state', t.paid.toFixed(2)], ['Owed as of ' + rg.to, t.owed.toFixed(2)]);
+      html = head('Sales Tax', `${fmtDate(rg.from)} – ${fmtDate(rg.to)}`) + `<table class="rpt">
+        <tr class="line"><td>Sales tax collected from customers</td><td class="num">${money(t.collected)}</td></tr>
+        <tr class="line"><td>Sales tax paid to the state</td><td class="num">${money(t.paid)}</td></tr>
+        <tr class="grand"><td>Still owed as of ${fmtDate(rg.to)}</td><td class="num">${money(t.owed)}</td></tr></table>
+        <div class="muted" style="margin-top:16px;line-height:1.6;font-size:12.5px">Collected tax comes from invoices and Square sales. Record payments to the state with the category "Sales Tax Payable". Check rates and filing dates with the state and city where the business sells.</div>`;
+    }
     return { html, csv, range: rg };
   }
   App.reportData = reportData;
@@ -133,7 +180,7 @@
     render(c) {
       const R = S.ui.report;
       const { html } = reportData(c);
-      const usesAsOf = R.type === 'bs', noPeriod = R.type === 'ar';
+      const usesAsOf = R.type === 'bs' || R.type === 'tb', noPeriod = R.type === 'ar' || R.type === 'ap' || R.type === '1099';
       const periods = App.PERIODS.filter(p => p[0] !== 'all');
       const isMonth = String(R.period).startsWith('month:');
       return `
@@ -141,11 +188,12 @@
           <div class="actions">
             <button class="btn" data-action="report-csv">${ICON.download}Spreadsheet</button>
             <button class="btn" data-action="report-pdf">${ICON.pdf}PDF</button>
+            <button class="btn" data-action="year-end">${ICON.pdf}Year-end for the CPA</button>
             <button class="btn primary" data-action="client-package">${ICON.pdf}Client package</button>
           </div></div>
         <div class="report-tabs six">${REPORTS.map(([k, t, d]) => `<button class="card report-tab ${R.type === k ? 'on' : ''}" data-action="report-type" data-v="${k}"><h4>${t}</h4><div class="muted">${d}</div></button>`).join('')}</div>
         <div class="card">
-          <div class="toolbar">${noPeriod ? `<span class="muted">Shows every unpaid invoice as of today.</span>` : usesAsOf ? `<label class="muted" for="rep-asof">As of</label><input id="rep-asof" type="date" class="input sm" style="width:170px" value="${R.asOf}" data-change="report-asof">` : `<select class="input sm" style="width:190px" data-change="report-period" aria-label="Dates">${isMonth ? `<option value="${esc(R.period)}" selected>${U.fmtMonth(R.period.slice(6))}</option>` : ''}${periods.map(([k, l]) => `<option value="${k}" ${R.period === k ? 'selected' : ''}>${l}</option>`).join('')}<option value="custom" ${R.period === 'custom' ? 'selected' : ''}>Pick dates…</option></select>${R.period === 'custom' ? `<input type="date" class="input sm" style="width:160px" value="${range('custom', c).from}" data-change="report-from" aria-label="From"><span class="muted">to</span><input type="date" class="input sm" style="width:160px" value="${range('custom', c).to}" data-change="report-to" aria-label="To">` : ''}`}</div>
+          <div class="toolbar">${noPeriod ? `<span class="muted">${R.type === 'ap' ? 'Shows every unpaid bill as of today.' : R.type === '1099' ? 'Pick the calendar year below.' : 'Shows every unpaid invoice as of today.'}</span>` : usesAsOf ? `<label class="muted" for="rep-asof">As of</label><input id="rep-asof" type="date" class="input sm" style="width:170px" value="${R.asOf}" data-change="report-asof">` : `<select class="input sm" style="width:190px" data-change="report-period" aria-label="Dates">${isMonth ? `<option value="${esc(R.period)}" selected>${U.fmtMonth(R.period.slice(6))}</option>` : ''}${periods.map(([k, l]) => `<option value="${k}" ${R.period === k ? 'selected' : ''}>${l}</option>`).join('')}<option value="custom" ${R.period === 'custom' ? 'selected' : ''}>Pick dates…</option></select>${R.period === 'custom' ? `<input type="date" class="input sm" style="width:160px" value="${range('custom', c).from}" data-change="report-from" aria-label="From"><span class="muted">to</span><input type="date" class="input sm" style="width:160px" value="${range('custom', c).to}" data-change="report-to" aria-label="To">` : ''}`}</div>
           <div class="report">${html}</div>
         </div>`;
     }
@@ -199,6 +247,40 @@
     'change:report-to': el => { S.ui.report.to = el.value; render(); },
     'report-pdf': () => { const c = client(); const title = REPORTS.find(r => r[0] === S.ui.report.type)[1]; const { html } = reportData(c, { print: true }); U.printDoc(docShell(title, html), `${c.name} - ${title}.pdf`); },
     'report-csv': () => { const c = client(); const { csv } = reportData(c, { print: true }); const title = REPORTS.find(r => r[0] === S.ui.report.type)[1]; U.downloadText(`${c.name} - ${title}.csv`, C.toCSV(csv)); },
+    'change:report-year': el => { S.ui.report.year = +el.value; render(); },
+    'year-end': () => {
+      const c = client(); if (!c) return;
+      const t0 = new Date();
+      const thisFy = C.fyStart(c, today());
+      const lastFyEnd = C.addDays(thisFy, -1);
+      const m = U.openModal(`${U.modalHead('Year-end package for the CPA', 'Everything a tax preparer asks a bookkeeper for, in one PDF')}
+        <div class="modal-body">
+          <div class="field"><label for="ye-end">Business year ending</label><input type="date" class="input" id="ye-end" value="${lastFyEnd}"></div>
+          <ul class="t-list"><li>Cover page with the year's headline numbers</li><li>Profit & Loss for the year</li><li>Balance Sheet at year end</li><li>Trial Balance</li><li>1099 contractor summary</li><li>Who owes money and bills unpaid at year end</li></ul>
+          <label class="check"><input type="checkbox" id="ye-gl" checked>Also save the full General Ledger as a spreadsheet</label>
+        </div>
+        <div class="modal-foot"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" id="ye-go">${ICON.pdf}Make the package</button></div>`);
+      $('#ye-go', m).onclick = async () => {
+        const end = $('#ye-end', m).value; if (!end) return;
+        const start = C.fyStart(c, end);
+        const year = +end.slice(0, 4);
+        const p = C.profitLoss(c, start, end), b = C.balanceSheet(c, end), f = S.data.firm;
+        const parts = [
+          `<div class="page" style="height:11in;display:flex;flex-direction:column"><div class="muted cap" style="font-size:12px">Year-end package</div><div class="serif" style="font-size:46px;margin-top:10px">${esc(c.legalName || c.name)}</div><div style="font-size:18px;color:#4A5550;margin-top:6px">Business year ${fmtDate(start)} – ${fmtDate(end)}</div>
+            <div style="display:flex;gap:14px;margin-top:60px">${[['Net profit', money(p.net)], ['Total income', money(p.totalIncome + p.totalOtherIncome)], ['Total assets', money(b.totalAssets)]].map(([l, v]) => `<div style="flex:1;padding:18px 20px;border:1px solid #E6E2D9;border-radius:12px"><div class="muted cap">${l}</div><div class="serif" style="font-size:24px;margin-top:6px">${v}</div></div>`).join('')}</div>
+            <div style="margin-top:40px;line-height:1.8">${c.ein ? `EIN: ${esc(c.ein)}<br>` : ''}${esc(c.address || '').replace(/\n/g, '<br>')}</div>
+            <div style="margin-top:auto;border-top:1px solid #E6E2D9;padding-top:20px" class="muted">Prepared by ${esc(f.name || 'the bookkeeper')}${f.owner ? ' · ' + esc(f.owner) : ''}${f.email ? ' · ' + esc(f.email) : ''} · ${fmtDate(today())}${c.lockDate && c.lockDate >= end ? ' · books closed through ' + fmtDate(c.lockDate) : ''}</div></div>`,
+          `<div class="page">${reportData(c, { type: 'pl', from: start, to: end, print: true }).html}</div>`,
+          `<div class="page">${reportData(c, { type: 'bs', asOf: end, print: true }).html}</div>`,
+          `<div class="page">${reportData(c, { type: 'tb', asOf: end, print: true }).html}</div>`,
+          `<div class="page">${reportData(c, { type: '1099', year, print: true }).html}</div>`
+        ];
+        const glWanted = $('#ye-gl', m).checked;
+        U.closeModal();
+        await U.printDoc(docShell(`${c.name} year-end ${year}`, parts.join('')), `${c.name} - year-end ${year}.pdf`);
+        if (glWanted) U.downloadText(`${c.name} - general ledger ${year}.csv`, C.toCSV(reportData(c, { type: 'gl', from: start, to: end, print: true }).csv));
+      };
+    },
     'client-package': el => {
       const c = client(); if (!c) return;
       const t = C.parseISO(today());
