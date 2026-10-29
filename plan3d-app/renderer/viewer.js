@@ -305,8 +305,11 @@ function panelStack(h, ceil) {
   r.push(h - y); return r;
 }
 function wallCeil(plan, A, p) {
-  const CA = ceilAreas(plan, A), L = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, nx = -(p.z2 - p.z1) / L, nz = (p.x2 - p.x1) / L, mx = (p.x1 + p.x2) / 2, mz = (p.z1 + p.z2) / 2, o = (p.t || 0.25) / 2 + 0.4;
-  return Math.max(ceilingAt(CA, A.H, mx + nx * o, mz + nz * o), ceilingAt(CA, A.H, mx - nx * o, mz - nz * o));
+  const CA = ceilAreas(plan, A), L = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, nx = -(p.z2 - p.z1) / L, nz = (p.x2 - p.x1) / L, o = (p.t || 0.25) / 2 + 0.4;
+  // the highest ceiling along either face, ends included (a short piece at a corner of a raised room)
+  let h = 0;
+  for (const f of [0.5, 0.02, 0.98]) { const mx = p.x1 + (p.x2 - p.x1) * f, mz = p.z1 + (p.z2 - p.z1) * f; h = Math.max(h, ceilingAt(CA, A.H, mx + nx * o, mz + nz * o), ceilingAt(CA, A.H, mx - nx * o, mz - nz * o)); }
+  return h;
 }
 /* ---------- Stories (plan.levels) ----------
    A house can have several floors. plan.levels = [{ id, name, data }] and plan.level is the floor being edited:
@@ -967,7 +970,8 @@ function ceilingAt(CA, H, x, z, skip) { let h = H; for (const a of CA) if (a !==
 function areaBulkheads(plan, A, CA) {
   CA = CA || ceilAreas(plan, A); if (!CA.length) return [];
   const fp = footprint(A), out = [], st = 0.25, t = 0.25;
-  const nearWall = (x, z) => A.pieces.some(p => segDist(x, z, p.x1, p.z1, p.x2, p.z2) < (p.t || 0.25) / 2 + 0.2) || A.boxes.some(b => x > b.x0 - 0.2 && x < b.x1 + 0.2 && z > b.z0 - 0.2 && z < b.z1 + 0.2);
+  // a door or window in a wall counts as wall: its head panel already closes the space above it
+  const nearWall = (x, z) => A.pieces.some(p => segDist(x, z, p.x1, p.z1, p.x2, p.z2) < (p.t || 0.25) / 2 + 0.2) || A.boxes.some(b => x > b.x0 - 0.2 && x < b.x1 + 0.2 && z > b.z0 - 0.2 && z < b.z1 + 0.2) || (A.opInfo || []).some(i => segDist(x, z, i.o.x1, i.o.y1, i.o.x2, i.o.y2) < (i.t || 0.25) / 2 + 0.2);
   for (const a of CA) {
     if (a.hang) continue; // a hung grid section has no walls or bulkheads round it
     for (const [ax, az, bx, bz, nx, nz] of [[a.x0, a.z0, a.x1, a.z0, 0, -1], [a.x1, a.z0, a.x1, a.z1, 1, 0], [a.x1, a.z1, a.x0, a.z1, 0, 1], [a.x0, a.z1, a.x0, a.z0, -1, 0]]) {
@@ -3361,17 +3365,22 @@ function buildScene(THREE, plan, A) {
     if (!p.hard || p.h < a.h || !trackOK(p.h)) continue;
     const ax = Math.abs(p.x2 - p.x1) < 1e-3, az = Math.abs(p.z2 - p.z1) < 1e-3; if (!ax && !az) continue;
     const r = p.t / 2 + 0.3;
-    if (ax && (Math.abs(p.x1 - a.x0) < r || Math.abs(p.x1 - a.x1) < r)) { const lo = Math.max(Math.min(p.z1, p.z2), a.z0), hi = Math.min(Math.max(p.z1, p.z2), a.z1); if (hi - lo > 0.2) segBox(p.x1, lo, p.x1, hi, a.h - 0.17, a.h, p.t + 0.03, M.track); }
-    if (az && (Math.abs(p.z1 - a.z0) < r || Math.abs(p.z1 - a.z1) < r)) { const lo = Math.max(Math.min(p.x1, p.x2), a.x0), hi = Math.min(Math.max(p.x1, p.x2), a.x1); if (hi - lo > 0.2) segBox(lo, p.z1, hi, p.z1, a.h - 0.17, a.h, p.t + 0.03, M.track); }
+    // only on the face toward the area: the room on the wall's other side has its own ceiling height
+    const off = p.t / 2 + 0.016;
+    if (ax && (Math.abs(p.x1 - a.x0) < r || Math.abs(p.x1 - a.x1) < r)) { const lo = Math.max(Math.min(p.z1, p.z2), a.z0), hi = Math.min(Math.max(p.z1, p.z2), a.z1), x = p.x1 + (Math.abs(p.x1 - a.x0) < r ? off : -off); if (hi - lo > 0.2) segBox(x, lo, x, hi, a.h - 0.17, a.h, 0.024, M.track); }
+    if (az && (Math.abs(p.z1 - a.z0) < r || Math.abs(p.z1 - a.z1) < r)) { const lo = Math.max(Math.min(p.x1, p.x2), a.x0), hi = Math.min(Math.max(p.x1, p.x2), a.x1), z = p.z1 + (Math.abs(p.z1 - a.z0) < r ? off : -off); if (hi - lo > 0.2) segBox(lo, z, hi, z, a.h - 0.17, a.h, 0.024, M.track); }
   }
   // a ceiling track strip on each face of a run that has the ceiling against it, none across a face that's
   // outside the room (where the panel runs smooth on up past the ceiling line)
-  const FPt = footprint(A);
-  const trackFaces = (x1, z1, x2, z2, t, top) => {
+  const FPt = footprint(A), CAt = ceilAreas(plan, A);
+  // each face at the ceiling height on its own side (a raised or dropped ceiling area), never at the plan's
+  // ceiling line where that side's ceiling is somewhere else
+  const trackFaces = (x1, z1, x2, z2, t, top, wallTop) => {
     const L0 = Math.hypot(x2 - x1, z2 - z1) || 1, nx = -(z2 - z1) / L0, nz = (x2 - x1) / L0;
     for (const sd of [1, -1]) {
-      let hit = false; for (const f of [0.5, 0.15, 0.85]) { const x = x1 + (x2 - x1) * f + nx * sd * (t / 2 + 0.4), z = z1 + (z2 - z1) * f + nz * sd * (t / 2 + 0.4); if (inCeiling(plan, FPt, x, z)) { hit = true; break; } }
-      if (hit) { const o = sd * (t / 2 + 0.012); segBox(x1 + nx * o, z1 + nz * o, x2 + nx * o, z2 + nz * o, top - 0.17, top, 0.024, M.track); }
+      let hc = 0; for (const f of [0.5, 0.15, 0.85]) { const x = x1 + (x2 - x1) * f + nx * sd * (t / 2 + 0.4), z = z1 + (z2 - z1) * f + nz * sd * (t / 2 + 0.4); if (inCeiling(plan, FPt, x, z)) { hc = ceilingAt(CAt, top, x, z); break; } }
+      if (!hc || (wallTop && wallTop <= hc + 0.05)) continue;
+      const o = sd * (t / 2 + 0.016); segBox(x1 + nx * o, z1 + nz * o, x2 + nx * o, z2 + nz * o, hc - 0.17, hc, 0.024, M.track);
     }
   };
   for (const c of A.corners) {
@@ -3380,7 +3389,7 @@ function buildScene(THREE, plan, A) {
       const x1 = c.x + v[0] * c.wt / 2, z1 = c.z + v[1] * c.wt / 2, x2 = x1 + u[0] * c.size, z2 = z1 + u[1] * c.size;
       const m = segBox(x1, z1, x2, z2, 0, c.h || WH, c.wt + 0.006, M.white); outline(m); pick.push(m);
       segBox(x1, z1, x2, z2, 0, 0.333, c.wt + 0.024, M.base);
-      if (trackOK(c.h || WH)) { if ((c.h || WH) > H + 0.05) trackFaces(x1, z1, x2, z2, c.wt + 0.008, H); else segBox(x1, z1, x2, z2, H - 0.17, H, c.wt + 0.032, M.track); }
+      if (trackOK(c.h || WH)) { if ((c.h || WH) > H + 0.05) trackFaces(x1, z1, x2, z2, c.wt + 0.008, H, c.h || WH); else segBox(x1, z1, x2, z2, H - 0.17, H, c.wt + 0.032, M.track); }
     }
   }
   const seen = [];
@@ -3398,9 +3407,10 @@ function buildScene(THREE, plan, A) {
   for (const i of A.opInfo) {
     const o = i.o, t = i.t, nx = -i.uz, nz = i.ux;
     curRef = o.id ? { kind: 'opening', id: o.id } : null;
-    const head = Math.min(i.hard ? H : (i.wallH || H), o.head || 7);
+    const ceilHere = i.hard ? wallCeil(plan, A, { x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t }) : H;
+    const head = Math.min(i.hard ? Math.min(ceilHere, i.wallH || ceilHere) : (i.wallH || H), o.head || 7);
     const IP = i.hard ? wallPM(i.host && i.host.id) : null, top = i.wallH || H, hm = i.hard ? IP.trim : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head).mats : shellMat(i.kind, i.len, top - head, 0);
-    if (top - head > 0.01) { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); if (i.hard && H - head > 0.2 && trackOK(top)) { if (top > H + 0.05) trackFaces(o.x1, o.y1, o.x2, o.y2, t, H); else segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); } }
+    if (top - head > 0.01) { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); if (i.hard && ceilHere - head > 0.2 && trackOK(top)) { if (top > ceilHere + 0.05) trackFaces(o.x1, o.y1, o.x2, o.y2, t, H, top); else segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); } }
     const ax = o.x1, az = o.y1, bx = o.x2, bz = o.y2;
     const along = (s) => [ax + i.ux * s, az + i.uz * s];
     if (o.type === 'pass') {
