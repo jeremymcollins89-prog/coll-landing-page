@@ -176,10 +176,10 @@
     ['The business pays $1,850 rent from checking.', 'Rent & Lease', 'Business Checking'],
     ['You send a customer a $600 invoice.', 'Accounts Receivable', 'Sales'],
     ['The customer pays that $600 invoice.', 'Business Checking', 'Accounts Receivable'],
-    ['Office supplies, $80, on the business credit card.', 'Office Supplies', 'Business Credit Card'],
+    ['The business buys $80 of office supplies on the business credit card.', 'Office Supplies', 'Business Credit Card'],
     ['The business pays $80 on the credit card from checking.', 'Business Credit Card', 'Business Checking'],
     ['A $900 bill arrives from a flour supplier, not paid yet.', 'Cost of Goods Sold', 'Accounts Payable'],
-    ['Monthly depreciation of $125 on the ovens.', 'Depreciation Expense', 'Accumulated Depreciation']
+    ['The business records $125 of monthly depreciation on the ovens.', 'Depreciation Expense', 'Accumulated Depreciation']
   ];
   const DRILL_ACCTS = ['Business Checking', 'Accounts Receivable', 'Accumulated Depreciation', 'Business Credit Card', 'Accounts Payable', "Owner's Contributions", 'Sales', 'Cost of Goods Sold', 'Rent & Lease', 'Office Supplies', 'Depreciation Expense'];
   const drillScore = () => { const d = T().drill || {}; return DRILL.filter((x, i) => d[i] && d[i].dr === x[1] && d[i].cr === x[2]).length; };
@@ -230,17 +230,17 @@
       id: 'basics', title: 'How bookkeeping works', mins: 5,
       learn: 'What bookkeepers actually do, the five kinds of accounts, and why every dollar touches two of them.',
       body: [
-        `<p><b>Bookkeeping is keeping an honest record of every dollar that comes in and goes out of a business, sorted into the right buckets.</b> Owners use it to know if they're making money, banks use it to lend, and tax preparers use it to file. When the books are right, everyone trusts the numbers.</p>`,
+        `<p><b>Bookkeeping is keeping an honest record of every dollar that comes in and goes out of a business, sorted into the right buckets.</b> Owners use it to see whether they're making money, banks use it to decide on loans, and tax preparers use it to file returns. When the books are right, everyone trusts the numbers.</p>`,
         `<p>Every bucket is an <b>account</b>, and every account is one of five kinds:</p>
          <div class="t-kinds"><div><b>Assets</b><span>What the business owns — bank accounts, money customers owe, equipment.</span></div><div><b>Liabilities</b><span>What it owes — credit cards, loans, sales tax it collected.</span></div><div><b>Equity</b><span>The owner's stake — money they put in or took out.</span></div><div><b>Income</b><span>Money earned from selling things or services.</span></div><div><b>Expenses</b><span>What it costs to run the business.</span></div></div>`,
-        `<p><b>Double-entry</b> sounds scary but it just means every transaction changes two accounts. When the bakery buys $86 of groceries with the debit card, <i>Business Checking</i> goes down $86 and <i>Cost of Goods Sold</i> goes up $86. In Coll Ledger you only pick the category — the second side is recorded for you, which is why the Balance Sheet always balances.</p>`,
+        `<p><b>Double-entry</b> sounds scary, but it just means every transaction changes at least two accounts by the same amount. When the bakery buys $86 of groceries with the debit card, <i>Business Checking</i> goes down $86 and <i>Cost of Goods Sold</i> goes up $86. In Coll Ledger you only pick the category — the second side is recorded for you, which is why the Balance Sheet always balances.</p>`,
         `<p>You'll practice on <b>Bluebird Bakery</b>, a pretend business with two months of history. Nothing you do there touches a real client, and you can reset it any time.</p>`
       ],
-      words: [['Account', 'A bucket that tracks one kind of money, like Business Checking or Rent.'], ['Category', 'The account you assign a transaction to — usually an income or expense account.'], ['Double-entry', 'Every transaction changes two accounts by the same amount.']],
+      words: [['Account', 'A bucket that tracks one kind of money, like Business Checking or Rent.'], ['Category', 'The account you assign a transaction to — usually an income or expense account.'], ['Double-entry', 'Every transaction changes at least two accounts, and both sides always total the same amount.']],
       task: 'Open the practice account.',
       action: ['Open Bluebird Bakery', () => ensurePractice(true, 'dashboard')],
       check: () => !!(P() && T().flags.opened),
-      quiz: [{ q: 'The bakery pays $1,850 rent from its checking account. Which two accounts change?', a: ['Business Checking goes down and Rent & Lease goes up', 'Sales goes down and Rent & Lease goes up', "Owner's Draw goes up and Business Checking goes up"], c: 0, why: 'Money left the bank (an asset went down) and the business had a rent expense (an expense went up). Same amount on both sides.' }]
+      quiz: [{ q: 'The bakery pays $1,850 rent from its checking account. Which two accounts change?', a: ['Business Checking goes down and Rent & Lease goes up', 'Sales goes down and Rent & Lease goes up', "Owner's Draw goes up and Business Checking goes up"], c: 0, why: 'Every transaction touches two accounts by the same amount. Here money left the bank, so an asset (Business Checking) went down, and the business had a cost, so an expense (Rent & Lease) went up — $1,850 on each side.' }]
     },
     {
       id: 'tour', title: 'Find your way around', mins: 4,
@@ -255,65 +255,65 @@
       task: "Open Bluebird Bakery's dashboard, then press Ctrl K (or click the search box) once.",
       action: ['Go to the dashboard', () => ensurePractice(true, 'dashboard')],
       check: () => !!(T().flags.dashboard && T().flags.palette),
-      quiz: [{ q: 'A client has $14,000 in the bank but only $3,000 of profit this year. How can that be?', a: ['It is a mistake — they should match', 'Cash includes money from before this year, loans or owner deposits; profit only counts this year\'s income minus expenses', 'Profit counts the bank balance twice'], c: 1, why: 'Cash is a balance at one moment. Profit is a result over a period. Money from last year, a loan, or the owner putting money in all raise cash without being profit.' }]
+      quiz: [{ q: 'A client has $14,000 in the bank but only $3,000 of profit this year. How can that be?', a: ['It is a mistake — they should match', 'Cash includes money from before this year, loans or owner deposits; profit only counts this year\'s income minus expenses', 'Profit counts the bank balance twice'], c: 1, why: 'Cash is a balance at one moment. Profit is a result over a period — only this year\'s income minus this year\'s expenses. Money left over from last year, a loan, or an owner deposit all raise cash without being profit.' }]
     },
     {
       id: 'import', title: 'Bring in bank activity', mins: 4,
       learn: 'How a bank statement file becomes transactions, and why duplicates never sneak in.',
       body: [
-        `<p>Banks let you download account activity as a <b>CSV</b> or <b>Excel</b> file (look for <i>Download</i>, <i>Export</i> or <i>Statements</i> on the bank's website). You'll do this for each client's checking, savings and credit card every month.</p>`,
+        `<p>Banks let you download account activity as a <b>CSV</b> or <b>Excel</b> file (look for <i>Download</i>, <i>Export</i> or <i>Statements</i> on the bank's website). Pick CSV when you can — it imports most cleanly. You'll do this for each client's checking, savings and credit card every month.</p>`,
         `<p>Drop the file anywhere in Coll Ledger. It figures out the columns, asks which account the statement is for, and shows a preview. Lines that are already in the books are marked <b>Already in</b> and skipped, so importing the same file twice is safe.</p>`,
         `<p>New activity lands in <b>To Review</b> — nothing is final until you look at it.</p>`
       ],
-      words: [['CSV', 'A plain spreadsheet file most banks can export.'], ['Duplicate', 'A transaction that was already imported; Coll Ledger skips it.']],
+      words: [['CSV', 'Short for “comma-separated values” — a plain spreadsheet file most banks can export.'], ['Duplicate', 'A transaction that is already in the books; Coll Ledger skips it on import.']],
       task: 'Import the practice bank file into Business Checking. Notice the one line marked "Already in".',
       action: ['Import the practice bank file', () => { const c = ensurePractice(true, 'import'); setTimeout(() => feed('bluebird-checking.csv', bankFile(c)), 60); }],
       check: () => !!(P() && (P().imports || []).some(i => i.kind === 'bank' && !i.undone)),
-      quiz: [{ q: 'You accidentally import the same bank file a second time. What happens?', a: ['Every transaction doubles', 'Coll Ledger marks them "Already in" and skips them', 'The first import is deleted'], c: 1, why: 'Each line is compared with what is already in that account — same date, amount and description — and skipped.' }]
+      quiz: [{ q: 'You accidentally import the same bank file a second time. What happens?', a: ['Every transaction doubles', 'Coll Ledger marks them "Already in" and skips them', 'The first import is deleted'], c: 1, why: 'Before anything is added, each line is compared with what is already in that account. A line with the same date, amount and description is a duplicate, so it is marked "Already in" and skipped. Nothing doubles and nothing is deleted.' }]
     },
     {
       id: 'review', title: 'Sort transactions', mins: 8,
       learn: 'Picking the right category — including the tricky ones that trip up new bookkeepers.',
       body: [
-        `<p>Categorizing is most of the daily work. Coll Ledger fills in a category for almost everything: from a rule (<i>From a smart rule</i>), from what you chose before (<i>Same as last time</i>), or from what it knows about common vendors (<i>Best guess — please check</i>). Your job is to make sure each one is right. Check it, then press <span class="kbd">Enter</span> or click <b>Accept</b>. Use <span class="kbd">↑</span> <span class="kbd">↓</span> to move and <span class="kbd">C</span> to change a category.</p>`,
+        `<p>Categorizing is most of the daily work. Coll Ledger fills in a category for almost everything: from a rule (<i>From a smart rule</i>), from what you chose before (<i>Same as last time</i>), or from what it knows about common vendors (<i>Best guess — please check</i>). Your job is to make sure each one is right — a wrong category makes every report wrong. Check it, then press <span class="kbd">Enter</span> or click <b>Accept</b>. Use <span class="kbd">↑</span> <span class="kbd">↓</span> to move and <span class="kbd">C</span> to change a category.</p>`,
         `<p>The tricky ones in this file — check that Coll Ledger's guesses match these:</p>
          <ul class="t-list">
            <li><b>Transfer to owner</b> → <i>Owner's Draw</i>. The owner paying themselves isn't a business expense — it's taking out their own money (equity).</li>
            <li><b>Payment to Chase card</b> → <i>Business Credit Card</i>. Paying the card bill is a <b>transfer</b>. The real expenses were recorded when each purchase hit the card; counting the payment too would double them.</li>
            <li><b>City of Denver business license</b> → <i>Taxes & Licenses</i>.</li>
-           <li><b>Sunshine Packaging</b> (boxes for the bakery's goods) → <i>Cost of Goods Sold</i>. Things that go out the door with the product are cost of goods.</li>
-           <li><b>Blue Mountain Coffee Roasters</b> → <i>Cost of Goods Sold</i> — the bakery sells coffee.</li>
+           <li><b>Sunshine Packaging</b> (boxes for the bakery's goods) → <i>Cost of Goods Sold</i>. Things that go out the door with the product count as Cost of Goods Sold.</li>
+           <li><b>Blue Mountain Coffee Roasters</b> → <i>Cost of Goods Sold</i>. The bakery sells coffee, so the beans are part of what it sells.</li>
          </ul>`,
-        `<p>Leave the <b>Costco</b> purchase for the next-but-one lesson — you'll split it.</p>`
+        `<p>Leave the <b>Costco</b> purchase alone for now. You'll split it two lessons from now, in <i>Split a purchase</i>.</p>`
       ],
-      words: [['Transfer', 'Money moving between two of the business\'s own accounts. Not income, not an expense.'], ["Owner's Draw", 'Money the owner takes out for themselves.'], ['Cost of Goods Sold', 'What it costs to make the things you sell — ingredients, packaging.']],
+      words: [['Transfer', 'Money moving between two of the business\'s own accounts. Not income, not an expense.'], ["Owner's Draw", 'Money the owner takes out for themselves.'], ['Cost of Goods Sold', 'What it costs to make or buy the things you sell, like ingredients and packaging.']],
       task: 'Accept every transaction in To Review except the Costco one.',
       action: ['Open To Review', () => ensurePractice(true, 'review')],
       check: () => { const c = P(); return !!c && (c.imports || []).some(i => i.kind === 'bank' && !i.undone) && c.transactions.filter(t => t.status === 'review').length <= 1; },
       quiz: [
-        { q: 'The owner moves $1,500 from the business to her personal savings. Which category?', a: ['Payroll & Wages', "Owner's Draw", 'Miscellaneous Expense'], c: 1, why: "An owner taking money out is a draw from equity. It doesn't reduce profit, and it isn't deductible like wages." },
-        { q: 'The bakery pays its $642 credit card bill from checking. What is that?', a: ['An expense', 'Income', 'A transfer to the credit card account'], c: 2, why: 'The purchases on the card were already recorded as expenses. The payment just moves money from checking to pay down what is owed.' }
+        { q: 'The owner moves $1,500 from the business to her personal savings. Which category?', a: ['Payroll & Wages', "Owner's Draw", 'Miscellaneous Expense'], c: 1, why: "Money the owner takes out for themselves is an Owner's Draw, which reduces equity. It is not an expense, so it doesn't reduce profit, and it isn't deductible like wages paid to employees." },
+        { q: 'The bakery pays its $642 credit card bill from checking. What is that?', a: ['An expense', 'Income', 'A transfer to the credit card account'], c: 2, why: 'Rule: paying a credit card bill is a transfer, never an expense. Each purchase was already recorded as an expense when it hit the card. The payment just moves money from checking to pay down what the business owes.' }
       ]
     },
     {
       id: 'rules', title: 'Teach smart rules', mins: 3,
       learn: 'How to make Coll Ledger categorize the same vendors automatically every month.',
       body: [
-        `<p>A <b>smart rule</b> says: <i>when the bank description contains these words, use this category</i>. Make one for anything that repeats — software subscriptions, utilities, payroll.</p>`,
-        `<p>Rules can <b>suggest</b> (you still click Accept) or be <b>Automatic</b> (matches skip To Review on import). Start with suggestions; switch to automatic once you trust a rule.</p>`,
+        `<p>A <b>smart rule</b> says: <i>when the bank description contains these words, use this category</i>. Make one for anything that repeats — software subscriptions, utilities, payroll. A few good rules can turn an hour of sorting into minutes.</p>`,
+        `<p>Each rule is set to <b>Suggests</b> (you still click Accept) or <b>Automatic</b> (matches skip To Review on import). Start with Suggests; switch to Automatic once you trust a rule.</p>`,
         `<p>Two ways to make one: tick <b>Always use for…</b> under a category in To Review, or go to <b>Smart Rules → New rule</b>.</p>`
       ],
       words: [['Smart rule', 'Words to match in a bank description, plus the category to use.']],
       task: 'Create one rule — for example "canva" → Software & Subscriptions.',
       action: ['Open Smart Rules', () => ensurePractice(true, 'rules')],
       check: () => { const c = P(); return !!c && c.rules.length > (c.practiceBase ? c.practiceBase.rules : 1); },
-      quiz: [{ q: 'You want Xcel Energy bills to skip To Review entirely. What do you set?', a: ['A rule set to Automatic', 'A rule set to Suggests', 'Nothing — it happens by itself'], c: 0, why: 'Automatic rules categorize matching lines during import, so they never wait in To Review.' }]
+      quiz: [{ q: 'You want Xcel Energy bills to skip To Review entirely. What do you set?', a: ['A rule set to Automatic', 'A rule set to Suggests', 'Nothing — it happens by itself'], c: 0, why: 'Automatic rules categorize matching lines during import, so they never wait in To Review. A rule set to Suggests only fills in the category — you still have to accept it.' }]
     },
     {
       id: 'split', title: 'Split a purchase', mins: 4,
       learn: 'Recording one payment that covers several categories.',
       body: [
-        `<p>Some receipts mix things: a Costco run might be flour and butter (cost of goods) <i>and</i> paper towels (supplies). Splitting puts each part in the right place so reports are accurate.</p>`,
+        `<p>Some receipts mix things: a Costco run might be flour and butter (Cost of Goods Sold) <i>and</i> paper towels (supplies). Splitting puts each part in the right place so reports are accurate.</p>`,
         `<p>Open the transaction, click <b>Split</b>, and add a line for each category. The lines have to add up to the total — Coll Ledger shows what's left as you type. In To Review you can also press <span class="kbd">S</span>.</p>`,
         `<p>For this one, the receipt says: <b>$248.64</b> of ingredients and <b>$70.00</b> of cleaning and office supplies.</p>`
       ],
@@ -321,27 +321,27 @@
       task: 'Split the Costco purchase: $248.64 Cost of Goods Sold and $70.00 Office Supplies, then save.',
       action: ['Find the Costco purchase', () => { ensurePractice(true, 'transactions'); Object.assign(S.ui.txn, { q: 'costco', account: 'all', category: '', type: 'all', period: 'last-12' }); render(); }],
       check: () => { const c = P(); return !!c && c.transactions.some(t => !t.extId && t.splits && t.splits.length > 1); },
-      quiz: [{ q: 'A $318.64 receipt is $248.64 ingredients and $70 supplies. What should the split lines add up to?', a: ['$248.64', '$318.64', 'Any amount'], c: 1, why: 'Split lines always add up to the full transaction amount, so the bank side still matches the statement.' }]
+      quiz: [{ q: 'A $318.64 receipt is $248.64 ingredients and $70 supplies. What should the split lines add up to?', a: ['$248.64', '$318.64', 'Any amount'], c: 1, why: 'Split lines always add up to the full transaction amount: $248.64 + $70.00 = $318.64. That way the bank side still matches the statement.' }]
     },
     {
       id: 'invoices', title: 'Invoices and getting paid', mins: 6,
       learn: 'Billing customers, recording payments, and what Accounts Receivable means.',
       body: [
-        `<p>An <b>invoice</b> records income the moment the work is done, even before the customer pays. Until they pay, that money sits in <b>Accounts Receivable</b> — "money customers owe us."</p>`,
+        `<p>An <b>invoice</b> records the income when you send it — usually right after the work is done — even before the customer pays. Until they pay, that money sits in <b>Accounts Receivable</b> — "money customers owe us."</p>`,
         `<p>When the payment arrives, open the invoice and click <b>Record payment</b>. That moves the money into the bank and clears what the customer owes. <b>Don't</b> also categorize that deposit as Sales — the income was already counted on the invoice, so it would count twice. If the deposit arrives in a bank import instead, To Review spots it and suggests <b>Pays invoice …</b> — accept that and the invoice is marked paid.</p>`,
         `<p>Two things to do: Maple Elementary PTA has paid invoice <b>BB-102</b>, and Riverside Coffee needs a new invoice for <b>40 dozen bagels at $14</b>.</p>`
       ],
-      words: [['Invoice', 'A bill to a customer. Recording it counts the income.'], ['Accounts Receivable (A/R)', 'Money customers owe the business.']],
+      words: [['Invoice', 'A bill you send to a customer. Recording it counts the income.'], ['Accounts Receivable (A/R)', 'Money customers owe the business.']],
       task: 'Record the payment on BB-102, then create and "Save & mark sent" a new invoice for Riverside Coffee.',
       action: ['Open Invoices', () => { S.ui.inv.filter = 'all'; ensurePractice(true, 'invoices'); }],
       check: () => { const c = P(); if (!c) return false; const st = c.invoices.map(i => C.invoiceState(c, i)); return st.filter(s => s.status === 'paid').length > c.practiceBase.paid && c.invoices.filter(i => !['draft', 'void'].includes(i.status)).length > c.practiceBase.sent; },
-      quiz: [{ q: 'Maple Elementary pays its $300 invoice by check. How do you record it?', a: ['Categorize the deposit as Sales', 'Open the invoice and click Record payment', 'Delete the invoice'], c: 1, why: 'The sale was counted when the invoice was sent. Recording the payment on the invoice clears Accounts Receivable without counting the income a second time.' }]
+      quiz: [{ q: 'Maple Elementary pays its $300 invoice by check. How do you record it?', a: ['Categorize the deposit as Sales', 'Open the invoice and click Record payment', 'Delete the invoice'], c: 1, why: 'Rule: income is counted once. The sale was counted when the invoice was sent. Recording the payment on the invoice moves the money into the bank and clears Accounts Receivable without counting the income a second time.' }]
     },
     {
       id: 'reconcile', title: 'Reconcile a statement', mins: 6,
       learn: 'Proving the books match the bank — the step that makes everything trustworthy.',
       body: [
-        `<p><b>Reconciling</b> means checking the books against the bank's own statement. You enter the statement's ending date and balance, then tick each transaction that appears on it. When the <b>Difference</b> reaches <b>$0.00</b>, every dollar is accounted for.</p>`,
+        `<p><b>Reconciling</b> means checking the books against the bank's own statement. You enter the statement's ending date and balance, then tick each transaction that appears on it. When the <b>Difference</b> reaches <b>$0.00</b>, every dollar is accounted for. Do this every month for every bank and credit card account — it is how you catch errors before they reach a tax return.</p>`,
         `<p>If it won't hit zero, look for: a transaction that's missing, an amount typed wrong, something ticked that isn't on the statement, or a duplicate. Coll Ledger points out when one unticked item matches the difference exactly.</p>`,
         `<p>Here is Bluebird's checking statement for last month:</p><div class="t-stmt" id="t-stmt"></div>`
       ],
@@ -349,27 +349,27 @@
       task: 'Reconcile Business Checking using the statement above.',
       action: ['Open Reconcile', () => ensurePractice(true, 'reconcile')],
       check: () => { const c = P(); return !!c && c.reconciliations.length > 0; },
-      quiz: [{ q: 'You finish ticking and the difference is $4.50. What should you look for first?', a: ['Close the month anyway', 'A $4.50 transaction left unticked, or an amount typed $4.50 off', 'Change the statement balance until it matches'], c: 1, why: 'A difference is a clue. Look for an item of exactly that amount, a typo, or something ticked that is not on the statement. Never change the statement to fit.' }]
+      quiz: [{ q: 'You finish ticking and the difference is $4.50. What should you look for first?', a: ['Close the month anyway', 'A $4.50 transaction left unticked, or an amount typed $4.50 off', 'Change the statement balance until it matches'], c: 1, why: 'A difference is a clue. Look for an item of exactly that amount, a typo, or something ticked that is not on the statement. The bank\'s statement is the source of truth — never change it to fit the books.' }]
     },
     {
       id: 'square', title: 'Square sales the right way', mins: 5,
       learn: 'Why card sales go through a "Square" account, and what happens to tax, tips and fees.',
       body: [
-        `<p>Many small businesses take cards through <b>Square</b>. Square holds the money for a day or two, takes its fee, then deposits the rest. If you counted only the bank deposits as sales, you'd miss the fees and mix up tax and tips.</p>`,
-        `<p>Coll Ledger imports Square's <b>Transactions CSV</b> as one entry per day in a <b>Square</b> account, split into <i>Sales</i>, <i>Sales Tax Payable</i> (it's the state's money), <i>Tips Payable</i> (it's the staff's money), and <i>Merchant fees</i>. Cash payments move to <i>Cash on Hand</i>.</p>`,
+        `<p>Many small businesses take cards through <b>Square</b>. Square holds the money for a day or two, takes its fee, then deposits the rest. If you counted only the bank deposits as sales, you'd understate sales, miss the fees, and mix the sales tax and tips into income.</p>`,
+        `<p>Coll Ledger imports Square's <b>Transactions CSV</b> as one entry per day in a <b>Square</b> account, split into <i>Sales</i>, <i>Sales Tax Payable</i> (it belongs to the tax authorities), <i>Tips Payable</i> (it belongs to the staff), and <i>Bank & Merchant Fees</i>. Cash payments move to <i>Cash on Hand</i>.</p>`,
         `<p>When Square's deposit shows up in the bank, it's categorized to the <b>Square</b> account — a transfer — so sales are never counted twice.</p>`
       ],
-      words: [['Clearing account', 'A holding account (like Square) for money on its way to the bank.'], ['Sales Tax Payable', 'Tax collected from customers that the business owes the state.']],
+      words: [['Clearing account', 'A holding account (like Square) for money on its way to the bank.'], ['Sales Tax Payable', 'Sales tax collected from customers that the business still owes the state (and, in many Colorado cities, the city).']],
       task: 'Import the practice Square file and look at one day\'s split.',
       action: ['Import the practice Square file', () => { ensurePractice(true, 'import'); setTimeout(() => feed('square-transactions.csv', squareFile()), 60); }],
       check: () => { const c = P(); return !!c && (c.imports || []).some(i => i.kind === 'square-sales' && !i.undone); },
-      quiz: [{ q: 'Why aren\'t Square bank deposits categorized as Sales?', a: ['Because the sales were already recorded from Square\'s file — the deposit is just a transfer', 'Because deposits are never income', 'Because Square keeps all the money'], c: 0, why: 'Sales, tax, tips and fees were recorded from Square\'s file. The deposit only moves what is left from the Square account to checking.' }]
+      quiz: [{ q: 'Why aren\'t Square bank deposits categorized as Sales?', a: ['Because the sales were already recorded from Square\'s file — the deposit is just a transfer', 'Because deposits are never income', 'Because Square keeps all the money'], c: 0, why: 'Rule: record each sale once, at its source. Sales, tax, tips and fees were already recorded from Square\'s file. The deposit only moves what is left from the Square account to checking, so it is a transfer.' }]
     },
     {
       id: 'close', title: 'Reports and closing the month', mins: 6,
       learn: 'Reading the two main reports, locking a finished month, and sending the client package.',
       body: [
-        `<p>The <b>Profit & Loss</b> answers "did we make money?" — income minus expenses for a period. The <b>Balance Sheet</b> answers "where do we stand?" — what the business owns, owes, and the owner's stake on a date. Click any line in a report to see what's in it.</p>`,
+        `<p>The <b>Profit & Loss</b> answers "did we make money?" — income minus expenses for a period. The <b>Balance Sheet</b> answers "where do we stand?" — what the business owns, what it owes, and the owner's stake on one date. Click any line in a report to see what's in it.</p>`,
         `<p><b>Closing the month</b> is the finish line: everything categorized, every account reconciled, no forgotten drafts. Then you lock it, so the reports you send never change by accident. (You can still change a closed month — Coll Ledger just asks first.)</p>`,
         `<p>Finally, the <b>Client package</b> makes one polished PDF with a summary page, Profit & Loss and Balance Sheet, prepared under your studio's name. That's what you send each client every month.</p>`
       ],
@@ -377,7 +377,7 @@
       task: "Open Bluebird's Profit & Loss, then close last month.",
       action: ['Open Close the month', () => { S.ui.close.month = null; ensurePractice(true, 'close'); }],
       check: () => { const c = P(); return !!c && !!T().flags.pl && !!c.lockDate && c.lockDate >= lastMonthEnd(); },
-      quiz: [{ q: 'Why lock a month after you close it?', a: ['To delete old transactions', 'So the numbers already sent to the client cannot change by accident', 'Because the bank requires it'], c: 1, why: 'Once a client has the report, it should stay the same. Locking makes any later change ask first.' }]
+      quiz: [{ q: 'Why lock a month after you close it?', a: ['To delete old transactions', 'So the numbers already sent to the client cannot change by accident', 'Because the bank requires it'], c: 1, why: 'Once a client has a report, the numbers behind it should stay the same. Locking means any later change to that month asks first, so nothing shifts by accident.' }]
     },
 
     // ================= Level 2 · Month-end professional =================
@@ -385,37 +385,37 @@
       id: 'debits', level: 2, title: 'Debits and credits, for real', mins: 8,
       learn: 'The language CPAs and other bookkeepers speak — and how to work out any entry yourself.',
       body: [
-        `<p>Coll Ledger records both sides of every entry for you, but CPAs, auditors and job interviews talk in <b>debits</b> and <b>credits</b>. Knowing them lets you read a General Ledger, post a CPA's adjustments and spot mistakes.</p>`,
+        `<p>Coll Ledger records both sides of every entry for you, but CPAs, auditors and job interviews talk in <b>debits</b> and <b>credits</b>. Knowing them lets you read a General Ledger, post a CPA's adjustments and spot mistakes. Debit just means left side and credit means right side — neither one is good or bad.</p>`,
         `<div class="t-kinds"><div><b>Debit increases</b><span>Assets (cash, money owed to you, equipment) and Expenses. Also owner's draws.</span></div><div><b>Credit increases</b><span>Liabilities (cards, loans, bills owed), Equity (owner's stake) and Income.</span></div></div>`,
         `<p>Every entry has at least one debit and one credit, and they're always equal. A memory trick: <b>DEALER</b> — <i>D</i>ividends/draws, <i>E</i>xpenses, <i>A</i>ssets go up with debits; <i>L</i>iabilities, <i>E</i>quity, <i>R</i>evenue go up with credits.</p>`,
-        `<p>To work out any entry, ask two questions: <b>what did the business get?</b> (usually the debit) and <b>where did it come from?</b> (usually the credit). Paying rent: the business got rent (debit Rent), and the money came from checking (credit Checking).</p>`
+        `<p>To work out any entry, ask two questions: <b>what did the business get?</b> (usually the debit) and <b>where did it come from?</b> (usually the credit). Paying rent: the business got the use of its space (debit Rent & Lease), and the money came from checking (credit Business Checking).</p>`
       ],
-      words: [['Debit (Dr)', 'The left side of an entry. Increases assets and expenses.'], ['Credit (Cr)', 'The right side. Increases liabilities, equity and income.'], ['T-account', 'A sketch of one account with debits on the left and credits on the right.']],
+      words: [['Debit (Dr)', 'The left side of an entry. Increases assets and expenses.'], ['Credit (Cr)', 'The right side of an entry. Increases liabilities, equity and income.'], ['T-account', 'A sketch of one account with debits on the left and credits on the right.']],
       task: 'Get all eight entries in the drill below right.',
       drill: true,
       check: () => drillScore() === DRILL.length,
-      quiz: [{ q: 'The business pays $300 on its loan — all principal. What\'s the entry?', a: ['Debit Loans Payable, credit Checking', 'Debit Interest Expense, credit Checking', 'Debit Checking, credit Loans Payable'], c: 0, why: 'Paying principal lowers the loan (a liability goes down with a debit) and lowers cash (an asset goes down with a credit).' }]
+      quiz: [{ q: 'The business pays $300 on its loan — all principal. What\'s the entry?', a: ['Debit Loans Payable, credit Checking', 'Debit Interest Expense, credit Checking', 'Debit Checking, credit Loans Payable'], c: 0, why: 'Paying principal lowers the loan (a liability goes down with a debit) and lowers cash (an asset goes down with a credit). Principal is never an expense — only interest is.' }]
     },
     {
       id: 'bills', level: 2, title: 'Bills and what the business owes', mins: 5,
       learn: 'Entering vendor bills when they arrive, paying them on time, and what Accounts Payable means.',
       body: [
         `<p>Invoices are money coming <i>in</i>. <b>Bills</b> are the other direction: a vendor sends the business a bill, and the business pays it later. Until it's paid, it sits in <b>Accounts Payable</b> — "money we owe vendors."</p>`,
-        `<p>Entering bills when they arrive (not when they're paid) means the owner always knows what's coming up, and the Bills page shows what's <b>due soon</b> or <b>overdue</b>. Paying is one click — Coll Ledger records the payment from the bank and clears the bill.</p>`,
+        `<p>Entering bills when they arrive (not when they're paid) puts the expense in the right month, means the owner always knows what's coming up, and makes the Bills page show what's <b>due soon</b> or <b>overdue</b>. Paying is one click — Coll Ledger records the payment from the bank and clears the bill.</p>`,
         `<p>When a bill payment later shows up in a bank import, To Review recognizes it and suggests <b>Pays the … bill</b>, so it isn't counted as a second expense.</p>`
       ],
       words: [['Bill', 'A request for payment from a vendor.'], ['Accounts Payable (A/P)', 'Money the business owes vendors for bills not yet paid.']],
       task: 'Enter a bill for Bluebird Bakery (for example $380 from Restaurant Depot), then pay it.',
       action: ['Open Bills', () => ensurePractice(true, 'bills')],
       check: () => { const c = P(); return !!c && (c.bills || []).some(b => C.billState(c, b).status === 'paid'); },
-      quiz: [{ q: 'A $380 bill arrives today, due in 30 days. Where does it show until it\'s paid?', a: ['Accounts Payable', 'Accounts Receivable', 'Cost of Goods Sold only'], c: 0, why: 'Accounts Payable tracks what the business owes. The expense is counted when the bill is entered; paying it just clears what is owed.' }]
+      quiz: [{ q: 'A $380 bill arrives today, due in 30 days. Where does it show until it\'s paid?', a: ['Accounts Payable', 'Accounts Receivable', 'Cost of Goods Sold only'], c: 0, why: 'Accounts Payable tracks what the business owes vendors; Accounts Receivable is the opposite — what customers owe the business. The expense is counted when the bill is entered; paying it just clears what is owed.' }]
     },
     {
       id: 'payroll', level: 2, title: 'Recording payroll', mins: 7,
       learn: 'Turning one big payroll withdrawal into wages and payroll taxes — the way every payroll report reads.',
       body: [
         `<p>Most clients use a payroll service like Gusto or ADP. The bank shows one big withdrawal each payday, but it covers several things: the employees' <b>net pay</b>, the taxes <b>withheld from their checks</b>, and the <b>employer's own payroll taxes</b>.</p>`,
-        `<p>For the books, split it the way the payroll report reads: <b>gross wages</b> (net pay plus everything withheld) go to <i>Payroll & Wages</i>, and the <b>employer taxes</b> (the business's share of Social Security, Medicare and unemployment) go to <i>Payroll Taxes</i>. Some providers take taxes in a separate withdrawal — then each withdrawal gets its own category.</p>`,
+        `<p>For the books, split it the way the payroll report reads: <b>gross wages</b> (net pay plus everything withheld) go to <i>Payroll & Wages</i>, and the <b>employer taxes</b> (the business's share of Social Security, Medicare and unemployment) go to <i>Payroll Taxes</i>. Some providers take taxes in a separate withdrawal. Then split each withdrawal the same way, using the payroll report to see which part is which.</p>`,
         `<div class="t-stmt payroll-rpt"><div class="stmt-bank">GUSTO · PAYROLL SUMMARY</div><div class="stmt-row"><span>Gross wages</span><b>$2,720.00</b></div><div class="stmt-row"><span>Employee taxes withheld</span><b>$582.80</b></div><div class="stmt-row"><span>Net pay to employees</span><b>$2,137.20</b></div><div class="stmt-row"><span>Employer taxes (SS 168.64 · Medicare 39.44 · state unemployment 20.54)</span><b>$228.62</b></div><div class="stmt-row big"><span>Total debited from the bank</span><b>$2,948.62</b></div></div>`,
         `<p>Click below to add this payday to Bluebird's books, then open it and split it: <b>$2,720.00 Payroll & Wages</b> and <b>$228.62 Payroll Taxes</b>.</p>`
       ],
@@ -424,8 +424,8 @@
       action: ['Add the payroll and find it', () => { plantPayroll(); ensurePractice(true, 'transactions'); Object.assign(S.ui.txn, { q: '2,948.62', account: 'all', category: '', type: 'all', period: 'last-12' }); render(); }],
       check: () => { const c = P(), id = (T().planted || {}).payroll; if (!c || !id) return false; const t = c.transactions.find(x => x.id === id); if (!t || !t.splits) return false; const tax = C.acctByName(c, 'Payroll Taxes'), wages = C.acctByName(c, 'Payroll & Wages'); return t.splits.some(sp => sp.categoryId === (tax || {}).id && Math.abs(Math.abs(sp.amount) - 228.62) < 0.005) && t.splits.some(sp => sp.categoryId === (wages || {}).id && Math.abs(Math.abs(sp.amount) - 2720) < 0.005); },
       quiz: [
-        { q: 'Employee taxes withheld from paychecks — whose expense are they?', a: ['The business\'s — record them as Payroll Taxes', 'The employee\'s — they\'re part of gross wages', 'Nobody\'s — leave them out'], c: 1, why: 'Withholdings come out of the employee\'s gross pay. They\'re part of Payroll & Wages; only the employer\'s matching taxes are Payroll Taxes.' },
-        { q: 'A client asks you to "run payroll" on top of bookkeeping. What\'s the professional answer?', a: ['Sure — calculate the taxes by hand', 'Use a payroll service (Gusto, ADP…) so filings and deposits are handled, and record its reports', 'Pay employees as contractors instead'], c: 1, why: 'Payroll services file the quarterly and year-end forms and deposit taxes on time. Treating employees as contractors to avoid payroll is misclassification.' }
+        { q: 'Employee taxes withheld from paychecks — whose expense are they?', a: ['The business\'s — record them as Payroll Taxes', 'The employee\'s — they\'re part of gross wages', 'Nobody\'s — leave them out'], c: 1, why: 'Withholdings come out of the employee\'s gross pay, so they\'re part of Payroll & Wages. The business is only passing them along. Only the employer\'s own share (its Social Security and Medicare match, plus unemployment) is Payroll Taxes.' },
+        { q: 'A client asks you to "run payroll" on top of bookkeeping. What\'s the professional answer?', a: ['Sure — calculate the taxes by hand', 'Use a payroll service (Gusto, ADP…) so filings and deposits are handled, and record its reports', 'Pay employees as contractors instead'], c: 1, why: 'Payroll services calculate withholding, deposit taxes on time and file the quarterly and year-end forms — mistakes there bring IRS penalties. Treating employees as contractors to avoid payroll is misclassification, which is illegal.' }
       ]
     },
     {
@@ -433,23 +433,23 @@
       learn: 'Posting the entries that don\'t come from the bank — the CPA\'s adjustments, depreciation and accruals.',
       body: [
         `<p>Not everything flows through a bank account. Equipment loses value (<b>depreciation</b>). An electric bill arrives after month end for power already used (<b>accrual</b>). The CPA finds something that belongs in a different category (<b>reclassification</b>). These go in as <b>journal entries</b> — you pick the accounts and enter the debits and credits yourself.</p>`,
-        `<p>At year end, most CPAs send a list of <b>adjusting journal entries</b> (AJEs). Posting them exactly as written — same date, accounts and amounts — makes your books match the tax return. Coll Ledger won't let you post an entry until it balances.</p>`,
+        `<p>At year end, most CPAs send a list of <b>adjusting journal entries</b> (AJEs). Posting them exactly as written — same date, same accounts, same amounts — makes your books match the tax return. Coll Ledger won't let you post an entry until it balances.</p>`,
         `<div class="t-stmt"><div class="stmt-bank">FROM: SMITH &amp; CO. CPAS</div><div class="stmt-row"><span>AJE #1 · Monthly depreciation on the ovens</span></div><div class="stmt-row"><span>Dr Depreciation Expense</span><b>$210.00</b></div><div class="stmt-row"><span>Cr Accumulated Depreciation</span><b>$210.00</b></div></div>`
       ],
-      words: [['Journal entry', 'An entry you write yourself with debits and credits.'], ['Adjusting entry (AJE)', 'A correction or end-of-period entry, often from the CPA.'], ['Accrual', 'Recording an expense or income in the month it belongs to, before cash moves.'], ['Accumulated depreciation', 'The total value an asset has lost so far. It reduces the asset on the Balance Sheet.']],
+      words: [['Journal entry', 'An entry you write yourself with debits and credits.'], ['Adjusting entry (AJE)', 'A correction or end-of-period entry, often from the CPA.'], ['Accrual', 'Recording an expense or income in the month it belongs to, before cash moves.'], ['Accumulated Depreciation', 'The total value an asset has lost so far. It reduces the asset on the Balance Sheet.']],
       task: 'Post the CPA\'s AJE #1 for Bluebird: debit Depreciation Expense $210, credit Accumulated Depreciation $210.',
       action: ['Open Journal entries', () => ensurePractice(true, 'journal')],
       check: () => { const c = P(); if (!c) return false; const dep = C.acctByName(c, 'Depreciation Expense'), acc = C.acctByName(c, 'Accumulated Depreciation'); return !!dep && !!acc && (c.journals || []).some(j => !j.void && j.lines.some(l => l.accountId === dep.id && Math.abs(+l.debit - 210) < 0.005) && j.lines.some(l => l.accountId === acc.id && Math.abs(+l.credit - 210) < 0.005)); },
       quiz: [
-        { q: 'December\'s electric bill ($180) arrives January 9. You close December on the 5th. Best practice?', a: ['Record it in January only', 'Accrue it in December with a journal entry that reverses on January 1', 'Ignore it — it\'s small'], c: 1, why: 'An accrual puts the expense in the month the power was used. The automatic reversal stops it from counting twice when the bill is paid in January.' },
-        { q: 'The CPA\'s adjusting entries arrive after you\'ve closed the year. What do you do?', a: ['Post them exactly as written, dated as the CPA dated them, then lock the year again', 'Change the numbers so they fit', 'Skip them — the return is already filed'], c: 0, why: 'Your books should match the tax return. Reopen, post the AJEs as written, and lock again.' }
+        { q: 'December\'s electric bill ($180) arrives January 9. You close December on the 5th. Best practice?', a: ['Record it in January only', 'Accrue it in December with a journal entry that reverses on January 1', 'Ignore it — it\'s small'], c: 1, why: 'Rule: expenses belong in the month they were used, not the month they were paid. The accrual puts the expense in December. The automatic reversal on January 1 cancels it out, so it doesn\'t count twice when the bill is paid in January.' },
+        { q: 'The CPA\'s adjusting entries arrive after you\'ve closed the year. What do you do?', a: ['Post them exactly as written, dated as the CPA dated them, then lock the year again', 'Change the numbers so they fit', 'Skip them — the return is already filed'], c: 0, why: 'Your books should match the tax return the CPA filed. Reopen the year, post the AJEs exactly as written, and lock it again. Never change a CPA\'s numbers to fit — ask the CPA if one looks wrong.' }
       ]
     },
     {
       id: 'receipts', level: 2, title: 'Receipts and the paper trail', mins: 4,
       learn: 'Which receipts the IRS expects, and how to read one into the books in seconds.',
       body: [
-        `<p>Every business expense needs proof. The bank statement shows <i>that</i> money left; the <b>receipt</b> shows <i>what it was for</i>. For travel, meals and gifts of <b>$75 or more</b> — and lodging at any amount — the IRS specifically expects a receipt.</p>`,
+        `<p>Every business expense needs proof. The bank statement shows <i>that</i> money left; the <b>receipt</b> shows <i>what it was for</i>. For travel, meals and gifts of <b>$75 or more</b> — and lodging at any amount — the IRS specifically expects a receipt. Without proof, an expense can be denied in an audit.</p>`,
         `<p><b>Read a receipt</b> (Transactions page, or the New button) reads a photo or PDF right on the computer and fills in the vendor, date and total. If the matching bank charge is already in the books, it attaches the receipt to it. Otherwise it adds a new expense or a bill.</p>`,
         `<p>Try it with the practice receipt — it's for the Sunshine Packaging charge you imported earlier.</p>`
       ],
@@ -457,13 +457,13 @@
       task: 'Read the practice receipt and attach it to its transaction.',
       action: ['Read the practice receipt', () => { ensurePractice(true, 'transactions'); setTimeout(practiceReceipt, 80); }],
       check: () => { const c = P(); return !!c && (c.transactions.some(t => (t.attachments || []).length) || (c.bills || []).some(b => (b.attachments || []).length) || (!window.desktop && T().flags.receiptTried)); },
-      quiz: [{ q: 'A client spent $96 on a business lunch. What does the IRS expect?', a: ['Nothing — the bank statement is enough', 'A receipt, plus who attended and the business reason', 'Only a note in the memo'], c: 1, why: 'Meals of $75 or more need a receipt, and the business purpose and attendees should be noted.' }]
+      quiz: [{ q: 'A client spent $96 on a business lunch. What does the IRS expect?', a: ['Nothing — the bank statement is enough', 'A receipt, plus who attended and the business reason', 'Only a note in the memo'], c: 1, why: 'Meals of $75 or more need a receipt. For any business meal, also note who attended and the business reason — the receipt alone doesn\'t show why it was a business expense.' }]
     },
     {
       id: 'cleanup', level: 2, title: 'Catch mistakes with Clean up', mins: 4,
       learn: 'Finding duplicates and loose ends before they reach a client report.',
       body: [
-        `<p>Even careful bookkeepers end up with a doubled transaction (a file imported twice, a charge entered by hand <i>and</i> imported) or something left in <b>Uncategorized</b>. Clients notice these first — "why did I pay the electric bill twice?"</p>`,
+        `<p>Even careful bookkeepers end up with a doubled transaction (a file imported twice, a charge entered by hand <i>and</i> imported) or something left in <b>Uncategorized</b>. Clients notice these first: "Why did I pay the electric bill twice?"</p>`,
         `<p><b>Clean up</b> (under Month end) scans the books and lists likely problems side by side with one-click fixes. Make it a habit right before you close a month.</p>`,
         `<p>Click the button below to add two practice mistakes to Bluebird's books, then fix them.</p>`
       ],
@@ -471,35 +471,35 @@
       task: 'Add the practice mistakes, then use Clean up to remove the duplicate and categorize the uncategorized item.',
       action: ['Add the mistakes and open Clean up', () => { plantMistakes(); ensurePractice(true, 'cleanup'); }],
       check: () => { const c = P(), pl = T().planted; if (!c || !pl || !pl.dup) return false; const d = c.transactions.filter(t => t.description === pl.dupDesc && Math.abs(t.amount - pl.dupAmt) < 0.005 && t.date === pl.dupDate).length; const u = c.transactions.find(t => t.id === pl.unc); const unc = u && ['unc_inc', 'unc_exp'].includes((C.acct(c, u.categoryId) || {}).key); return d === 1 && !!u && !unc; },
-      quiz: [{ q: 'Two identical $164.22 Xcel payments on the same day. What should you do?', a: ['Keep both — the bank knows best', 'Compare with the bank statement, then remove the extra one', 'Change one to $0'], c: 1, why: 'Check the statement: if Xcel was paid once, the second entry is a duplicate and should be removed.' }]
+      quiz: [{ q: 'Two identical $164.22 Xcel payments on the same day. What should you do?', a: ['Keep both — the bank knows best', 'Compare with the bank statement, then remove the extra one', 'Change one to $0'], c: 1, why: 'The bank statement is the source of truth. If it shows Xcel was paid once, the second entry is a duplicate and should be removed. If it shows two payments, keep both and ask the client why.' }]
     },
     {
       id: 'troubleshoot', level: 2, title: 'When the reconciliation won\'t balance', mins: 5,
       learn: 'The detective work: how to find the one entry that\'s off.',
       body: [
         `<p>A difference that won't go away is almost always one of four things: a <b>missing</b> transaction, a <b>duplicate</b>, something ticked that isn't on the statement, or an amount <b>typed wrong</b>.</p>`,
-        `<p>Two tricks pros use: if the difference equals one transaction exactly, look for that amount. If the difference <b>divides evenly by 9</b> (like $54 or $18), two digits were probably swapped — $186.00 typed as $168.00.</p>`,
+        `<p>Two tricks pros use: if the difference equals one transaction exactly, look for that amount. If the difference <b>divides evenly by 9</b> (like $54 or $18), two digits were probably swapped — $186.00 typed as $168.00 is off by $18. Swapped digits always leave a difference divisible by 9.</p>`,
         `<p>Click below to add a check Bluebird wrote. The bakery's copy of the bank statement shows <b>check #1042 to Gardner Supply for $186.00</b> — find the entry in the books and correct it.</p>`
       ],
       words: [['Transposition', 'Two digits swapped while typing. The error always divides evenly by 9.']],
       task: 'Add the practice check, then fix its amount so it matches the statement ($186.00).',
       action: ['Add the check and find it', () => { plantTypo(); ensurePractice(true, 'transactions'); Object.assign(S.ui.txn, { q: '1042', account: 'all', category: '', type: 'all', period: 'last-12' }); render(); }],
       check: () => { const c = P(), pl = T().planted; if (!c || !pl || !pl.typo) return false; const t = c.transactions.find(x => x.id === pl.typo); return !!t && Math.abs(t.amount + 186) < 0.005; },
-      quiz: [{ q: 'The reconcile difference is $36. What\'s a likely cause?', a: ['Swapped digits — 36 divides evenly by 9', 'The bank made a mistake', 'Sales tax'], c: 0, why: 'Transposed digits always leave a difference divisible by 9 — for example $73 typed as $37 (a $36 difference).' }]
+      quiz: [{ q: 'The reconcile difference is $36. What\'s a likely cause?', a: ['Swapped digits — 36 divides evenly by 9', 'The bank made a mistake', 'Sales tax'], c: 0, why: 'Rule: when two digits are swapped, the difference always divides evenly by 9. For example, $73 typed as $37 leaves a $36 difference, and 36 ÷ 9 = 4. Look for an amount whose digits could be flipped.' }]
     },
     {
       id: 'monthwrap', level: 2, title: 'Mileage, reminders and the month-end email', mins: 5,
       learn: 'The extras that make clients love you: deductions they\'d miss, getting them paid, and a clear monthly note.',
       body: [
-        `<p><b>Mileage</b> is one of the most-missed deductions. Every business mile is worth the IRS standard rate. Log the date, miles and business reason for each trip — Coll Ledger records the month's total in the books.</p>`,
+        `<p><b>Mileage</b> is one of the most-missed deductions. Every business mile is worth the IRS standard mileage rate, which the IRS updates at least once a year (check irs.gov). Log the date, where you went, the miles and the business reason for each trip — Coll Ledger records the month's total in the books.</p>`,
         `<p><b>Payment reminders</b> on the Invoices page write friendly, firm or final-notice emails for overdue customers. Getting a client paid faster is a service they'll remember.</p>`,
         `<p>The <b>Month-end email</b> (on Reports and Close the month) writes a short summary — money in, money out, profit, cash, what's owed. Send it with the client package every month.</p>`
       ],
-      words: [['Standard mileage rate', 'The IRS amount per business mile, which covers gas, wear and insurance.']],
+      words: [['Standard mileage rate', 'The IRS amount per business mile. It covers gas, maintenance, insurance and wear on the vehicle.']],
       task: 'Log one business trip for Bluebird, then open the Month-end email.',
       action: ['Open Mileage', () => ensurePractice(true, 'mileage')],
       check: () => { const c = P(); return !!c && (c.trips || []).length > 0 && !!T().flags.monthEmail; },
-      quiz: [{ q: 'Which mileage log entry is complete?', a: ['"About 300 miles in March"', 'Oct 3 · Office → Restaurant Depot · 12 miles · pick up supplies', 'Just the yearly total'], c: 1, why: 'Each trip needs the date, miles and business reason.' }]
+      quiz: [{ q: 'Which mileage log entry is complete?', a: ['"About 300 miles in March"', 'October 3 · Office → Restaurant Depot · 12 miles · pick up supplies', 'Just the yearly total'], c: 1, why: 'The IRS expects a record made at the time of each trip: the date, where you went, the miles and the business reason. A rough monthly or yearly total won\'t hold up in an audit.' }]
     },
     // ================= Level 3 · Client advisor =================
     {
@@ -507,13 +507,13 @@
       learn: 'Looking ahead: will the client have enough cash, and are they spending to plan?',
       body: [
         `<p>Bookkeeping looks back. <b>Advising</b> looks ahead — and it's what clients will pay more for. The <b>Cash flow</b> tab in Planning projects the bank balance for the next 90 days from unpaid invoices, upcoming bills, repeating items and everyday activity. If cash could run short, it says when.</p>`,
-        `<p>A <b>budget</b> is a monthly plan for each category. Comparing <i>budget vs. actual</i> each month shows where the business is overspending. <b>Fill from last 3 months</b> gives you a realistic starting point.</p>`
+        `<p>A <b>budget</b> is a monthly plan for each category. Comparing <i>budget vs. actual</i> each month shows where the business is overspending — while there's still time to fix it. <b>Fill from last 3 months</b> gives you a realistic starting point.</p>`
       ],
       words: [['Cash-flow forecast', 'A projection of the bank balance over the coming weeks.'], ['Budget vs. actual', 'Planned amounts compared with what really happened.']],
       task: 'Set up a budget for Bluebird (Fill from last 3 months is fine).',
       action: ['Open Planning → Budget', () => { S.ui.plan.tab = 'budget'; ensurePractice(true, 'planning'); }],
       check: () => { const c = P(); return !!c && Object.keys(c.budgets || {}).length > 0; },
-      quiz: [{ q: 'The forecast shows cash dipping below $0 in five weeks. Most useful advice?', a: ['Ignore it — it\'s only a forecast', 'Chase overdue invoices and look at moving a bill date or two', 'Close the business account'], c: 1, why: 'A forecast is an early warning. Collecting money owed and timing payments can keep cash above zero.' }]
+      quiz: [{ q: 'The forecast shows cash dipping below $0 in five weeks. Most useful advice?', a: ['Ignore it — it\'s only a forecast', 'Chase overdue invoices and look at moving a bill date or two', 'Close the business account'], c: 1, why: 'A forecast is an early warning, not a sure thing — five weeks is time to act. Collecting money owed sooner and moving a payment date or two can keep cash above zero.' }]
     },
     {
       id: 'ownertax', level: 3, title: 'Owner pay and quarterly taxes', mins: 5,
@@ -523,13 +523,13 @@
         `<p>With no tax withheld, owners usually pay <b>estimated taxes</b> four times a year: April 15, June 15, September 15 and January 15. Self-employment tax alone is 15.3%, so setting aside <b>25–30% of profit</b> is a common rule of thumb. The tax preparer gives the real number.</p>`,
         `<p>The <b>Owner pay & taxes</b> tab shows what's been taken, what to set aside each quarter, and a cautious "about safe to pay the owner" number.</p>`
       ],
-      words: [['Estimated tax', 'Tax paid during the year by people without withholding.'], ['Self-employment tax', 'Social Security and Medicare for the self-employed — 15.3%.']],
+      words: [['Estimated tax', 'Tax paid in four installments during the year by people with no (or too little) tax withheld from a paycheck.'], ['Self-employment tax', 'Social Security (12.4%) plus Medicare (2.9%) for the self-employed — 15.3% in all.']],
       task: 'Open Bluebird\'s Owner pay & taxes tab.',
       action: ['Open Owner pay & taxes', () => { S.ui.plan.tab = 'owner'; ensurePractice(true, 'planning'); }],
       check: () => !!T().flags.ownerTab,
       quiz: [
-        { q: 'A sole proprietor made $60,000 profit and took $40,000 in draws. Income tax is based on…', a: ['$40,000 of draws', '$60,000 of profit', '$20,000 — the difference'], c: 1, why: 'Draws aren\'t expenses. Tax is on the business profit, whatever the owner took out.' },
-        { q: 'When is the third-quarter estimated tax payment due?', a: ['September 15', 'September 30', 'October 15'], c: 0, why: 'April 15, June 15, September 15 and January 15 (next business day on weekends).' }
+        { q: 'A sole proprietor made $60,000 profit and took $40,000 in draws. Income tax is based on…', a: ['$40,000 of draws', '$60,000 of profit', '$20,000 — the difference'], c: 1, why: 'Rule: owners of these businesses are taxed on profit, not on draws. Draws aren\'t expenses, so the full $60,000 is taxed whether the owner took out $40,000, $0 or all of it.' },
+        { q: 'When is the third-quarter estimated tax payment due?', a: ['September 15', 'September 30', 'October 15'], c: 0, why: 'The four due dates are April 15, June 15, September 15 and January 15. When one falls on a weekend or legal holiday, it moves to the next business day.' }
       ]
     },
     {
@@ -537,16 +537,16 @@
       learn: 'Why a sole proprietor, an LLC and an S corporation pay their owners differently — and where it shows in the books.',
       body: [
         `<p>How the owner gets paid depends on the <b>business type</b>:</p>
-         <ul class="t-list"><li><b>Sole proprietor</b> and <b>single-member LLC</b>: the owner takes <b>draws</b>. Tax is on the profit, not on the draws.</li><li><b>Partnership</b> or <b>multi-member LLC</b>: partners take draws or <b>guaranteed payments</b>; each gets a K-1. Track each partner's equity separately.</li><li><b>S corporation</b>: an owner who works in the business must get a <b>reasonable salary through payroll</b>; the rest can come out as <b>distributions</b>. Owners paid only by draws is a common, costly mistake.</li><li><b>C corporation</b>: owners are paid wages; other money out is usually a dividend or a loan.</li></ul>`,
-        `<p>An LLC is a legal form, not a tax type — it can be taxed as a sole proprietorship, a partnership or an S corp. When you onboard a client, ask what the <b>tax return</b> looks like (Schedule C, 1065 or 1120-S). Set it in each client's Settings so Coll Ledger's owner-pay guidance matches.</p>`
+         <ul class="t-list"><li><b>Sole proprietor</b> and <b>single-member LLC</b>: the owner takes <b>draws</b>. Tax is on the profit, not on the draws.</li><li><b>Partnership</b> or <b>multi-member LLC</b>: partners take draws or <b>guaranteed payments</b>; each gets a K-1. Track each partner's equity separately.</li><li><b>S corporation</b>: an owner who works in the business must get a <b>reasonable salary through payroll</b>; the rest can come out as <b>distributions</b>. Paying an owner only through draws is a common, costly mistake.</li><li><b>C corporation</b>: owners are paid wages; other money out is usually a dividend or a loan.</li></ul>`,
+        `<p>An LLC is a legal form, not a tax type — it can be taxed as a sole proprietorship, a partnership, an S corp or a C corp. When you onboard a client, ask which <b>tax return</b> the business files (Schedule C, 1065, 1120-S or 1120). Set it in each client's Settings so Coll Ledger's owner-pay guidance matches.</p>`
       ],
       words: [['Distribution', 'Profit paid out to S-corp owners — not wages, not an expense.'], ['Reasonable salary', 'What an S-corp must pay an owner who works in the business, through payroll.'], ['K-1', 'The tax form showing each partner\'s or S-corp owner\'s share of profit.']],
       task: 'Bluebird Bakery LLC has one owner and never elected S-corp. Set its business type in Settings.',
       action: ['Open Bluebird\'s Settings', () => ensurePractice(true, 'settings')],
       check: () => { const c = P(); return !!c && c.entity === 'llc1'; },
       quiz: [
-        { q: 'An S-corp owner who works full time takes $80,000 out as draws and no salary. What should you do?', a: ['Nothing — draws are fine', 'Flag it for the CPA: S-corp owners who work in the business need a reasonable salary through payroll', 'Record the draws as wages yourself'], c: 1, why: 'Paying an S-corp owner only through distributions is a well-known IRS issue. Raise it with the client and the CPA rather than reclassifying it yourself.' },
-        { q: 'A new client says "we\'re an LLC." What do you ask next?', a: ['Nothing — LLC tells you everything', 'Which tax return do you file — Schedule C, 1065 or 1120-S?', 'What color is your logo?'], c: 1, why: 'An LLC can be taxed several ways. The return tells you how owners should be paid and how equity is tracked.' }
+        { q: 'An S-corp owner who works full time takes $80,000 out as draws and no salary. What should you do?', a: ['Nothing — draws are fine', 'Flag it for the CPA: S-corp owners who work in the business need a reasonable salary through payroll', 'Record the draws as wages yourself'], c: 1, why: 'Rule: an S-corp owner who works in the business must get a reasonable salary through payroll before taking distributions. Skipping the salary is a well-known IRS audit issue. Raise it with the client and the CPA rather than reclassifying it yourself.' },
+        { q: 'A new client says "we\'re an LLC." What do you ask next?', a: ['Nothing — LLC tells you everything', 'Which tax return do you file — Schedule C, 1065 or 1120-S?', 'What color is your logo?'], c: 1, why: 'An LLC is a legal form, not a tax type, so it can be taxed several ways. The return it files tells you how owners should be paid and how equity is tracked.' }
       ]
     },
     {
@@ -557,28 +557,28 @@
          <ul class="t-list"><li><b>Gross margin</b> — of each sales dollar, what's left after the direct cost of what was sold.</li><li><b>Net profit margin</b> — what's left after everything.</li><li><b>Cash cushion</b> — months of normal spending the bank balance covers.</li><li><b>Days to get paid</b> — how long customers take to pay.</li><li><b>Owner pay vs. profit</b> — whether the owner is taking out more than the business earns.</li></ul>`,
         `<p>The <b>Business Health</b> report (Reports) calculates all of these with a plain-English reading. Compare month to month and to the same month last year — trends matter more than any single number.</p>`
       ],
-      words: [['Gross margin', '(Sales − cost of goods sold) ÷ sales.'], ['Net margin', 'Net profit ÷ sales.'], ['Days to get paid', 'Money customers owe ÷ average daily sales.']],
+      words: [['Gross margin', '(Sales − Cost of Goods Sold) ÷ Sales.'], ['Net margin', 'Net profit ÷ Sales.'], ['Days to get paid', 'Money customers owe ÷ average daily sales.']],
       task: 'Open Bluebird\'s Business Health report.',
       action: ['Open Business Health', () => { S.ui.report.type = 'health'; S.ui.report.period = 'ytd'; ensurePractice(true, 'reports'); }],
       check: () => !!T().flags.rHealth,
       quiz: [
-        { q: 'Sales $50,000, cost of goods sold $20,000, other expenses $22,000. Gross margin?', a: ['16%', '60%', '40%'], c: 1, why: '(50,000 − 20,000) ÷ 50,000 = 60%. Net margin would be (50,000 − 42,000) ÷ 50,000 = 16%.' },
-        { q: 'Profit is up but the bank balance keeps falling. What do you look at first?', a: ['Days to get paid and owner draws', 'The logo', 'Nothing — profit is up'], c: 0, why: 'Customers paying slowly and owners taking out more than profit are the two usual reasons cash falls while profit rises.' }
+        { q: 'Sales $50,000, Cost of Goods Sold $20,000, other expenses $22,000. Gross margin?', a: ['16%', '60%', '40%'], c: 1, why: 'Gross margin subtracts only Cost of Goods Sold: (50,000 − 20,000) ÷ 50,000 = 60%. Net margin subtracts all expenses ($20,000 + $22,000 = $42,000): (50,000 − 42,000) ÷ 50,000 = 16%.' },
+        { q: 'Profit is up but the bank balance keeps falling. What do you look at first?', a: ['Days to get paid and owner draws', 'The logo', 'Nothing — profit is up'], c: 0, why: 'Profit and cash move separately. Customers paying slowly and owners taking out more than profit are the two usual reasons cash falls while profit rises — loan principal and big equipment purchases are the next places to look.' }
       ]
     },
     {
       id: 'yearend', level: 3, title: 'Year-end and 1099s', mins: 5,
       learn: 'The January rush: contractors, the CPA package, and locking the year.',
       body: [
-        `<p>Businesses send a <b>1099-NEC</b> to unincorporated contractors they paid for services. Starting with payments made in <b>2026</b>, the threshold is <b>$2,000</b> (it was $600 through 2025). Payments by card or apps are reported by the payment company instead. Forms are due <b>January 31</b> — so collect a <b>W-9</b> before the first payment.</p>`,
-        `<p>Mark contractors as <b>1099 contractors</b> on their vendor record and the <b>1099 Contractors</b> report adds up what each was paid by check or bank. Then Reports → <b>Year-end for the CPA</b> builds the whole package.</p>`,
+        `<p>Businesses send a <b>1099-NEC</b> to unincorporated contractors they paid for services. Starting with payments made in <b>2026</b>, the threshold is <b>$2,000</b> (it was $600 through 2025). Payments made by credit card or through payment apps are reported by the payment company on a 1099-K instead. Forms are due <b>January 31</b> — so collect a <b>W-9</b> before the first payment.</p>`,
+        `<p>Mark contractors as <b>1099 contractors</b> on their vendor record, and the <b>1099 Contractors</b> report adds up what each was paid by check, cash or bank transfer. Then Reports → <b>Year-end for the CPA</b> builds the whole package.</p>`,
         `<p>Bluebird paid a window-cleaning contractor this year. Click below to add those payments, then mark the vendor as a 1099 contractor.</p>`
       ],
-      words: [['1099-NEC', 'The form reporting what a business paid a contractor.'], ['W-9', 'The contractor\'s form with their legal name, address and tax ID.']],
+      words: [['1099-NEC', 'The form reporting what a business paid a contractor.'], ['W-9', 'The form a contractor fills out with their legal name, address and tax ID. You need it to file the 1099.']],
       task: 'Mark Front Range Window Cleaning as a 1099 contractor, then open the 1099 Contractors report.',
       action: ['Add the contractor and open the vendor list', () => { plantContractor(); ensurePractice(true, 'contacts'); }],
       check: () => { const c = P(); return !!c && c.contacts.some(x => x.name === 'Front Range Window Cleaning' && x.is1099) && !!T().flags.r1099; },
-      quiz: [{ q: 'In 2026 a contractor is paid $2,250 by bank transfer. Is a 1099-NEC needed?', a: ['Yes — it\'s $2,000 or more', 'No — only over $10,000', 'No — bank transfers never count'], c: 0, why: 'For payments made in 2026, $2,000 or more to an unincorporated contractor for services generally needs a 1099-NEC.' }]
+      quiz: [{ q: 'In 2026 a contractor is paid $2,250 by bank transfer. Is a 1099-NEC needed?', a: ['Yes — it\'s $2,000 or more', 'No — only over $10,000', 'No — bank transfers never count'], c: 0, why: 'For payments made in 2026, paying an unincorporated contractor $2,000 or more for services generally requires a 1099-NEC. Bank transfers count; only card and payment-app payments are left to the payment company.' }]
     },
 
     // ================= Level 4 · Running your practice =================
@@ -587,7 +587,7 @@
       learn: 'The first two weeks with a new client — what to collect so the books start right.',
       body: [
         `<p>Most bookkeeping problems start at onboarding: missing accounts, wrong opening balances, no idea how the business is taxed. A consistent checklist prevents all of it.</p>`,
-        `<p>Collect: a signed engagement letter; legal name, EIN and business type; <b>read-only</b> access to every bank and card account; statements for the start date; last year's tax return and the CPA's contact; prior books; payroll access; sales tax account and schedule; loan and lease documents; equipment list; contractors with W-9s; and who gets the reports.</p>`,
+        `<p>Collect: a signed engagement letter; legal name, EIN and business type; <b>read-only</b> access to every bank and card account; bank and card statements covering the start date; last year's tax return and the CPA's contact; prior books; payroll access; sales tax account and schedule; loan and lease documents; equipment list; contractors with W-9s; and who gets the reports.</p>`,
         `<p>Coll Ledger adds all of these as the client's to-dos in one click (Dashboard → To-dos → <b>Onboarding checklist</b>), each due in two weeks.</p>`
       ],
       words: [['Opening balance', 'Each account\'s balance on the day the books start in Coll Ledger.'], ['Read-only access', 'Permission to see accounts without moving money.']],
@@ -595,8 +595,8 @@
       action: ['Add the checklist', () => { const c = ensurePractice(true, 'dashboard'); App.addOnboarding(c); }],
       check: () => { const c = P(); return !!c && (c.todos || []).filter(t => t.onboarding).length >= 10; },
       quiz: [
-        { q: 'Where do opening balances come from?', a: ['The client\'s best guess', 'Bank and card statements for the start date (and the prior balance sheet for everything else)', 'Last month\'s deposits'], c: 1, why: 'Statements give exact balances on a specific date. Loans, equipment and other balances come from the prior books or tax return.' },
-        { q: 'A new client offers to email you their online banking password. You…', a: ['Accept and save it in Notes', 'Thank them and ask for read-only or accountant access instead', 'Use it once, then forget it'], c: 1, why: 'Read-only access protects the client and you. Never store full passwords.' }
+        { q: 'Where do opening balances come from?', a: ['The client\'s best guess', 'Bank and card statements for the start date (and the prior balance sheet for everything else)', 'Last month\'s deposits'], c: 1, why: 'Statements give exact balances on a specific date, so bank and card opening balances should match them to the penny. Loans, equipment and other balances come from the prior books or tax return — never from a guess.' },
+        { q: 'A new client offers to email you their online banking password. You…', a: ['Accept and save it in Notes', 'Thank them and ask for read-only or accountant access instead', 'Use it once, then forget it'], c: 1, why: 'Read-only access protects the client and you: if money ever goes missing, you were never able to move it. Never accept or store a client\'s full banking password.' }
       ]
     },
     {
@@ -612,8 +612,8 @@
       action: ['Open the pricing calculator', () => { ensurePractice(false); App.pricingModal(); }],
       check: () => !!T().flags.priced,
       quiz: [
-        { q: 'A client on a $400/month plan starts sending three times as many transactions. Best move?', a: ['Absorb it — they\'re a nice client', 'Point to the engagement letter and adjust the fee with notice', 'Quietly do less work'], c: 1, why: 'Scope and fees are tied in the engagement letter. Raise it early and kindly, with the notice the letter allows.' },
-        { q: 'A business is eight months behind. How do you quote it?', a: ['Free — they\'ll become a monthly client', 'A separate catch-up fee, paid before starting, plus the ongoing monthly fee', 'Hourly with no estimate'], c: 1, why: 'Catch-up is a project: quote it separately, get paid up front, then start the monthly service.' }
+        { q: 'A client on a $400/month plan starts sending three times as many transactions. Best move?', a: ['Absorb it — they\'re a nice client', 'Point to the engagement letter and adjust the fee with notice', 'Quietly do less work'], c: 1, why: 'Your fee is tied to the scope in the engagement letter. When the work grows, the fee should too. Raise it early and kindly, with the notice the letter allows.' },
+        { q: 'A business is eight months behind. How do you quote it?', a: ['Free — they\'ll become a monthly client', 'A separate catch-up fee, paid before starting, plus the ongoing monthly fee', 'Hourly with no estimate'], c: 1, why: 'Catch-up is a separate project with its own price. Quote it separately, get paid up front, then start the monthly service. Free catch-up work trains a client to expect free work.' }
       ]
     },
     {
@@ -621,45 +621,45 @@
       learn: 'The one document that protects you, sets expectations and prevents most client problems.',
       body: [
         `<p>An <b>engagement letter</b> spells out: the services, what the client provides and by when, what's <i>not</i> included (tax returns, tax advice, audits, legal advice), the fee and payment terms, confidentiality, and how either side can end it.</p>`,
-        `<p>It also states that the client is responsible for the accuracy of what they give you and for their business decisions, and that you don't audit their records. Have an attorney review your standard letter once; then use it with every client — no exceptions, even friends.</p>`,
+        `<p>It also states that the client is responsible for the accuracy of what they give you and for their business decisions, and that you don't audit their records. Have an attorney review your standard letter once; then use it with every client — no exceptions, not even for friends.</p>`,
         `<p>My studio → <b>Engagement letter</b> builds a ready-to-sign PDF from your services and fee.</p>`
       ],
       words: [['Engagement letter', 'A written agreement covering scope, responsibilities and fees.'], ['Out of scope', 'Work not covered by the agreement — quoted separately.']],
       task: 'Create an engagement letter for a pretend client.',
       action: ['Open the engagement letter', () => { ensurePractice(false); App.engagementModal({ client: 'Riverside Coffee Co.', contact: 'Sam Rivera', fee: 450 }); }],
       check: () => !!T().flags.engagement,
-      quiz: [{ q: 'A client asks you to "just quickly file" their sales tax return, which isn\'t in your letter. You…', a: ['Do it free this once', 'Explain it\'s outside the agreement and quote it, or add it to the scope', 'Ignore the request'], c: 1, why: 'Kindly naming what\'s in and out of scope — and quoting extras — keeps the relationship healthy and you paid.' }]
+      quiz: [{ q: 'A client asks you to "just quickly file" their sales tax return, which isn\'t in your letter. You…', a: ['Do it free this once', 'Explain it\'s outside the agreement and quote it, or add it to the scope', 'Ignore the request'], c: 1, why: 'Rule: anything not in the engagement letter is out of scope until you agree on a price. Kindly naming what\'s in and out of scope — and quoting extras — keeps the relationship healthy and you paid.' }]
     },
     {
       id: 'catchup', level: 4, title: 'Catch-up and cleanup projects', mins: 6,
       learn: 'How to bring months of messy or missing books up to date without getting lost.',
       body: [
         `<p>Many new clients come to you behind or with books someone else got wrong. Work in this order:</p>
-         <ol class="t-list"><li><b>Pin down the starting point</b> — a reconciled balance from the last good month, or the prior tax return.</li><li><b>Get every statement</b> for every account, every month. Missing statements are the #1 cause of catch-up projects stalling.</li><li><b>Import and categorize month by month</b>, oldest first, with smart rules doing the repetitive work.</li><li><b>Reconcile each month before moving on.</b> Finding an error in month 3 is easy; finding it from month 9 is not.</li><li><b>Run Clean up</b> on all time, then close each month.</li><li><b>Keep a questions list</b> for the client and send it in batches, not one email at a time.</li></ol>`
+         <ol class="t-list"><li><b>Pin down the starting point</b> — a reconciled balance from the last good month, or the prior tax return.</li><li><b>Get every statement</b> for every account, every month. Missing statements are the #1 cause of catch-up projects stalling.</li><li><b>Import and categorize month by month</b>, oldest first, with smart rules doing the repetitive work.</li><li><b>Reconcile each month before moving on.</b> Finding an error in month 3 is easy; finding it from month 9 is not.</li><li><b>Run Clean up</b> over all time, then close each month.</li><li><b>Keep a questions list</b> for the client and send it in batches, not one email at a time.</li></ol>`
       ],
       words: [['Catch-up', 'Bringing books current from behind.'], ['Cleanup', 'Fixing books that exist but are wrong.']],
       task: 'Run Clean up on all time for Bluebird (change "This year" to "All time").',
       action: ['Open Clean up', () => { S.ui.clean = S.ui.clean || {}; S.ui.clean.scope = 'all'; ensurePractice(true, 'cleanup'); }],
       check: () => !!T().flags.cleanAll,
       quiz: [
-        { q: 'Halfway through a catch-up, the March reconciliation is off by $412. Best move?', a: ['Keep going and fix it at the end', 'Stop and find it before moving to April', 'Adjust it to Miscellaneous Expense'], c: 1, why: 'Each later month builds on March. Find the difference while it\'s isolated.' },
-        { q: 'The client can\'t find statements for two months. What now?', a: ['Estimate the transactions', 'Ask the client to download them from the bank (or request them), and pause those months until they arrive', 'Skip those months'], c: 1, why: 'Banks keep years of statements. Reconciled books need the real statements, not estimates.' }
+        { q: 'Halfway through a catch-up, the March reconciliation is off by $412. Best move?', a: ['Keep going and fix it at the end', 'Stop and find it before moving to April', 'Adjust it to Miscellaneous Expense'], c: 1, why: 'Each later month starts from March\'s ending balance, so an error left in March carries into every month after it. Find the difference now, while it\'s isolated to one month.' },
+        { q: 'The client can\'t find statements for two months. What now?', a: ['Estimate the transactions', 'Ask the client to download them from the bank (or request them), and pause those months until they arrive', 'Skip those months'], c: 1, why: 'Banks keep years of statements, so they can almost always be found. You can\'t reconcile against an estimate — reconciled books need the real statements.' }
       ]
     },
     {
       id: 'industries', level: 4, title: 'Industries you\'ll meet', mins: 7,
       learn: 'What to watch for with the kinds of businesses that hire bookkeepers most.',
       body: [
-        `<ul class="t-list"><li><b>Restaurants, cafés, bakeries</b> — daily card and cash sales (use the Square import), tips owed to staff, sales tax, food cost as cost of goods sold. Watch food cost and labor as a share of sales.</li><li><b>Contractors and trades</b> — deposits before work starts, materials, subcontractors who need 1099s, vehicles and mileage, and job profitability. Collect W-9s up front.</li><li><b>Retail and e-commerce</b> — inventory, payment-processor fees and payouts (Shopify, Stripe, PayPal work like Square: sales minus fees), sales tax in several states.</li><li><b>Salons, gyms and services</b> — booth rent or contractors vs. employees, gift cards (a liability until used), memberships.</li><li><b>Professional services</b> — invoicing and getting paid, retainers, owner pay and estimated taxes.</li><li><b>Nonprofits</b> — no owners; track grants and donor restrictions; the Form 990 belongs to the CPA.</li></ul>`,
+        `<ul class="t-list"><li><b>Restaurants, cafés, bakeries</b> — daily card and cash sales (use the Square import), tips owed to staff, sales tax, and food cost as Cost of Goods Sold. Watch food cost and labor as a share of sales.</li><li><b>Contractors and trades</b> — deposits before work starts, materials, subcontractors who need 1099s, vehicles and mileage, and job profitability. Collect W-9s up front.</li><li><b>Retail and e-commerce</b> — inventory, payment-processor fees and payouts (Shopify, Stripe and PayPal work like Square: sales minus fees), and sales tax in several states.</li><li><b>Salons, gyms and services</b> — booth rent, contractors vs. employees, gift cards (a liability until used), and memberships.</li><li><b>Professional services</b> — invoicing and getting paid, retainers, owner pay and estimated taxes.</li><li><b>Nonprofits</b> — no owners; track grants and donor restrictions; the Form 990 belongs to the CPA.</li></ul>`,
         `<p>When you meet a new industry, ask the client's CPA what they need to see at year end — then set up the categories to match from day one.</p>`
       ],
       words: [['Payment processor', 'A service (Square, Stripe, PayPal) that collects card payments and deposits them minus fees.'], ['Gift card liability', 'Money received for gift cards not yet used — owed to customers, not income yet.']],
       task: null,
       check: () => true,
       quiz: [
-        { q: 'A salon sells $1,000 of gift cards in December. How is that recorded?', a: ['$1,000 of December income', 'A liability until the gift cards are used, then income', 'Owner\'s Contributions'], c: 1, why: 'The salon owes services to whoever holds the cards. It becomes income as the cards are redeemed.' },
-        { q: 'A contractor client pays a plumbing subcontractor $6,000 by check. What\'s needed by January 31?', a: ['Nothing', 'A 1099-NEC — collect the W-9 before paying', 'A W-2'], c: 1, why: '$6,000 by check to an unincorporated subcontractor is well over the 1099-NEC threshold.' },
-        { q: 'A Shopify store\'s payouts arrive in the bank minus fees. How do you record sales?', a: ['Count only the payouts as sales', 'Record full sales and fees from the Shopify report, then treat payouts as transfers — like Square', 'Ignore fees'], c: 1, why: 'Payouts are net of fees. Recording only payouts understates both sales and fees.' }
+        { q: 'A salon sells $1,000 of gift cards in December. How is that recorded?', a: ['$1,000 of December income', 'A liability until the gift cards are used, then income', 'Owner\'s Contributions'], c: 1, why: 'Rule: money received before the work is done is a liability, not income. The salon owes services to whoever holds the cards, so the $1,000 becomes income only as the cards are redeemed.' },
+        { q: 'A contractor client pays a plumbing subcontractor $6,000 by check. What\'s needed by January 31?', a: ['Nothing', 'A 1099-NEC — collect the W-9 before paying', 'A W-2'], c: 1, why: '$6,000 by check to an unincorporated subcontractor for services is well over the 1099-NEC threshold. A W-2 is only for employees.' },
+        { q: 'A Shopify store\'s payouts arrive in the bank minus fees. How do you record sales?', a: ['Count only the payouts as sales', 'Record full sales and fees from the Shopify report, then treat payouts as transfers — like Square', 'Ignore fees'], c: 1, why: 'Payouts are net of fees. Recording only payouts understates both sales and fees. Record the full sales and the fees from the report, and the payout becomes a simple transfer.' }
       ]
     },
     {
@@ -668,14 +668,14 @@
       body: [
         `<p>Put every client relationship in writing with an <b>engagement letter</b>: what you'll do, how often, what the client provides and by when, the fee, and what's <i>not</i> included — like tax returns.</p>`,
         `<p>Ask for <b>read-only or accountant access</b> to bank accounts — never store a client's full password. Turn on the <b>password lock</b> and <b>cloud backup</b> in Settings; the books hold private financial information.</p>`,
-        `<p>Know your lane. Unless you're an EA, CPA or attorney, don't give tax advice or sign returns. Hand off clean books and let the preparer make the tax calls. The <b>Bookkeeper's Handbook</b> under Help has the rules, deadlines and checklists to keep handy.</p>`,
+        `<p>Know your lane. Bookkeeping isn't tax advice: preparing returns for pay requires an IRS PTIN, and representing clients before the IRS requires being an EA, CPA or attorney. Until you have those credentials, don't give tax advice or sign returns. Hand off clean books and let the preparer make the tax calls. The <b>Bookkeeper's Handbook</b> under Help has the rules, deadlines and checklists to keep handy.</p>`,
         `<p>Protect client data: a password on Coll Ledger, encrypted cloud backup, a password manager, two-factor login on email, and never sending statements or tax IDs by plain email if a secure link is available. If you ever see signs of fraud or theft by an employee, document it and tell the owner privately — don't confront anyone yourself. Consider <b>errors & omissions (E&O) insurance</b> before you take on clients.</p>`
       ],
       words: [['Engagement letter', 'A written agreement on scope, timing and fees.'], ['Read-only access', 'Permission to view accounts without moving money.']],
       task: 'Open the Bookkeeper\'s Handbook and skim the Tax rules and Deadline calendar.',
       action: ['Open the handbook', () => go('handbook')],
       check: () => !!T().flags.handbook,
-      quiz: [{ q: 'You notice a client\'s office manager has been paying herself extra through vendor checks. What do you do?', a: ['Confront her', 'Document what you found and tell the owner privately', 'Fix the books quietly and say nothing'], c: 1, why: 'Report facts to the owner privately and let them decide next steps. Don\'t investigate or accuse anyone yourself.' }, { q: 'A client asks you, a bookkeeper, to file their tax return. You\'re not an EA or CPA. Best answer?', a: ['File it anyway', 'Refer them to a tax preparer and send clean books', 'Tell them to skip filing'], c: 1, why: 'Bookkeepers prepare the books; credentialed preparers handle returns and tax advice.' }]
+      quiz: [{ q: 'You notice a client\'s office manager has been paying herself extra through vendor checks. What do you do?', a: ['Confront her', 'Document what you found and tell the owner privately', 'Fix the books quietly and say nothing'], c: 1, why: 'Your job is to report facts, not to accuse. Document what you found, tell the owner privately, and let them decide next steps. Don\'t investigate further or confront anyone yourself.' }, { q: 'A client asks you, a bookkeeper, to file their tax return. You\'re not an EA or CPA. Best answer?', a: ['File it anyway', 'Refer them to a tax preparer and send clean books', 'Tell them to skip filing'], c: 1, why: 'Bookkeepers prepare the books; tax preparers handle returns and tax advice. Clean books make their job faster and cheaper for your client.' }]
     },
     {
       id: 'quickbooks', title: 'Bonus: moving a client from QuickBooks', mins: 4, bonus: true,
@@ -683,13 +683,13 @@
       body: [
         `<p>New clients often come from QuickBooks. Bring them over in this order:</p>
          <ol class="t-list"><li><b>Chart of accounts</b> (Reports → Account List → Export to Excel) so their categories exist.</li><li><b>Customers and vendors</b> (export from each list).</li><li><b>Transactions</b> (Reports → Transaction Detail by Account → Export to Excel). Coll Ledger shows how each QuickBooks account lines up before importing.</li></ol>`,
-        `<p>Set each bank and card's <b>opening balance</b> for the day the books start in Coll Ledger, from that day's statement.</p>`
+        `<p>Set the <b>opening balance</b> of each bank and card account for the day the books start in Coll Ledger, using that day's statement.</p>`
       ],
       words: [['Chart of accounts', 'The full list of a business\'s accounts and categories.']],
       task: 'Import the practice QuickBooks chart of accounts and see which accounts match.',
       action: ['Import the practice QuickBooks file', () => { ensurePractice(true, 'import'); setTimeout(() => feed('bluebird-account-list.csv', qbFile()), 60); }],
       check: () => { const c = P(); return !!c && (c.imports || []).some(i => i.kind === 'qb-accounts' && !i.undone); },
-      quiz: [{ q: 'Which QuickBooks file should you import first?', a: ['Transactions', 'Chart of accounts', 'Customers'], c: 1, why: 'With the chart of accounts in place, every transaction finds its matching category.' }]
+      quiz: [{ q: 'Which QuickBooks file should you import first?', a: ['Transactions', 'Chart of accounts', 'Customers'], c: 1, why: 'Rule: accounts before activity. With the chart of accounts in place, every customer, vendor and transaction finds its matching category.' }]
     },
     // =====================================================================
     // ADVANCED ACCOUNTING & TAX (second certificate)
@@ -699,18 +699,18 @@
       id: 'adv-accrual', track: 'adv', level: 5, title: 'Accrual accounting and deferred revenue', mins: 8,
       learn: 'When income and expenses really belong — the idea behind every adjusting entry.',
       body: [
-        `<p>On the <b>cash basis</b>, income counts when money arrives and expenses when they're paid. On the <b>accrual basis</b>, income counts when it's <b>earned</b> and expenses when they're <b>incurred</b> — whatever the bank says. Lenders, investors and larger businesses expect accrual; many small businesses file taxes on cash. A professional understands both.</p>`,
+        `<p>On the <b>cash basis</b>, income counts when money arrives and expenses when they're paid. On the <b>accrual basis</b>, income counts when it's <b>earned</b> and expenses when they're <b>incurred</b> (used up or owed), no matter when cash moves. Lenders, investors and larger businesses expect accrual; many small businesses file taxes on cash. A professional understands both.</p>`,
         `<p>Two principles drive everything: <b>revenue recognition</b> (record income when the work is delivered) and <b>matching</b> (record an expense in the same period as the income it helped earn).</p>`,
-        `<p>A common case: a customer pays a <b>deposit</b> before the work is done. Until it's delivered, the business <i>owes</i> the work — so the deposit is a liability called <b>Unearned (deferred) Revenue</b>, not income. When the work is delivered, move it to income.</p>`,
+        `<p>A common case: a customer pays a <b>deposit</b> before the work is done. Until it's delivered, the business <i>owes</i> the work — so the deposit is a liability called <b>Unearned (deferred) Revenue</b>, not income. When the work is delivered, move it to income. Why it matters: counting deposits as sales makes a busy booking month look far more profitable than it really was.</p>`,
         `<p>Bluebird took a <b>$1,200 deposit</b> for a wedding cake delivered next month, and it was recorded as Sales. Fix it with a journal entry: <b>debit Sales $1,200, credit Unearned Revenue $1,200</b>. Next month, when the cake is delivered, the reverse entry recognizes the income.</p>`
       ],
-      words: [['Accrual basis', 'Income when earned, expenses when incurred.'], ['Revenue recognition', 'Recording income when the goods or services are delivered.'], ['Unearned revenue', 'Money received for work not yet done — a liability.']],
+      words: [['Accrual basis', 'Counting income when it\'s earned and expenses when they\'re incurred, whenever the cash moves.'], ['Revenue recognition', 'Recording income when the goods or services are delivered.'], ['Unearned Revenue', 'Money received for work not yet done — a liability until the work is delivered.']],
       task: 'Post the journal entry moving the $1,200 deposit from Sales to Unearned Revenue.',
       action: ['Open Journal entries', () => { const c = ensurePractice(false); C.acctByName(c, 'Unearned Revenue') || C.ensureAccount(c, { name: 'Unearned Revenue', type: 'liability', sub: 'current' }); save(); ensurePractice(true, 'journal'); }],
       check: () => jeHas(P(), 'Sales', 1200, 'Unearned Revenue', 1200),
       quiz: [
-        { q: 'A customer prepays $6,000 in January for a year of monthly service. On the accrual basis, January income is…', a: ['$6,000', '$500 — the rest stays in Unearned Revenue', '$0'], c: 1, why: 'Only one month was earned. The other $5,500 is owed service until each month is delivered.' },
-        { q: 'Which principle says to record a sales commission in the same month as the sale it came from?', a: ['Matching', 'Conservatism', 'Going concern'], c: 0, why: 'Matching puts expenses in the period of the income they helped produce.' }
+        { q: 'A customer prepays $6,000 in January for a year of monthly service. On the accrual basis, January income is…', a: ['$6,000', '$500 — the rest stays in Unearned Revenue', '$0'], c: 1, why: 'Rule: income is recognized as it is earned. $6,000 ÷ 12 = $500 a month, and only January was delivered. The other $5,500 stays in Unearned Revenue and moves to income one month at a time.' },
+        { q: 'Which principle says to record a sales commission in the same month as the sale it came from?', a: ['Matching', 'Conservatism', 'Going concern'], c: 0, why: 'Matching puts each expense in the same period as the income it helped produce. The commission exists because of the sale, so it belongs in the sale\'s month.' }
       ]
     },
     {
@@ -718,24 +718,24 @@
       learn: 'Getting expenses into the right month when the bill and the benefit don\'t line up.',
       body: [
         `<p><b>Prepaid expenses</b> are paid before they're used — a year of insurance, a software subscription, rent paid in advance. Record the payment to <i>Prepaid Expenses</i> (an asset), then move one month's share to the expense each month.</p>`,
-        `<p><b>Accrued expenses</b> are the opposite: used before they're billed — wages employees earned at month end, utilities used before the bill arrives, interest building on a loan. Record the expense and an <i>Accrued Liability</i> at month end.</p>`,
+        `<p><b>Accrued expenses</b> are the opposite: used before they're billed — wages employees earned at month end, utilities used before the bill arrives, interest building on a loan. Record the expense and a credit to <i>Accrued Liabilities</i> at month end.</p>`,
         `<p>To avoid counting an accrual twice when the real bill is paid, post a <b>reversing entry</b> on the first day of the next month. Coll Ledger does it for you when you tick <i>Reverse it automatically</i>.</p>`,
         `<p>October's electric bill isn't in yet; the meter reading says about <b>$180</b>. Accrue it: <b>debit Utilities $180, credit Accrued Liabilities $180</b>, set to reverse automatically.</p>`
       ],
-      words: [['Prepaid expense', 'Paid in advance — an asset used up over time.'], ['Accrued expense', 'Incurred but not yet billed or paid — a liability.'], ['Reversing entry', 'An automatic opposite entry next period that cancels an accrual.']],
+      words: [['Prepaid expense', 'Paid in advance — an asset used up over time.'], ['Accrued expense', 'Incurred but not yet billed or paid — a liability.'], ['Reversing entry', 'An opposite entry on the first day of the next period that cancels an accrual.']],
       task: 'Post the $180 utilities accrual with an automatic reversal.',
       action: ['Open Journal entries', () => ensurePractice(true, 'journal')],
       check: () => { const c = P(); if (!jeHas(c, 'Utilities', 180, 'Accrued Liabilities', 180)) return false; const u = C.acctByName(c, 'Utilities'); return (c.journals || []).some(j => j.reversalOf && !j.void && j.lines.some(l => l.accountId === u.id && Math.abs(+l.credit - 180) < 0.005)); },
       quiz: [
-        { q: 'A $2,400 annual insurance policy is paid on March 1. What\'s March\'s insurance expense on the accrual basis?', a: ['$2,400', '$200', '$0'], c: 1, why: '$2,400 ÷ 12 months = $200 a month; the rest stays in Prepaid Expenses.' },
-        { q: 'Employees earned $1,250 in the last days of the month, paid on the 5th. At month end you…', a: ['Do nothing', 'Debit wages and credit Accrued Liabilities $1,250, reversing next month', 'Debit Accrued Liabilities and credit cash'], c: 1, why: 'The wages were earned this month, so the expense belongs this month.' }
+        { q: 'A $2,400 annual insurance policy is paid on March 1. What\'s March\'s insurance expense on the accrual basis?', a: ['$2,400', '$200', '$0'], c: 1, why: 'A prepaid expense is used up over the months it covers: $2,400 ÷ 12 = $200 a month. March gets $200; the other $2,200 stays in Prepaid Expenses, an asset, until those months arrive.' },
+        { q: 'Employees earned $1,250 in the last days of the month, paid on the 5th. At month end you…', a: ['Do nothing', 'Debit Payroll & Wages and credit Accrued Liabilities $1,250, reversing next month', 'Debit Accrued Liabilities and credit cash'], c: 1, why: 'The wages were earned this month, so the expense belongs this month, even though payday is next month. The reversal on the 1st keeps payday from counting them twice.' }
       ]
     },
     {
       id: 'adv-assets', track: 'adv', level: 5, title: 'Fixed assets and depreciation', mins: 9,
       learn: 'Capitalizing purchases, calculating depreciation, and why the books and the tax return can differ.',
       body: [
-        `<p>A purchase that lasts more than a year and costs more than the business's <b>capitalization threshold</b> becomes a <b>fixed asset</b>. Many small businesses use the IRS <b>de minimis safe harbor</b> — items of <b>$2,500 or less</b> per item or invoice can be expensed right away (for businesses without audited financial statements). Keep a written capitalization policy.</p>`,
+        `<p>A purchase that lasts more than a year and costs more than the business's <b>capitalization threshold</b> becomes a <b>fixed asset</b>. Many small businesses use the IRS <b>de minimis safe harbor</b> — items of <b>$2,500 or less</b> per item or invoice can be expensed right away (for businesses without audited financial statements). Keep a written capitalization policy so the same kind of purchase is always treated the same way.</p>`,
         `<p><b>Straight-line depreciation</b> spreads cost evenly: <b>(cost − salvage value) ÷ useful life</b>. A $14,400 oven with a $2,400 salvage value and a 10-year life: $12,000 ÷ 10 = $1,200 a year, <b>$100 a month</b>.</p>`,
         `<p>Tax depreciation follows different rules (MACRS classes, <b>Section 179</b> expensing — up to $2.56 million for 2026 — and <b>100% bonus depreciation</b> for qualifying property acquired and placed in service after January 19, 2025). So <b>book</b> and <b>tax</b> depreciation often differ; the CPA tracks the tax side. Your job: an accurate fixed-asset list (what, when, cost) and consistent book depreciation.</p>`,
         `<p>When an asset is sold or scrapped, remove both its cost and its accumulated depreciation; any difference from the sale price is a <b>gain or loss</b>.</p>`
@@ -745,27 +745,27 @@
       action: ['Open Journal entries', () => ensurePractice(true, 'journal')],
       check: () => jeHas(P(), 'Depreciation Expense', 100, 'Accumulated Depreciation', 100),
       quiz: [
-        { q: 'A $30,000 delivery van, $6,000 salvage, 5-year life. Straight-line depreciation per year?', a: ['$6,000', '$4,800', '$4,000'], c: 1, why: '($30,000 − $6,000) ÷ 5 = $4,800 a year ($400 a month).' },
-        { q: 'A $1,800 laptop at a business using the de minimis safe harbor is usually…', a: ['Capitalized and depreciated over 5 years', 'Expensed when bought', 'Recorded as Owner\'s Draw'], c: 1, why: 'Under the $2,500 de minimis safe harbor it can be expensed immediately (with the election and a consistent policy).' },
-        { q: 'Why might book depreciation differ from tax depreciation?', a: ['It\'s a mistake', 'Tax law allows faster methods like Section 179 and bonus depreciation', 'Book depreciation is optional'], c: 1, why: 'The tax return uses tax rules; the books use a consistent accounting method. The CPA reconciles the two.' }
+        { q: 'A $30,000 delivery van, $6,000 salvage, 5-year life. Straight-line depreciation per year?', a: ['$6,000', '$4,800', '$4,000'], c: 1, why: 'Straight-line depreciation is (cost − salvage value) ÷ useful life: ($30,000 − $6,000) ÷ 5 = $4,800 a year ($400 a month). Don\'t forget to subtract the salvage value first.' },
+        { q: 'A $1,800 laptop at a business using the de minimis safe harbor is usually…', a: ['Capitalized and depreciated over 5 years', 'Expensed when bought', 'Recorded as Owner\'s Draw'], c: 1, why: 'Items of $2,500 or less per item or invoice can be expensed immediately under the de minimis safe harbor — as long as the business makes the election on its tax return and follows a consistent policy.' },
+        { q: 'Why might book depreciation differ from tax depreciation?', a: ['It\'s a mistake', 'Tax law allows faster methods like Section 179 and bonus depreciation', 'Book depreciation is optional'], c: 1, why: 'The tax return follows tax law, which often allows faster write-offs; the books use one consistent accounting method. A difference is normal, not an error — the CPA reconciles the two.' }
       ]
     },
     {
-      id: 'adv-inventory', track: 'adv', level: 5, title: 'Inventory and cost of goods sold', mins: 8,
+      id: 'adv-inventory', track: 'adv', level: 5, title: 'Inventory and Cost of Goods Sold', mins: 8,
       learn: 'How businesses that sell products calculate what they really sold — and catch shrinkage.',
       body: [
-        `<p>Businesses that hold products must track <b>inventory</b> — goods on hand are an asset until sold. Many small businesses use the <b>periodic method</b>: record purchases, count what's left, and work out cost of goods sold:</p>
-         <div class="formula">Beginning inventory + Purchases − Ending inventory = <b>Cost of goods sold</b></div>`,
-        `<p>The <b>physical count</b> is the truth. If the books say $19,200 of inventory but the shelves hold $18,450, the $750 difference is <b>shrinkage</b> (loss, spoilage, theft or errors) and goes to cost of goods sold. Big or growing shrinkage is a control problem worth raising with the owner.</p>`,
-        `<p>Bluebird has been expensing all ingredients and packaging as they're bought. Starting this month, the owner counted <b>$3,200</b> of flour, butter, boxes and coffee on hand. Record it as an asset: <b>debit Inventory $3,200, credit Cost of Goods Sold $3,200</b>.</p>`
+        `<p>Businesses that hold products must track <b>inventory</b> — goods on hand are an asset until sold. Many small businesses use the <b>periodic method</b>: record purchases, count what's left, and work out Cost of Goods Sold (COGS):</p>
+         <div class="formula">Beginning inventory + Purchases − Ending inventory = <b>Cost of Goods Sold</b></div>`,
+        `<p>The <b>physical count</b> is the truth. If the books say $19,200 of inventory but the shelves hold $18,450, the $750 difference is <b>shrinkage</b> (loss, spoilage, theft or errors) and goes to Cost of Goods Sold. Big or growing shrinkage is a control problem worth raising with the owner.</p>`,
+        `<p>Bluebird has been expensing all ingredients and packaging as they're bought. To start tracking inventory this month, the owner counted <b>$3,200</b> of flour, butter, boxes and coffee on hand. Record it as an asset: <b>debit Inventory $3,200, credit Cost of Goods Sold $3,200</b>. Goods still on the shelf haven't been sold yet, so they come out of Cost of Goods Sold.</p>`
       ],
-      words: [['Inventory', 'Goods held for sale — an asset until sold.'], ['Periodic method', 'Count inventory at period end and calculate cost of goods sold.'], ['Shrinkage', 'Inventory that disappears through loss, theft, spoilage or error.']],
+      words: [['Inventory', 'Goods held for sale — an asset until sold.'], ['Periodic method', 'Counting inventory at period end and calculating Cost of Goods Sold from the count.'], ['Shrinkage', 'Inventory that disappears through loss, theft, spoilage or error.']],
       task: 'Record Bluebird\'s $3,200 of inventory on hand.',
       action: ['Open Journal entries', () => { const c = ensurePractice(false); C.acctByName(c, 'Inventory') || C.ensureAccount(c, { name: 'Inventory', type: 'asset', sub: 'current' }); save(); ensurePractice(true, 'journal'); }],
       check: () => jeHas(P(), 'Inventory', 3200, 'Cost of Goods Sold', 3200),
       quiz: [
-        { q: 'Beginning inventory $10,000, purchases $25,000, ending inventory $12,000. Cost of goods sold?', a: ['$23,000', '$27,000', '$47,000'], c: 0, why: '$10,000 + $25,000 − $12,000 = $23,000.' },
-        { q: 'The count shows $900 less inventory than the books. The adjustment is…', a: ['Debit Inventory, credit COGS $900', 'Debit COGS, credit Inventory $900', 'No entry'], c: 1, why: 'Lower actual inventory means more cost of goods sold: debit COGS, credit Inventory.' }
+        { q: 'Beginning inventory $10,000, purchases $25,000, ending inventory $12,000. Cost of goods sold?', a: ['$23,000', '$27,000', '$47,000'], c: 0, why: 'What you started with, plus what you bought, minus what is left must have been sold: $10,000 + $25,000 − $12,000 = $23,000.' },
+        { q: 'The count shows $900 less inventory than the books. The adjustment is…', a: ['Debit Inventory, credit COGS $900', 'Debit COGS, credit Inventory $900', 'No entry'], c: 1, why: 'The count is the truth. Less inventory on hand means the asset goes down (credit Inventory) and the missing goods become a cost (debit COGS).' }
       ]
     },
     {
@@ -773,7 +773,7 @@
       learn: 'Splitting every loan payment correctly so the loan balance always matches the lender.',
       body: [
         `<p>Each loan payment has two parts: <b>interest</b> (an expense) and <b>principal</b> (pays down the loan). For a typical monthly loan, interest = <b>balance × annual rate ÷ 12</b>; the rest of the payment is principal. As the balance falls, interest shrinks and principal grows — that table is the <b>amortization schedule</b>.</p>`,
-        `<p>Always split payments from the lender's statement or schedule, and reconcile the Loans Payable balance to the lender's balance at least quarterly. A loan recorded as one expense overstates expenses and leaves the loan balance wrong forever.</p>`,
+        `<p>Always split payments from the lender's statement or schedule, and reconcile the Loans Payable balance to the lender's balance at least once a quarter. A loan payment recorded entirely as an expense overstates expenses and leaves the loan balance wrong until someone fixes it.</p>`,
         `<p>Bluebird's equipment loan has a <b>$24,000</b> balance at <b>7.5%</b>. This month's payment of <b>$650</b> just cleared. Interest: $24,000 × 7.5% ÷ 12 = <b>$150</b>; principal: <b>$500</b>. Find the payment and split it.</p>`
       ],
       words: [['Principal', 'The part of a payment that reduces the loan.'], ['Amortization schedule', 'A table splitting each payment into interest and principal.']],
@@ -781,8 +781,8 @@
       action: ['Add the payment and find it', () => { plantLoan(); ensurePractice(true, 'transactions'); Object.assign(S.ui.txn, { q: 'loan pmt', account: 'all', category: '', type: 'all', period: 'last-12' }); render(); }],
       check: () => { const c = P(), id = (T().planted || {}).loan; if (!c || !id) return false; const t = c.transactions.find(x => x.id === id); if (!t || !t.splits) return false; const lp = C.acctByName(c, 'Loans Payable'), ie = C.acctByName(c, 'Interest Expense'); return t.splits.some(sp => lp && sp.categoryId === lp.id && Math.abs(Math.abs(sp.amount) - 500) < 0.005) && t.splits.some(sp => ie && sp.categoryId === ie.id && Math.abs(Math.abs(sp.amount) - 150) < 0.005); },
       quiz: [
-        { q: 'Balance $36,000 at 6% annual interest. Interest in this month\'s payment?', a: ['$2,160', '$180', '$360'], c: 1, why: '$36,000 × 6% ÷ 12 = $180.' },
-        { q: 'The lender\'s statement shows a $27,100 balance; your books show $26,400. Likely cause?', a: ['Payments recorded entirely as principal — interest was never split out', 'The lender is wrong', 'Sales tax'], c: 0, why: 'If interest was recorded as principal, the books\' loan balance falls too fast. Split the payments and reconcile.' }
+        { q: 'Balance $36,000 at 6% annual interest. Interest in this month\'s payment?', a: ['$2,160', '$180', '$360'], c: 1, why: 'Monthly interest is balance × annual rate ÷ 12: $36,000 × 6% ÷ 12 = $180. $2,160 is a full year of interest, and $360 is two months.' },
+        { q: 'The lender\'s statement shows a $27,100 balance; your books show $26,400. Likely cause?', a: ['Payments recorded entirely as principal — interest was never split out', 'The lender is wrong', 'Sales tax'], c: 0, why: 'The books show less owed than the lender does, so too much of each payment came off the loan. That happens when interest is recorded as principal. Split past payments using the lender\'s statement, then reconcile.' }
       ]
     },
     {
@@ -790,16 +790,16 @@
       learn: 'What happens to profit at year end, and how to explain where the cash went.',
       body: [
         `<p>At year end, income and expense accounts start fresh and the year's profit moves into <b>Retained Earnings</b> (equity) — the <b>closing entries</b>. Coll Ledger does this automatically based on each client's business year, so the Balance Sheet always shows prior profits in Retained Earnings and this year's as Net Income.</p>`,
-        `<p>The <b>statement of cash flows</b> explains why cash changed when profit didn't match. It has three parts: <b>operating</b> (running the business), <b>investing</b> (buying or selling equipment) and <b>financing</b> (loans, owner contributions and draws). The usual <b>indirect method</b> starts with net income, adds back non-cash expenses like depreciation, and adjusts for changes in receivables, inventory and payables.</p>`,
+        `<p>The <b>statement of cash flows</b> explains how cash changed during the period, and why that's different from profit. It has three parts: <b>operating</b> (running the business), <b>investing</b> (buying or selling equipment) and <b>financing</b> (loans, owner contributions and draws). The usual <b>indirect method</b> starts with net income, adds back non-cash expenses like depreciation, and adjusts for changes in receivables, inventory and payables.</p>`,
         `<p>The <b>Trial Balance</b> is your year-end checkpoint: every account, debits equal credits, ready for the CPA.</p>`
       ],
-      words: [['Retained earnings', 'Profits kept in the business from past years.'], ['Closing entries', 'Year-end entries that zero income and expenses into retained earnings.'], ['Statement of cash flows', 'Explains the change in cash: operating, investing, financing.']],
+      words: [['Retained earnings', 'Profits kept in the business from past years.'], ['Closing entries', 'Year-end entries that move the year\'s income and expense balances into retained earnings, resetting them to zero.'], ['Statement of cash flows', 'Explains the change in cash: operating, investing, financing.']],
       task: 'Open Bluebird\'s Trial Balance.',
       action: ['Open the Trial Balance', () => { S.ui.report.type = 'tb'; ensurePractice(true, 'reports'); }],
       check: () => !!T().flags.rTB,
       quiz: [
-        { q: 'Net income $40,000 and depreciation $8,000. Customers owe $5,000 more than last year. Cash from operations (simplified)?', a: ['$53,000', '$43,000', '$37,000'], c: 1, why: '$40,000 + $8,000 depreciation − $5,000 increase in receivables = $43,000.' },
-        { q: 'Buying a $20,000 delivery van with cash shows on the cash flow statement under…', a: ['Operating', 'Investing', 'Financing'], c: 1, why: 'Buying or selling long-term assets is investing activity.' }
+        { q: 'Net income $40,000 and depreciation $8,000. Customers owe $5,000 more than last year. Cash from operations (simplified)?', a: ['$53,000', '$43,000', '$37,000'], c: 1, why: 'Start with net income, add back depreciation (an expense that used no cash), and subtract the rise in receivables (sales not collected yet): $40,000 + $8,000 depreciation − $5,000 increase in receivables = $43,000.' },
+        { q: 'Buying a $20,000 delivery van with cash shows on the cash flow statement under…', a: ['Operating', 'Investing', 'Financing'], c: 1, why: 'Buying or selling long-term assets like equipment and vehicles is investing activity. Operating is day-to-day business; financing is loans and owner money.' }
       ]
     },
     // ---------- Module B · Tax compliance ----------
@@ -808,17 +808,17 @@
       learn: 'The taxes, forms and deadlines behind every paycheck — so you can check a payroll service\'s work.',
       body: [
         `<p><b>FICA</b>: employees and employers each pay <b>7.65%</b> — Social Security 6.2% (on wages up to <b>$184,500 for 2026</b>) and Medicare 1.45% (no cap; employees owe an extra 0.9% on wages over $200,000). <b>FUTA</b> (federal unemployment) is 6.0% on the first $7,000 of each employee's wages, usually <b>0.6%</b> after the credit for state unemployment taxes.</p>`,
-        `<p><b>Forms and deadlines:</b> Form <b>941</b> each quarter (due the last day of the month after the quarter); Form <b>940</b> yearly (January 31); <b>W-2s</b> to employees and the SSA with W-3 by <b>January 31</b>. Tax deposits are due <b>monthly or semiweekly</b> depending on the business's lookback-period liability. New hires complete a <b>W-4</b> and <b>I-9</b>.</p>`,
+        `<p><b>Forms and deadlines:</b> Form <b>941</b> each quarter (due the last day of the month after the quarter); Form <b>940</b> yearly (January 31); <b>W-2s</b> to employees and the SSA with W-3 by <b>January 31</b>. Tax deposits are due <b>monthly or semiweekly</b>, depending on how much payroll tax the business reported during an earlier 12-month <i>lookback period</i>. New hires complete a <b>W-4</b> and <b>I-9</b>.</p>`,
         `<p><b>Colorado:</b> state income tax withholding, state unemployment insurance (through the Colorado Department of Labor and Employment), and FAMLI paid-leave premiums. Other states have their own versions.</p>`,
-        `<p>Even with a payroll service, check every quarter that the 941 wages match the books and that deposits went out. Penalties for late deposits are steep — and the owner can be personally liable for unpaid withheld taxes.</p>`
+        `<p>Even with a payroll service, check every quarter that the 941 wages match the books and that deposits went out. Penalties for late deposits are steep, and the owner can be personally liable for unpaid withheld taxes.</p>`
       ],
-      words: [['FICA', 'Social Security and Medicare taxes.'], ['Form 941', 'The employer\'s quarterly federal payroll tax return.'], ['Trust fund taxes', 'Taxes withheld from employees — held in trust for the government.']],
+      words: [['FICA', 'Social Security and Medicare taxes, paid by both the employee and the employer.'], ['Form 941', 'The employer\'s quarterly federal payroll tax return.'], ['Trust fund taxes', 'Taxes withheld from employees — held in trust for the government.']],
       task: null,
       check: () => true,
       quiz: [
-        { q: 'An employee earns $2,000 this period. The employer\'s share of FICA is…', a: ['$153.00', '$306.00', '$124.00'], c: 0, why: '$2,000 × 7.65% = $153. The employee pays another $153 through withholding.' },
-        { q: 'When is the third-quarter Form 941 due?', a: ['September 30', 'October 31', 'January 31'], c: 1, why: 'The last day of the month after the quarter ends: October 31.' },
-        { q: 'Why are unpaid withheld payroll taxes so serious?', a: ['They aren\'t', 'They\'re trust fund taxes — responsible owners can be held personally liable', 'Only the payroll company is liable'], c: 1, why: 'Withheld taxes belong to the government. The IRS can assess responsible people personally.' }
+        { q: 'An employee earns $2,000 this period. The employer\'s share of FICA is…', a: ['$153.00', '$306.00', '$124.00'], c: 0, why: 'The employer matches the employee\'s FICA: 6.2% Social Security plus 1.45% Medicare is 7.65%, and $2,000 × 7.65% = $153. The employee pays another $153 through withholding, so $306 is the combined total, not the employer\'s share.' },
+        { q: 'When is the third-quarter Form 941 due?', a: ['September 30', 'October 31', 'January 31'], c: 1, why: 'Form 941 is due the last day of the month after the quarter ends. The third quarter ends September 30, so it\'s due October 31.' },
+        { q: 'Why are unpaid withheld payroll taxes so serious?', a: ['They aren\'t', 'They\'re trust fund taxes — responsible owners can be held personally liable', 'Only the payroll company is liable'], c: 1, why: 'Withheld taxes belong to the government — the business is only holding them. If they aren\'t paid, the IRS can collect from the people responsible for paying them, often the owner, personally.' }
       ]
     },
     {
@@ -826,8 +826,8 @@
       learn: 'Nexus, taxable sales, exemption certificates and Colorado\'s layered system.',
       body: [
         `<p>A business must collect sales tax where it has <b>nexus</b> — a physical presence (a store, employees, inventory) or <b>economic nexus</b> (sales into a state above its threshold; many states, including Colorado, use <b>$100,000</b> a year). Online sales through a <b>marketplace</b> like Amazon or Etsy are generally collected by the marketplace.</p>`,
-        `<p>Not everything is taxable: rules differ for services, food, clothing and wholesale sales. A business selling for resale should get a <b>resale or exemption certificate</b> from the buyer and keep it on file.</p>`,
-        `<p><b>Colorado</b> layers taxes: the state rate is <b>2.9%</b>, plus county, city and special-district rates. Some <b>home-rule cities</b> — Denver, Aurora and Boulder among them — run their own sales tax, with their own returns or through the state's SUTS portal. Get each client's exact locations and filing schedule at onboarding.</p>`,
+        `<p>Not everything is taxable: rules differ by state for services, food, clothing and wholesale sales. A business selling for resale should get a <b>resale or exemption certificate</b> from the buyer and keep it on file.</p>`,
+        `<p><b>Colorado</b> layers taxes: the state rate is <b>2.9%</b>, plus county, city and special-district rates. Some <b>home-rule cities</b> — Denver, Aurora and Boulder among them — run their own sales tax, filed directly with the city or through the state's SUTS (Sales and Use Tax System) portal. Get each client's exact locations and filing schedule at onboarding.</p>`,
         `<p>Every month, check that <i>Sales Tax Payable</i> matches what the client owes on its returns. The <b>Sales Tax</b> report shows collected, paid and still owed.</p>`
       ],
       words: [['Nexus', 'A connection with a state that requires collecting its sales tax.'], ['Exemption certificate', 'A buyer\'s form showing a sale isn\'t taxable (for resale or exempt use).'], ['Home-rule city', 'A city that sets and may collect its own sales tax.']],
@@ -835,8 +835,8 @@
       action: ['Open the Sales Tax report', () => { S.ui.report.type = 'tax'; ensurePractice(true, 'reports'); }],
       check: () => !!T().flags.rSalesTax,
       quiz: [
-        { q: 'A Colorado client starts selling online to Arizona customers — $140,000 a year. What do you flag?', a: ['Nothing — they\'re in Colorado', 'Possible economic nexus in Arizona (its threshold is $100,000) — talk to the client and their CPA', 'Only federal tax applies'], c: 1, why: 'Sales above a state\'s economic nexus threshold can require registering and collecting there.' },
-        { q: 'A wholesale customer says "we\'re buying for resale." Before skipping sales tax, the business needs…', a: ['A handshake', 'A valid resale certificate on file', 'A W-9'], c: 1, why: 'Without the certificate, the seller can owe the tax in an audit.' }
+        { q: 'A Colorado client starts selling online to Arizona customers — $140,000 a year. What do you flag?', a: ['Nothing — they\'re in Colorado', 'Possible economic nexus in Arizona (its threshold is $100,000) — talk to the client and their CPA', 'Only federal tax applies'], c: 1, why: 'Each state sets its own economic nexus threshold. Selling more than that into a state can require registering, collecting and filing there, even with no office in the state.' },
+        { q: 'A wholesale customer says "we\'re buying for resale." Before skipping sales tax, the business needs…', a: ['A handshake', 'A valid resale certificate on file', 'A W-9'], c: 1, why: 'Rule: no certificate, no exemption. Without a valid resale certificate on file, the seller can owe the uncollected tax in an audit. A W-9 is for 1099s, not sales tax.' }
       ]
     },
     {
@@ -852,8 +852,8 @@
       action: ['Open Reports', () => { S.ui.report.type = 'tb'; ensurePractice(true, 'reports'); }],
       check: () => !!T().flags.yearEnd,
       quiz: [
-        { q: 'An S corporation\'s calendar-year return (1120-S) is due…', a: ['January 31', 'March 15', 'April 15'], c: 1, why: 'Partnerships and S corporations: March 15. Schedule C and C corporations: April 15.' },
-        { q: 'A client got a $250 parking fine on a business trip. For taxes it\'s…', a: ['Fully deductible', 'Not deductible — keep it in its own account', '50% deductible'], c: 1, why: 'Fines and penalties paid to a government aren\'t deductible.' }
+        { q: 'An S corporation\'s calendar-year return (1120-S) is due…', a: ['January 31', 'March 15', 'April 15'], c: 1, why: 'For calendar-year businesses, partnerships and S corporations file by March 15; Schedule C and C corporations file by April 15. January 31 is for W-2s and 1099s.' },
+        { q: 'A client got a $250 parking fine on a business trip. For taxes it\'s…', a: ['Fully deductible', 'Not deductible — keep it in its own account', '50% deductible'], c: 1, why: 'Fines and penalties paid to a government aren\'t deductible, even on a business trip. Keep them out of Travel so they aren\'t deducted by mistake.' }
       ]
     },
     {
@@ -865,12 +865,12 @@
         `<p><b>Estimated taxes:</b> to avoid an underpayment penalty, owners generally pay at least <b>90% of this year's tax</b> or <b>100% of last year's</b> (<b>110%</b> if last year's adjusted gross income was over $150,000), in four installments. A quarterly set-aside habit — Planning → Owner pay & taxes — keeps clients out of trouble.</p>`,
         `<p><b>S-corp owners</b> pay payroll taxes only on their salary, not their distributions — which is exactly why the IRS insists the salary be reasonable.</p>`
       ],
-      words: [['Self-employment tax', '15.3% Social Security and Medicare on the self-employed.'], ['QBI deduction', 'Up to 20% of qualified business income for many pass-through owners.'], ['Safe harbor', 'A payment level that avoids the underpayment penalty.']],
+      words: [['Self-employment tax', 'Social Security and Medicare for the self-employed — 15.3% of 92.35% of net earnings.'], ['QBI deduction', 'Up to 20% of qualified business income for many pass-through owners.'], ['Safe harbor', 'A payment level that avoids the underpayment penalty.']],
       task: null,
       check: () => true,
       quiz: [
-        { q: 'A sole proprietor has $40,000 of net profit. Self-employment tax is about…', a: ['$6,120', '$5,652', '$3,060'], c: 1, why: '$40,000 × 92.35% × 15.3% ≈ $5,652.' },
-        { q: 'Last year\'s tax was $12,000 and AGI was $90,000. To be safe from the underpayment penalty, estimates should total at least…', a: ['$10,800', '$12,000', '$13,200'], c: 1, why: '100% of last year\'s tax ($12,000), since AGI was under $150,000. Over $150,000 it would be 110%.' }
+        { q: 'A sole proprietor has $40,000 of net profit. Self-employment tax is about…', a: ['$6,120', '$5,652', '$3,060'], c: 1, why: 'Take 92.35% of net profit, then multiply by 15.3%: $40,000 × 92.35% × 15.3% ≈ $5,652. $6,120 skips the 92.35% step.' },
+        { q: 'Last year\'s tax was $12,000 and AGI was $90,000. To be safe from the underpayment penalty, estimates should total at least…', a: ['$10,800', '$12,000', '$13,200'], c: 1, why: '100% of last year\'s tax ($12,000), since AGI was under $150,000. Over $150,000 it would be 110%. The 90% test applies to this year\'s tax, not last year\'s, so $10,800 falls short.' }
       ]
     },
     {
@@ -881,12 +881,12 @@
         `<p>Payments to <b>corporations</b> are generally exempt — but <b>attorneys</b> get 1099s whether incorporated or not. Card and payment-app payments are reported by the processor on a 1099-K instead.</p>`,
         `<p>Collect a <b>W-9</b> before the first payment. If a payee won't provide a correct taxpayer ID, the business must <b>backup withhold 24%</b> from payments. Businesses filing <b>10 or more</b> information returns in total generally must file them electronically (the IRS's free IRIS portal works).</p>`
       ],
-      words: [['W-9', 'The payee\'s certified name and taxpayer ID.'], ['Backup withholding', '24% withheld when a payee doesn\'t provide a valid tax ID.'], ['Information return', 'A form reporting payments to the IRS — like a 1099.']],
+      words: [['W-9', 'The form where a payee certifies their legal name and taxpayer ID.'], ['Backup withholding', '24% withheld when a payee doesn\'t provide a valid tax ID.'], ['Information return', 'A form reporting payments to the IRS — like a 1099.']],
       task: null,
       check: () => true,
       quiz: [
-        { q: 'A client paid an incorporated law firm $4,500 in 2026. A 1099?', a: ['No — corporations are exempt', 'Yes — attorneys get 1099s even when incorporated', 'Only if paid in cash'], c: 1, why: 'Legal fees are the main exception to the corporation exemption.' },
-        { q: 'A new contractor refuses to give a tax ID. The business should…', a: ['Pay them anyway with no withholding', 'Backup withhold 24% from payments', 'Treat them as an employee'], c: 1, why: 'Without a valid TIN, backup withholding at 24% applies.' }
+        { q: 'A client paid an incorporated law firm $4,500 in 2026. A 1099?', a: ['No — corporations are exempt', 'Yes — attorneys get 1099s even when incorporated', 'Only if paid in cash'], c: 1, why: 'Payments to corporations are usually exempt, but legal fees are the main exception: attorneys get a 1099 whether or not they\'re incorporated.' },
+        { q: 'A new contractor refuses to give a tax ID. The business should…', a: ['Pay them anyway with no withholding', 'Backup withhold 24% from payments', 'Treat them as an employee'], c: 1, why: 'Without a valid taxpayer identification number (TIN), the business must withhold 24% from each payment and send it to the IRS. That\'s why you collect the W-9 before the first payment.' }
       ]
     },
     // ---------- Module C · Professional standards ----------
@@ -896,15 +896,15 @@
       body: [
         `<p>Most small-business fraud comes from trusted insiders with too much access. Good controls make it hard to commit and easy to catch. The core idea is <b>segregation of duties</b>: no one person should be able to <i>approve</i>, <i>pay</i> and <i>record</i> the same transaction.</p>`,
         `<p>Controls that fit a small business: the owner gets bank statements directly and looks them over monthly; two approvals for payments above a set amount; new vendors and changes to vendor bank details are verified by phone using a number already on file; payroll changes are approved by the owner; and monthly reconciliations are reviewed by someone other than the preparer.</p>`,
-        `<p><b>Red flags:</b> an employee who never takes vacation, vendors with only a P.O. box or matching an employee's address, round-dollar payments, duplicate invoice numbers, rising refunds or voids, payroll for someone nobody knows. If you see these, document facts and tell the owner privately.</p>`,
+        `<p><b>Red flags:</b> an employee who never takes vacation, vendors with only a P.O. box or the same address as an employee, round-dollar payments, duplicate invoice numbers, rising refunds or voids, and payroll for someone nobody knows. If you see these, document the facts and tell the owner privately.</p>`,
         `<p>Email payment scams are common: a "vendor" emails new bank details. Always verify by phone before changing any payment information.</p>`
       ],
       words: [['Segregation of duties', 'Splitting approve, pay and record between different people.'], ['Ghost employee', 'A fake person on payroll whose pay goes to a fraudster.'], ['Business email compromise', 'A scam using a fake or hacked email to redirect payments.']],
       task: null,
       check: () => true,
       quiz: [
-        { q: 'A vendor emails: "We changed banks — please send payments to this new account." You…', a: ['Update it right away', 'Call the vendor at a number already on file to confirm before changing anything', 'Reply to the email to confirm'], c: 1, why: 'Replying confirms nothing if the email is fake. Verify by phone using known contact details.' },
-        { q: 'Which single setup is riskiest?', a: ['One employee enters bills, approves them and signs the checks', 'The owner approves payments the bookkeeper enters', 'Two signatures over $5,000'], c: 0, why: 'One person controlling the whole cycle can create and pay fake bills without anyone seeing.' }
+        { q: 'A vendor emails: "We changed banks — please send payments to this new account." You…', a: ['Update it right away', 'Call the vendor at a number already on file to confirm before changing anything', 'Reply to the email to confirm'], c: 1, why: 'Replying confirms nothing if the email is fake — the scammer answers. Verify by phone using contact details you already had, never ones from the new email.' },
+        { q: 'Which single setup is riskiest?', a: ['One employee enters bills, approves them and signs the checks', 'The owner approves payments the bookkeeper enters', 'Two signatures over $5,000'], c: 0, why: 'This breaks segregation of duties. One person controlling the whole cycle — enter, approve and pay — can create and pay fake bills without anyone seeing.' }
       ]
     },
     {
@@ -919,8 +919,8 @@
       task: null,
       check: () => true,
       quiz: [
-        { q: 'You want to prepare simple Schedule C returns for clients for a fee. First you need…', a: ['Nothing', 'A PTIN from the IRS', 'A CPA license'], c: 1, why: 'Anyone preparing federal returns for pay must have a PTIN. Enrolled agent or CPA status allows representing clients before the IRS.' },
-        { q: 'A client asks you to date an invoice in last year so they get the deduction sooner. You…', a: ['Do it — it\'s their business', 'Decline, explain why, and note it in writing', 'Do it but don\'t tell anyone'], c: 1, why: 'Falsifying records isn\'t a gray area. Decline and document.' }
+        { q: 'You want to prepare simple Schedule C returns for clients for a fee. First you need…', a: ['Nothing', 'A PTIN from the IRS', 'A CPA license'], c: 1, why: 'Anyone who prepares federal returns for pay must have a PTIN — a CPA license isn\'t required to prepare returns. Credentials like enrolled agent or CPA add the right to represent clients before the IRS.' },
+        { q: 'A client asks you to date an invoice in last year so they get the deduction sooner. You…', a: ['Do it — it\'s their business', 'Decline, explain why, and note it in writing', 'Do it but don\'t tell anyone'], c: 1, why: 'Dating a document to the wrong year to move a deduction is falsifying records — not a gray area. Decline, explain why, and keep a written note of the request and your answer.' }
       ]
     },
     {
@@ -928,14 +928,14 @@
       learn: 'Where to go next — the credentials that let you prepare returns, represent clients and grow.',
       body: [
         `<p><b>Enrolled Agent (EA)</b> — a federal credential from the IRS that lets you prepare returns <i>and</i> represent taxpayers before the IRS. No degree is required: get a PTIN, pass the three-part <b>Special Enrollment Examination</b> (Individuals; Businesses; Representation, Practices and Procedures), and pass a background check. It's the fastest route from bookkeeping into tax work.</p>`,
-        `<p><b>Certified Public Accountant (CPA)</b> — a state license. In Colorado, new pathways begin January 1, 2027: a bachelor's degree plus 30 more credit hours and one year of experience, a bachelor's plus two years of experience, or a master's plus one year — all with the CPA Exam, an ethics exam, and experience verified by a CPA. Community-college accounting credits can count toward the degree.</p>`,
+        `<p><b>Certified Public Accountant (CPA)</b> — a state license. In Colorado, new pathways begin January 1, 2027: a bachelor's degree plus 30 more credit hours and one year of experience, a bachelor's plus two years of experience, or a master's plus one year — all with the CPA Exam, a professional ethics course, and experience verified by a CPA. Community-college accounting credits can count toward the degree.</p>`,
         `<p><b>Accredited programs</b> add college credit and an employer-recognized credential to what you've learned here. Open the recommendations to see programs near you and online, with live links.</p>`
       ],
       words: [['Enrolled Agent', 'A tax practitioner licensed by the IRS to represent taxpayers.'], ['Accreditation', 'Review by a recognized agency confirming a school meets quality standards.']],
       task: 'Open the recommended programs.',
       action: ['See recommended programs', () => App.advanced && App.advanced.programsModal()],
       check: () => !!T().flags.programs,
-      quiz: [{ q: 'Which credential lets you represent clients before the IRS without a college degree?', a: ['CPA', 'Enrolled Agent', 'QuickBooks ProAdvisor'], c: 1, why: 'EAs earn the credential by passing the IRS\'s three-part exam; no degree is required.' }]
+      quiz: [{ q: 'Which credential lets you represent clients before the IRS without a college degree?', a: ['CPA', 'Enrolled Agent', 'QuickBooks ProAdvisor'], c: 1, why: 'EAs earn the credential by passing the IRS\'s three-part exam and a background check; no degree is required. A CPA license requires a degree, and a ProAdvisor certification doesn\'t allow IRS representation.' }]
     }
 
   ];
@@ -1075,7 +1075,7 @@
           ${advEarned ? `<div class="cert-cta navy">${ICON.spark}<div><b>${t.certAdv ? 'Certificate earned' : 'You earned it!'}</b><div class="muted">${t.certAdv ? esc(t.certAdv.id) : 'Advanced Accounting & Tax'}</div></div><button class="btn sm gold" data-action="adv-cert">${t.certAdv ? 'Badge & LinkedIn' : 'Get it'}</button></div>` : `<div class="cert-req"><div class="cap-label">To earn this certificate</div><div class="${t.cert ? 'ok' : ''}">${t.cert ? ICON.check : '○'} Professional Bookkeeping Certificate</div><div class="${allLessons ? 'ok' : ''}">${allLessons ? ICON.check : '○'} All ${ADV.length} advanced lessons <span class="muted">(${lessonsDone} done)</span></div><div class="${wOk ? 'ok' : ''}">${wOk ? ICON.check : '○'} Written exam, 80% or better</div><div class="${pOk ? 'ok' : ''}">${pOk ? ICON.check : '○'} Practical close, 80+ and closed</div></div>`}
           <div class="pa-card"><div class="pa-ic">${ICON.spark}</div><div class="grow"><b>Accredited programs</b><div class="muted">College credit, tax credentials and the CPA path.</div></div><button class="btn sm" data-action="adv-programs">See them</button></div>`;
         if (examView) {
-          main = !unlocked ? `<div class="tm-head"><span class="tag navy">Final exams</span></div><h2 class="tm-title">Almost there</h2><p class="tm-learn">The advanced exams open once you've earned the Professional Bookkeeping Certificate and finished all ${ADV.length} advanced lessons${allLessons ? '' : ` (${plural(ADV.length - lessonsDone, 'lesson')} to go)`}.</p><div class="tm-nav"><span></span>${allLessons ? `<button class="btn primary" data-action="t-track" data-v="pro">Go to the Professional program ${ICON.right}</button>` : `<button class="btn primary" data-action="t-go" data-id="${(ADV.find(l => !lessonDone(l)) || ADV[0]).id}">Go to the next lesson ${ICON.right}</button>`}</div>`
+          main = !unlocked ? `<div class="tm-head"><span class="tag navy">Final exams</span></div><h2 class="tm-title">Almost there</h2><p class="tm-learn">The advanced exams open once you've earned the Professional Bookkeeping Certificate and finished all ${ADV.length} advanced lessons${allLessons ? '' : ` (${plural(ADV.length - lessonsDone, 'lesson')} to go)`}.</p><div class="tm-nav"><span></span>${allLessons ? `<button class="btn primary" data-action="t-track" data-v="pro">Go to the Professional Bookkeeping program ${ICON.right}</button>` : `<button class="btn primary" data-action="t-go" data-id="${(ADV.find(l => !lessonDone(l)) || ADV[0]).id}">Go to the next lesson ${ICON.right}</button>`}</div>`
             : t.currentAdv === 'adv-exam-written' ? AV.renderWritten() : AV.renderPractical();
         } else main = lessonMain(cur, ADV, ADV_LEVELS, 'adv-exam-written');
       }
