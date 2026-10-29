@@ -4421,7 +4421,7 @@ function mount(container, plan, opts) {
     if (rSSAO.beautyRenderTarget) rSSAO.beautyRenderTarget.stencilBuffer = true;
     if (rSSAO.normalRenderTarget && rSSAO.normalRenderTarget.depthTexture) rSSAO.normalRenderTarget.depthTexture.type = THREE.UnsignedIntType;
     rComp.addPass(rSSAO);
-    if (THREE.UnrealBloomPass) { rBloom = new THREE.UnrealBloomPass(new THREE.Vector2(256, 256), 0.4, 0.5, 1.4);   // only what's brighter than white glows: the light lenses rComp.addPass(rBloom); }
+    if (THREE.UnrealBloomPass) { rBloom = new THREE.UnrealBloomPass(new THREE.Vector2(256, 256), 0.4, 0.5, 1.4); rComp.addPass(rBloom); }   // only what's brighter than white glows: the light lenses
     rComp.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));
     rFXAA = new THREE.ShaderPass(THREE.FXAAShader); rComp.addPass(rFXAA);
     sizeReal();
