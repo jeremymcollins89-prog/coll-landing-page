@@ -442,7 +442,7 @@ function toIfc(plan, opts) {
     const top = i.wallH || H, ws = i.hard ? S.white : i.frame ? S.wood : (S[i.kind] || S.concrete), wName = i.hard ? 'Coll hardwall cleanroom wall' : 'Building wall';
     const o = i.o, t = i.t, head = Math.min(top, o.head || 7), ax = o.x1, ay = o.y1, bx = o.x2, by = o.y2;
     const along = (s, off) => [ax + i.ux * s - i.uz * (off || 0), ay + i.uz * s + i.ux * (off || 0)];
-    if (top - head > 0.02) put('IFCWALL', i.hard ? 'Header panel' : KIND_NAME(i.kind) + ', over opening', wName, shape([seg(ax, ay, bx, by, head, top, t, ws), ...(i.hard && H - head > 0.2 ? [seg(ax, ay, bx, by, H - 0.17, H, t + 0.03, S.track)] : [])]), ',.STANDARD.', ws);
+    if (top - head > 0.02 && o.type !== 'removable') put('IFCWALL', i.hard ? 'Header panel' : KIND_NAME(i.kind) + ', over opening', wName, shape([seg(ax, ay, bx, by, head, top, t, ws), ...(i.hard && H - head > 0.2 ? [seg(ax, ay, bx, by, H - 0.17, H, t + 0.03, S.track)] : [])]), ',.STANDARD.', ws);
     if (o.type === 'door' || o.type === 'door2') {
       // frame: jambs and head; leaves (closed) with a vision lite, lite frame, closer and lever, as in the 3D view
       const [j1x, j1y] = along(-0.14), [j2x, j2y] = along(i.len + 0.14);
@@ -493,6 +493,15 @@ function toIfc(plan, opts) {
         seg(ax, ay, bx, by, sill, sill + 0.12, t + 0.06, S.frame), seg(ax, ay, bx, by, head - 0.12, head, t + 0.06, S.frame),
         seg(ax, ay, p1x, p1y, sill, head, t + 0.06, S.frame), seg(p2x, p2y, bx, by, sill, head, t + 0.06, S.frame)]),
         `,${num((head - sill) * MM)},${num(i.len * MM)},.WINDOW.,.SINGLE_PANEL.,$`, S.glass);
+    } else if (o.type === 'removable' && V.removableOf) {
+      // removable wall section: each removable panel and header panel its own wall element (so Revit schedules
+      // them), the 2″ aluminum tube posts and header tube as members, the H-studs with inserts as members
+      const RL = V.removableOf(plan, A, i), sg = (q, th, st) => { const [p0x, p0y] = along(q.s0), [p1x, p1y] = along(q.s1); return seg(p0x, p0y, p1x, p1y, q.y0, q.y1, th, st); };
+      RL.panels.forEach((q, k) => put('IFCWALL', 'Removable wall panel ' + (k + 1) + ' of ' + RL.panels.length, 'Coll removable wall panel (equipment access)', shape([sg(q, t, ws)]), ',.STANDARD.', ws));
+      RL.headers.forEach(q => put('IFCWALL', 'Header panel over removable section', wName, shape([sg(q, t, ws)]), ',.STANDARD.', ws));
+      put('IFCMEMBER', 'Removable section frame, 2″ aluminum tube', 'Coll removable section frame', shape([...RL.posts.map(q => sg(q, t + 0.004, S.steel)), sg(RL.headerTube, t + 0.004, S.steel), ...RL.starts.map(q => sg(q, t + 0.004, S.white))]), ',.MEMBER.', S.steel);
+      if (RL.studs.length || RL.hstuds.length) put('IFCMEMBER', 'H-stud with insert, removable section', 'Coll H-stud 3″', shape(RL.studs.concat(RL.hstuds).map(q => sg(q, t + 0.006, S.white))), ',.STUD.', S.white);
+      { const [p0x, p0y] = along(0), [p1x, p1y] = along(i.len); put('IFCMEMBER', 'Rubber base', 'Coll rubber base', shape([seg(p0x, p0y, p1x, p1y, 0, 0.333, t + 0.022, S.base)]), ',.MEMBER.', S.base); }
     } else if (o.type === 'overhead') {
       // overhead sectional door: the closed curtain, steel jamb guards, the coil/track housing inside
       const [j1x, j1y] = along(-0.33), [j2x, j2y] = along(i.len + 0.33), sw = o.swing === -1 ? -1 : 1, inO = sw * (t / 2 + 0.55);

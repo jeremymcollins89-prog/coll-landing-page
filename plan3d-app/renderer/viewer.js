@@ -584,6 +584,39 @@ function doorSpec(o, len) {
   leafW = (len - 2 * jamb) / n;
   return { n, leafW, jamb, mull, leafH: 7, head: 86 / 12, vis: { w: 26 / 12, h: 36.12 / 12, y0: 41.75 / 12 }, lever: 38 / 12 };
 }
+/* A removable wall section (o.type === 'removable'): wall panels that come out to bring equipment through,
+   held in a frame like a door frame. Across the wall: metal tube post | white wall start | removable panel |
+   H-stud with insert | removable panel | … | white start | metal tube post. The posts run from the floor up to
+   the lid (top); a metal header tube runs across under the header panels, with a white start under it; the
+   header panels over it are split by H-studs lined up with the ones below. All flush with the wall faces.
+   Measured along the section from its start (s, ft) and up from the floor (y, ft): the 3D view, the parts
+   list and the fabrication sheets all use this one layout. */
+const REM = { tube: 2 / 12, start: 1 / 12, stud: 3 / 12 };
+function removableLayout(len, head, top) {
+  const TW = REM.tube, ST = REM.start, SW = REM.stud;
+  const hd = Math.max(TW + ST + 1, Math.min(head || 8, top || 99)), wt = Math.max(hd, top || hd);
+  const a0 = TW + ST, a1 = len - TW - ST, py = hd - TW - ST, n = Math.max(1, Math.round((a1 - a0) / 4)), pw = (a1 - a0 - (n - 1) * SW) / n;
+  const panels = [], studs = [], headers = [], hstuds = [];
+  for (let k = 0; k < n; k++) {
+    const s0 = a0 + k * (pw + SW); panels.push({ s0, s1: s0 + pw, y0: 0, y1: py });
+    if (k < n - 1) { studs.push({ s0: s0 + pw, s1: s0 + pw + SW, y0: 0, y1: py }); if (wt - hd > 0.05) hstuds.push({ s0: s0 + pw, s1: s0 + pw + SW, y0: hd, y1: wt }); }
+  }
+  if (wt - hd > 0.05) { let x = TW; for (const q of hstuds) { headers.push({ s0: x, s1: q.s0, y0: hd, y1: wt }); x = q.s1; } headers.push({ s0: x, s1: len - TW, y0: hd, y1: wt }); }
+  return {
+    len, head: hd, top: wt, n, panelW: pw, panelH: py, panels, studs, headers, hstuds,
+    posts: [{ s0: 0, s1: TW, y0: 0, y1: wt }, { s0: len - TW, s1: len, y0: 0, y1: wt }],
+    headerTube: { s0: TW, s1: len - TW, y0: hd - TW, y1: hd },
+    starts: [{ s0: TW, s1: TW + ST, y0: 0, y1: hd - TW }, { s0: len - TW - ST, s1: len - TW, y0: 0, y1: hd - TW }, { s0: TW + ST, s1: len - TW - ST, y0: py, y1: hd - TW }],
+    startFt: 2 * (hd - TW) + (len - 2 * TW - 2 * ST)
+  };
+}
+// the layout of the removable section an analyzed opening is (i from analyze(plan).opInfo), with its header
+// at the opening's head, held under the ceiling there, and its posts up to the top of the wall there
+function removableOf(plan, A, i) {
+  const o = i.o, ceilHere = i.hard ? wallCeil(plan, A, { x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t }) : A.H;
+  const head = Math.min(i.hard ? Math.min(ceilHere, i.wallH || ceilHere) : (i.wallH || A.H), o.head || 7);
+  return removableLayout(i.len, head, i.wallH || A.H);
+}
 /* ---------- Pure geometry analysis (no three.js) ---------- */
 function leavesFor(i) {
   const o = i.o, sw = o.swing === -1 ? -1 : 1, nx = -i.uz, nz = i.ux, out = [];
@@ -1570,7 +1603,7 @@ function cleanroomCheck(plan) {
   const byRoom = new Map(rooms.map(q => [q.room, q]));
   const doors = [];
   for (const z of Z) for (const o of z.plan.openings || []) {
-    if (o.type === 'window' || o.type === 'glass') continue;
+    if (o.type === 'window' || o.type === 'glass' || o.type === 'removable') continue;
     const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1); if (L < 0.1) continue;
     const nx = -(o.y2 - o.y1) / L, ny = (o.x2 - o.x1) / L, mx = (o.x1 + o.x2) / 2, my = (o.y1 + o.y2) / 2, off = (o.t || 0.3) / 2 + 1.2;
     const a = roomAt(mx + nx * off, my + ny * off), b = roomAt(mx - nx * off, my - ny * off);
@@ -3241,7 +3274,7 @@ function buildScene(THREE, plan, A) {
   const H = A.H, WH = A.WH || H, B = A.bounds;
   const pick = [];
   const doors = [];
-  const doorObs = [];
+  const doorObs = [], removable = [];
 
   const PX_IN = 512 / 48;
   const seamCanvas = cachedCanvas('seamCanvas', () => makeCanvas(512, 256, (g, w, h) => {
@@ -3573,24 +3606,15 @@ function buildScene(THREE, plan, A) {
     const ceilHere = i.hard ? wallCeil(plan, A, { x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t }) : H;
     const head = Math.min(i.hard ? Math.min(ceilHere, i.wallH || ceilHere) : (i.wallH || H), o.head || 7);
     const IP = i.hard ? wallPM(i.host && i.host.id) : null, top = i.wallH || H, hm = i.hard ? IP.trim : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head, undefined, head).mats : shellMat(i.kind, i.len, top - head, 0);
-    if (top - head > 0.01) { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); if (i.hard && ceilHere - head > 0.2 && trackOK(top)) { if (top > ceilHere + 0.05) trackFaces(o.x1, o.y1, o.x2, o.y2, t, H, top); else segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); } }
+    if (top - head > 0.01 && o.type !== 'removable') { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); if (i.hard && ceilHere - head > 0.2 && trackOK(top)) { if (top > ceilHere + 0.05) trackFaces(o.x1, o.y1, o.x2, o.y2, t, H, top); else segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); } }
     const ax = o.x1, az = o.y1, bx = o.x2, bz = o.y2;
     const along = (s) => [ax + i.ux * s, az + i.uz * s];
     if (o.type === 'removable') {
-      // removable wall section (equipment access), across the wall: wall panel | metal tube (the frame) | white
-      // wall start | removable panel | H-stud with insert | removable panel | … | white start | metal tube | wall.
-      // The same across the top: a metal header tube with a white start under it. All flush with the wall faces.
-      const TW = 2 / 12, ST = 1 / 12, SW = 3 / 12, WP = i.hard ? IP : wallPM(null), hd = Math.max(TW + ST + 1, head), tb = t + 0.004;
+      // removable wall section (equipment access): see removableLayout. Show removed (3D) hides the panels and
+      // the studs between them, so you can see the opening a machine comes through.
+      const RL = removableOf(plan, A, i), WP = i.hard ? IP : wallPM(null), tb = t + 0.004, EE = [WP.edge, WP.edge, WP.edge, WP.edge];
       const metal = M.remMetal || (M.remMetal = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xb8bfc3, specular: 0x8a9196, shininess: 70 }); m.name = 'Removable section frame, aluminum tube'; return m; })());
-      const box = (s0, s1, y0, y1, th, mat, pk) => { const [p0x, p0z] = along(s0), [p1x, p1z] = along(s1); const m = segBox(p0x, p0z, p1x, p1z, y0, y1, th, mat); outline(m); if (pk) pick.push(m); return m; };
-      // the metal tubes: a post each side, the header across the top
-      // the posts run on up to the lid (the top of the wall here), past the header panel over the section
-      const wt = Math.max(hd, top);
-      box(0, TW, 0, wt, tb, metal, true); box(i.len - TW, i.len, 0, wt, tb, metal, true); box(TW, i.len - TW, hd - TW, hd, tb, metal, true);
-      // the white wall start inside the tubes
-      box(TW, TW + ST, 0, hd - TW, tb, WP.trim); box(i.len - TW - ST, i.len - TW, 0, hd - TW, tb, WP.trim); box(TW + ST, i.len - TW - ST, hd - TW - ST, hd - TW, tb, WP.trim);
-      // the removable panels, with an H-stud and its insert at each joint (one in the middle of a pair)
-      const a0 = TW + ST, a1 = i.len - TW - ST, top0 = hd - TW - ST, n = Math.max(1, Math.round((a1 - a0) / 4)), pw = (a1 - a0 - (n - 1) * SW) / n;
+      const box = (q, th, mat, line) => { const [p0x, p0z] = along(q.s0), [p1x, p1z] = along(q.s1); const m = segBox(p0x, p0z, p1x, p1z, q.y0, q.y1, th, mat); if (line) outline(m); pick.push(m); return m; };
       const face = M['remFace' + WP.label] || (M['remFace' + WP.label] = (() => { const m = new THREE.MeshPhongMaterial({ color: new THREE.Color(WP.face).multiplyScalar(0.955), emissive: WP.emissive, specular: 0x1c1c1c, shininess: 16 }); m.name = 'Wall panel, removable, ' + WP.label.toLowerCase(); return m; })());
       const stud = M.studIns || (M.studIns = (() => { const tx = new THREE.CanvasTexture(cachedCanvas('studIns', () => makeCanvas(32, 64, (g, w, h) => {
         const ins = 0.6 * w / 3, cx = w / 2;
@@ -3603,16 +3627,20 @@ function buildScene(THREE, plan, A) {
         g.fillStyle = '#ffffff'; g.fillRect(cx - ins, 0, 0.8, h);
       }))); tx.anisotropy = ANISO; const m = new THREE.MeshPhongMaterial({ map: tx, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 }); m.name = 'H-stud with insert'; return m; })());
       const sc = WP.face === 0xffffff ? stud : (() => { const m = stud.clone(); m.color.set(WP.face); m.emissive.set(WP.emissive); return m; })();
-      for (let k = 0; k < n; k++) {
-        const s0 = a0 + k * (pw + SW); box(s0, s0 + pw, 0, top0, t, [WP.edge, WP.edge, WP.edge, WP.edge, face, face], true);
-        if (k < n - 1) {
-          const [p0x, p0z] = along(s0 + pw), [p1x, p1z] = along(s0 + pw + SW);
-          pick.push(segBox(p0x, p0z, p1x, p1z, 0, top0, t + 0.006, [WP.edge, WP.edge, WP.edge, WP.edge, sc, sc]));
-          // the header panel over the section is split at the same line by a stud with its insert, up to the lid
-          if (wt - hd > 0.05) pick.push(segBox(p0x, p0z, p1x, p1z, hd, wt, t + 0.006, [WP.edge, WP.edge, WP.edge, WP.edge, sc, sc]));
-        }
-      }
-      segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base);
+      for (const q of RL.posts) box(q, tb, metal, true);
+      box(RL.headerTube, tb, metal, true);
+      for (const q of RL.starts) box(q, tb, WP.trim, true);
+      for (const q of RL.headers) box(q, t, EE.concat([face, face]), true);
+      for (const q of RL.hstuds) box(q, t + 0.006, EE.concat([sc, sc]));
+      const out = [];
+      for (const q of RL.panels) out.push(box(q, t, EE.concat([face, face]), true));
+      for (const q of RL.studs) out.push(box(q, t + 0.006, EE.concat([sc, sc])));
+      const bq = { s0: RL.panels[0].s0, s1: RL.panels[RL.panels.length - 1].s1, y0: 0, y1: 0.333 };
+      out.push(box(bq, t + 0.022, M.base));
+      for (const q of [{ s0: 0, s1: bq.s0 }, { s0: bq.s1, s1: i.len }]) box({ ...q, y0: 0, y1: 0.333 }, t + 0.022, M.base);
+      // closed, it blocks walking like a wall; removed, you can walk through
+      const ob = { x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, r: t / 2, doorGroup: { userData: { isOpen: false } } };
+      doorObs.push(ob); removable.push({ meshes: out, ob, o });
       shadow((ax + bx) / 2, (az + bz) / 2, i.len, t, Math.atan2(-i.uz, i.ux));
     } else if (o.type === 'pass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill)), D = Math.max(t + 0.1, o.depth || 2), ph = head - sill;
@@ -4172,7 +4200,7 @@ function buildScene(THREE, plan, A) {
   }
   // the extras never stop the model from showing
   try { root.add(airflowArrows(THREE, plan, A)); } catch (e) { console.error(e); }
-  return { root, pick, floor, floors: [floor], ground, ceiling, lid, roof, ceilPlane: ceil || new THREE.Object3D(), fixtures, doors, doorObs };
+  return { root, pick, floor, floors: [floor], ground, ceiling, lid, roof, ceilPlane: ceil || new THREE.Object3D(), fixtures, doors, doorObs, removable };
 }
 
 /* Analysis of a plan with every placed building in it, merged (for walking, collisions and the mini map). */
@@ -4192,7 +4220,7 @@ function analyzeAll(plan) {
 function buildAll(THREE, plan, M) {
   M = M || analyzeAll(plan);
   if (M.zones.length === 1) return buildScene(THREE, plan, M.zones[0].A);
-  const root = new THREE.Group(), ceiling = new THREE.Group(), lid = new THREE.Group(), roof = new THREE.Group(), out = { root, pick: [], floors: [], ground: null, ceiling, lid, roof, ceilPlane: new THREE.Object3D(), fixtures: new THREE.Group(), doors: [], doorObs: [] };
+  const root = new THREE.Group(), ceiling = new THREE.Group(), lid = new THREE.Group(), roof = new THREE.Group(), out = { root, pick: [], floors: [], ground: null, ceiling, lid, roof, ceilPlane: new THREE.Object3D(), fixtures: new THREE.Group(), doors: [], doorObs: [], removable: [] };
   root.add(ceiling); root.add(lid); root.add(roof); root.add(out.fixtures);
   let n = 0;
   for (const q of M.zones) {
@@ -4202,7 +4230,7 @@ function buildAll(THREE, plan, M) {
     if (out.ground) b.root.remove(b.ground); else { out.ground = b.ground; b.ground.position.y -= lift; }
     ceiling.add(b.ceiling); b.ceiling.position.y = lift; lid.add(b.lid); b.lid.position.y = lift; roof.add(b.roof); b.roof.position.y = lift;
     root.add(b.root);
-    out.pick.push(...b.pick); out.floors.push(b.floor); out.doors.push(...b.doors); out.doorObs.push(...b.doorObs);
+    out.pick.push(...b.pick); out.floors.push(b.floor); out.doors.push(...b.doors); out.doorObs.push(...b.doorObs); out.removable.push(...(b.removable || []));
   }
   out.floor = out.floors[0];
   if (!out.ground) out.ground = new THREE.Object3D();
@@ -4214,7 +4242,7 @@ function buildAll(THREE, plan, M) {
 function buildStack(THREE, plan, M) {
   const LP = levelPlans(plan);
   if (LP.length < 2) return buildAll(THREE, plan, M);
-  const root = new THREE.Group(), ceiling = new THREE.Group(), lid = new THREE.Group(), roof = new THREE.Group(), out = { root, pick: [], floors: [], ground: null, ceiling, lid, roof, ceilPlane: new THREE.Object3D(), fixtures: new THREE.Group(), doors: [], doorObs: [], levelObjs: [] };
+  const root = new THREE.Group(), ceiling = new THREE.Group(), lid = new THREE.Group(), roof = new THREE.Group(), out = { root, pick: [], floors: [], ground: null, ceiling, lid, roof, ceilPlane: new THREE.Object3D(), fixtures: new THREE.Group(), doors: [], doorObs: [], removable: [], levelObjs: [] };
   root.add(ceiling); root.add(lid); root.add(roof); root.add(out.fixtures);
   for (const L of LP) {
     const b = buildAll(THREE, L.plan);
@@ -4222,7 +4250,7 @@ function buildStack(THREE, plan, M) {
     if (!L.grade || !b.ground) { if (b.ground && b.ground.parent) b.ground.parent.remove(b.ground); } else out.ground = b.ground;
     for (const [grp, src] of [[ceiling, b.ceiling], [lid, b.lid], [roof, b.roof]]) if (src) { grp.add(src); src.position.y = L.elev; }
     root.add(b.root);
-    out.pick.push(...b.pick); out.floors.push(b.floor); out.doors.push(...b.doors); out.doorObs.push(...b.doorObs);
+    out.pick.push(...b.pick); out.floors.push(b.floor); out.doors.push(...b.doors); out.doorObs.push(...b.doorObs); out.removable.push(...(b.removable || []));
     out.levelObjs.push({ k: L.k, objs: [b.root, b.ceiling, b.lid, b.roof].filter(Boolean) });
   }
   out.floor = out.floors[0];
@@ -4368,7 +4396,7 @@ function floorFlow(THREE, root, plan) {
   // doors between spaces
   const doors = [];
   for (const i of A.opInfo) {
-    const o = i.o; if (o.type === 'glass' || o.type === 'window' || o.type === 'pass') continue;
+    const o = i.o; if (o.type === 'glass' || o.type === 'window' || o.type === 'pass' || o.type === 'removable') continue;
     const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1); if (L < 0.5) continue;
     const ux = (o.x2 - o.x1) / L, uz = (o.y2 - o.y1) / L, mx = (o.x1 + o.x2) / 2, mz = (o.y1 + o.y2) / 2, off = (i.t || 0.25) / 2 + 1.1;
     const sa = [mx - uz * off, mz + ux * off], sb = [mx + uz * off, mz - ux * off], a = compAt(...sa), b = compAt(...sb);
@@ -4492,6 +4520,7 @@ function mount(container, plan, opts) {
       <div class="p3v-right"><div class="p3v-panel p3v-modes" role="group" aria-label="View"><button data-m="walk">Walk</button><button data-m="fly" title="Drone: fly a little drone anywhere, through walls, up into the plenum, outside round the building. W A S D to move, Space or R up, C or F down, Shift faster, drag to look, V for the drone’s own camera">Drone</button><button data-m="doll">Dollhouse</button><button data-m="plenum" hidden title="Looks into the plenum: the grid ceiling stays, the top comes off">Plenum</button><button data-m="exterior" hidden title="The outside, with the roof on">Exterior</button><button data-m="plan">Plan</button></div>
       <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button>
       <button class="p3v-panel p3v-look p3v-lidb" aria-pressed="false" hidden title="Show the lid (the top of the cleanroom, or a roof deck you placed) in every view, or take it off again">Lid</button>
+      <button class="p3v-panel p3v-look p3v-remb" aria-pressed="false" hidden title="Take the removable wall sections out, to see the opening (and walk through it) when equipment comes in">Show removed</button>
       
       <button class="p3v-panel p3v-look p3v-air" aria-pressed="true" hidden title="Show or hide the airflow: air down out of the FFUs, into the return grilles, and along the floor out through the doors and out of the building">Airflow</button>
       <button class="p3v-panel p3v-look p3v-meas" aria-pressed="false" title="Measure: click two points for the distance between them. It snaps to corners, edges, the top of a filter, the ceiling grid and tiles, floors and walls (green dot = snapped). Shift: straight up/down from the first point; Ctrl: level with it. M turns it on and off, Esc drops a half-done measurement">📏 Measure <kbd>M</kbd></button><button class="p3v-panel p3v-look p3v-mclear" hidden title="Take all the measurements off">✕ Clear</button>
@@ -4526,6 +4555,8 @@ function mount(container, plan, opts) {
   if (airBtn) airBtn.addEventListener('click', (e) => { e.stopPropagation(); airOn = !airOn; refreshAir(); });
   // the lid on in every view (Dollhouse and Plan too), or back to each view's own
   const lidBtn = container.querySelector('.p3v-lidb'); let lidOn = false;
+  const remBtn = container.querySelector('.p3v-remb'); let remOpen = false;
+  if (remBtn) remBtn.addEventListener('click', (e) => { e.stopPropagation(); remOpen = !remOpen; remBtn.setAttribute('aria-pressed', String(remOpen)); applyVis(mode); });
   if (lidBtn) lidBtn.addEventListener('click', (e) => { e.stopPropagation(); lidOn = !lidOn; lidBtn.setAttribute('aria-pressed', String(lidOn)); applyVis(mode); });
   // Light switches: click one to turn its lights off and on. A light goes dark when any switch it's on is off.
   // This is for looking around; it doesn't change the plan (a switch saved with off: true starts off).
@@ -4909,6 +4940,8 @@ function mount(container, plan, opts) {
     built.ceiling.visible = m === 'walk' || m === 'fly' || m === 'plenum' || m === 'exterior';
     if (built.lid) built.lid.visible = lidOn || m === 'walk' || m === 'exterior';
     if (lidBtn) lidBtn.hidden = !(built.lid && built.lid.children.length);
+    const RS = built.removable || []; if (remBtn) remBtn.hidden = !RS.length;
+    for (const r of RS) { for (const m of r.meshes) m.visible = !remOpen; r.ob.doorGroup.userData.isOpen = remOpen; }
     if (built.roof) built.roof.visible = m === 'walk' || m === 'fly' || m === 'exterior';
     // several floors: Dollhouse and the overhead view look down into the floor being edited, so the ones above it hide
     if (built.levelObjs) { const act = (plan && plan.level) || 0, cut = m === 'doll' || m === 'plan'; for (const L of built.levelObjs) for (const o of L.objs) o.visible = !cut || L.k <= act; }
@@ -5651,6 +5684,7 @@ function mount(container, plan, opts) {
     for (const p of A.pieces) { mg.strokeStyle = p.sp ? '#f2c84b' : '#e8edef'; mg.lineWidth = 2; mg.beginPath(); mg.moveTo(mx(p.x1), my(p.z1)); mg.lineTo(mx(p.x2), my(p.z2)); mg.stroke(); }
     for (const i of A.opInfo) {
       if (i.o.type === 'pass') { mg.strokeStyle = '#b9c0c3'; mg.lineWidth = 3; mg.beginPath(); mg.moveTo(mx(i.o.x1), my(i.o.y1)); mg.lineTo(mx(i.o.x2), my(i.o.y2)); mg.stroke(); }
+      if (i.o.type === 'removable') { mg.strokeStyle = '#e0a43a'; mg.lineWidth = 2; mg.beginPath(); mg.moveTo(mx(i.o.x1), my(i.o.y1)); mg.lineTo(mx(i.o.x2), my(i.o.y2)); mg.stroke(); }
       if (i.o.type === 'glass') { mg.strokeStyle = '#7fd3e3'; mg.lineWidth = 1.6; mg.beginPath(); mg.moveTo(mx(i.o.x1), my(i.o.y1)); mg.lineTo(mx(i.o.x2), my(i.o.y2)); mg.stroke(); }
       mg.strokeStyle = 'rgba(232,237,239,.45)'; mg.lineWidth = 1;
       for (const l of i.leaves) { mg.beginPath(); mg.moveTo(mx(l.x1), my(l.z1)); mg.lineTo(mx(l.x2), my(l.z2)); mg.stroke(); }
@@ -5941,5 +5975,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);

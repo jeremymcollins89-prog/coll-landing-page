@@ -14,7 +14,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&
 const n3 = (v) => +(+v).toFixed(3);
 const dim = (ft) => SH().dimText(ft);
 const PIECE_NAMES = { panel: 'Wall panel', sp: 'S.P. panel', glass: 'Glass panel', door: 'Door panel, 3070', door2: 'Door panel, pair 6070', pass: 'Pass-thru panel' };
-const OPEN_NAMES = { door: 'Door 3070', door2: 'Door pair 6070', glass: 'Glass', window: 'Window', pass: 'Pass-thru', open: 'Opening', overhead: 'Overhead door' };
+const OPEN_NAMES = { door: 'Door 3070', door2: 'Door pair 6070', glass: 'Glass', window: 'Window', pass: 'Pass-thru', open: 'Opening', overhead: 'Overhead door', removable: 'Removable section' };
 
 /* Every straight run of hardwall (cleanroom) wall with its panels, openings, grilles and boxes, measured along
    the run from its start (ft). Walls drawn as several pieces in a straight line, end to end, make one run, so
@@ -57,8 +57,21 @@ function walls(plan) {
         for (let i = 0; i + 1 < cuts.length; i++) if (cuts[i + 1] - cuts[i] >= 1 / 12) { const x = toRun(cuts[i]), y = toRun(cuts[i + 1]); panels.push({ s0: Math.min(x, y), s1: Math.max(x, y), h, rows, type: p.sp ? 'S.P. panel' : 'Wall panel', sp: !!p.sp }); }
       }
     }
-    panels.sort((a, b) => a.s0 - b.s0);
-    panels.forEach((q, k) => { q.id = tag + '-' + String(k + 1).padStart(2, '0'); });
+    // removable wall sections: their panels (and the header panels over them) are panels on this wall too,
+    // marked R; the frame (tube posts, header tube, white start) is drawn round them
+    const rems = [];
+    for (const i of A.opInfo) {
+      if (i.o.type !== 'removable' || !i.host || !ids.has(i.host.id) || !V().removableOf) continue;
+      const RL = V().removableOf(plan, A, i), a = S(i.o.x1, i.o.y1), b = S(i.o.x2, i.o.y2), at = (q) => { const x = a < b ? a + q : a - q; return x; };
+      const span = (q) => ({ s0: Math.min(at(q.s0), at(q.s1)), s1: Math.max(at(q.s0), at(q.s1)), y0: q.y0, y1: q.y1 });
+      for (const q of RL.panels) { const r = span(q); panels.push({ s0: r.s0, s1: r.s1, y0: r.y0, h: r.y1 - r.y0, rows: [r.y1 - r.y0], type: 'Removable panel', rem: true, gs: Math.min(a, b), hdr: 0 }); }
+      for (const q of RL.headers) { const r = span(q); panels.push({ s0: r.s0, s1: r.s1, y0: r.y0, h: r.y1 - r.y0, rows: [r.y1 - r.y0], type: 'Header panel over removable section', rem: true, gs: Math.min(a, b), hdr: 1 }); }
+      rems.push({ s0: Math.min(a, b), s1: Math.max(a, b), RL, posts: RL.posts.map(span), tube: span(RL.headerTube), starts: RL.starts.map(span), studs: RL.studs.concat(RL.hstuds).map(span) });
+    }
+    // a removable section's panels number together: the ones that come out first, then the header panels over them
+    const key = (q) => q.rem ? q.gs : q.s0;
+    panels.sort((a, b) => key(a) - key(b) || (a.hdr || 0) - (b.hdr || 0) || a.s0 - b.s0);
+    panels.forEach((q, k) => { q.id = tag + '-' + String(k + 1).padStart(2, '0') + (q.rem ? 'R' : ''); });
     const ops = A.opInfo.filter(i => i.host && ids.has(i.host.id)).map(i => { const a = S(i.o.x1, i.o.y1), b = S(i.o.x2, i.o.y2), o = i.o, head = o.head || (o.type === 'pass' ? 4 : 7), sill = o.type === 'door' || o.type === 'door2' || o.type === 'open' || o.type === 'overhead' ? 0 : (o.sill == null ? 3 : +o.sill);
       return { s0: Math.min(a, b), s1: Math.max(a, b), type: o.type || 'open', head: Math.min(head, WH), sill: Math.max(0, Math.min(sill, head - 0.25)), name: OPEN_NAMES[o.type] || 'Opening' }; }).sort((a, b) => a.s0 - b.s0);
     const near = (x, y, pad) => run.some(w => V().segDist(x, y, w.x1, w.y1, w.x2, w.y2) < (w.t || 0.25) / 2 + pad);
@@ -70,7 +83,7 @@ function walls(plan) {
       const D = DV[d.type], s = S(d.x, d.y), h = d.h != null ? +d.h : D.h;
       return { s0: s - D.w / 2, s1: s + D.w / 2, y0: h - D.hh / 2, y1: h + D.hh / 2, label: D.short, name: D.label }; });
     const sx = w0.x1 + ux * (lo - proj(w0.x1, w0.y1)) , sy = w0.y1 + uy * (lo - proj(w0.x1, w0.y1));
-    out.push({ w: { x1: sx, y1: sy, x2: sx + ux * L, y2: sy + uy * L, t: w0.t }, members: run, tag, L, WH, ux, uy, panels, ops, grilles, boxes });
+    out.push({ w: { x1: sx, y1: sy, x2: sx + ux * L, y2: sy + uy * L, t: w0.t }, members: run, tag, L, WH, ux, uy, panels, ops, grilles, boxes, rems });
   }
   return { A, walls: out, plan };
 }
@@ -80,7 +93,7 @@ function walls(plan) {
 function cutList(W) {
   const rows = [];
   for (const wl of W.walls) for (const p of wl.panels) {
-    let y = 0;
+    let y = p.y0 || 0;
     p.rows.forEach((ht, k) => {
       const y0 = y, y1 = y + ht; y = y1;
       const id = p.id + (p.rows.length > 1 ? (k === p.rows.length - 1 ? 'U' : k === 0 ? 'L' : 'M' + k) : '');
@@ -130,16 +143,29 @@ function elevation(wl, x0, yb, sc) {
   const tiny = sc < 0.2;
   // panels (rows), numbered
   for (const p of wl.panels) {
-    let y = 0;
+    const y0 = p.y0 || 0; let y = y0;
     p.rows.forEach((ht, k) => {
-      s += `<rect x="${X(p.s0)}" y="${Y(y + ht)}" width="${n3((p.s1 - p.s0) * sc)}" height="${n3(ht * sc)}" fill="${p.sp ? '#fff3b0' : /Glass/.test(p.type) ? '#e3f4f8' : '#fff'}" stroke="#222" stroke-width="0.012"/>`;
+      s += `<rect x="${X(p.s0)}" y="${Y(y + ht)}" width="${n3((p.s1 - p.s0) * sc)}" height="${n3(ht * sc)}" fill="${p.sp ? '#fff3b0' : /Glass/.test(p.type) ? '#e3f4f8' : p.rem ? '#fff6ea' : '#fff'}" stroke="#222" stroke-width="0.012"/>`;
       y += ht;
     });
-    const cx = X((p.s0 + p.s1) / 2), wIn = (p.s1 - p.s0) * sc, fs = n3(Math.min(0.13, Math.max(0.06, wIn * 0.22)));
-    if (wIn > 0.18) s += `<text x="${cx}" y="${Y(p.h * 0.55)}" font-size="${fs}" text-anchor="middle" ${wIn < 0.45 ? `transform="rotate(-90 ${cx} ${Y(p.h * 0.55)})"` : ''} fill="#1d5fa8" font-weight="600">${p.id.split('-')[1]}</text>`;
+    const cx = X((p.s0 + p.s1) / 2), wIn = (p.s1 - p.s0) * sc, fs = n3(Math.min(0.13, Math.max(0.06, wIn * 0.22))), ly = Y(y0 + p.h * 0.55);
+    if (wIn > 0.18) s += `<text x="${cx}" y="${ly}" font-size="${fs}" text-anchor="middle" ${wIn < 0.45 ? `transform="rotate(-90 ${cx} ${ly})"` : ''} fill="${p.rem ? '#b5651d' : '#1d5fa8'}" font-weight="600">${p.id.split('-')[1]}</text>`;
+  }
+  // removable sections: the tube posts (to the top) and header tube in grey, the white start, the H-studs, a
+  // dashed outline round the panels that come out and the note REMOVABLE
+  for (const r of wl.rems || []) {
+    const rect = (q, fill, sw) => `<rect x="${X(q.s0)}" y="${Y(q.y1)}" width="${n3(Math.max(0.006, (q.s1 - q.s0) * sc))}" height="${n3((q.y1 - q.y0) * sc)}" fill="${fill}" stroke="#222" stroke-width="${sw || 0.008}"/>`;
+    for (const q of r.posts) s += rect(q, '#aab3b8'); s += rect(r.tube, '#aab3b8');
+    for (const q of r.starts) s += rect(q, '#ffffff', 0.006);
+    for (const q of r.studs) s += rect(q, '#eef1f2', 0.006);
+    const P0 = r.RL.panels, lo = Math.min(...r.starts.map(q => q.s0)), hi = Math.max(...r.starts.map(q => q.s1)), ph = r.RL.panelH;
+    s += `<rect x="${X(lo + 0.06)}" y="${Y(ph - 0.06)}" width="${n3((hi - lo - 0.12) * sc)}" height="${n3((ph - 0.12) * sc)}" fill="none" stroke="#e0a43a" stroke-width="0.02" stroke-dasharray="0.08 0.05"/>`;
+    s += `<text x="${X((r.s0 + r.s1) / 2)}" y="${Y(ph * 0.3)}" font-size="${tiny ? 0.07 : 0.1}" text-anchor="middle" fill="#b5651d" font-weight="700">REMOVABLE</text>`;
+    if (!tiny) s += `<text x="${X((r.s0 + r.s1) / 2)}" y="${n3(Y(ph * 0.3) + 0.13)}" font-size="0.075" text-anchor="middle" fill="#8a5a2b">${dim(r.s1 - r.s0)} section · ${P0.length} panel${P0.length === 1 ? '' : 's'} ${dim(r.RL.panelW)} × ${dim(ph)}</text>`;
   }
   // openings: doors, glass, pass-thrus; the panel over each one (header) hatched
   for (const o of wl.ops) {
+    if (o.type === 'removable') continue;
     const w = n3((o.s1 - o.s0) * sc);
     s += `<rect x="${X(o.s0)}" y="${Y(WH)}" width="${w}" height="${n3((WH - o.head) * sc)}" fill="url(#hatch)" stroke="#222" stroke-width="0.01"/>`;
     if (o.sill > 0) s += `<rect x="${X(o.s0)}" y="${Y(o.sill)}" width="${w}" height="${n3(o.sill * sc)}" fill="url(#hatch)" stroke="#222" stroke-width="0.01"/>`;

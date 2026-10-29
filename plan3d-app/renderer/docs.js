@@ -242,7 +242,7 @@ function scheduleHTML(plan, X) {
     <p class="note">Estimated from the quantities in the plan at typical production rates for a ${P.crew}-person crew. Adjust for site access, other trades, deliveries and overtime.</p>`));
   const R = P.rooms.length ? P.rooms : [{ name: project, iso: null }];
   for (const r of R) pages.push(F.page('Punch list', `<h2>Punch list · ${esc(r.name)}</h2><div class="kv" style="margin-bottom:8px"><span>Class</span><b>${isoOf(r)}</b><span>Walked by</span><b><span class="blank" style="min-width:2.4in"></span></b></div>
-    <table><thead><tr><th style="width:18px"></th><th>Item</th><th style="width:1.6in">Notes</th><th style="width:.6in">Initials</th><th style="width:.7in">Date</th></tr></thead><tbody>${PUNCH.map(p => `<tr><td><i class="chk"></i></td><td>${esc(p)}</td><td class="bl"></td><td class="bl"></td><td class="bl"></td></tr>`).join('')}
+    <table><thead><tr><th style="width:18px"></th><th>Item</th><th style="width:1.6in">Notes</th><th style="width:.6in">Initials</th><th style="width:.7in">Date</th></tr></thead><tbody>${((plan.openings || []).some(o => o.type === 'removable') ? PUNCH.concat(['Removable wall sections: panels lift out and go back in, tube frame and white starts tight, H-stud inserts in, panels labeled R']) : PUNCH).map(p => `<tr><td><i class="chk"></i></td><td>${esc(p)}</td><td class="bl"></td><td class="bl"></td><td class="bl"></td></tr>`).join('')}
     ${[1, 2, 3, 4].map(() => '<tr><td><i class="chk"></i></td><td class="bl"></td><td class="bl"></td><td class="bl"></td><td class="bl"></td></tr>').join('')}</tbody></table>`));
   return { html: F.doc(pages), P };
 }
