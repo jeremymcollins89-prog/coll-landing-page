@@ -3576,7 +3576,22 @@ function buildScene(THREE, plan, A) {
     if (top - head > 0.01) { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); if (i.hard && ceilHere - head > 0.2 && trackOK(top)) { if (top > ceilHere + 0.05) trackFaces(o.x1, o.y1, o.x2, o.y2, t, H, top); else segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); } }
     const ax = o.x1, az = o.y1, bx = o.x2, bz = o.y2;
     const along = (s) => [ax + i.ux * s, az + i.uz * s];
-    if (o.type === 'pass') {
+    if (o.type === 'removable') {
+      // removable wall section (equipment access): the same wall panels, held in a frame of tubes like a door
+      // frame — a post each side and a header across — all flush with the wall faces, so the wall reads as one
+      // flat face with the frame lines round the section. Pull the panels out to bring equipment through.
+      const PW = 2 / 12, WP = i.hard ? IP : wallPM(null), hd = Math.max(PW + 1, head), tb = t + 0.004;
+      const [k1x, k1z] = along(PW), [k2x, k2z] = along(i.len - PW);
+      for (const [p, q] of [[[ax, az], [k1x, k1z]], [[k2x, k2z], [bx, bz]]]) { const j = segBox(p[0], p[1], q[0], q[1], 0, hd, tb, WP.trim); outline(j); pick.push(j); }
+      const hb = segBox(k1x, k1z, k2x, k2z, hd - PW, hd, tb, WP.trim); outline(hb); pick.push(hb);
+      const pw = i.len - 2 * PW, n = Math.max(1, Math.ceil(pw / 4 - 0.01));
+      const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(n, 1);
+      const face = new THREE.MeshPhongMaterial({ map: tex, color: WP.face, emissive: WP.emissive, specular: 0x1c1c1c, shininess: 16 }); face.name = 'Wall panel, removable, ' + WP.label.toLowerCase();
+      const pn = segBox(k1x, k1z, k2x, k2z, 0, hd - PW, t, [WP.edge, WP.edge, WP.edge, WP.edge, face, face]); outline(pn); pick.push(pn);
+      segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base);
+      // the header panel over it, up to the opening's top (the wall above that is drawn already)
+      shadow((ax + bx) / 2, (az + bz) / 2, i.len, t, Math.atan2(-i.uz, i.ux));
+    } else if (o.type === 'pass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill)), D = Math.max(t + 0.1, o.depth || 2), ph = head - sill;
       if (sill > 0.01) { const lw = segBox(ax, az, bx, bz, 0, sill, t, i.hard ? IP.trim : shellMat(i.kind, i.len, sill, 0)); outline(lw); pick.push(lw); if (i.hard) segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base); }
       const body = segBox(ax, az, bx, bz, sill, head, D, M.steel); outline(body); pick.push(body);
