@@ -1024,8 +1024,9 @@
       const track = t.track === 'adv' && AV ? 'adv' : 'pro';
       const p = practice();
       const lvlDone = L => L.lessons.every(lessonDone);
-      const proEarned = CORE.every(lessonDone) && AC.writtenPassed() && AC.practicalPassed();
-      const advEarned = AV && ADV.every(lessonDone) && AV.writtenPassed() && AV.practicalPassed();
+      // A certificate already issued stays earned (including ones issued before Academy accounts)
+      const proEarned = !!t.cert || (CORE.every(lessonDone) && AC.writtenPassed() && AC.practicalPassed());
+      const advEarned = !!t.certAdv || (AV && ADV.every(lessonDone) && AV.writtenPassed() && AV.practicalPassed());
       const tabs = `<div class="seg track-seg" role="tablist"><button class="${track === 'pro' ? 'on' : ''}" data-action="t-track" data-v="pro">${proEarned ? ICON.check : ''}Professional Bookkeeping</button><button class="${track === 'adv' ? 'on' : ''}" data-action="t-track" data-v="adv">${advEarned ? ICON.check : ''}Advanced Accounting &amp; Tax</button></div>`;
       let side, main, sub;
       if (track === 'pro') {

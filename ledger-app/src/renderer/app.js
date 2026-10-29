@@ -25,7 +25,7 @@ const App = (() => {
     update: null
   };
   const client = () => (S.data && S.data.clients.find(c => c.id === S.data.activeClientId)) || null;
-  const views = {}, actions = {}, hooks = [], onLoad = [];
+  const views = {}, actions = {}, hooks = [], onLoad = [], onSave = [];
   const view = (name, def) => { views[name] = def; };
   const act = obj => Object.assign(actions, obj);
 
@@ -63,6 +63,7 @@ const App = (() => {
   let saveTimer = null, dirty = false;
   function save() {
     dirty = true;
+    for (const fn of onSave) { try { fn(); } catch (e) { console.error(e); } }
     clearTimeout(saveTimer);
     saveTimer = setTimeout(flush, 300);
   }
@@ -397,5 +398,5 @@ const App = (() => {
     render();
   }
 
-  return { onLoad, afterLoad, LS_KEY, hooks, migrate, S, C, U, client, view, act, actions, views, go, render, renderChrome, commit, save, flush, snapshot, guardLock, switchClient, reviewCount, palette, help, today, boot, TITLES };
+  return { onLoad, onSave, afterLoad, LS_KEY, hooks, migrate, S, C, U, client, view, act, actions, views, go, render, renderChrome, commit, save, flush, snapshot, guardLock, switchClient, reviewCount, palette, help, today, boot, TITLES };
 })();
