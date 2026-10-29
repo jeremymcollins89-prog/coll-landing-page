@@ -414,10 +414,11 @@ function partsList(plan) {
     let TT = null; try { TT = V.tileTakeoff ? V.tileTakeoff(plan, A) : null; } catch (e) { TT = null; }
     if (TT) {
       const inch = (ft) => { const e = Math.round(ft * 48), n = Math.floor(e / 4), r = e % 4; return n + ['', '¼', '½', '¾'][r] + '″'; };
-      add('Ceiling', 'Ceiling tile, full 2′ × 4′', '2′ × 4′', TT.full, 'ea', 62);
-      for (const c of TT.cuts) add('Ceiling', 'Ceiling tile, cut' + (c.notch ? ' and notched' : ''), inch(c.a) + ' × ' + inch(c.b) + ' opening', c.n, 'ea', 62.1);
-      add('Ceiling', `Ceiling tiles to order, 2′ × 4′ (${TT.full} full + ${TT.cutStock} for ${TT.cutPcs} cut${TT.cutPcs === 1 ? '' : 's'}, two small cuts from one tile where they fit, +5% spare)`, '2′ × 4′', Math.ceil((TT.full + TT.cutStock) * 1.05), 'ea', 62.2);
-    } else add('Ceiling', 'Ceiling tile, 2×4 (approx.)', '2′ × 4′', tiles, 'ea', 62);
+      const tk = global.Plan3DViewer.tileName(plan);
+      add('Ceiling', 'Ceiling tile, ' + tk + ', full 2′ × 4′', '2′ × 4′', TT.full, 'ea', 62);
+      for (const c of TT.cuts) add('Ceiling', 'Ceiling tile, ' + tk + ', cut' + (c.notch ? ' and notched' : ''), inch(c.a) + ' × ' + inch(c.b) + ' opening', c.n, 'ea', 62.1);
+      add('Ceiling', `Ceiling tiles to order, ${tk}, 2′ × 4′ (${TT.full} full + ${TT.cutStock} for ${TT.cutPcs} cut${TT.cutPcs === 1 ? '' : 's'}, two small cuts from one tile where they fit, +5% spare)`, '2′ × 4′', Math.ceil((TT.full + TT.cutStock) * 1.05), 'ea', 62.2);
+    } else add('Ceiling', 'Ceiling tile, ' + global.Plan3DViewer.tileName(plan) + ', 2×4 (approx.)', '2′ × 4′', tiles, 'ea', 62);
     const DKs = V.deckShapes ? V.deckShapes(plan) : [];
     if (DKs.length) add('Ceiling', 'Steel roof deck / lid, from the deck drawing (' + DKs.length + ' piece' + (DKs.length === 1 ? '' : 's') + ')', 'sits on the walls, highest at ' + ftin(Math.max(...DKs.map(d => V.deckBase ? V.deckBase(plan, A, d, A.WH) : A.WH))), Math.ceil(DKs.reduce((t, d) => t + d.area, 0)), 'sq ft', 67);
     if (DKs.length && V.deckSteps) {

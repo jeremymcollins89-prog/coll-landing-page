@@ -352,6 +352,13 @@ function levelPlans(plan) {
 }
 /* House finishes: picked in the Plan panel (plan.finish), shown in 3D and named on the parts list. */
 /* Cleanroom wall panel colours (plan.panelColor for the whole cleanroom, wall.color for one wall) */
+/* Ceiling tile types (plan.tileType): vinyl-covered gypsum is the standard cleanroom tile; thin aluminum pans
+   are the option */
+const TILE_TYPES = { vcg: { label: 'Vinyl-covered gypsum', short: 'vinyl-covered gypsum' }, alum: { label: 'Aluminum', short: 'aluminum' } };
+const tileTypeOf = (plan) => (plan && TILE_TYPES[plan.tileType]) ? plan.tileType : 'vcg';
+// aluminum tiles are usually painted: plan.tileColor is a panel colour key, or 'natural' for bare aluminum
+const tileColorOf = (plan) => (plan && plan.tileColor && plan.tileColor !== 'natural' && PANEL_COLORS[plan.tileColor]) ? plan.tileColor : 'natural';
+const tileName = (plan) => tileTypeOf(plan) === 'alum' ? 'aluminum' + (tileColorOf(plan) !== 'natural' ? ', painted ' + PANEL_COLORS[tileColorOf(plan)][0].toLowerCase() : '') : 'vinyl-covered gypsum';
 const PANEL_COLORS = { white: ['White', '#f7f8f8'], ltgray: ['Light gray', '#d6dadd'], gray: ['Gray', '#8f979c'], black: ['Black', '#25282c'], pink: ['Pink', '#f3a3c4'], red: ['Red', '#d33f3f'], orange: ['Orange', '#f28a2a'], yellow: ['Yellow', '#f4cf3f'], green: ['Green', '#4caa5a'], blue: ['Blue', '#3b7bd0'], ltblue: ['Light blue', '#9ccaf0'], purple: ['Purple', '#8858c4'] };
 const panelColorOf = (plan, w) => { const k = (w && w.color && PANEL_COLORS[w.color]) ? w.color : (plan && PANEL_COLORS[plan.panelColor]) ? plan.panelColor : 'white'; return k; };
 const FINISH = {
@@ -3114,9 +3121,10 @@ function buildScene(THREE, plan, A) {
     for (let i = 0; i < 70; i++) { const x = Math.random() * w, y = Math.random() * h, r = 20 + Math.random() * 70; const gr = g.createRadialGradient(x, y, 0, x, y, r); const d = Math.random() < .5; gr.addColorStop(0, d ? 'rgba(90,96,100,.035)' : 'rgba(255,255,255,.04)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) { g.save(); g.translate(ox, oy); g.fillRect(x - r, y - r, r * 2, r * 2); g.restore(); } }
     for (let i = 0; i < 4000; i++) { const v = 150 + Math.random() * 70 | 0; g.fillStyle = `rgba(${v},${v + 3},${v + 5},.28)`; g.fillRect(Math.random() * w, Math.random() * h, 1.2, 1.2); }
   }));
+  // vinyl-covered gypsum: a smooth white vinyl face with the faintest texture
   const ceilCanvas = cachedCanvas('ceilCanvas', () => makeCanvas(128, 256, (g, w, h) => {
-    g.fillStyle = '#f1f2f1'; g.fillRect(0, 0, w, h);
-    for (let i = 0; i < 1400; i++) { g.fillStyle = `rgba(120,124,126,${Math.random() * .22})`; g.fillRect(Math.random() * w, Math.random() * h, 1, 1); }
+    g.fillStyle = '#f3f4f3'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(150,154,156,${Math.random() * .06})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
     g.fillStyle = '#d3d8da'; g.fillRect(0, 0, w, 3); g.fillRect(0, 0, 3, h);
     g.fillStyle = '#fbfbfb'; g.fillRect(0, 3, w, 1); g.fillRect(3, 0, 1, h);
   }));
@@ -3604,11 +3612,27 @@ function buildScene(THREE, plan, A) {
   const ownLines = () => (built ? builtLines(plan) : ceilingLines(plan, A));
   let cMap = cTex;
   if (ownGrid) {
-    const plain = cachedCanvas('ceilPlain', () => makeCanvas(128, 128, (g, w, h) => { g.fillStyle = '#f1f2f1'; g.fillRect(0, 0, w, h); for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(120,124,126,${Math.random() * .22})`; g.fillRect(Math.random() * w, Math.random() * h, 1, 1); } }));
+    const plain = cachedCanvas('ceilPlainVcg', () => makeCanvas(128, 128, (g, w, h) => { g.fillStyle = '#f3f4f3'; g.fillRect(0, 0, w, h); for (let i = 0; i < 250; i++) { g.fillStyle = `rgba(150,154,156,${Math.random() * .06})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } }));
     cMap = new THREE.CanvasTexture(plain); cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.repeat.set(B.w / 2, B.d / 2); cMap.anisotropy = ANISO;
   }
   // both sides, so the grid shows from above in the Plenum view
-  const cMat = new THREE.MeshLambertMaterial({ map: cMap, color: 0xbfc2c2, emissive: 0x9a9c9c, emissiveMap: cMap, name: 'Ceiling tile' });
+  const TT = tileTypeOf(plan);
+  if (TT === 'alum') {
+    // thin aluminum pans: a fine brushed grain
+    const al = cachedCanvas('ceilAlum', () => makeCanvas(128, 128, (g, w, h) => { g.fillStyle = '#c9ced1'; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '90,96,100'},${Math.random() * .12})`; g.fillRect(0, y, w, 1); } }));
+    cMap = new THREE.CanvasTexture(al); cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.repeat.set(B.w / 2, B.d / 2); cMap.anisotropy = ANISO;
+  }
+  const TC = tileColorOf(plan);
+  if (TT === 'alum' && TC !== 'natural') {
+    // painted aluminum pans: the paint colour, a smooth satin face
+    const pc = new THREE.Color(PANEL_COLORS[TC][1]);
+    const pl = cachedCanvas('ceilPainted', () => makeCanvas(64, 64, (g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); for (let i = 0; i < 120; i++) { g.fillStyle = `rgba(150,150,150,${Math.random() * .05})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } }));
+    cMap = new THREE.CanvasTexture(pl); cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.repeat.set(B.w / 2, B.d / 2); cMap.anisotropy = ANISO;
+    var cPaint = new THREE.MeshPhongMaterial({ map: cMap, color: pc, emissive: pc.clone().multiplyScalar(0.45), emissiveMap: cMap, specular: 0x333333, shininess: 30, name: 'Ceiling tile, ' + tileName(plan) });
+  }
+  const cMat = cPaint ? cPaint : TT === 'alum'
+    ? new THREE.MeshPhongMaterial({ map: cMap, color: 0xd8dde0, emissive: 0x6a6f72, emissiveMap: cMap, specular: 0xbfc5c9, shininess: 70, name: 'Ceiling tile, aluminum' })
+    : new THREE.MeshLambertMaterial({ map: cMap, color: 0xc4c6c6, emissive: 0x9c9e9e, emissiveMap: cMap, name: 'Ceiling tile, vinyl-covered gypsum' });
   let ceil;
   if (FP) {
     cMap.repeat.set(1, 1);
@@ -4391,6 +4415,11 @@ function mount(container, plan, opts) {
   const REAL_TUNE = [
     [/floor/i, { roughness: 0.3, metalness: 0, envMapIntensity: 0.38 }],
     [/glass/i, { roughness: 0.04, envMapIntensity: 0.9 }],
+    // the ceiling isn't lit by the lights below it (they face down), so it gets the bounce light it would have
+    // in a white room: a little glow of its own
+    [/ceiling tile, aluminum, painted/i, { roughness: 0.45, metalness: 0, envMapIntensity: 0.6, emissiveIntensity: 1.3 }],
+    [/ceiling tile, aluminum/i, { roughness: 0.4, metalness: 0.25, envMapIntensity: 1.1, emissiveIntensity: 2.6 }],
+    [/ceiling tile, vinyl/i, { roughness: 0.55, metalness: 0, envMapIntensity: 0.6, emissiveIntensity: 1.3 }],
     [/grid|track|aluminum|hardware|stainless|galvanized|damper|kick/i, { roughness: 0.3, metalness: 0.9, envMapIntensity: 1.3 }],
     [/ceiling tile|ceiling, solid/i, { roughness: 0.92, metalness: 0, envMapIntensity: 0.35 }],
     [/wall panel|door leaf|door frame|fixture housing|ffu housing/i, { roughness: 0.36, metalness: 0, envMapIntensity: 0.85 }],
@@ -4399,7 +4428,7 @@ function mount(container, plan, opts) {
   function tuneMat(m, on) {
     if (!m || !m.isMeshStandardMaterial) return;
     const t = REAL_TUNE.find(([re]) => re.test(m.name || '')); if (!t) return;
-    if (on) { if (!matOrig.has(m)) matOrig.set(m, { roughness: m.roughness, metalness: m.metalness, envMapIntensity: m.envMapIntensity }); Object.assign(m, t[1]); }
+    if (on) { if (!matOrig.has(m)) matOrig.set(m, { roughness: m.roughness, metalness: m.metalness, envMapIntensity: m.envMapIntensity, emissiveIntensity: m.emissiveIntensity }); Object.assign(m, t[1]); }
     else if (matOrig.has(m)) Object.assign(m, matOrig.get(m));
   }
   function indoorEnv() {
@@ -5466,10 +5495,12 @@ function mount(container, plan, opts) {
         byName.set(name, o);
         let r = 0.6, mt = 0;
         if (/glass/.test(n)) { r = 0.05; o.transparent = true; o.opacity = 0.25; }
+        else if (/painted/.test(n)) r = 0.45;
         else if (/stainless|aluminum|galvanized|hardware|grid|damper|ffu galvanized/.test(n)) { r = 0.35; mt = 0.85; }
         else if (/steel beam/.test(n)) { r = 0.55; mt = 0.6; }
         else if (/wall panel|door leaf|door frame|fixture housing|ffu housing/.test(n)) r = 0.42;
         else if (/floor/.test(n)) r = 0.28;
+        else if (/ceiling tile, vinyl/.test(n)) r = 0.55;
         else if (/ceiling tile|ceiling, solid/.test(n)) r = 0.9;
         else if (/rubber/.test(n)) r = 0.85;
         if (/light lens/.test(n)) { o.emissive = new THREE.Color(0xffffff); o.emissiveIntensity = 1; r = 0.3; }
@@ -5517,5 +5548,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { TILE_TYPES, tileTypeOf, tileColorOf, tileName, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
