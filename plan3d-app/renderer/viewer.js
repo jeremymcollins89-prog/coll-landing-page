@@ -3616,23 +3616,36 @@ function buildScene(THREE, plan, A) {
     cMap = new THREE.CanvasTexture(plain); cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.repeat.set(B.w / 2, B.d / 2); cMap.anisotropy = ANISO;
   }
   // both sides, so the grid shows from above in the Plenum view
-  const TT = tileTypeOf(plan);
-  if (TT === 'alum') {
-    // thin aluminum pans: a fine brushed grain
-    const al = cachedCanvas('ceilAlum', () => makeCanvas(128, 128, (g, w, h) => { g.fillStyle = '#c9ced1'; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '90,96,100'},${Math.random() * .12})`; g.fillRect(0, y, w, 1); } }));
-    cMap = new THREE.CanvasTexture(al); cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.repeat.set(B.w / 2, B.d / 2); cMap.anisotropy = ANISO;
-  }
-  const TC = tileColorOf(plan);
+  const TT = tileTypeOf(plan), TC = tileColorOf(plan);
+  // Aluminum pans, natural or painted. The tee grid is white enamel whatever the tiles are: on the standard grid
+  // it is drawn into each tile's texture (a 2'x4' cell, its lines along two edges), so it shows on every colour;
+  // a drawn grid (ownGrid) has its own tees.
+  const grid = (g, w, h) => {
+    g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(0, 0, w, 4); g.fillRect(0, 0, 4, h);
+    g.fillStyle = '#e9ecee'; g.fillRect(0, 0, w, 3); g.fillRect(0, 0, 3, h);
+    g.fillStyle = '#fbfcfc'; g.fillRect(0, 0, w, 1); g.fillRect(0, 0, 1, h);
+  };
+  const tileTex = (cv) => { const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(B.w / 2, B.d / (ownGrid ? 2 : 4)); t.anisotropy = ANISO; return t; };
+  let cMat;
   if (TT === 'alum' && TC !== 'natural') {
-    // painted aluminum pans: the paint colour, a smooth satin face
-    const pc = new THREE.Color(PANEL_COLORS[TC][1]);
-    const pl = cachedCanvas('ceilPainted', () => makeCanvas(64, 64, (g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); for (let i = 0; i < 120; i++) { g.fillStyle = `rgba(150,150,150,${Math.random() * .05})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } }));
-    cMap = new THREE.CanvasTexture(pl); cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.repeat.set(B.w / 2, B.d / 2); cMap.anisotropy = ANISO;
-    var cPaint = new THREE.MeshPhongMaterial({ map: cMap, color: pc, emissive: pc.clone().multiplyScalar(0.45), emissiveMap: cMap, specular: 0x333333, shininess: 30, name: 'Ceiling tile, ' + tileName(plan) });
-  }
-  const cMat = cPaint ? cPaint : TT === 'alum'
-    ? new THREE.MeshPhongMaterial({ map: cMap, color: 0xd8dde0, emissive: 0x6a6f72, emissiveMap: cMap, specular: 0xbfc5c9, shininess: 70, name: 'Ceiling tile, aluminum' })
-    : new THREE.MeshLambertMaterial({ map: cMap, color: 0xc4c6c6, emissive: 0x9c9e9e, emissiveMap: cMap, name: 'Ceiling tile, vinyl-covered gypsum' });
+    // painted pans: the paint is in the texture (so the grid stays white), a smooth satin face
+    const hex = PANEL_COLORS[TC][1];
+    cMap = tileTex(cachedCanvas('ceilPaint' + hex + (ownGrid ? 'P' : 'G'), () => makeCanvas(128, ownGrid ? 128 : 256, (g, w, h) => {
+      g.fillStyle = hex; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 160; i++) { g.fillStyle = `rgba(${Math.random() < .5 ? '0,0,0' : '255,255,255'},${Math.random() * .035})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+      // a soft shadow line along the pan's turned-down edge
+      if (!ownGrid) { g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(4, 4, w - 4, 3); g.fillRect(4, 4, 3, h - 4); grid(g, w, h); }
+    })));
+    cMat = new THREE.MeshPhongMaterial({ map: cMap, color: 0xf2f2f2, emissive: 0x858585, emissiveMap: cMap, specular: 0x333333, shininess: 30, name: 'Ceiling tile, ' + tileName(plan) });
+  } else if (TT === 'alum') {
+    // natural pans: a fine brushed grain
+    cMap = tileTex(cachedCanvas('ceilAlum' + (ownGrid ? 'P' : 'G'), () => makeCanvas(128, ownGrid ? 128 : 256, (g, w, h) => {
+      g.fillStyle = '#c9ced1'; g.fillRect(0, 0, w, h);
+      for (let y = 0; y < h; y++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '90,96,100'},${Math.random() * .12})`; g.fillRect(0, y, w, 1); }
+      if (!ownGrid) { g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(4, 4, w - 4, 3); g.fillRect(4, 4, 3, h - 4); grid(g, w, h); }
+    })));
+    cMat = new THREE.MeshPhongMaterial({ map: cMap, color: 0xd8dde0, emissive: 0x6a6f72, emissiveMap: cMap, specular: 0xbfc5c9, shininess: 70, name: 'Ceiling tile, aluminum' });
+  } else cMat = new THREE.MeshLambertMaterial({ map: cMap, color: 0xc4c6c6, emissive: 0x9c9e9e, emissiveMap: cMap, name: 'Ceiling tile, vinyl-covered gypsum' });
   let ceil;
   if (FP) {
     cMap.repeat.set(1, 1);
@@ -4417,7 +4430,7 @@ function mount(container, plan, opts) {
     [/glass/i, { roughness: 0.04, envMapIntensity: 0.9 }],
     // the ceiling isn't lit by the lights below it (they face down), so it gets the bounce light it would have
     // in a white room: a little glow of its own
-    [/ceiling tile, aluminum, painted/i, { roughness: 0.45, metalness: 0, envMapIntensity: 0.6, emissiveIntensity: 1.3 }],
+    [/ceiling tile, aluminum, painted/i, { roughness: 0.45, metalness: 0, envMapIntensity: 0.6, emissiveIntensity: 1.45 }],
     [/ceiling tile, aluminum/i, { roughness: 0.4, metalness: 0.25, envMapIntensity: 1.1, emissiveIntensity: 2.6 }],
     [/ceiling tile, vinyl/i, { roughness: 0.55, metalness: 0, envMapIntensity: 0.6, emissiveIntensity: 1.3 }],
     [/grid|track|aluminum|hardware|stainless|galvanized|damper|kick/i, { roughness: 0.3, metalness: 0.9, envMapIntensity: 1.3 }],
