@@ -20,7 +20,7 @@
     if (t.coachHidden == null) t.coachHidden = false;
     return t;
   };
-  const practice = () => S.data.clients.find(c => c.practice && !c.exam && !c.advExam) || null;
+  const practice = () => S.data.clients.find(c => c.practice && !c.exam && !c.advExam && !c.caseStudy) || null;
   const pad = n => String(n).padStart(2, '0');
   const lastMonthEnd = () => { const d = C.parseISO(today()); return C.isoOf(new Date(d.getFullYear(), d.getMonth(), 0)); };
 
@@ -983,6 +983,7 @@
   // Training screen
   // ------------------------------------------------------------------
   const TIPS = window.ACADEMY_TIPS || {};
+  const labCard = () => { const L = App.lab; let due = 0, st = 0; try { due = L ? L.dueCards().queue.length : 0; st = L ? L.streak() : 0; } catch (e) { } return `<button class="lab-card" data-action="lab-open" data-v="${due ? 'review' : 'plan'}"><span class="lab-ic">${ICON.spark}</span><span class="grow"><b>Study center</b><span class="muted">${due ? `${plural(due, 'card')} to review today` : 'Plan, review, case studies, portfolio'}${st ? ` · ${st}-day streak` : ''}</span></span>${ICON.right}</button>`; };
   // Realistic time: reading plus the hands-on task, drill and quiz (rounded to 5 minutes)
   const workMins = l => Math.max(5, Math.round((l.mins + (l.task ? 10 : 0) + (l.drill ? 10 : 0) + (l.quiz || []).length * 2) / 5) * 5);
   // Typical time for the finals plus a review of the handbook before them
@@ -1040,6 +1041,7 @@
         side = `
           <div class="train-prog"><div class="tp-top"><b>${doneN} of ${req} steps</b><span class="muted">${Math.round(doneN / req * 100)}%</span></div><div class="progress"><div style="width:${doneN / req * 100}%"></div></div>${hoursLine('pro', wOk, pOk)}
             <div class="lvl-badges">${levels.map(L => `<span class="lvl-badge ${lvlDone(L) ? 'on' : ''}" title="${esc(L.title)}">${lvlDone(L) ? ICON.check : L.n}</span>`).join('')}<span class="lvl-badge exam ${wOk && pOk ? 'on' : ''}" title="Final exams">${wOk && pOk ? ICON.check : 'E'}</span></div></div>
+          ${labCard()}
           <div class="train-list">
             ${levels.map(L => `<div class="tl-group">${esc(L.title)}${lvlDone(L) ? ` <span class="tag green">${ICON.check}</span>` : ''}</div>${L.lessons.map(x => sideItem(x, ++n)).join('')}`).join('')}
             <div class="tl-group">Final exams${allLessons ? '' : ` <span class="muted" style="text-transform:none;letter-spacing:0">· after all lessons</span>`}</div>
@@ -1066,6 +1068,7 @@
         side = `
           <div class="train-prog"><div class="tp-top"><b>${doneN} of ${req} steps</b><span class="muted">${Math.round(doneN / req * 100)}%</span></div><div class="progress navy"><div style="width:${doneN / req * 100}%"></div></div>${hoursLine('adv', wOk, pOk)}
             <div class="lvl-badges">${levels.map((L, i) => `<span class="lvl-badge navy ${lvlDone(L) ? 'on' : ''}" title="${esc(L.title)}">${lvlDone(L) ? ICON.check : 'ABC'[i]}</span>`).join('')}<span class="lvl-badge exam ${wOk && pOk ? 'on' : ''}" title="Final exams">${wOk && pOk ? ICON.check : 'E'}</span></div></div>
+          ${labCard()}
           <div class="train-list">
             ${levels.map(L => `<div class="tl-group">${esc(L.title)}${lvlDone(L) ? ` <span class="tag green">${ICON.check}</span>` : ''}</div>${L.lessons.map(x => `<button class="tl ${!examView && x === cur ? 'on' : ''} ${lessonDone(x) ? 'done' : ''}" data-action="t-go" data-id="${x.id}"><span class="step-n">${lessonDone(x) ? ICON.check : ++n}</span><span><b>${esc(x.title)}</b><span class="muted">about ${fmtMins(workMins(x))}</span></span></button>`).join('')}`).join('')}
             <div class="tl-group">Final exams${unlocked ? '' : ` <span class="muted" style="text-transform:none;letter-spacing:0">· locked</span>`}</div>
@@ -1128,8 +1131,9 @@
   function coach() {
     let el = $('#coach');
     const c = client();
-    if (!c || !c.practice || S.route.page === 'training' || !S.data.setupDone) { if (el) el.remove(); return; }
+    if (!c || !c.practice || S.route.page === 'training' || S.route.page === 'lab' || !S.data.setupDone) { if (el) el.remove(); return; }
     if (!el) { el = document.createElement('div'); el.id = 'coach'; document.body.appendChild(el); }
+    if (c.caseStudy) { const lc = App.labCases; el.className = 'coach'; el.innerHTML = `<div class="coach-head">${ICON.spark}<b>Case study</b><span class="muted">${esc(c.name)}</span></div><div class="coach-task"><span>${esc(lc && lc.coachText ? lc.coachText(c) : 'Work through the case brief, then grade your work in the Study center.')}</span></div><div class="coach-foot"><button class="btn sm primary" data-action="lab-case-open" data-id="${esc(c.caseStudy)}">Case brief</button></div>`; return; }
     if (c.advExam) { el.className = 'coach'; el.innerHTML = `<div class="coach-head">${ICON.spark}<b>Advanced practical</b><span class="muted">${U.fmtMonth(c.advKey.month.from)}</span></div><div class="coach-task"><span>Post the adjusting entries from the documents, fix the miscoded items, then close the month.</span></div><div class="coach-foot"><button class="btn sm primary" data-action="t-go" data-id="adv-exam-practical">Grade my work</button></div>`; return; }
     if (c.exam) { el.className = 'coach'; el.innerHTML = `<div class="coach-head">${ICON.spark}<b>Practical exam</b><span class="muted">${U.fmtMonth(c.examKey.month.from)}</span></div><div class="coach-task"><span>Categorize, apply the invoice payment, clean up, reconcile to ${money(c.examKey.statement)}, then close the month.</span></div><div class="coach-foot"><button class="btn sm primary" data-action="t-go" data-id="exam-practical">Grade my work</button></div>`; return; }
     const t = T();
@@ -1145,11 +1149,11 @@
       <div class="coach-foot"><button class="btn sm ${ok ? 'primary' : ''}" data-nav="training">${ok ? 'Back to the lesson' : 'Open the lesson'}</button></div>`;
   }
   function banner(c, page) {
-    if (!c || !c.practice || page === 'training') return;
+    if (!c || !c.practice || page === 'training' || page === 'lab') return;
     const inner = $('#view .view-inner'); if (!inner) return;
     const b = document.createElement('div');
     b.className = 'practice-banner';
-    b.innerHTML = c.advExam ? `${ICON.spark}<span><b>Advanced practical</b> — Aspen Trail Outfitters is pretend. Post the month-end adjustments, then grade your work in the Academy.</span><button class="btn sm" data-action="t-go" data-id="adv-exam-practical">Exam page</button>` : c.exam ? `${ICON.spark}<span><b>Practical exam</b> — Juniper Flower Co. is pretend. Do the month-end, then grade your work in the Academy.</span><button class="btn sm" data-action="t-go" data-id="exam-practical">Exam page</button>` : `${ICON.spark}<span><b>Practice account</b> — Bluebird Bakery is pretend. Try anything; nothing here touches a real client.</span><button class="btn sm" data-nav="training">Academy</button>`;
+    b.innerHTML = c.caseStudy ? `${ICON.spark}<span><b>Case study</b> — ${esc(c.name)} is pretend. Work through the brief, then grade your work in the Study center.</span><button class="btn sm" data-action="lab-case-open" data-id="${esc(c.caseStudy)}">Case brief</button>` : c.advExam ? `${ICON.spark}<span><b>Advanced practical</b> — Aspen Trail Outfitters is pretend. Post the month-end adjustments, then grade your work in the Academy.</span><button class="btn sm" data-action="t-go" data-id="adv-exam-practical">Exam page</button>` : c.exam ? `${ICON.spark}<span><b>Practical exam</b> — Juniper Flower Co. is pretend. Do the month-end, then grade your work in the Academy.</span><button class="btn sm" data-action="t-go" data-id="exam-practical">Exam page</button>` : `${ICON.spark}<span><b>Practice account</b> — Bluebird Bakery is pretend. Try anything; nothing here touches a real client.</span><button class="btn sm" data-nav="training">Academy</button>`;
     inner.prepend(b);
   }
   App.hooks.push((c, page) => {

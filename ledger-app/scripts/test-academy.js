@@ -12,8 +12,8 @@ let n = 0;
 const t = (name, fn) => { fn(); n++; console.log('  ✓ ' + name); };
 console.log('Academy checks');
 
-const FILES = ['views-training.js', 'views-exam.js', 'views-advanced.js', 'views-tips.js', 'views-handbook.js', 'views-practice.js', 'views-plan.js', 'views-extra.js'];
-const text = f => fs.readFileSync(path.join(R, f), 'utf8').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/\\'/g, "'");
+const FILES = ['views-lab.js', 'views-cases.js', 'views-training.js', 'views-exam.js', 'views-advanced.js', 'views-tips.js', 'views-handbook.js', 'views-practice.js', 'views-plan.js', 'views-extra.js'];
+const text = f => (fs.existsSync(path.join(R, f)) ? fs.readFileSync(path.join(R, f), 'utf8') : '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/\\'/g, "'");
 
 t('every written calculation adds up', () => {
   // an expression of numbers and operators, then "= result"

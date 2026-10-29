@@ -112,6 +112,7 @@
         <div class="exam-rules"><div><b>${DRAW}</b><span>questions</span></div><div><b>${Math.round(PASS * 100)}%</b><span>to pass (${Math.ceil(DRAW * PASS)} right)</span></div><div><b>~1 hr</b><span>typical · no time limit</span></div><div><b>New</b><span>questions each try</span></div></div>
         <p class="muted">Answers aren't shown until you finish. Take your time — the Bookkeeper's Handbook is fair game to study from before you start.</p>
         ${T().written.length ? `<div class="exam-history"><div class="cap-label">Your attempts</div>${T().written.slice(-5).reverse().map(w => `<div><span>${fmtDate(w.date)}</span><b class="${w.pct >= PASS ? 'pos' : ''}">${w.score} / ${w.total} · ${Math.round(w.pct * 100)}%</b>${w.pct >= PASS ? `<span class="tag green">Passed</span>` : '<span class="tag">Not yet</span>'}</div>`).join('')}</div>` : ''}
+        ${App.examRulesNote ? App.examRulesNote(T().written) : ''}
         <div class="tm-nav"><button class="btn ghost" data-nav="handbook">${ICON.help}Study the handbook</button><button class="btn primary" data-action="ex-start">${writtenPassed() ? 'Take it again' : 'Start the exam'} ${ICON.right}</button></div>`;
     }
     if (E.done) {
@@ -249,7 +250,7 @@
       <h2 class="tm-title">Practical exam: a real month-end</h2>
       ${brief}
       ${res ? `<div class="exam-result ${res.passed ? 'pass' : ''}"><div class="er-score">${res.score}<span>/ 100</span></div><div><h2 class="tm-title" style="margin:0">${res.passed ? 'You passed the practical!' : 'Not passed yet'}</h2><div class="muted">${res.passed ? (res.score === 100 ? 'A perfect month-end.' : 'Solid work.') : !res.reconciled ? 'The reconciliation has to balance to pass.' : !res.closed ? `Close ${U.fmtMonth(M.from)} once everything else is done.` : 'Fix the items marked below, then grade again.'}</div></div></div>
-        <div class="grade-list">${res.items.map(x => `<div class="gl ${x.ok ? 'ok' : ''}"><span class="tick ${x.ok ? 'on' : ''}">${x.ok ? ICON.check : ICON.close}</span><div class="grow"><b>${esc(x.label)}</b>${x.ok ? '' : `<div class="muted">${esc(x.why)}</div>`}</div><span class="num">${x.got}/${x.pts}</span></div>`).join('')}
+        <div class="grade-list">${res.items.map(x => `<div class="gl ${x.ok ? 'ok' : ''}"><span class="tick ${x.ok ? 'on' : ''}">${x.ok ? ICON.check : ICON.close}</span><div class="grow"><b>${esc(x.label)}</b>${x.ok ? '' : `<div class="muted">${res.passed ? esc(x.why) : 'Not right yet. Recheck the source documents and the lesson on this topic — the full answer key appears once you pass.'}</div>`}</div><span class="num">${x.got}/${x.pts}</span></div>`).join('')}
           <div class="gl ${res.closed ? 'ok' : ''}"><span class="tick ${res.closed ? 'on' : ''}">${res.closed ? ICON.check : ICON.close}</span><div class="grow"><b>${U.fmtMonth(M.from)} closed</b>${res.closed ? '' : '<div class="muted">Required to pass.</div>'}</div><span class="num">required</span></div></div>` : ''}
       <div class="tm-nav">${c ? `<button class="btn ghost" data-action="ex-prac-reset">${ICON.refresh}Start over</button><span style="flex:1"></span><button class="btn" data-action="ex-prac-open">Open Juniper Flower Co. ${ICON.right}</button><button class="btn primary" data-action="ex-prac-grade">${ICON.check}Grade my work</button>`
         : `<span></span><button class="btn primary" data-action="ex-prac-start">Start the practical exam ${ICON.right}</button>`}</div>`;
@@ -453,7 +454,7 @@
     $('[data-c=copy]', m).onclick = () => U.copyText(verifyUrl(cert.id));
     $('[data-c=pdf]', m).onclick = () => { U.closeModal(); App.actions['t-cert-pdf'](); };
     $('[data-c=reg]', m).onclick = () => {
-      const body = `Please register this Coll Ledger Academy credential so it shows as verified.\n\nName: ${cert.name}\nCredential ID: ${cert.id}\nAwarded: ${fmtDate(cert.date)}\nWritten exam: ${cert.written}%\nPractical exam: ${cert.practical}/100${cert.distinction ? '\nWith distinction' : ''}\n\nRegistry entry (add to credentials.json on the website):\n${registryEntry(cert)}\n\nCredential link: ${verifyUrl(cert.id)}`;
+      const body = `Please register this Coll Ledger Academy credential so it shows as verified.\n\nName: ${cert.name}\nCredential ID: ${cert.id}\nAwarded: ${fmtDate(cert.date)}\nWritten exam: ${cert.written}%\nPractical exam: ${cert.practical}/100${cert.distinction ? '\nWith distinction' : ''}\n\nTo register: on GitHub open the coll-landing-page repository → Actions → Register credential → Run workflow, paste this entry, and click Run.\nRegistry entry:\n${registryEntry(cert)}\n\nCredential link: ${verifyUrl(cert.id)}`;
       open(`mailto:collbusinesssolutions@gmail.com?subject=${encodeURIComponent('Credential registration ' + cert.id)}&body=${encodeURIComponent(body)}`);
       cert.registeredAsked = today(); save(); U.toast('Opening your email — just press Send');
     };
@@ -461,7 +462,7 @@
 
   act({
     'pa-open': () => proAdvisorModal(),
-    'ex-start': () => { S.ui.exam = Object.assign(newAttempt(), { kind: 'written' }); render(); $('#view').scrollTop = 0; },
+    'ex-start': () => App.examGate('written', T().written, 'Professional written exam', () => { S.ui.exam = Object.assign(newAttempt(), { kind: 'written' }); render(); $('#view').scrollTop = 0; }),
     'ex-close': () => { S.ui.exam = null; render(); },
     'ex-pick': el => { const E = S.ui.exam; const q = E.qs[E.at]; E.answers[q.i] = +el.dataset.a; render(); },
     'ex-move': el => { const E = S.ui.exam; E.at = Math.max(0, Math.min(E.qs.length - 1, E.at + +el.dataset.d)); render(); },
@@ -470,7 +471,7 @@
       const E = S.ui.exam;
       if (!await U.confirmBox({ title: 'Submit your answers?', body: 'You can\'t change them after this.', ok: 'Submit' })) return;
       const score = E.qs.filter(q => E.answers[q.i] === BANK[q.i][3]).length;
-      const res = { date: today(), score, total: E.qs.length, pct: score / E.qs.length, passed: score / E.qs.length >= PASS, mins: Math.round((Date.now() - E.started) / 60000) };
+      const res = { date: today(), score, total: E.qs.length, pct: score / E.qs.length, passed: score / E.qs.length >= PASS, at: Date.now(), mins: Math.round((Date.now() - E.started) / 60000) };
       T().written.push(res); save();
       E.done = true; E.result = res; render(); $('#view').scrollTop = 0;
       U.toast(res.passed ? `Passed — ${score} of ${res.total}` : `${score} of ${res.total} — review and try again`);
