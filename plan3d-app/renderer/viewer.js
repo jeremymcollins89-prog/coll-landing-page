@@ -3189,6 +3189,9 @@ function buildScene(THREE, plan, A) {
     const sm = (left || right) ? sidingMat(L, h) : null;
     return { mats: [M.edge, M.edge, M.edge, M.edge, left ? sm : drywall, right ? sm : drywall], left, right, nx, nz };
   };
+  // the ceiling track (the angle the grid rests on) shows only on walls taller than one 12′ panel; a single
+  // panel reads as one smooth face, with no band or blocks at the ceiling line
+  const trackOK = (h) => h > 12 + 1 / 96;
   const M = {
     white: new THREE.MeshPhongMaterial({ color: 0xf7f8f8, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 }),
     edge: new THREE.MeshPhongMaterial({ color: 0xf2f3f3, emissive: 0x121313, specular: 0x111111, shininess: 10 }),
@@ -3280,7 +3283,7 @@ function buildScene(THREE, plan, A) {
     segBox(p.x1, p.z1, p.x2, p.z2, 0, 0.333, p.t + 0.022, M.base);
     // the ceiling track: on the side with the ceiling (the room side), not across the outside face, which is one
     // smooth panel up to the top. Only drawn on a wall taller than one 12′ panel; a single panel shows no band.
-    if (p.h > H + 0.05 && p.h > 12 + 1 / 96) {
+    if (p.h > H + 0.05 && trackOK(p.h)) {
       const L0 = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, nx = -(p.z2 - p.z1) / L0, nz = (p.x2 - p.x1) / L0, mx = (p.x1 + p.x2) / 2, mz = (p.z1 + p.z2) / 2;
       const FPw = footprint(A), side = (sd) => { for (const t of [0.5, 0.2, 0.8]) { const x = p.x1 + (p.x2 - p.x1) * t + nx * sd * (p.t / 2 + 0.4), z = p.z1 + (p.z2 - p.z1) * t + nz * sd * (p.t / 2 + 0.4); if (inCeiling(plan, FPw, x, z)) return true; } return false; };
       for (const sd of [1, -1]) if (side(sd)) { const o = sd * (p.t / 2 + 0.016); segBox(p.x1 + nx * o, p.z1 + nz * o, p.x2 + nx * o, p.z2 + nz * o, H - 0.17, H, 0.024, M.track); }
@@ -3313,7 +3316,7 @@ function buildScene(THREE, plan, A) {
     const m = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); outline(m); pick.push(m);
     // closure channel along the bottom edge, ceiling track for each side's ceiling
     segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
-    if (H - q.y0 > 0.25) segBox(q.x1, q.z1, q.x2, q.z2, H - 0.17, H, q.t + 0.03, M.track);
+    if (H - q.y0 > 0.25 && trackOK(WH)) segBox(q.x1, q.z1, q.x2, q.z2, H - 0.17, H, q.t + 0.03, M.track);
   }
   // header panels over open passages: panels from the ceiling up to the top of the walls, a closure channel
   // along the bottom and ceiling track on both sides
@@ -3323,7 +3326,7 @@ function buildScene(THREE, plan, A) {
     curRef = q.id ? { kind: 'header', id: q.id } : null;
     const m = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); outline(m); pick.push(m);
     segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
-    segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.17, q.y0, q.t + 0.03, M.track);
+    if (trackOK(WH)) segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.17, q.y0, q.t + 0.03, M.track);
     curRef = null;
   }
   // return grilles set into wall panels (plan.grilles): a louvred face on both sides of the panel, the damper
@@ -3348,11 +3351,11 @@ function buildScene(THREE, plan, A) {
     const m = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, [M.edge, M.edge, M.edge, M.edge, face, face]); outline(m); pick.push(m);
     if (q.area.c.id) m.userData.ref = { kind: 'carea', id: q.area.c.id };
     segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.015, q.y0 + 0.06, q.t + 0.012, M.white);
-    segBox(q.x1, q.z1, q.x2, q.z2, q.y1 - 0.17, q.y1, q.t + 0.03, M.track);
+    if (trackOK(WH)) segBox(q.x1, q.z1, q.x2, q.z2, q.y1 - 0.17, q.y1, q.t + 0.03, M.track);
   }
   // ceiling track at a ceiling area's height along the walls it meets
   for (const a of CA) for (const p of A.pieces) {
-    if (!p.hard || p.h < a.h) continue;
+    if (!p.hard || p.h < a.h || !trackOK(p.h)) continue;
     const ax = Math.abs(p.x2 - p.x1) < 1e-3, az = Math.abs(p.z2 - p.z1) < 1e-3; if (!ax && !az) continue;
     const r = p.t / 2 + 0.3;
     if (ax && (Math.abs(p.x1 - a.x0) < r || Math.abs(p.x1 - a.x1) < r)) { const lo = Math.max(Math.min(p.z1, p.z2), a.z0), hi = Math.min(Math.max(p.z1, p.z2), a.z1); if (hi - lo > 0.2) segBox(p.x1, lo, p.x1, hi, a.h - 0.17, a.h, p.t + 0.03, M.track); }
@@ -3374,7 +3377,7 @@ function buildScene(THREE, plan, A) {
       const x1 = c.x + v[0] * c.wt / 2, z1 = c.z + v[1] * c.wt / 2, x2 = x1 + u[0] * c.size, z2 = z1 + u[1] * c.size;
       const m = segBox(x1, z1, x2, z2, 0, c.h || WH, c.wt + 0.006, M.white); outline(m); pick.push(m);
       segBox(x1, z1, x2, z2, 0, 0.333, c.wt + 0.024, M.base);
-      if ((c.h || WH) > H + 0.05) trackFaces(x1, z1, x2, z2, c.wt + 0.008, H); else segBox(x1, z1, x2, z2, H - 0.17, H, c.wt + 0.032, M.track);
+      if (trackOK(c.h || WH)) { if ((c.h || WH) > H + 0.05) trackFaces(x1, z1, x2, z2, c.wt + 0.008, H); else segBox(x1, z1, x2, z2, H - 0.17, H, c.wt + 0.032, M.track); }
     }
   }
   const seen = [];
@@ -3384,7 +3387,8 @@ function buildScene(THREE, plan, A) {
     const eh = e.h || WH, m = new THREE.Mesh(new THREE.BoxGeometry(e.t, eh, e.t), M.white);
     m.position.set(e.x, eh / 2, e.z); m.rotation.y = e.ang; root.add(m); pick.push(m);
     const pb = new THREE.Mesh(new THREE.BoxGeometry(e.t + 0.022, 0.333, e.t + 0.022), M.base); pb.position.set(e.x, 0.1665, e.z); pb.rotation.y = e.ang; root.add(pb);
-    if (eh > H + 0.05) { const ux = Math.cos(e.ang), uz = -Math.sin(e.ang), h2 = e.t / 2; trackFaces(e.x - ux * h2, e.z - uz * h2, e.x + ux * h2, e.z + uz * h2, e.t, H); trackFaces(e.x + uz * h2, e.z - ux * h2, e.x - uz * h2, e.z + ux * h2, e.t, H); }
+    if (!trackOK(eh)) { /* one panel: no ceiling track */ }
+    else if (eh > H + 0.05) { const ux = Math.cos(e.ang), uz = -Math.sin(e.ang), h2 = e.t / 2; trackFaces(e.x - ux * h2, e.z - uz * h2, e.x + ux * h2, e.z + uz * h2, e.t, H); trackFaces(e.x + uz * h2, e.z - ux * h2, e.x - uz * h2, e.z + ux * h2, e.t, H); }
     else { const pt = new THREE.Mesh(new THREE.BoxGeometry(e.t + 0.03, 0.17, e.t + 0.03), M.track); pt.position.set(e.x, H - 0.085, e.z); pt.rotation.y = e.ang; root.add(pt); }
   }
 
@@ -3393,7 +3397,7 @@ function buildScene(THREE, plan, A) {
     curRef = o.id ? { kind: 'opening', id: o.id } : null;
     const head = Math.min(i.hard ? H : (i.wallH || H), o.head || 7);
     const IP = i.hard ? wallPM(i.host && i.host.id) : null, top = i.wallH || H, hm = i.hard ? IP.trim : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head).mats : shellMat(i.kind, i.len, top - head, 0);
-    if (top - head > 0.01) { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); if (i.hard && H - head > 0.2) { if (top > H + 0.05) trackFaces(o.x1, o.y1, o.x2, o.y2, t, H); else segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); } }
+    if (top - head > 0.01) { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); if (i.hard && H - head > 0.2 && trackOK(top)) { if (top > H + 0.05) trackFaces(o.x1, o.y1, o.x2, o.y2, t, H); else segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); } }
     const ax = o.x1, az = o.y1, bx = o.x2, bz = o.y2;
     const along = (s) => [ax + i.ux * s, az + i.uz * s];
     if (o.type === 'pass') {
@@ -3572,7 +3576,7 @@ function buildScene(THREE, plan, A) {
     m.position.set((b.x0 + b.x1) / 2, H / 2, (b.z0 + b.z1) / 2); root.add(m); outline(m); pick.push(m);
     if (b.c && b.c.id) m.userData.ref = { kind: 'chase', id: b.c.id };
     const cv = new THREE.Mesh(new THREE.BoxGeometry(w + 0.022, 0.333, d + 0.022), M.base); cv.position.set(m.position.x, 0.1665, m.position.z); root.add(cv);
-    const ct = new THREE.Mesh(new THREE.BoxGeometry(w + 0.03, 0.17, d + 0.03), M.track); ct.position.set(m.position.x, H - 0.085, m.position.z); root.add(ct);
+    if (trackOK(WH)) { const ct = new THREE.Mesh(new THREE.BoxGeometry(w + 0.03, 0.17, d + 0.03), M.track); ct.position.set(m.position.x, H - 0.085, m.position.z); root.add(ct); }
     shadow(m.position.x, m.position.z, w, d, 0, 1.0);
     const f = b.grille;
     if (f) {
