@@ -6,7 +6,7 @@
    - Case studies and client emails (views-cases.js)
    - Cheat sheets: printable one-page references
    - Portfolio: a work-sample PDF built from the practical exams
-   - Exam integrity: honor statement and a 24-hour wait after a failed try
+   - Exam integrity: honor statement; three tries in a row, then a 24-hour wait
    ===================================================================== */
 (() => {
   const { S, C, U, act, go, render, save } = App;
@@ -19,17 +19,22 @@
   // ------------------------------------------------------------------
   // Exam integrity
   // ------------------------------------------------------------------
-  const WAIT = 24 * 60 * 60 * 1000;
-  const lastFail = list => (list || []).filter(w => !w.passed && w.at).sort((a, b) => b.at - a.at)[0];
-  const waitLeft = list => { const f = lastFail(list); if (!f) return 0; const passedAfter = (list || []).some(w => w.passed && w.at > f.at); return passedAfter ? 0 : Math.max(0, f.at + WAIT - Date.now()); };
+  const WAIT = 24 * 60 * 60 * 1000, TRIES = 3;
   const fmtWait = ms => { const all = Math.ceil(ms / 60000), h = Math.floor(all / 60), m = all % 60; return h ? `${h} hr${m ? ` ${m} min` : ''}` : `${m} min`; };
-  App.examRulesNote = list => {
-    const w = waitLeft(list);
-    return `<div class="honor-note">${ICON.lock}<div><b>Exam rules</b><div class="muted">Work on your own. A calculator and scratch paper are fine; notes, the Handbook, other people and AI tools are not. After an attempt that doesn't pass, there's a 24-hour wait before the next one — use it to review.${w ? ` <b>Next attempt opens in ${fmtWait(w)}.</b>` : ''}</div></div></div>`;
+  // Three tries in a row at any quiz or exam; after the third miss, a 24-hour wait. A pass resets the count.
+  const tries = {
+    st(key) { const t = T(); t.tries = t.tries || {}; let x = t.tries[key] || { fails: 0, lockUntil: 0 }; if (x.lockUntil && x.lockUntil <= Date.now()) x = { fails: 0, lockUntil: 0 }; t.tries[key] = x; return x; },
+    lockMs(key) { const x = this.st(key); return x.lockUntil ? Math.max(0, x.lockUntil - Date.now()) : 0; },
+    left(key) { return this.lockMs(key) ? 0 : TRIES - this.st(key).fails; },
+    record(key, passed) { const x = this.st(key); if (passed) { x.fails = 0; x.lockUntil = 0; } else { x.fails++; if (x.fails >= TRIES) { x.fails = 0; x.lockUntil = Date.now() + WAIT; } } save(); return x; },
+    blocked(key, what) { const w = this.lockMs(key); if (w) { U.toast(`${what} opens again in ${fmtWait(w)} — a good time to review`, null, 'warn'); return true; } return false; },
+    line(key) { const w = this.lockMs(key), l = this.left(key); return w ? `<b>Locked for ${fmtWait(w)}</b> after three tries in a row — review, then come back.` : `${l} of ${TRIES} tries left before a 24-hour break.`; },
+    afterMiss(key) { const w = this.lockMs(key); return w ? `That was your third try in a row — the next one opens in ${fmtWait(w)}.` : `${plural(this.left(key), 'try', 'tries')} left before a 24-hour break.`; }
   };
+  App.tries = tries;
+  App.examRulesNote = key => `<div class="honor-note">${ICON.lock}<div><b>Exam rules</b><div class="muted">Work on your own. A calculator and scratch paper are fine; notes, the Handbook, other people and AI tools are not. You get three tries in a row; after the third, there's a 24-hour break before the next one — use it to review. ${tries.line(key)}</div></div></div>`;
   App.examGate = (key, list, title, start) => {
-    const w = waitLeft(list);
-    if (w) return U.toast(`The next attempt opens in ${fmtWait(w)} — a good time to review`, null, 'warn');
+    if (tries.blocked(key, title)) return;
     const m = U.openModal(`${U.modalHead(title, 'Before you begin')}
       <div class="modal-body"><div class="honor">
         <p>This exam is how your certificate earns trust, so it only counts if it's your own work.</p>
@@ -347,5 +352,5 @@
     'lab-portfolio': () => portfolio()
   });
 
-  App.lab = { SHEETS, buildPlan, planItems, dueCards, allCards, streak, studyDays, waitLeft, portfolio, portfolioParts };
+  App.lab = { SHEETS, buildPlan, planItems, dueCards, allCards, streak, studyDays, tries, portfolio, portfolioParts };
 })();

@@ -112,7 +112,7 @@
         <div class="exam-rules"><div><b>${DRAW}</b><span>questions</span></div><div><b>${Math.round(PASS * 100)}%</b><span>to pass (${Math.ceil(DRAW * PASS)} right)</span></div><div><b>~1 hr</b><span>typical · no time limit</span></div><div><b>New</b><span>questions each try</span></div></div>
         <p class="muted">Answers aren't shown until you finish. Take your time — the Bookkeeper's Handbook is fair game to study from before you start.</p>
         ${T().written.length ? `<div class="exam-history"><div class="cap-label">Your attempts</div>${T().written.slice(-5).reverse().map(w => `<div><span>${fmtDate(w.date)}</span><b class="${w.pct >= PASS ? 'pos' : ''}">${w.score} / ${w.total} · ${Math.round(w.pct * 100)}%</b>${w.pct >= PASS ? `<span class="tag green">Passed</span>` : '<span class="tag">Not yet</span>'}</div>`).join('')}</div>` : ''}
-        ${App.examRulesNote ? App.examRulesNote(T().written) : ''}
+        ${App.examRulesNote ? App.examRulesNote('written') : ''}
         <div class="tm-nav"><button class="btn ghost" data-nav="handbook">${ICON.help}Study the handbook</button><button class="btn primary" data-action="ex-start">${writtenPassed() ? 'Take it again' : 'Start the exam'} ${ICON.right}</button></div>`;
     }
     if (E.done) {
@@ -472,20 +472,22 @@
       if (!await U.confirmBox({ title: 'Submit your answers?', body: 'You can\'t change them after this.', ok: 'Submit' })) return;
       const score = E.qs.filter(q => E.answers[q.i] === BANK[q.i][3]).length;
       const res = { date: today(), score, total: E.qs.length, pct: score / E.qs.length, passed: score / E.qs.length >= PASS, at: Date.now(), mins: Math.round((Date.now() - E.started) / 60000) };
-      T().written.push(res); save();
+      T().written.push(res); save(); App.tries.record('written', res.passed);
       E.done = true; E.result = res; render(); $('#view').scrollTop = 0;
-      U.toast(res.passed ? `Passed — ${score} of ${res.total}` : `${score} of ${res.total} — review and try again`);
+      U.toast(res.passed ? `Passed — ${score} of ${res.total}` : `${score} of ${res.total} — ${App.tries.afterMiss('written')}`);
     },
     'ex-prac-start': () => startPractical(false),
     'ex-prac-open': () => startPractical(false),
     'ex-prac-reset': async () => { if (!await U.confirmBox({ title: 'Start the practical over?', body: 'Juniper Flower Co. goes back to the beginning.', ok: 'Start over' })) return; S.ui.examGrade = null; startPractical(true); go('training'); },
-    'ex-prac-grade': () => {
+    'ex-prac-grade': async () => {
       const c = examClient(); if (!c) return;
-      const r = grade(c); S.ui.examGrade = r;
+      if (App.tries.blocked('practical', 'Grading')) return;
+      if (!await U.confirmBox({ title: 'Grade your work?', body: `Each grading counts as a try. ${App.tries.line('practical')}`, ok: 'Grade it' })) return;
+      const r = grade(c); S.ui.examGrade = r; App.tries.record('practical', r.passed);
       const t = T();
       if (!t.practical || r.score > t.practical.score || (r.passed && !t.practical.passed)) t.practical = { score: r.score, passed: r.passed, date: today() };
       save(); render();
-      U.toast(r.passed ? `Practical passed — ${r.score}/100` : `${r.score}/100 — see what's left`);
+      U.toast(r.passed ? `Practical passed — ${r.score}/100` : `${r.score}/100 — ${App.tries.afterMiss('practical')}`);
     }
   });
 

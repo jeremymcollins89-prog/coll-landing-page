@@ -110,7 +110,7 @@
       <p class="tm-learn">${DRAW} questions drawn from a bank of ${BANK.length}: accrual accounting, prepaids and accruals, fixed assets, inventory, loans, the close and cash flow, payroll and sales tax compliance, business and owner taxes, 1099s, internal controls, ethics and career paths. Several questions need a calculator.</p>
       <div class="exam-rules"><div><b>${DRAW}</b><span>questions</span></div><div><b>${Math.round(PASS * 100)}%</b><span>to pass (${Math.ceil(DRAW * PASS)} right)</span></div><div><b>~75 min</b><span>typical · no time limit</span></div><div><b>New</b><span>questions each try</span></div></div>
       ${T().advWritten.length ? `<div class="exam-history"><div class="cap-label">Your attempts</div>${T().advWritten.slice(-5).reverse().map(w => `<div><span>${fmtDate(w.date)}</span><b class="${w.pct >= PASS ? 'pos' : ''}">${w.score} / ${w.total} · ${Math.round(w.pct * 100)}%</b>${w.pct >= PASS ? '<span class="tag green">Passed</span>' : '<span class="tag">Not yet</span>'}</div>`).join('')}</div>` : ''}
-      ${App.examRulesNote ? App.examRulesNote(T().advWritten) : ''}
+      ${App.examRulesNote ? App.examRulesNote('advWritten') : ''}
       <div class="tm-nav"><button class="btn ghost" data-nav="handbook">${ICON.help}Study the handbook</button><button class="btn primary" data-action="ax-start">${writtenPassed() ? 'Take it again' : 'Start the exam'} ${ICON.right}</button></div>`;
     if (E.done) {
       const r = E.result, missed = E.qs.filter(q => E.answers[q.i] !== BANK[q.i][3]);
@@ -333,17 +333,19 @@
       if (!await U.confirmBox({ title: 'Submit your answers?', body: 'You can\'t change them after this.', ok: 'Submit' })) return;
       const score = E.qs.filter(q => E.answers[q.i] === BANK[q.i][3]).length;
       const res = { date: today(), score, total: E.qs.length, pct: score / E.qs.length, passed: score / E.qs.length >= PASS, at: Date.now(), mins: Math.round((Date.now() - E.started) / 60000) };
-      T().advWritten.push(res); save(); E.done = true; E.result = res; render(); $('#view').scrollTop = 0;
+      T().advWritten.push(res); save(); App.tries.record('advWritten', res.passed); E.done = true; E.result = res; render(); $('#view').scrollTop = 0;
     },
     'ax-prac-start': () => start(false),
     'ax-prac-open': () => start(false),
     'ax-prac-reset': async () => { if (!await U.confirmBox({ title: 'Start the practical over?', body: 'Aspen Trail Outfitters goes back to the beginning.', ok: 'Start over' })) return; S.ui.advGrade = null; start(true); go('training'); },
-    'ax-prac-grade': () => {
+    'ax-prac-grade': async () => {
       const c = examClient(); if (!c) return;
-      const r = grade(c); S.ui.advGrade = r;
+      if (App.tries.blocked('advPractical', 'Grading')) return;
+      if (!await U.confirmBox({ title: 'Grade your work?', body: `Each grading counts as a try. ${App.tries.line('advPractical')}`, ok: 'Grade it' })) return;
+      const r = grade(c); S.ui.advGrade = r; App.tries.record('advPractical', r.passed);
       const t = T(); if (!t.advPractical || r.score > t.advPractical.score || (r.passed && !t.advPractical.passed)) t.advPractical = { score: r.score, passed: r.passed, date: today() };
       save(); if (S.route.page !== 'training') { t.track = 'adv'; t.currentAdv = 'adv-exam-practical'; go('training'); } else render();
-      U.toast(r.passed ? `Practical passed — ${r.score}/100` : `${r.score}/100 — see what's left`);
+      U.toast(r.passed ? `Practical passed — ${r.score}/100` : `${r.score}/100 — ${App.tries.afterMiss('advPractical')}`);
     },
     'adv-cert': () => T().certAdv ? credentialModal() : certificate(),
     'adv-programs': () => programsModal()

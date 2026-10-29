@@ -1012,7 +1012,7 @@
         <div class="tt-head"><span class="tick ${taskOk ? 'on' : ''}">${ICON.check}</span><div><div class="cap-label">Try it</div><b>${esc(l.task)}</b></div></div>
         <div class="tt-foot">${taskOk ? '<span class="pos">Done — nicely handled.</span>' : l.action ? `<button class="btn primary" data-action="t-do" data-id="${l.id}">${esc(l.action[0])} ${ICON.right}</button><span class="muted">The coach in the corner keeps this task in view while you work.</span>` : '<span class="muted">Do it right here on this page.</span>'}</div>
       </div>` : ''}
-      <div class="tm-quiz"><div class="cap-label">Quick check</div>${l.quiz.map((q, qi) => { const key = l.id + ':' + qi, ans = t.quiz[key]; return `<div class="qz"><div class="qz-q">${esc(q.q)}</div><div class="qz-a">${q.a.map((a, ai) => `<button class="qa ${ans === ai ? (ai === q.c ? 'right' : 'wrong') : ''} ${ans != null && ai === q.c ? 'answer' : ''}" data-action="t-quiz" data-k="${key}" data-a="${ai}">${esc(a)}</button>`).join('')}</div>${ans != null ? `<div class="qz-why ${ans === q.c ? 'right' : 'wrong'}">${ans === q.c ? ICON.check + '<b>Right.</b>' : '<b>Not quite —</b>'} ${esc(q.why)}${ans !== q.c ? ' Try again.' : ''}</div>` : ''}</div>`; }).join('')}</div>
+      <div class="tm-quiz"><div class="cap-label">Quick check</div>${!quizDone(l) && App.tries ? `<div class="muted tries-line">${App.tries.line('quiz:' + l.id)}</div>` : ''}${l.quiz.map((q, qi) => { const key = l.id + ':' + qi, ans = t.quiz[key]; return `<div class="qz"><div class="qz-q">${esc(q.q)}</div><div class="qz-a">${q.a.map((a, ai) => `<button class="qa ${ans === ai ? (ai === q.c ? 'right' : 'wrong') : ''} ${ans != null && ai === q.c ? 'answer' : ''}" data-action="t-quiz" data-k="${key}" data-a="${ai}">${esc(a)}</button>`).join('')}</div>${ans != null ? `<div class="qz-why ${ans === q.c ? 'right' : 'wrong'}">${ans === q.c ? ICON.check + '<b>Right.</b>' : '<b>Not quite —</b>'} ${esc(q.why)}${ans !== q.c ? ' Try again.' : ''}</div>` : ''}</div>`; }).join('')}</div>
       <div class="tm-nav">${idx > 0 ? `<button class="btn ghost" data-action="t-go" data-id="${list[idx - 1].id}">${ICON.back}Previous</button>` : '<span></span>'}${nextId ? `<button class="btn ${lessonDone(l) ? 'primary' : ''}" data-action="t-go" data-id="${nextId}">${/exam/.test(nextId) ? 'On to the final exams' : 'Next lesson'} ${ICON.right}</button>` : ''}</div>`;
   }
 
@@ -1108,7 +1108,15 @@
     't-open': () => { const fresh = !practice(); ensurePractice(true, fresh ? 'dashboard' : 'dashboard'); if (fresh) U.toast('Bluebird Bakery is ready — the coach in the corner will guide you'); },
     't-do': el => { const l = LESSONS.find(x => x.id === el.dataset.id); if (l.track === 'adv') { T().currentAdv = l.id; T().track = 'adv'; } else T().current = l.id; T().coachHidden = false; save(); l.action[1](); },
     't-drill-check': () => { const t = T(); t.drill = t.drill || {}; $$('[data-drill]').forEach(s => { const i = s.dataset.drill; t.drill[i] = t.drill[i] || {}; t.drill[i][s.dataset.side] = s.value; }); t.drillChecked = true; save(); sweep(); render(); },
-    't-quiz': el => { T().quiz[el.dataset.k] = +el.dataset.a; save(); sweep(); render(); },
+    't-quiz': el => {
+      const k = el.dataset.k, lid = k.slice(0, k.lastIndexOf(':')), l = LESSONS.find(x => x.id === lid), key = 'quiz:' + lid;
+      if (App.tries && App.tries.blocked(key, 'This quiz')) return;
+      const q = l && l.quiz[+k.slice(k.lastIndexOf(':') + 1)];
+      T().quiz[k] = +el.dataset.a; save();
+      if (App.tries && q && q.c !== +el.dataset.a) { App.tries.record(key, false); U.toast(`Not quite — ${App.tries.afterMiss(key)}`, null, 'warn'); }
+      else if (App.tries && l && quizDone(l)) App.tries.record(key, true);
+      sweep(); render();
+    },
     't-reset': async () => {
       const keep = await U.confirmBox({ title: 'Reset the practice account?', body: 'Bluebird Bakery goes back to how it started, so you can practice the lessons again. Your real clients are not touched. Lesson progress is kept unless you choose to start the class over in the next step.', ok: 'Reset the bakery' });
       if (!keep) return;
