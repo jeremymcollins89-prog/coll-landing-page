@@ -84,6 +84,16 @@
       ['Keep a clear trail', 'Questions and answers go in client to-dos and notes, with dates. It protects you and the client.'],
       ['Add a recognized credential', 'After the Coll Ledger Academy, get the free <b>QuickBooks Online certification</b> through Intuit\'s ProAdvisor Academy. Certified ProAdvisors can publish a profile in Intuit\'s <b>Find-a-ProAdvisor</b> directory, where small businesses look for help. <a href="#" data-action="pa-open">See why and how</a>.']
     ]],
+    ['startup', 'Starting your practice', 'spark', 'Setting up your own bookkeeping business, step by step.', [
+      ['1. Form the business', 'Many bookkeepers form an LLC with their state (in Colorado, through the Secretary of State) and get a free EIN from the IRS. Ask a CPA which structure fits you.'],
+      ['2. Separate your money', 'Open a business bank account and card from day one — practice what you\'ll preach to clients.'],
+      ['3. Protect yourself', 'Get <b>errors & omissions (E&O) insurance</b>, have an attorney review your standard engagement letter once, and use it with every client.'],
+      ['4. Set your prices', 'Decide your monthly packages and catch-up pricing. My studio → <b>Price a client</b> gives you a starting point.'],
+      ['5. Earn credentials', 'Your Coll Ledger certificate, then the free <b>QuickBooks Online certification</b> (it lists you in Intuit\'s Find-a-ProAdvisor directory). Later, consider the AIPB or NACPB bookkeeping certifications.'],
+      ['6. Find your first clients', 'Local CPA firms often refer bookkeeping work they don\'t want. Also try your chamber of commerce, networking groups, local business Facebook groups, and people you already know who run businesses.'],
+      ['7. Set up your tools', 'Coll Ledger with a password and cloud backup, a password manager, two-factor login on email, and a secure way to receive documents.'],
+      ['8. Start small and keep learning', 'Two or three clients you serve well beat ten you rush. Keep a list of questions for a mentor or the client\'s CPA, and keep taking courses each year.']
+    ]],
     ['faq', 'FAQs', 'help', 'Quick answers about using Coll Ledger.', [
       ['A transaction shows up twice. What do I do?', 'Run <b>Clean up</b> — it lists likely duplicates side by side with a <b>Remove the second one</b> button. Imports also skip exact duplicates automatically.'],
       ['The reconcile difference isn\'t zero.', 'Look for a transaction that\'s on the statement but not ticked (or the reverse), an amount typed with a missing digit, a duplicate, or a transaction dated in the wrong month. The difference amount itself is a clue — search for it with Ctrl K.'],

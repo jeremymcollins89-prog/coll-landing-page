@@ -183,6 +183,19 @@ t('deposits match open invoices and payments match open bills', () => {
   assert.strictEqual(b.source, 'bill'); assert.strictEqual(b.billId, 'b1');
 });
 
+t('journal entries post when balanced', () => {
+  const c = C.newClient({ startDate: '2026-01-01' });
+  const dep = C.acctByName(c, 'Depreciation Expense'), acc = C.acctByName(c, 'Accumulated Depreciation');
+  const je = { id: 'j', date: '2026-03-31', number: 'JE-1', memo: 'Depreciation', lines: [{ accountId: dep.id, debit: 125, credit: 0 }, { accountId: acc.id, debit: 0, credit: 125 }] };
+  assert(C.journalCheck(je).ok);
+  assert(!C.journalCheck({ lines: [{ accountId: dep.id, debit: 125 }, { accountId: acc.id, credit: 120 }] }).ok);
+  c.journals.push(je);
+  const b = C.balances(c);
+  assert.strictEqual(b.get(dep.id), 125); assert.strictEqual(b.get(acc.id), -125); assert(balanced(c));
+  assert.strictEqual(C.profitLoss(c, '2026-01-01', '2026-12-31').net, -125);
+  je.void = true; assert.strictEqual(C.balances(c).get(dep.id), 0);
+});
+
 (async () => {
   const Sec = require('../src/renderer/secure.js');
   const lock = await Sec.create('correct horse', 'hint');

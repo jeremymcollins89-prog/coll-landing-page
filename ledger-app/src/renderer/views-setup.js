@@ -155,6 +155,7 @@
             <div class="field"><label for="cs-name">Name you use</label><input class="input" id="cs-name" data-cset="name" value="${esc(c.name)}"></div>
             <div class="field"><label for="cs-legal">Legal name (on invoices & reports)</label><input class="input" id="cs-legal" data-cset="legalName" value="${esc(c.legalName)}"></div>
             <div class="field"><label for="cs-ind">Kind of business</label><input class="input" id="cs-ind" data-cset="industry" value="${esc(c.industry)}"></div>
+            <div class="field"><label for="cs-ent">Business type</label><select class="input" id="cs-ent" data-cset="entity">${(App.ENTITIES || []).map(([k, l]) => `<option value="${k}" ${(c.entity || '') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
             <div class="field"><label for="cs-ein">EIN / tax ID</label><input class="input" id="cs-ein" data-cset="ein" value="${esc(c.ein || '')}"></div>
             <div class="field"><label for="cs-email">Email</label><input class="input" id="cs-email" data-cset="email" value="${esc(c.email)}"></div>
             <div class="field"><label for="cs-phone">Phone</label><input class="input" id="cs-phone" data-cset="phone" value="${esc(c.phone)}"></div>

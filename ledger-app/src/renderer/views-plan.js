@@ -177,7 +177,7 @@
               <td class="num"><div class="money-in sm"><span>$</span><input class="input sm num" type="number" min="0" step="50" value="${q.paid || ''}" placeholder="0" data-change="tax-paid" data-k="${y}-${q.q}" aria-label="Paid for ${q.q}"></div></td>
               <td class="num" style="font-weight:600">${q.started ? money(q.left) : '—'}</td></tr>`).join('')}
               <tr class="total-row"><td colspan="4">${y} total</td><td class="num">${money(totals.setAside)}</td><td class="num">${money(totals.paid)}</td><td class="num">${money(totals.left)}</td></tr></tbody></table></div>
-          <div class="card-body"><div class="hint-bar">${ICON.help}<span>Owners of small businesses usually pay tax four times a year. Self-employment tax alone is 15.3%, so setting aside <b>25–30% of profit</b> is a common rule of thumb. This is a planning estimate — the client's tax preparer has the final number.</span></div></div>
+          <div class="card-body">${App.entityNote ? App.entityNote(c) : ''}<div class="hint-bar" style="margin-top:10px">${ICON.help}<span>Owners of small businesses usually pay tax four times a year. Self-employment tax alone is 15.3%, so setting aside <b>25–30% of profit</b> is a common rule of thumb. This is a planning estimate — the client's tax preparer has the final number.</span></div></div>
         </div>
         <div class="card">
           <div class="card-head"><h3>Owner pay by month</h3><span class="muted">This year</span></div>

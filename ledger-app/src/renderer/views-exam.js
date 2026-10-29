@@ -59,9 +59,34 @@
     ['Records', 'Generally, how long should business tax records be kept?', ['1 year', 'At least 3 years — 7 is a common safe rule', 'Forever'], 1, 'Generally 3 years after filing, longer in some cases (6 for big under-reporting, 7 for bad debts, 4 for payroll).'],
     ['Records', 'Which mileage log entry is complete enough?', ['"Drove a lot in March"', 'Date, miles and business reason for each trip', 'Only the total for the year'], 1, 'Each trip needs the date, miles and business purpose.'],
     ['Professional', 'A client asks you to sign and file their tax return. You\'re not an EA, CPA or attorney. You should…', ['Sign it — you know the numbers best', 'Refer them to a tax preparer and hand off clean books', 'File it without signing'], 1, 'Bookkeepers prepare the books; credentialed preparers handle returns and tax advice.'],
-    ['Professional', 'A client offers you their online-banking password. Best practice?', ['Save it in your notes', 'Ask for read-only or accountant access instead', 'Use it once and forget it'], 1, 'Read-only access protects you and the client. Never store full passwords.']
+    ['Professional', 'A client offers you their online-banking password. Best practice?', ['Save it in your notes', 'Ask for read-only or accountant access instead', 'Use it once and forget it'], 1, 'Read-only access protects you and the client. Never store full passwords.'],
+    ['Debits & credits', 'Which accounts increase with a debit?', ['Assets and expenses', 'Liabilities and income', 'Equity and income'], 0, 'Debits increase assets, expenses and owner\'s draws. Credits increase liabilities, equity and income.'],
+    ['Debits & credits', 'A $600 invoice is sent to a customer. The entry is…', ['Dr Sales, Cr Accounts Receivable', 'Dr Accounts Receivable, Cr Sales', 'Dr Checking, Cr Sales'], 1, 'The business gained a right to be paid (A/R up — debit) and earned income (Sales up — credit).'],
+    ['Debits & credits', 'Supplies bought on the business credit card: which side is the card?', ['Debit — the card balance goes down', 'Credit — what the business owes goes up', 'Neither'], 1, 'The card is a liability; owing more is a credit. The supplies expense is the debit.'],
+    ['Debits & credits', 'In every entry, total debits must…', ['Be larger than credits', 'Equal total credits', 'Equal zero'], 1, 'Double-entry always balances — that\'s why the Balance Sheet balances.'],
+    ['Debits & credits', 'Paying $300 of loan principal from checking is…', ['Dr Loans Payable, Cr Checking', 'Dr Interest Expense, Cr Checking', 'Dr Checking, Cr Loans Payable'], 0, 'The loan (a liability) goes down with a debit; cash goes down with a credit.'],
+    ['Payroll', 'A payroll withdrawal covers net pay, employee withholdings and employer taxes. What goes to Payroll & Wages?', ['Net pay only', 'Gross wages (net pay plus employee withholdings)', 'The whole withdrawal'], 1, 'Gross wages are the employees\' full pay. Only the employer\'s own taxes go to Payroll Taxes.'],
+    ['Payroll', 'The employer\'s share of Social Security and Medicare is…', ['Withheld from the employee', 'A business expense — Payroll Taxes', 'Owner\'s Draw'], 1, 'The business pays its own matching share on top of wages; that\'s an expense.'],
+    ['Payroll', 'A client wants to pay a full-time worker as a "contractor" to avoid payroll. Your response?', ['Set it up — it\'s simpler', 'Explain the misclassification risk and refer them to their CPA or payroll provider', 'Pay them through Owner\'s Draw'], 1, 'Worker classification depends on the relationship, not the client\'s preference, and misclassification carries penalties.'],
+    ['Journal entries', 'The CPA sends adjusting entries after year end. You should…', ['Post them exactly as written so the books match the return', 'Round them', 'Ignore them once the return is filed'], 0, 'Your books should agree with the filed return.'],
+    ['Journal entries', 'Monthly depreciation is recorded as…', ['Dr Depreciation Expense, Cr Accumulated Depreciation', 'Dr Equipment, Cr Checking', 'Dr Accumulated Depreciation, Cr Checking'], 0, 'Depreciation is an expense with no cash moving; accumulated depreciation reduces the asset.'],
+    ['Journal entries', 'Why set an accrual to reverse automatically next month?', ['So the expense isn\'t counted twice when the real bill is paid', 'To delete it', 'Because the IRS requires it'], 0, 'The reversal cancels the accrual on day one, so paying the actual bill records the expense only once overall.'],
+    ['Journal entries', 'A $1,200 one-year insurance policy is paid in January. On a monthly-accrual basis, each month…', ['Expense $1,200 in January', 'Move $100 from Prepaid Expenses to Insurance', 'Nothing until December'], 1, 'Prepaid costs are expensed over the months they cover.'],
+    ['Business types', 'A sole proprietor\'s income tax is based on…', ['The owner\'s draws', 'The business\'s profit', 'Gross sales'], 1, 'Draws don\'t matter for tax; profit does.'],
+    ['Business types', 'An S-corp owner who works in the business should be paid…', ['Only through draws', 'A reasonable salary through payroll, then distributions', 'Only dividends'], 1, 'S-corp owners who work must take reasonable wages through payroll.'],
+    ['Business types', 'A client says "we\'re an LLC." The most useful follow-up question is…', ['How do you file — Schedule C, 1065 or 1120-S?', 'When was it formed?', 'Who is your bank?'], 0, 'An LLC can be taxed several ways; the return type tells you how to treat owner pay and equity.'],
+    ['Advising', 'Sales $80,000, cost of goods sold $32,000. Gross margin?', ['40%', '60%', '32%'], 1, '(80,000 − 32,000) ÷ 80,000 = 60%.'],
+    ['Advising', 'Profit is up but cash is falling. Two usual causes?', ['Slow-paying customers and owner draws above profit', 'Too many reports', 'Low sales tax'], 0, 'Receivables and draws are the first places to look; loan payments and inventory are next.'],
+    ['Advising', 'A cash cushion of 0.5 months means…', ['Cash covers about two weeks of normal spending', 'The business has half its sales in cash', 'Nothing to worry about'], 0, 'Less than a month of spending in the bank is a warning sign.'],
+    ['Practice', 'Which belongs in an engagement letter?', ['Services, client responsibilities, exclusions, fees and how to end it', 'Only the fee', 'The client\'s passwords'], 0, 'A clear letter prevents most client problems.'],
+    ['Practice', 'A client is eight months behind. How do you price the catch-up?', ['Free', 'A separate project fee, paid before starting', 'Add it to next month'], 1, 'Catch-up is a project: quote it, collect it, then do it.'],
+    ['Practice', 'During a catch-up, March won\'t reconcile. You should…', ['Move on and fix it at the end', 'Find the difference before starting April', 'Plug it to Miscellaneous'], 1, 'Every later month depends on March being right.'],
+    ['Practice', 'You find signs an employee is stealing from your client. You…', ['Confront the employee', 'Document it and tell the owner privately', 'Fix the books and stay quiet'], 1, 'Report facts privately to the owner; don\'t investigate or accuse yourself.'],
+    ['Practice', 'Before taking on clients, which protects your own business?', ['Errors & omissions insurance and a signed engagement letter', 'A bigger monitor', 'Lower prices'], 0, 'E&O insurance and a clear engagement letter are the basics of a professional practice.'],
+    ['Practice', 'Gift cards a salon sold but customers haven\'t used yet are…', ['Income when sold', 'A liability until used', 'Owner\'s Contributions'], 1, 'The salon owes services; it becomes income as cards are redeemed.'],
+    ['Practice', 'A Shopify store\'s payouts arrive minus fees. Record…', ['Only the payouts as sales', 'Full sales and fees from the platform report; payouts are transfers', 'Fees as Owner\'s Draw'], 1, 'Same as Square: gross sales and fees from the report, payouts move money to the bank.']
   ];
-  const DRAW = 25, PASS = 0.8;
+  const DRAW = 30, PASS = 0.8;
 
   function shuffle(a, seed) { const r = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; const x = a.slice(); for (let i = x.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [x[i], x[j]] = [x[j], x[i]]; } return x; }
   function newAttempt() {
@@ -133,7 +158,7 @@
     [2, 9, 16, 23, 30].forEach((d, i) => add(null, day(d), 'DEPOSIT - COUNTER SALES', [1480.25, 1322.4, 1610.75, 1395.1, 1544.6][i], 'Sales', { payee: 'Counter sales' }));
     add(null, day(1), 'BLOOM ST PROPERTIES RENT', -2100, 'Rent & Lease', { payee: 'Bloom St Properties' });
     add(null, day(5), 'DENVER WHOLESALE FLORIST', -688.4, 'Cost of Goods Sold', { payee: 'Denver Wholesale Florist' });
-    add(null, day(15), 'GUSTO PAYROLL PPD', -2240.15, 'Payroll & Wages', { payee: 'Gusto Payroll' });
+    add('payroll', day(15), 'GUSTO PAYROLL PPD', -3182.4, 'Payroll & Wages', { payee: 'Gusto Payroll' }); // to split: 2,950.00 wages + 232.40 employer taxes
     add('xcel1', day(11), 'XCEL ENERGY ONLINE PMT', -164.22, 'Utilities', { payee: 'Xcel Energy' });
     add('xcel2', day(11), 'XCEL ENERGY ONLINE PMT', -164.22, 'Utilities', { payee: 'Xcel Energy' }); // planted duplicate
     add('check', day(13), 'CHECK #1187 GARDEN GATE SUPPLY', -128.5, 'Cost of Goods Sold', { payee: 'Garden Gate Supply' }); // planted typo: really 182.50
@@ -184,16 +209,22 @@
     const checkT = tx(k.check) || c.transactions.find(t => /1187/.test(t.description));
     const everyday = [['flor', 'expense'], ['goog', 'expense'], ['ins', 'expense'], ['gas', 'expense'], ['dep', 'income']];
     const evOk = everyday.filter(([id, ty]) => typeOk(k[id], ty)).length;
+    const pay = tx(k.payroll), ptax = C.acctByName(c, 'Payroll Taxes'), pwag = C.acctByName(c, 'Payroll & Wages');
+    const payOk = !!pay && Array.isArray(pay.splits) && pay.splits.some(sp => ptax && sp.categoryId === ptax.id && Math.abs(Math.abs(sp.amount) - 232.4) < 0.005) && pay.splits.some(sp => pwag && sp.categoryId === pwag.id && Math.abs(Math.abs(sp.amount) - 2950) < 0.005);
+    const dep = C.acctByName(c, 'Depreciation Expense'), adep = C.acctByName(c, 'Accumulated Depreciation');
+    const ajeOk = !!dep && !!adep && (c.journals || []).some(j => !j.void && j.date <= k.month.to && j.date >= k.month.from && j.lines.some(l => l.accountId === dep.id && Math.abs(+l.debit - 175) < 0.005) && j.lines.some(l => l.accountId === adep.id && Math.abs(+l.credit - 175) < 0.005));
     const items = [
-      ['To Review is cleared', 5, c.transactions.filter(t => t.status === 'review').length === 0, 'Every imported line needs a category before the month can close.'],
-      ['Transfer to savings → Business Savings', 10, is(k.sav, 'Business Savings'), 'Money moving between the business\'s own accounts is a transfer, not an expense.'],
-      ['Transfer to the owner → Owner\'s Draw', 10, is(k.draw, "Owner's Draw"), 'The owner taking money out is a draw from equity — it doesn\'t lower profit.'],
-      ['Card autopay → Business Credit Card', 10, is(k.card, 'Business Credit Card'), 'The card purchases were already expenses; the payment pays down the card.'],
-      ['Sales tax payment → Sales Tax Payable', 10, is(k.tax, 'Sales Tax Payable'), 'Paying the state clears the sales tax collected — it isn\'t a new expense.'],
-      ['Hotel Teatro payment applied to invoice J-201', 15, !!inv && C.invoiceState(c, inv).status === 'paid' && !doubleCounted, 'The $640 was already income on the invoice. Apply the deposit to J-201 (or record the payment on the invoice and exclude the deposit) so it isn\'t counted twice.'],
+      ['To Review is cleared', 4, c.transactions.filter(t => t.status === 'review').length === 0, 'Every imported line needs a category before the month can close.'],
+      ['Transfer to savings → Business Savings', 8, is(k.sav, 'Business Savings'), 'Money moving between the business\'s own accounts is a transfer, not an expense.'],
+      ['Transfer to the owner → Owner\'s Draw', 8, is(k.draw, "Owner's Draw"), 'The owner taking money out is a draw from equity — it doesn\'t lower profit.'],
+      ['Card autopay → Business Credit Card', 8, is(k.card, 'Business Credit Card'), 'The card purchases were already expenses; the payment pays down the card.'],
+      ['Sales tax payment → Sales Tax Payable', 8, is(k.tax, 'Sales Tax Payable'), 'Paying the state clears the sales tax collected — it isn\'t a new expense.'],
+      ['Hotel Teatro payment applied to invoice J-201', 12, !!inv && C.invoiceState(c, inv).status === 'paid' && !doubleCounted, 'The $640 was already income on the invoice. Apply the deposit to J-201 (or record the payment on the invoice and exclude the deposit) so it isn\'t counted twice.'],
       [`Everyday items sensibly categorized (${evOk} of 5)`, 10, evOk === 5, 'Flowers → Cost of Goods Sold, Google → Software, State Farm → Insurance, Shell → Car & Truck, farmers market deposit → Sales.', evOk * 2],
-      ['Duplicate Xcel Energy payment removed', 10, dupGone, 'The same $164.22 payment was in the books twice on the same day.'],
-      ['Check #1187 corrected to $182.50', 10, !!checkT && Math.abs(checkT.amount + 182.5) < 0.005, 'The statement shows $182.50 — the books had the digits swapped ($128.50). A difference of $54 divides evenly by 9, the classic sign of a transposition.'],
+      ['Duplicate Xcel Energy payment removed', 8, dupGone, 'The same $164.22 payment was in the books twice on the same day.'],
+      ['Check #1187 corrected to $182.50', 8, !!checkT && Math.abs(checkT.amount + 182.5) < 0.005, 'The statement shows $182.50 — the books had the digits swapped ($128.50). A difference of $54 divides evenly by 9, the classic sign of a transposition.'],
+      ['Payroll split: $2,950.00 wages and $232.40 payroll taxes', 8, payOk, 'Split the Gusto withdrawal the way the payroll report reads — gross wages to Payroll & Wages, the employer\'s taxes to Payroll Taxes.'],
+      ['CPA\'s adjusting entry posted (depreciation $175)', 8, ajeOk, 'Post AJE #1 as a journal entry: debit Depreciation Expense $175, credit Accumulated Depreciation $175, dated the last day of the month.'],
       ['Checking reconciled to the statement', 10, !!rec && Math.abs(bookEnd - k.statement) < 0.005, `Statement ending balance ${money(k.statement)} on ${fmtDate(k.month.to)}; the books must match to the cent.`]
     ].map(([label, pts, ok, why, partial]) => ({ label, pts, ok, why, got: ok ? pts : (partial || 0) }));
     const score = items.reduce((s, x) => s + x.got, 0);
@@ -208,9 +239,9 @@
     const prev = t.practical;
     const brief = `<div class="exam-brief">
         <p><b>The job:</b> Juniper Flower Co. is a new client. Do ${U.fmtMonth(M.from)}'s month-end the way you would for a real client — and catch the problems a careless bookkeeper would miss.</p>
-        <ol class="t-list"><li>Categorize everything in <b>To Review</b>. Watch for transfers, the owner, the credit card and sales tax.</li><li>Hotel Teatro paid invoice <b>J-201</b>. Make sure that money isn't counted twice.</li><li>Run <b>Clean up</b> for anything doubled.</li><li><b>Reconcile</b> Business Checking to the statement below — it won't balance until the books are right.</li><li><b>Close</b> ${U.fmtMonth(M.from)}.</li></ol>
+        <ol class="t-list"><li>Categorize everything in <b>To Review</b>. Watch for transfers, the owner, the credit card and sales tax.</li><li>Hotel Teatro paid invoice <b>J-201</b>. Make sure that money isn't counted twice.</li><li>Split the <b>Gusto payroll</b> from the payroll report: gross wages <b>$2,950.00</b>, employer taxes <b>$232.40</b> (total $3,182.40).</li><li>Post the CPA's <b>AJE #1</b>: depreciation of <b>$175.00</b> for the month (debit Depreciation Expense, credit Accumulated Depreciation), dated the month's last day.</li><li>Run <b>Clean up</b> for anything doubled.</li><li><b>Reconcile</b> Business Checking to the statement below — it won't balance until the books are right.</li><li><b>Close</b> ${U.fmtMonth(M.from)}.</li></ol>
         <div class="t-stmt"><div class="stmt-bank">FRONT RANGE COMMUNITY BANK</div><div class="stmt-row"><span>Juniper Flower Co. LLC · Business Checking ····2290</span></div><div class="stmt-row"><span>Statement period</span><b>${fmtDate(M.from)} – ${fmtDate(M.to)}</b></div><div class="stmt-row"><span>Beginning balance</span><b>${money(8000)}</b></div><div class="stmt-row"><span>Checks paid</span><b>#1187 · ${money(182.5)}</b></div><div class="stmt-row big"><span>Ending balance</span><b>${c && c.examKey ? money(c.examKey.statement) : '<span class="muted" style="font-weight:400">shown when you start</span>'}</b></div></div>
-        <p class="muted">Graded on 10 checks worth 100 points. To pass: <b>80 points</b>, a balanced reconciliation and the month closed. All 100 earns the certificate's distinction.</p></div>`;
+        <p class="muted">Graded on 12 checks worth 100 points. To pass: <b>80 points</b>, a balanced reconciliation and the month closed. All 100 earns the certificate's distinction.</p></div>`;
     return `<div class="tm-head"><span class="tag gold">Final exam · part 2 of 2</span>${prev && prev.passed ? `<span class="tag green">${ICON.check}Passed · ${prev.score}/100</span>` : ''}</div>
       <h2 class="tm-title">Practical exam: a real month-end</h2>
       ${brief}
@@ -252,17 +283,18 @@
             ${distinction ? `<div style="font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:${gold};font-weight:700;margin-top:4px">with distinction</div>` : ''}
             <div class="muted" style="font-size:14px;margin-top:26px">This certifies that</div>
             <div class="serif" style="font-size:38px;margin:12px 0 10px;padding:0 30px 10px;border-bottom:1px solid ${gold}">${esc(name)}</div>
-            <div style="font-size:13.5px;max-width:5.4in;line-height:1.65;color:#4A5550">completed all three levels of the Coll Ledger Academy — Foundations, Month-End Professional and Client Advisor — and passed the written examination and a graded practical month-end close.</div>
+            <div style="font-size:13.5px;max-width:5.4in;line-height:1.65;color:#4A5550">completed all four levels of the Coll Ledger Academy — Foundations, Month-End Professional, Client Advisor and Running a Practice — and passed the written examination and a graded practical month-end close.</div>
             <div style="display:flex;gap:46px;margin-top:30px;font-size:12px;color:#6B756F">
               <div><div class="serif" style="font-size:20px;color:#16201C">${w}%</div>Written exam</div>
               <div><div class="serif" style="font-size:20px;color:#16201C">${p}/100</div>Practical exam</div>
               <div><div class="serif" style="font-size:20px;color:#16201C">${fmtDate(date)}</div>Awarded</div>
             </div>
             <div style="display:flex;align-items:center;gap:12px;margin:34px 0 18px;color:${gold}"><span style="width:70px;height:1px;background:${gold}"></span><span style="font-size:14px">&#9670;</span><span style="width:70px;height:1px;background:${gold}"></span></div>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;width:100%;font-size:11.5px;color:#4A5550;line-height:1.5">
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px 26px;width:100%;font-size:11.5px;color:#4A5550;line-height:1.5;text-align:left">
               <div><div style="font-weight:700;color:${green};letter-spacing:.06em;text-transform:uppercase;font-size:10.5px;margin-bottom:4px">Foundations</div>Categorizing · invoices · reconciliation · month-end close</div>
-              <div><div style="font-weight:700;color:${green};letter-spacing:.06em;text-transform:uppercase;font-size:10.5px;margin-bottom:4px">Month-end professional</div>Bills · receipts · error-finding · client reporting</div>
+              <div><div style="font-weight:700;color:${green};letter-spacing:.06em;text-transform:uppercase;font-size:10.5px;margin-bottom:4px">Month-end professional</div>Debits & credits · payroll · journal entries · error-finding</div>
               <div><div style="font-weight:700;color:${green};letter-spacing:.06em;text-transform:uppercase;font-size:10.5px;margin-bottom:4px">Client advisor</div>Cash flow · budgets · estimated taxes · 1099s</div>
+              <div><div style="font-weight:700;color:${green};letter-spacing:.06em;text-transform:uppercase;font-size:10.5px;margin-bottom:4px">Running a practice</div>Onboarding · pricing · engagement letters · ethics</div>
             </div>
             <div style="margin-top:auto;width:100%;display:flex;justify-content:space-between;align-items:flex-end;font-size:11px;color:#6B756F">
               <div style="text-align:left"><div style="font-family:Georgia,serif;font-size:15px;color:#16201C;border-bottom:1px solid #16201C;padding-bottom:4px;margin-bottom:4px">Coll Business Solutions LLC</div>Issuer</div>
@@ -278,7 +310,7 @@
           <div style="font-weight:700;color:${green};margin:8px 0 6px">Examinations</div>
           <div style="display:flex;justify-content:space-between;border-bottom:1px solid #E6E2D9;padding:5px 0"><span>Written examination — ${DRAW} questions from a ${BANK.length}-question bank, ${Math.round(PASS * 100)}% to pass</span><b>${w}%</b></div>
           <div style="display:flex;justify-content:space-between;border-bottom:1px solid #E6E2D9;padding:5px 0"><span>Practical examination — month-end close with planted errors, auto-graded</span><b>${p}/100</b></div>
-          <p class="muted" style="margin-top:26px;font-size:11px;line-height:1.6">Skills demonstrated: double-entry fundamentals; categorizing transfers, owner activity, credit card and sales-tax payments; invoices and receivables; bills and payables; split transactions and smart rules; bank and card reconciliation, including finding duplicates and transposed amounts; receipts and record-keeping; month-end close and client reporting; cash-flow and budget review; quarterly estimated-tax planning; 1099 contractor reporting; professional practice.<br><br>This certificate is issued by Coll Business Solutions LLC for completion of its Coll Ledger training program. It is not a state license or a credential from a professional accounting body.</p>
+          <p class="muted" style="margin-top:26px;font-size:11px;line-height:1.6">Skills demonstrated: double-entry fundamentals and debit/credit entries; payroll recording; journal and adjusting entries; categorizing transfers, owner activity, credit card and sales-tax payments; invoices and receivables; bills and payables; split transactions and smart rules; bank and card reconciliation, including finding duplicates and transposed amounts; receipts and record-keeping; month-end close and client reporting; cash-flow and budget review; quarterly estimated-tax planning; business types and owner compensation; financial-health analysis; 1099 contractor reporting; client onboarding, pricing and engagement letters; catch-up projects; ethics and data security.<br><br>This certificate is issued by Coll Business Solutions LLC for completion of its Coll Ledger training program. It is not a state license or a credential from a professional accounting body.</p>
         </div>`), `Coll Ledger Professional Bookkeeping Certificate - ${name}.pdf`);
       setTimeout(credentialModal, 600);
     };

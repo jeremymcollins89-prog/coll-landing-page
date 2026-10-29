@@ -42,7 +42,8 @@
     ['ap', 'Bills to Pay', 'Unpaid vendor bills and when they are due.'],
     ['tb', 'Trial Balance', 'Every account balance in debit and credit columns — what CPAs ask for.'],
     ['1099', '1099 Contractors', 'What each contractor was paid this year, and who needs a 1099.'],
-    ['tax', 'Sales Tax', 'Sales tax collected, paid to the state, and still owed.']
+    ['tax', 'Sales Tax', 'Sales tax collected, paid to the state, and still owed.'],
+    ['health', 'Business Health', 'Margins, cash cushion, how fast customers pay — in plain English.']
   ];
 
   function reportData(c, opts = {}) {
@@ -125,9 +126,36 @@
       html = head('General Ledger', `${fmtDate(rg.from)} – ${fmtDate(rg.to)}`) + `<div class="muted" style="text-align:center;margin:-12px 0 18px">Debits increase what it owns and its expenses; credits increase what it owes, the owner's stake and income.</div>` + accs.map(a => {
         const list = byAcc.get(a.id).sort((x, y) => x.date.localeCompare(y.date));
         let dr = 0, cr = 0;
-        const rowsH = list.map((p, i) => { dr += p.dr; cr += p.cr; const d = p.t ? (p.t.payee || p.t.description) : p.inv ? 'Invoice ' + p.inv.number : 'Opening balance'; csv.push([a.name, p.date, d, p.dr ? p.dr.toFixed(2) : '', p.cr ? p.cr.toFixed(2) : '']); return i < limit ? `<tr><td class="muted" style="width:110px">${fmtDate(p.date)}</td><td>${esc(d)}</td><td class="num">${p.dr ? money(p.dr) : ''}</td><td class="num">${p.cr ? money(p.cr) : ''}</td></tr>` : ''; }).join('');
+        const rowsH = list.map((p, i) => { dr += p.dr; cr += p.cr; const d = p.t ? (p.t.payee || p.t.description) : p.inv ? 'Invoice ' + p.inv.number : p.je ? `Journal entry ${p.je.number || ''} · ${p.je.memo || ''}`.trim() : p.bill ? 'Bill' + (p.bill.ref ? ' ' + p.bill.ref : '') : 'Opening balance'; csv.push([a.name, p.date, d, p.dr ? p.dr.toFixed(2) : '', p.cr ? p.cr.toFixed(2) : '']); return i < limit ? `<tr><td class="muted" style="width:110px">${fmtDate(p.date)}</td><td>${esc(d)}</td><td class="num">${p.dr ? money(p.dr) : ''}</td><td class="num">${p.cr ? money(p.cr) : ''}</td></tr>` : ''; }).join('');
         return `<table class="rpt" style="margin-bottom:12px"><tr class="sec"><td colspan="2">${esc(a.code)} · ${esc(a.name)}</td><td class="num">Debit</td><td class="num">Credit</td></tr>${rowsH}${list.length > limit ? `<tr><td colspan="4" class="muted">…and ${list.length - limit} more (all included in the PDF and spreadsheet)</td></tr>` : ''}<tr class="total"><td colspan="2">Total ${esc(a.name)}</td><td class="num">${money(dr)}</td><td class="num">${money(cr)}</td></tr></table>`;
       }).join('');
+    }
+    else if (R.type === 'health') {
+      const p = C.profitLoss(c, rg.from, rg.to);
+      const days = Math.max(1, C.daysBetween(rg.from, rg.to > today() ? today() : rg.to) + 1);
+      const bal = C.balances(c, { to: rg.to > today() ? today() : rg.to });
+      const sum = f => c.accounts.filter(f).reduce((s, a) => s + (bal.get(a.id) || 0), 0);
+      const cash = sum(a => (a.sub === 'bank' || a.sub === 'clearing') && !a.archived);
+      const curA = sum(a => a.type === 'asset' && ['bank', 'clearing', 'ar', 'current'].includes(a.sub));
+      const curL = sum(a => a.type === 'liability' && ['credit', 'ap', 'current'].includes(a.sub));
+      const ar = sum(a => a.sub === 'ar'), ap = sum(a => a.sub === 'ap');
+      const spend = p.totalCogs + p.totalExpense + p.totalOtherExpense;
+      const perDaySales = p.totalIncome / days, perDaySpend = spend / days;
+      const draw = C.acctByKey(c, 'draw'); const draws = draw ? -(C.balances(c, { from: rg.from, to: rg.to }).get(draw.id) || 0) : 0;
+      const pct = (a, b) => b ? a / b * 100 : null;
+      const rows = [
+        ['Gross margin', pct(p.gross, p.totalIncome), v => v.toFixed(1) + '%', v => v >= 40 ? 'good' : v >= 20 ? 'watch' : 'low', 'Of every sales dollar, what\'s left after the direct cost of what was sold. Restaurants often run 60–70%; retail 25–50%; service businesses higher.', !p.totalCogs],
+        ['Net profit margin', pct(p.net, p.totalIncome), v => v.toFixed(1) + '%', v => v >= 10 ? 'good' : v >= 0 ? 'watch' : 'low', 'Of every sales dollar, what\'s left after everything. Many healthy small businesses land between 5% and 20%.'],
+        ['Cash cushion', perDaySpend ? cash / (perDaySpend * 30) : null, v => v.toFixed(1) + ' months', v => v >= 3 ? 'good' : v >= 1 ? 'watch' : 'low', 'How many months the cash in the bank would cover normal spending. Three months or more is a comfortable cushion.'],
+        ['Current ratio', curL ? curA / curL : null, v => v.toFixed(2), v => v >= 1.5 ? 'good' : v >= 1 ? 'watch' : 'low', 'Short-term things it owns (cash, money owed to it) divided by short-term bills (cards, bills, sales tax). Above 1.5 means it can comfortably pay what\'s coming due.'],
+        ['Days to get paid', perDaySales && ar ? ar / perDaySales : null, v => Math.round(v) + ' days', v => v <= 30 ? 'good' : v <= 45 ? 'watch' : 'low', 'On average, how long customers take to pay. Over 45 days is worth a conversation about reminders, deposits or terms.'],
+        ['Days to pay bills', perDaySpend && ap ? ap / perDaySpend : null, v => Math.round(v) + ' days', v => v <= 45 ? 'good' : 'watch', 'On average, how long the business takes to pay vendors. Much longer than terms can strain vendor relationships.'],
+        ['Owner pay vs. profit', p.net > 0 && draws ? pct(draws, p.net) : null, v => Math.round(v) + '%', v => v <= 80 ? 'good' : v <= 100 ? 'watch' : 'low', 'How much of the profit the owner took out. Over 100% means the business is shrinking its cash to pay the owner.']
+      ].filter(r => !r[6]);
+      const word = { good: 'Healthy', watch: 'Keep an eye on it', low: 'Needs attention' };
+      csv.push(['Measure', 'Value', 'Reading']);
+      html = head('Business Health', `${fmtDate(rg.from)} – ${fmtDate(rg.to)}`) + `<table class="rpt health">${rows.map(([n, v, f, g, why]) => { const ok = v != null && isFinite(v); csv.push([n, ok ? f(v) : 'n/a', ok ? word[g(v)] : '']); return `<tr><td><b>${n}</b><div class="muted" style="font-size:12px;line-height:1.5;margin-top:2px">${why}</div></td><td class="num" style="font-size:16px;font-weight:650;white-space:nowrap">${ok ? f(v) : '—'}</td><td style="width:150px">${ok ? `<span class="tag ${g(v) === 'good' ? 'green' : g(v) === 'watch' ? 'gold' : 'red'}">${word[g(v)]}</span>` : '<span class="muted">Not enough data</span>'}</td></tr>`; }).join('')}</table>
+        <div class="muted" style="text-align:center;margin-top:16px;font-size:12px">Rules of thumb for conversation, not judgments — every industry is different.</div>`;
     }
     else if (R.type === 'ap') {
       const buckets = ['Not due yet', '1–30 days late', '31–60', '61+'];

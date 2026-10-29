@@ -44,10 +44,13 @@ const Core = (() => {
     ['1000', 'Business Checking', 'asset', 'bank', null],
     ['1010', 'Business Savings', 'asset', 'bank', null],
     ['1200', 'Accounts Receivable', 'asset', 'ar', 'ar'],
+    ['1300', 'Prepaid Expenses', 'asset', 'current', null],
     ['1500', 'Equipment & Vehicles', 'asset', 'fixed', null],
+    ['1510', 'Accumulated Depreciation', 'asset', 'fixed', null],
     ['2000', 'Business Credit Card', 'liability', 'credit', null],
     ['2100', 'Accounts Payable', 'liability', 'ap', 'ap'],
     ['2200', 'Sales Tax Payable', 'liability', 'current', 'tax'],
+    ['2300', 'Accrued Liabilities', 'liability', 'current', null],
     ['2500', 'Loans Payable', 'liability', 'loan', null],
     ['3000', "Owner's Contributions", 'equity', 'equity', 'contrib'],
     ['3100', "Owner's Draw", 'equity', 'equity', 'draw'],
@@ -72,7 +75,10 @@ const Core = (() => {
     ['6850', 'Travel', 'expense', 'expense', null],
     ['6900', 'Utilities', 'expense', 'expense', null],
     ['6950', 'Payroll & Wages', 'expense', 'expense', null],
+    ['6955', 'Payroll Taxes', 'expense', 'expense', null],
     ['6960', 'Taxes & Licenses', 'expense', 'expense', null],
+    ['6970', 'Depreciation Expense', 'expense', 'otherexpense', null],
+    ['6980', 'Interest Expense', 'expense', 'otherexpense', null],
     ['6990', 'Miscellaneous Expense', 'expense', 'otherexpense', null],
     ['6999', 'Uncategorized Expense', 'expense', 'otherexpense', 'unc_exp']
   ];
@@ -116,7 +122,7 @@ const Core = (() => {
       closes: [],
       imports: [],
       lockDate: null,
-      budgets: {}, trips: [], todos: [], notes: '', cleanupOk: [], estTax: { pct: 25, paid: {} }
+      journals: [], budgets: {}, trips: [], todos: [], notes: '', cleanupOk: [], estTax: { pct: 25, paid: {} }
     };
   }
 
@@ -214,6 +220,16 @@ const Core = (() => {
       if (tot.discount) {
         const first = inv.lines.find(l => l.accountId && acct(c, l.accountId));
         out.push({ acc: first ? first.accountId : (acctByKey(c, 'service') || acctByKey(c, 'sales')).id, date: inv.date, dr: tot.discount, cr: 0, inv });
+      }
+    }
+
+    // journal entries (adjustments from the CPA, depreciation, accruals, corrections)
+    for (const je of c.journals || []) {
+      if (je.void) continue;
+      for (const ln of je.lines || []) {
+        const dr = round2(+ln.debit || 0), cr = round2(+ln.credit || 0);
+        if ((!dr && !cr) || !acct(c, ln.accountId)) continue;
+        out.push({ acc: ln.accountId, date: je.date, dr, cr, je, line: ln });
       }
     }
 
@@ -472,6 +488,14 @@ const Core = (() => {
       .map(x => { const v = contact(c, x.b.vendorId); return { id: x.b.id, num: x.b.ref || '', name: v ? v.name : '', vendorId: x.b.vendorId, date: x.b.date, named: v && words.includes(normName(v.name).split(' ')[0]) ? 1 : 0 }; });
     const best = pick(open);
     return best ? { categoryId: ap.id, payee: best.name, source: 'bill', billId: best.id, vendorId: best.vendorId, docNumber: best.num } : null;
+  }
+
+  // A journal entry is ready to post when it has two or more lines and debits equal credits
+  function journalCheck(je) {
+    const lines = (je.lines || []).filter(l => l.accountId && ((+l.debit || 0) || (+l.credit || 0)));
+    const dr = round2(lines.reduce((s, l) => s + (+l.debit || 0), 0)), cr = round2(lines.reduce((s, l) => s + (+l.credit || 0), 0));
+    const bad = lines.some(l => (+l.debit || 0) && (+l.credit || 0)) || lines.some(l => (+l.debit || 0) < 0 || (+l.credit || 0) < 0);
+    return { lines: lines.length, dr, cr, diff: round2(dr - cr), ok: lines.length >= 2 && Math.abs(dr - cr) < 0.005 && dr > 0 && !bad };
   }
 
   function suggest(c, t) {
@@ -779,7 +803,7 @@ const Core = (() => {
     isDebitNormal, isMoneyAccount, newData, newClient, acct, acctByKey, acctByName, contact, findAccount, ensureAccount, normName, isLocked, guessDateOrder,
     postings, balances, profitLoss, balanceSheet, fyStart,
     invoiceTotals, invoicePaid, invoiceState, suggest, ruleFor, cleanPayee, keyOf,
-    ensureAP, billTotal, billPaid, billState, nextDate, trialBalance, contractorPayments, threshold1099, salesTax,
+    journalCheck, ensureAP, billTotal, billPaid, billState, nextDate, trialBalance, contractorPayments, threshold1099, salesTax,
     parseCSV, toCSV, parseDate, parseAmount, guessColumns, periodRange, demoClients
   };
 })();

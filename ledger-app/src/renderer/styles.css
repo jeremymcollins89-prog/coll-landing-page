@@ -1083,3 +1083,67 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.55; resize: ve
 }
 @media (max-width: 640px) { .lines, .lines tbody { display: block; width: 100%; } }
 .modal-body > * { flex-shrink: 0; }
+
+/* Journal entries */
+.je-grid { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 10px; }
+.je-help { margin-bottom: 14px; box-shadow: none; background: var(--surface-2); }
+.je-help .card-body { padding: 10px 16px; }
+.je-rule { font-size: 13px; color: var(--ink-2); }
+.je-rule b { color: var(--ink); }
+.je-foot { display: flex; align-items: center; gap: 12px; margin: 10px 0 6px; flex-wrap: wrap; }
+.je-tot { margin-left: auto; display: flex; gap: 16px; align-items: center; font-size: 13px; color: var(--ink-3); }
+.je-tot b { color: var(--ink); font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .je-grid { grid-template-columns: 1fr 1fr; } .je-grid > :last-child { grid-column: 1 / -1; } .je-tot { margin-left: 0; } }
+
+/* Pricing calculator and engagement letter */
+.price-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.price-form { display: flex; flex-direction: column; gap: 8px; }
+.price-form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.price-form .field { margin: 0; }
+.price-out { background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+.price-big { font-family: var(--serif); font-size: 42px; line-height: 1.1; margin: 4px 0 12px; color: var(--accent); }
+.price-big span { font-size: 16px; color: var(--ink-3); margin-left: 6px; font-family: var(--sans); }
+.price-lines { display: flex; flex-direction: column; gap: 5px; font-size: 13px; border-top: 1px solid var(--line); padding-top: 10px; }
+.price-lines > div { display: flex; justify-content: space-between; gap: 10px; color: var(--ink-2); }
+.price-lines b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.price-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.price-stats > div { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; display: flex; flex-direction: column; }
+.price-stats b { font-size: 16px; } .price-stats span { font-size: 11px; color: var(--ink-3); }
+.price-catch { display: flex; justify-content: space-between; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--gold-soft); font-size: 13px; }
+.el-services { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; }
+.rpt.health td { vertical-align: top; padding-top: 12px; padding-bottom: 12px; }
+@media (max-width: 760px) { .price-grid, .el-services { grid-template-columns: 1fr; } }
+
+/* Academy drill */
+.drill { margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.drill-row { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.drill-row:last-of-type { border-bottom: 0; }
+.drill-q { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; font-weight: 550; margin-bottom: 8px; }
+.drill-q .n { width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-size: 11.5px; font-weight: 700; flex: none; }
+.drill-a { display: flex; gap: 10px; align-items: flex-end; padding-left: 32px; flex-wrap: wrap; }
+.drill-a label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); font-weight: 650; flex: 1 1 180px; }
+.drill-mark { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex: none; margin-bottom: 2px; }
+.drill-row.ok .drill-mark { background: var(--accent-soft); color: var(--pos); }
+.drill-row.bad .drill-mark { background: var(--neg-soft); color: var(--neg); }
+.drill-mark svg { width: 16px; height: 16px; }
+.drill-hint { padding-left: 32px; font-size: 12.5px; color: var(--neg); margin-top: 6px; }
+.drill-foot { display: flex; gap: 14px; align-items: center; margin-top: 12px; }
+.payroll-rpt .stmt-row span { max-width: 75%; }
+.train > * { min-width: 0; }
+.modal-body .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.modal-body .two > .field { margin: 0; }
+@media (max-width: 640px) {
+  .modal-body .two { grid-template-columns: 1fr; }
+  .drill-a { padding-left: 0; }
+  .drill-a label { flex: 1 1 100%; }
+  .je-lines tr { grid-template-columns: 1fr 1fr 34px; }
+  .je-lines tr td:nth-child(2) { grid-column: 1 / -1; }
+  .train-main { padding: 18px 16px; }
+}
+@media (max-width: 640px) {
+  .lines.je-lines tr:has(select) td:nth-child(2) { grid-column: 1 / -1; }
+  .lines.je-lines tr td:nth-child(3) { grid-column: 1; }
+  .lines.je-lines tr td:nth-child(4) { grid-column: 2; }
+  .tm-head { flex-wrap: wrap; }
+  .tm-head .tag { white-space: normal; height: auto; line-height: 1.4; }
+}

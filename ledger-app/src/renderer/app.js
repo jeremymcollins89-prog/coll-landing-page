@@ -51,6 +51,7 @@ const App = (() => {
       c.closes = c.closes || []; c.imports = c.imports || []; c.lockDate = c.lockDate || null; c.checklistDismissed = !!c.checklistDismissed;
       for (const a of c.accounts) if (a.sub === 'clearing' && a.type !== 'asset') a.type = 'asset';
       c.bills = c.bills || []; c.recurring = c.recurring || [];
+      c.journals = c.journals || [];
       c.budgets = c.budgets || {}; c.trips = c.trips || []; c.todos = c.todos || []; c.notes = c.notes || ''; c.cleanupOk = c.cleanupOk || [];
       c.estTax = Object.assign({ pct: 25, paid: {} }, c.estTax || {});
       if (!C.acctByKey(c, 'ap')) C.ensureAP(c);
@@ -107,10 +108,11 @@ const App = (() => {
     { label: null, items: [['clients', 'All clients', 'home'], ['studio', 'My studio', 'studio']] },
     { label: 'Overview', items: [['dashboard', 'Dashboard', 'dash'], ['planning', 'Planning', 'plan']] },
     { label: 'Daily work', items: [['review', 'To Review', 'inbox'], ['transactions', 'Transactions', 'swap'], ['invoices', 'Invoices', 'file'], ['bills', 'Bills', 'bill'], ['mileage', 'Mileage', 'car'], ['contacts', 'Customers & Vendors', 'people'], ['import', 'Import', 'upload']] },
-    { label: 'Month end', items: [['reconcile', 'Reconcile', 'check'], ['cleanup', 'Clean up', 'broom'], ['close', 'Close the month', 'lock'], ['reports', 'Reports', 'report']] },
+    { label: 'Month end', items: [['reconcile', 'Reconcile', 'check'], ['cleanup', 'Clean up', 'broom'], ['journal', 'Journal entries', 'journal'], ['close', 'Close the month', 'lock'], ['reports', 'Reports', 'report']] },
     { label: 'Setup', items: [['accounts', 'Chart of Accounts', 'list'], ['rules', 'Smart Rules', 'bolt']] }
   ];
   const NAV_ICON = {
+    journal: '<svg viewBox="0 0 24 24"><path d="M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2m1 4v2h10V6zm0 4v2h10v-2zm0 4v2h6v-2z"/></svg>',
     plan: '<svg viewBox="0 0 24 24"><path d="m3.5 18.5 6-6 4 4L22 6.9 20.6 5.5l-7.1 8-4-4L2 17z"/></svg>',
     car: '<svg viewBox="0 0 24 24"><path d="M18.9 6a1.5 1.5 0 0 0-1.4-1h-11a1.5 1.5 0 0 0-1.4 1L3 12v8a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h12v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-8zM6.5 16A1.5 1.5 0 1 1 8 14.5 1.5 1.5 0 0 1 6.5 16m11 0a1.5 1.5 0 1 1 1.5-1.5 1.5 1.5 0 0 1-1.5 1.5M5 11l1.5-4.5h11L19 11z"/></svg>',
     broom: '<svg viewBox="0 0 24 24"><path d="m19.4 3-6.3 6.3-1.4-1.4-1.4 1.4 1.4 1.4L4 18.4V21h2.6l7.7-7.7 1.4 1.4 1.4-1.4-1.4-1.4L22 5.6zM9 21l1-3 3 1z"/><path d="M3 13h4v2H3zm2-4h4v2H5z"/></svg>',
@@ -122,7 +124,7 @@ const App = (() => {
     bill: '<svg viewBox="0 0 24 24"><path d="M18 2H6a2 2 0 0 0-2 2v18l3-2 3 2 2-1.5L14 22l3-2 3 2V4a2 2 0 0 0-2-2m-2 13H8v-2h8zm0-4H8V9h8zm0-4H8V5h8z"/></svg>',
     studio: '<svg viewBox="0 0 24 24"><path d="M20 6h-4V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2m-6 0h-4V4h4z"/></svg>'
   };
-  const TITLES = { planning: 'Planning', mileage: 'Mileage', cleanup: 'Clean up', handbook: "Bookkeeper's Handbook", bills: 'Bills', studio: 'My studio', training: 'Practice / Training', clients: 'All clients', dashboard: 'Dashboard', review: 'To Review', transactions: 'Transactions', invoices: 'Invoices', contacts: 'Customers & Vendors', import: 'Import', reconcile: 'Reconcile', close: 'Close the month', accounts: 'Chart of Accounts', rules: 'Smart Rules', reports: 'Reports', settings: 'Settings' };
+  const TITLES = { journal: 'Journal entries', planning: 'Planning', mileage: 'Mileage', cleanup: 'Clean up', handbook: "Bookkeeper's Handbook", bills: 'Bills', studio: 'My studio', training: 'Practice / Training', clients: 'All clients', dashboard: 'Dashboard', review: 'To Review', transactions: 'Transactions', invoices: 'Invoices', contacts: 'Customers & Vendors', import: 'Import', reconcile: 'Reconcile', close: 'Close the month', accounts: 'Chart of Accounts', rules: 'Smart Rules', reports: 'Reports', settings: 'Settings' };
 
   function go(page, params = {}) {
     if (page !== 'reconcile' && S.ui.recon) { S.ui.parkedRecon = S.ui.recon; S.ui.recon = null; }
@@ -230,6 +232,7 @@ const App = (() => {
         ['Send payment reminders', 'Polite emails for overdue invoices', ICON.mail, () => actions['remind-all']()],
         ['Month-end email', 'A short summary for the client', ICON.mail, () => actions['month-email']()],
         ['Clean up', 'Duplicates, loose ends, missing receipts', ICON.check, () => go('cleanup')],
+        ['New journal entry', 'Adjustments, depreciation, accruals, CPA entries', ICON.plus, () => actions['je-new']()],
         ["Bookkeeper's Handbook", 'Tips, rules, deadlines, FAQs, glossary', ICON.help, () => go('handbook')],
         ['Dark mode', 'Switch light and dark', ICON.spark, () => actions['toggle-dark']()],
         ['Add a client', 'Set up a new business', ICON.plus, () => actions['new-client']()],

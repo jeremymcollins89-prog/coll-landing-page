@@ -169,6 +169,33 @@
     ['3301', '3342', '3388'].forEach(n => c.transactions.push({ id: C.uid(), date: d, description: `FRONT RANGE WINDOW CLEANING INV ${n}`, payee: v.name, vendorId: v.id, amount: -750, accountId: chk, categoryId: lab, memo: '', status: 'posted', cleared: false, reconciled: false }));
     save();
   }
+
+  // Debit and credit drill
+  const DRILL = [
+    ['The owner puts $5,000 of personal money into the business checking account.', 'Business Checking', "Owner's Contributions"],
+    ['The business pays $1,850 rent from checking.', 'Rent & Lease', 'Business Checking'],
+    ['You send a customer a $600 invoice.', 'Accounts Receivable', 'Sales'],
+    ['The customer pays that $600 invoice.', 'Business Checking', 'Accounts Receivable'],
+    ['Office supplies, $80, on the business credit card.', 'Office Supplies', 'Business Credit Card'],
+    ['The business pays $80 on the credit card from checking.', 'Business Credit Card', 'Business Checking'],
+    ['A $900 bill arrives from a flour supplier, not paid yet.', 'Cost of Goods Sold', 'Accounts Payable'],
+    ['Monthly depreciation of $125 on the ovens.', 'Depreciation Expense', 'Accumulated Depreciation']
+  ];
+  const DRILL_ACCTS = ['Business Checking', 'Accounts Receivable', 'Accumulated Depreciation', 'Business Credit Card', 'Accounts Payable', "Owner's Contributions", 'Sales', 'Cost of Goods Sold', 'Rent & Lease', 'Office Supplies', 'Depreciation Expense'];
+  const drillScore = () => { const d = T().drill || {}; return DRILL.filter((x, i) => d[i] && d[i].dr === x[1] && d[i].cr === x[2]).length; };
+  function drillHTML() {
+    const d = T().drill || {}, shown = !!T().drillChecked;
+    const opt = (sel) => `<option value="">Choose…</option>${DRILL_ACCTS.map(a => `<option ${sel === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}`;
+    return `<div class="drill"><div class="cap-label">The drill — pick the debit and the credit</div>${DRILL.map((x, i) => { const a = d[i] || {}; const ok = a.dr === x[1] && a.cr === x[2]; return `<div class="drill-row ${shown ? (ok ? 'ok' : 'bad') : ''}"><div class="drill-q"><span class="n">${i + 1}</span>${esc(x[0])}</div><div class="drill-a"><label>Debit<select class="input sm" data-drill="${i}" data-side="dr">${opt(a.dr)}</select></label><label>Credit<select class="input sm" data-drill="${i}" data-side="cr">${opt(a.cr)}</select></label>${shown ? `<span class="drill-mark">${ok ? ICON.check : ICON.close}</span>` : ''}</div>${shown && !ok ? `<div class="drill-hint">Ask: what did the business get, and where did it come from?</div>` : ''}</div>`; }).join('')}
+      <div class="drill-foot"><button class="btn primary" data-action="t-drill-check">Check my answers</button>${shown ? `<b class="${drillScore() === DRILL.length ? 'pos' : ''}">${drillScore()} of ${DRILL.length} right${drillScore() === DRILL.length ? ' — perfect!' : ''}</b>` : ''}</div></div>`;
+  }
+  function plantPayroll() {
+    const c = ensurePractice(false); const t = T(); t.planted = t.planted || {};
+    if (t.planted.payroll && c.transactions.some(x => x.id === t.planted.payroll)) return;
+    C.acctByName(c, 'Payroll Taxes') || C.ensureAccount(c, { name: 'Payroll Taxes', type: 'expense', sub: 'expense' });
+    const x = { id: C.uid(), date: plantDate(c), description: 'GUSTO PAYROLL PPD 2,948.62', payee: 'Gusto Payroll', amount: -2948.62, accountId: C.acctByName(c, 'Business Checking').id, categoryId: C.acctByName(c, 'Payroll & Wages').id, memo: 'Payday', status: 'posted', cleared: false, reconciled: false };
+    c.transactions.push(x); t.planted.payroll = x.id; save();
+  }
   // Draws a realistic receipt for the Sunshine Packaging charge and reads it
   async function practiceReceipt() {
     T().flags.receiptTried = true; save();
@@ -347,6 +374,21 @@
 
     // ================= Level 2 · Month-end professional =================
     {
+      id: 'debits', level: 2, title: 'Debits and credits, for real', mins: 8,
+      learn: 'The language CPAs and other bookkeepers speak — and how to work out any entry yourself.',
+      body: [
+        `<p>Coll Ledger records both sides of every entry for you, but CPAs, auditors and job interviews talk in <b>debits</b> and <b>credits</b>. Knowing them lets you read a General Ledger, post a CPA's adjustments and spot mistakes.</p>`,
+        `<div class="t-kinds"><div><b>Debit increases</b><span>Assets (cash, money owed to you, equipment) and Expenses. Also owner's draws.</span></div><div><b>Credit increases</b><span>Liabilities (cards, loans, bills owed), Equity (owner's stake) and Income.</span></div></div>`,
+        `<p>Every entry has at least one debit and one credit, and they're always equal. A memory trick: <b>DEALER</b> — <i>D</i>ividends/draws, <i>E</i>xpenses, <i>A</i>ssets go up with debits; <i>L</i>iabilities, <i>E</i>quity, <i>R</i>evenue go up with credits.</p>`,
+        `<p>To work out any entry, ask two questions: <b>what did the business get?</b> (usually the debit) and <b>where did it come from?</b> (usually the credit). Paying rent: the business got rent (debit Rent), and the money came from checking (credit Checking).</p>`
+      ],
+      words: [['Debit (Dr)', 'The left side of an entry. Increases assets and expenses.'], ['Credit (Cr)', 'The right side. Increases liabilities, equity and income.'], ['T-account', 'A sketch of one account with debits on the left and credits on the right.']],
+      task: 'Get all eight entries in the drill below right.',
+      drill: true,
+      check: () => drillScore() === DRILL.length,
+      quiz: [{ q: 'The business pays $300 on its loan — all principal. What\'s the entry?', a: ['Debit Loans Payable, credit Checking', 'Debit Interest Expense, credit Checking', 'Debit Checking, credit Loans Payable'], c: 0, why: 'Paying principal lowers the loan (a liability goes down with a debit) and lowers cash (an asset goes down with a credit).' }]
+    },
+    {
       id: 'bills', level: 2, title: 'Bills and what the business owes', mins: 5,
       learn: 'Entering vendor bills when they arrive, paying them on time, and what Accounts Payable means.',
       body: [
@@ -359,6 +401,41 @@
       action: ['Open Bills', () => ensurePractice(true, 'bills')],
       check: () => { const c = P(); return !!c && (c.bills || []).some(b => C.billState(c, b).status === 'paid'); },
       quiz: [{ q: 'A $380 bill arrives today, due in 30 days. Where does it show until it\'s paid?', a: ['Accounts Payable', 'Accounts Receivable', 'Cost of Goods Sold only'], c: 0, why: 'Accounts Payable tracks what the business owes. The expense is counted when the bill is entered; paying it just clears what is owed.' }]
+    },
+    {
+      id: 'payroll', level: 2, title: 'Recording payroll', mins: 7,
+      learn: 'Turning one big payroll withdrawal into wages and payroll taxes — the way every payroll report reads.',
+      body: [
+        `<p>Most clients use a payroll service like Gusto or ADP. The bank shows one big withdrawal each payday, but it covers several things: the employees' <b>net pay</b>, the taxes <b>withheld from their checks</b>, and the <b>employer's own payroll taxes</b>.</p>`,
+        `<p>For the books, split it the way the payroll report reads: <b>gross wages</b> (net pay plus everything withheld) go to <i>Payroll & Wages</i>, and the <b>employer taxes</b> (the business's share of Social Security, Medicare and unemployment) go to <i>Payroll Taxes</i>. Some providers take taxes in a separate withdrawal — then each withdrawal gets its own category.</p>`,
+        `<div class="t-stmt payroll-rpt"><div class="stmt-bank">GUSTO · PAYROLL SUMMARY</div><div class="stmt-row"><span>Gross wages</span><b>$2,720.00</b></div><div class="stmt-row"><span>Employee taxes withheld</span><b>$582.80</b></div><div class="stmt-row"><span>Net pay to employees</span><b>$2,137.20</b></div><div class="stmt-row"><span>Employer taxes (SS 168.64 · Medicare 39.44 · state unemployment 20.54)</span><b>$228.62</b></div><div class="stmt-row big"><span>Total debited from the bank</span><b>$2,948.62</b></div></div>`,
+        `<p>Click below to add this payday to Bluebird's books, then open it and split it: <b>$2,720.00 Payroll & Wages</b> and <b>$228.62 Payroll Taxes</b>.</p>`
+      ],
+      words: [['Gross wages', 'Pay before any taxes are withheld — the employee\'s full wage.'], ['Net pay', 'What actually lands in the employee\'s account.'], ['Employer payroll taxes', 'Taxes the business pays on top of wages (its share of Social Security and Medicare, plus unemployment).']],
+      task: 'Add the payroll, then split it: $2,720.00 Payroll & Wages and $228.62 Payroll Taxes.',
+      action: ['Add the payroll and find it', () => { plantPayroll(); ensurePractice(true, 'transactions'); Object.assign(S.ui.txn, { q: '2,948.62', account: 'all', category: '', type: 'all', period: 'last-12' }); render(); }],
+      check: () => { const c = P(), id = (T().planted || {}).payroll; if (!c || !id) return false; const t = c.transactions.find(x => x.id === id); if (!t || !t.splits) return false; const tax = C.acctByName(c, 'Payroll Taxes'), wages = C.acctByName(c, 'Payroll & Wages'); return t.splits.some(sp => sp.categoryId === (tax || {}).id && Math.abs(Math.abs(sp.amount) - 228.62) < 0.005) && t.splits.some(sp => sp.categoryId === (wages || {}).id && Math.abs(Math.abs(sp.amount) - 2720) < 0.005); },
+      quiz: [
+        { q: 'Employee taxes withheld from paychecks — whose expense are they?', a: ['The business\'s — record them as Payroll Taxes', 'The employee\'s — they\'re part of gross wages', 'Nobody\'s — leave them out'], c: 1, why: 'Withholdings come out of the employee\'s gross pay. They\'re part of Payroll & Wages; only the employer\'s matching taxes are Payroll Taxes.' },
+        { q: 'A client asks you to "run payroll" on top of bookkeeping. What\'s the professional answer?', a: ['Sure — calculate the taxes by hand', 'Use a payroll service (Gusto, ADP…) so filings and deposits are handled, and record its reports', 'Pay employees as contractors instead'], c: 1, why: 'Payroll services file the quarterly and year-end forms and deposit taxes on time. Treating employees as contractors to avoid payroll is misclassification.' }
+      ]
+    },
+    {
+      id: 'journals', level: 2, title: 'Journal entries and adjustments', mins: 6,
+      learn: 'Posting the entries that don\'t come from the bank — the CPA\'s adjustments, depreciation and accruals.',
+      body: [
+        `<p>Not everything flows through a bank account. Equipment loses value (<b>depreciation</b>). An electric bill arrives after month end for power already used (<b>accrual</b>). The CPA finds something that belongs in a different category (<b>reclassification</b>). These go in as <b>journal entries</b> — you pick the accounts and enter the debits and credits yourself.</p>`,
+        `<p>At year end, most CPAs send a list of <b>adjusting journal entries</b> (AJEs). Posting them exactly as written — same date, accounts and amounts — makes your books match the tax return. Coll Ledger won't let you post an entry until it balances.</p>`,
+        `<div class="t-stmt"><div class="stmt-bank">FROM: SMITH &amp; CO. CPAS</div><div class="stmt-row"><span>AJE #1 · Monthly depreciation on the ovens</span></div><div class="stmt-row"><span>Dr Depreciation Expense</span><b>$210.00</b></div><div class="stmt-row"><span>Cr Accumulated Depreciation</span><b>$210.00</b></div></div>`
+      ],
+      words: [['Journal entry', 'An entry you write yourself with debits and credits.'], ['Adjusting entry (AJE)', 'A correction or end-of-period entry, often from the CPA.'], ['Accrual', 'Recording an expense or income in the month it belongs to, before cash moves.'], ['Accumulated depreciation', 'The total value an asset has lost so far. It reduces the asset on the Balance Sheet.']],
+      task: 'Post the CPA\'s AJE #1 for Bluebird: debit Depreciation Expense $210, credit Accumulated Depreciation $210.',
+      action: ['Open Journal entries', () => ensurePractice(true, 'journal')],
+      check: () => { const c = P(); if (!c) return false; const dep = C.acctByName(c, 'Depreciation Expense'), acc = C.acctByName(c, 'Accumulated Depreciation'); return !!dep && !!acc && (c.journals || []).some(j => !j.void && j.lines.some(l => l.accountId === dep.id && Math.abs(+l.debit - 210) < 0.005) && j.lines.some(l => l.accountId === acc.id && Math.abs(+l.credit - 210) < 0.005)); },
+      quiz: [
+        { q: 'December\'s electric bill ($180) arrives January 9. You close December on the 5th. Best practice?', a: ['Record it in January only', 'Accrue it in December with a journal entry that reverses on January 1', 'Ignore it — it\'s small'], c: 1, why: 'An accrual puts the expense in the month the power was used. The automatic reversal stops it from counting twice when the bill is paid in January.' },
+        { q: 'The CPA\'s adjusting entries arrive after you\'ve closed the year. What do you do?', a: ['Post them exactly as written, dated as the CPA dated them, then lock the year again', 'Change the numbers so they fit', 'Skip them — the return is already filed'], c: 0, why: 'Your books should match the tax return. Reopen, post the AJEs as written, and lock again.' }
+      ]
     },
     {
       id: 'receipts', level: 2, title: 'Receipts and the paper trail', mins: 4,
@@ -448,6 +525,40 @@
       ]
     },
     {
+      id: 'entities', level: 3, title: 'Business types and paying the owner', mins: 6,
+      learn: 'Why a sole proprietor, an LLC and an S corporation pay their owners differently — and where it shows in the books.',
+      body: [
+        `<p>How the owner gets paid depends on the <b>business type</b>:</p>
+         <ul class="t-list"><li><b>Sole proprietor</b> and <b>single-member LLC</b>: the owner takes <b>draws</b>. Tax is on the profit, not on the draws.</li><li><b>Partnership</b> or <b>multi-member LLC</b>: partners take draws or <b>guaranteed payments</b>; each gets a K-1. Track each partner's equity separately.</li><li><b>S corporation</b>: an owner who works in the business must get a <b>reasonable salary through payroll</b>; the rest can come out as <b>distributions</b>. Owners paid only by draws is a common, costly mistake.</li><li><b>C corporation</b>: owners are paid wages; other money out is usually a dividend or a loan.</li></ul>`,
+        `<p>An LLC is a legal form, not a tax type — it can be taxed as a sole proprietorship, a partnership or an S corp. When you onboard a client, ask what the <b>tax return</b> looks like (Schedule C, 1065 or 1120-S). Set it in each client's Settings so Coll Ledger's owner-pay guidance matches.</p>`
+      ],
+      words: [['Distribution', 'Profit paid out to S-corp owners — not wages, not an expense.'], ['Reasonable salary', 'What an S-corp must pay an owner who works in the business, through payroll.'], ['K-1', 'The tax form showing each partner\'s or S-corp owner\'s share of profit.']],
+      task: 'Bluebird Bakery LLC has one owner and never elected S-corp. Set its business type in Settings.',
+      action: ['Open Bluebird\'s Settings', () => ensurePractice(true, 'settings')],
+      check: () => { const c = P(); return !!c && c.entity === 'llc1'; },
+      quiz: [
+        { q: 'An S-corp owner who works full time takes $80,000 out as draws and no salary. What should you do?', a: ['Nothing — draws are fine', 'Flag it for the CPA: S-corp owners who work in the business need a reasonable salary through payroll', 'Record the draws as wages yourself'], c: 1, why: 'Paying an S-corp owner only through distributions is a well-known IRS issue. Raise it with the client and the CPA rather than reclassifying it yourself.' },
+        { q: 'A new client says "we\'re an LLC." What do you ask next?', a: ['Nothing — LLC tells you everything', 'Which tax return do you file — Schedule C, 1065 or 1120-S?', 'What color is your logo?'], c: 1, why: 'An LLC can be taxed several ways. The return tells you how owners should be paid and how equity is tracked.' }
+      ]
+    },
+    {
+      id: 'health', level: 3, title: 'Reading the numbers like an advisor', mins: 6,
+      learn: 'Turning reports into plain-English advice clients will pay for.',
+      body: [
+        `<p>Clients don't want reports — they want to know <b>how they're doing</b> and <b>what to do next</b>. A few numbers answer most of it:</p>
+         <ul class="t-list"><li><b>Gross margin</b> — of each sales dollar, what's left after the direct cost of what was sold.</li><li><b>Net profit margin</b> — what's left after everything.</li><li><b>Cash cushion</b> — months of normal spending the bank balance covers.</li><li><b>Days to get paid</b> — how long customers take to pay.</li><li><b>Owner pay vs. profit</b> — whether the owner is taking out more than the business earns.</li></ul>`,
+        `<p>The <b>Business Health</b> report (Reports) calculates all of these with a plain-English reading. Compare month to month and to the same month last year — trends matter more than any single number.</p>`
+      ],
+      words: [['Gross margin', '(Sales − cost of goods sold) ÷ sales.'], ['Net margin', 'Net profit ÷ sales.'], ['Days to get paid', 'Money customers owe ÷ average daily sales.']],
+      task: 'Open Bluebird\'s Business Health report.',
+      action: ['Open Business Health', () => { S.ui.report.type = 'health'; S.ui.report.period = 'ytd'; ensurePractice(true, 'reports'); }],
+      check: () => !!T().flags.rHealth,
+      quiz: [
+        { q: 'Sales $50,000, cost of goods sold $20,000, other expenses $22,000. Gross margin?', a: ['16%', '60%', '40%'], c: 1, why: '(50,000 − 20,000) ÷ 50,000 = 60%. Net margin would be (50,000 − 42,000) ÷ 50,000 = 16%.' },
+        { q: 'Profit is up but the bank balance keeps falling. What do you look at first?', a: ['Days to get paid and owner draws', 'The logo', 'Nothing — profit is up'], c: 0, why: 'Customers paying slowly and owners taking out more than profit are the two usual reasons cash falls while profit rises.' }
+      ]
+    },
+    {
       id: 'yearend', level: 3, title: 'Year-end and 1099s', mins: 5,
       learn: 'The January rush: contractors, the CPA package, and locking the year.',
       body: [
@@ -461,19 +572,102 @@
       check: () => { const c = P(); return !!c && c.contacts.some(x => x.name === 'Front Range Window Cleaning' && x.is1099) && !!T().flags.r1099; },
       quiz: [{ q: 'In 2026 a contractor is paid $2,250 by bank transfer. Is a 1099-NEC needed?', a: ['Yes — it\'s $2,000 or more', 'No — only over $10,000', 'No — bank transfers never count'], c: 0, why: 'For payments made in 2026, $2,000 or more to an unincorporated contractor for services generally needs a 1099-NEC.' }]
     },
+
+    // ================= Level 4 · Running your practice =================
     {
-      id: 'pro', level: 3, title: 'Working like a professional', mins: 4,
+      id: 'onboard', level: 4, title: 'Onboarding a new client', mins: 6,
+      learn: 'The first two weeks with a new client — what to collect so the books start right.',
+      body: [
+        `<p>Most bookkeeping problems start at onboarding: missing accounts, wrong opening balances, no idea how the business is taxed. A consistent checklist prevents all of it.</p>`,
+        `<p>Collect: a signed engagement letter; legal name, EIN and business type; <b>read-only</b> access to every bank and card account; statements for the start date; last year's tax return and the CPA's contact; prior books; payroll access; sales tax account and schedule; loan and lease documents; equipment list; contractors with W-9s; and who gets the reports.</p>`,
+        `<p>Coll Ledger adds all of these as the client's to-dos in one click (Dashboard → To-dos → <b>Onboarding checklist</b>), each due in two weeks.</p>`
+      ],
+      words: [['Opening balance', 'Each account\'s balance on the day the books start in Coll Ledger.'], ['Read-only access', 'Permission to see accounts without moving money.']],
+      task: 'Add the onboarding checklist to Bluebird\'s to-dos.',
+      action: ['Add the checklist', () => { const c = ensurePractice(true, 'dashboard'); App.addOnboarding(c); }],
+      check: () => { const c = P(); return !!c && (c.todos || []).filter(t => t.onboarding).length >= 10; },
+      quiz: [
+        { q: 'Where do opening balances come from?', a: ['The client\'s best guess', 'Bank and card statements for the start date (and the prior balance sheet for everything else)', 'Last month\'s deposits'], c: 1, why: 'Statements give exact balances on a specific date. Loans, equipment and other balances come from the prior books or tax return.' },
+        { q: 'A new client offers to email you their online banking password. You…', a: ['Accept and save it in Notes', 'Thank them and ask for read-only or accountant access instead', 'Use it once, then forget it'], c: 1, why: 'Read-only access protects the client and you. Never store full passwords.' }
+      ]
+    },
+    {
+      id: 'pricing', level: 4, title: 'Pricing your services', mins: 6,
+      learn: 'Quoting a monthly fee you can live on — and catch-up work that pays for itself.',
+      body: [
+        `<p>Most independent bookkeepers charge a <b>monthly flat fee</b> based on volume (transactions and accounts) and extras (payroll, invoicing, bills, sales tax, inventory, advisory calls). Clients like predictable bills; you're rewarded for working efficiently.</p>`,
+        `<p>Price <b>catch-up</b> work separately — often about one monthly fee per month behind, more if records are a mess — and collect it before you start. Check your <b>effective hourly rate</b> (fee ÷ hours): if it's too low, raise the fee or trim the scope.</p>`,
+        `<p>My studio → <b>Price a client</b> gives you a starting quote and turns it straight into an engagement letter.</p>`
+      ],
+      words: [['Flat fee', 'A set monthly price for a defined scope.'], ['Scope creep', 'Extra work that sneaks in without extra pay.'], ['Effective hourly rate', 'Your fee divided by the hours it really takes.']],
+      task: 'Use the pricing calculator to quote a client (try 120 transactions, 3 accounts, payroll).',
+      action: ['Open the pricing calculator', () => { ensurePractice(false); App.pricingModal(); }],
+      check: () => !!T().flags.priced,
+      quiz: [
+        { q: 'A client on a $400/month plan starts sending three times as many transactions. Best move?', a: ['Absorb it — they\'re a nice client', 'Point to the engagement letter and adjust the fee with notice', 'Quietly do less work'], c: 1, why: 'Scope and fees are tied in the engagement letter. Raise it early and kindly, with the notice the letter allows.' },
+        { q: 'A business is eight months behind. How do you quote it?', a: ['Free — they\'ll become a monthly client', 'A separate catch-up fee, paid before starting, plus the ongoing monthly fee', 'Hourly with no estimate'], c: 1, why: 'Catch-up is a project: quote it separately, get paid up front, then start the monthly service.' }
+      ]
+    },
+    {
+      id: 'engagement', level: 4, title: 'Engagement letters and boundaries', mins: 5,
+      learn: 'The one document that protects you, sets expectations and prevents most client problems.',
+      body: [
+        `<p>An <b>engagement letter</b> spells out: the services, what the client provides and by when, what's <i>not</i> included (tax returns, tax advice, audits, legal advice), the fee and payment terms, confidentiality, and how either side can end it.</p>`,
+        `<p>It also states that the client is responsible for the accuracy of what they give you and for their business decisions, and that you don't audit their records. Have an attorney review your standard letter once; then use it with every client — no exceptions, even friends.</p>`,
+        `<p>My studio → <b>Engagement letter</b> builds a ready-to-sign PDF from your services and fee.</p>`
+      ],
+      words: [['Engagement letter', 'A written agreement covering scope, responsibilities and fees.'], ['Out of scope', 'Work not covered by the agreement — quoted separately.']],
+      task: 'Create an engagement letter for a pretend client.',
+      action: ['Open the engagement letter', () => { ensurePractice(false); App.engagementModal({ client: 'Riverside Coffee Co.', contact: 'Sam Rivera', fee: 450 }); }],
+      check: () => !!T().flags.engagement,
+      quiz: [{ q: 'A client asks you to "just quickly file" their sales tax return, which isn\'t in your letter. You…', a: ['Do it free this once', 'Explain it\'s outside the agreement and quote it, or add it to the scope', 'Ignore the request'], c: 1, why: 'Kindly naming what\'s in and out of scope — and quoting extras — keeps the relationship healthy and you paid.' }]
+    },
+    {
+      id: 'catchup', level: 4, title: 'Catch-up and cleanup projects', mins: 6,
+      learn: 'How to bring months of messy or missing books up to date without getting lost.',
+      body: [
+        `<p>Many new clients come to you behind or with books someone else got wrong. Work in this order:</p>
+         <ol class="t-list"><li><b>Pin down the starting point</b> — a reconciled balance from the last good month, or the prior tax return.</li><li><b>Get every statement</b> for every account, every month. Missing statements are the #1 cause of catch-up projects stalling.</li><li><b>Import and categorize month by month</b>, oldest first, with smart rules doing the repetitive work.</li><li><b>Reconcile each month before moving on.</b> Finding an error in month 3 is easy; finding it from month 9 is not.</li><li><b>Run Clean up</b> on all time, then close each month.</li><li><b>Keep a questions list</b> for the client and send it in batches, not one email at a time.</li></ol>`
+      ],
+      words: [['Catch-up', 'Bringing books current from behind.'], ['Cleanup', 'Fixing books that exist but are wrong.']],
+      task: 'Run Clean up on all time for Bluebird (change "This year" to "All time").',
+      action: ['Open Clean up', () => { S.ui.clean = S.ui.clean || {}; S.ui.clean.scope = 'all'; ensurePractice(true, 'cleanup'); }],
+      check: () => !!T().flags.cleanAll,
+      quiz: [
+        { q: 'Halfway through a catch-up, the March reconciliation is off by $412. Best move?', a: ['Keep going and fix it at the end', 'Stop and find it before moving to April', 'Adjust it to Miscellaneous Expense'], c: 1, why: 'Each later month builds on March. Find the difference while it\'s isolated.' },
+        { q: 'The client can\'t find statements for two months. What now?', a: ['Estimate the transactions', 'Ask the client to download them from the bank (or request them), and pause those months until they arrive', 'Skip those months'], c: 1, why: 'Banks keep years of statements. Reconciled books need the real statements, not estimates.' }
+      ]
+    },
+    {
+      id: 'industries', level: 4, title: 'Industries you\'ll meet', mins: 7,
+      learn: 'What to watch for with the kinds of businesses that hire bookkeepers most.',
+      body: [
+        `<ul class="t-list"><li><b>Restaurants, cafés, bakeries</b> — daily card and cash sales (use the Square import), tips owed to staff, sales tax, food cost as cost of goods sold. Watch food cost and labor as a share of sales.</li><li><b>Contractors and trades</b> — deposits before work starts, materials, subcontractors who need 1099s, vehicles and mileage, and job profitability. Collect W-9s up front.</li><li><b>Retail and e-commerce</b> — inventory, payment-processor fees and payouts (Shopify, Stripe, PayPal work like Square: sales minus fees), sales tax in several states.</li><li><b>Salons, gyms and services</b> — booth rent or contractors vs. employees, gift cards (a liability until used), memberships.</li><li><b>Professional services</b> — invoicing and getting paid, retainers, owner pay and estimated taxes.</li><li><b>Nonprofits</b> — no owners; track grants and donor restrictions; the Form 990 belongs to the CPA.</li></ul>`,
+        `<p>When you meet a new industry, ask the client's CPA what they need to see at year end — then set up the categories to match from day one.</p>`
+      ],
+      words: [['Payment processor', 'A service (Square, Stripe, PayPal) that collects card payments and deposits them minus fees.'], ['Gift card liability', 'Money received for gift cards not yet used — owed to customers, not income yet.']],
+      task: null,
+      check: () => true,
+      quiz: [
+        { q: 'A salon sells $1,000 of gift cards in December. How is that recorded?', a: ['$1,000 of December income', 'A liability until the gift cards are used, then income', 'Owner\'s Contributions'], c: 1, why: 'The salon owes services to whoever holds the cards. It becomes income as the cards are redeemed.' },
+        { q: 'A contractor client pays a plumbing subcontractor $6,000 by check. What\'s needed by January 31?', a: ['Nothing', 'A 1099-NEC — collect the W-9 before paying', 'A W-2'], c: 1, why: '$6,000 by check to an unincorporated subcontractor is well over the 1099-NEC threshold.' },
+        { q: 'A Shopify store\'s payouts arrive in the bank minus fees. How do you record sales?', a: ['Count only the payouts as sales', 'Record full sales and fees from the Shopify report, then treat payouts as transfers — like Square', 'Ignore fees'], c: 1, why: 'Payouts are net of fees. Recording only payouts understates both sales and fees.' }
+      ]
+    },
+    {
+      id: 'pro', level: 4, title: 'Ethics, security and confidentiality', mins: 5,
       learn: 'Engagement letters, access, confidentiality and knowing where your role ends.',
       body: [
         `<p>Put every client relationship in writing with an <b>engagement letter</b>: what you'll do, how often, what the client provides and by when, the fee, and what's <i>not</i> included — like tax returns.</p>`,
         `<p>Ask for <b>read-only or accountant access</b> to bank accounts — never store a client's full password. Turn on the <b>password lock</b> and <b>cloud backup</b> in Settings; the books hold private financial information.</p>`,
-        `<p>Know your lane. Unless you're an EA, CPA or attorney, don't give tax advice or sign returns. Hand off clean books and let the preparer make the tax calls. The <b>Bookkeeper's Handbook</b> under Help has the rules, deadlines and checklists to keep handy.</p>`
+        `<p>Know your lane. Unless you're an EA, CPA or attorney, don't give tax advice or sign returns. Hand off clean books and let the preparer make the tax calls. The <b>Bookkeeper's Handbook</b> under Help has the rules, deadlines and checklists to keep handy.</p>`,
+        `<p>Protect client data: a password on Coll Ledger, encrypted cloud backup, a password manager, two-factor login on email, and never sending statements or tax IDs by plain email if a secure link is available. If you ever see signs of fraud or theft by an employee, document it and tell the owner privately — don't confront anyone yourself. Consider <b>errors & omissions (E&O) insurance</b> before you take on clients.</p>`
       ],
       words: [['Engagement letter', 'A written agreement on scope, timing and fees.'], ['Read-only access', 'Permission to view accounts without moving money.']],
       task: 'Open the Bookkeeper\'s Handbook and skim the Tax rules and Deadline calendar.',
       action: ['Open the handbook', () => go('handbook')],
       check: () => !!T().flags.handbook,
-      quiz: [{ q: 'A client asks you, a bookkeeper, to file their tax return. You\'re not an EA or CPA. Best answer?', a: ['File it anyway', 'Refer them to a tax preparer and send clean books', 'Tell them to skip filing'], c: 1, why: 'Bookkeepers prepare the books; credentialed preparers handle returns and tax advice.' }]
+      quiz: [{ q: 'You notice a client\'s office manager has been paying herself extra through vendor checks. What do you do?', a: ['Confront her', 'Document what you found and tell the owner privately', 'Fix the books quietly and say nothing'], c: 1, why: 'Report facts to the owner privately and let them decide next steps. Don\'t investigate or accuse anyone yourself.' }, { q: 'A client asks you, a bookkeeper, to file their tax return. You\'re not an EA or CPA. Best answer?', a: ['File it anyway', 'Refer them to a tax preparer and send clean books', 'Tell them to skip filing'], c: 1, why: 'Bookkeepers prepare the books; credentialed preparers handle returns and tax advice.' }]
     },
     {
       id: 'quickbooks', title: 'Bonus: moving a client from QuickBooks', mins: 4, bonus: true,
@@ -493,8 +687,9 @@
   LESSONS.forEach(l => { l.level = l.level || 1; });
   const LEVELS = [
     { n: 1, title: 'Level 1 · Foundations', blurb: 'The daily work: accounts, importing, categorizing, invoices, reconciling and closing.' },
-    { n: 2, title: 'Level 2 · Month-end professional', blurb: 'Bills, receipts, catching mistakes, troubleshooting and client extras.' },
-    { n: 3, title: 'Level 3 · Client advisor', blurb: 'Cash flow, budgets, owner pay, taxes, year-end and professional practice.' }
+    { n: 2, title: 'Level 2 · Month-end professional', blurb: 'Debits and credits, bills, payroll, journal entries, receipts, catching mistakes and client extras.' },
+    { n: 3, title: 'Level 3 · Client advisor', blurb: 'Cash flow, budgets, owner pay, business types, reading the numbers, taxes and year-end.' },
+    { n: 4, title: 'Level 4 · Running your practice', blurb: 'Onboarding, pricing, engagement letters, catch-up projects, industries, ethics and security.' }
   ];
   const CORE = LESSONS.filter(l => !l.bonus);
   const levelsWithLessons = () => LEVELS.map(L => ({ ...L, lessons: CORE.filter(l => l.level === L.n) }));
@@ -542,7 +737,7 @@
         <div class="train-list">
           ${levels.map(L => `<div class="tl-group">${esc(L.title)}${lvlDone(L) ? ` <span class="tag green">${ICON.check}</span>` : ''}</div>${L.lessons.map(x => sideItem(x, ++n)).join('')}`).join('')}
           <div class="tl-group">Final exams${allLessons ? '' : ` <span class="muted" style="text-transform:none;letter-spacing:0">· after all lessons</span>`}</div>
-          <button class="tl ${t.current === 'exam-written' ? 'on' : ''} ${wOk ? 'done' : ''} ${allLessons ? '' : 'locked'}" data-action="t-go" data-id="exam-written"><span class="step-n">${wOk ? ICON.check : allLessons ? 'W' : ICON.lock}</span><span><b>Written exam</b><span class="muted">25 questions · 80% to pass</span></span></button>
+          <button class="tl ${t.current === 'exam-written' ? 'on' : ''} ${wOk ? 'done' : ''} ${allLessons ? '' : 'locked'}" data-action="t-go" data-id="exam-written"><span class="step-n">${wOk ? ICON.check : allLessons ? 'W' : ICON.lock}</span><span><b>Written exam</b><span class="muted">30 questions · 80% to pass</span></span></button>
           <button class="tl ${t.current === 'exam-practical' ? 'on' : ''} ${pOk ? 'done' : ''} ${allLessons ? '' : 'locked'}" data-action="t-go" data-id="exam-practical"><span class="step-n">${pOk ? ICON.check : allLessons ? 'P' : ICON.lock}</span><span><b>Practical exam</b><span class="muted">A graded month-end</span></span></button>
           <div class="tl-group">Bonus</div>${LESSONS.filter(l => l.bonus).map(x => sideItem(x, 0)).join('')}
         </div>
@@ -564,16 +759,17 @@
             <p class="tm-learn"><b>You'll learn:</b> ${esc(l.learn)}</p>
             <div class="tm-body">${l.body.join('')}</div>
             <div class="tm-words"><div class="cap-label">Words to know</div>${l.words.map(([w, d]) => `<div class="word"><b>${esc(w)}</b><span>${esc(d)}</span></div>`).join('')}</div>
-            <div class="tm-task ${taskOk ? 'ok' : ''}">
+            ${l.drill ? drillHTML() : ''}
+            ${l.task ? `<div class="tm-task ${taskOk ? 'ok' : ''}">
               <div class="tt-head"><span class="tick ${taskOk ? 'on' : ''}">${ICON.check}</span><div><div class="cap-label">Try it</div><b>${esc(l.task)}</b></div></div>
-              <div class="tt-foot">${taskOk ? '<span class="pos">Done — nicely handled.</span>' : `<button class="btn primary" data-action="t-do" data-id="${l.id}">${esc(l.action[0])} ${ICON.right}</button><span class="muted">The coach in the corner keeps this task in view while you work.</span>`}</div>
-            </div>
+              <div class="tt-foot">${taskOk ? '<span class="pos">Done — nicely handled.</span>' : l.action ? `<button class="btn primary" data-action="t-do" data-id="${l.id}">${esc(l.action[0])} ${ICON.right}</button><span class="muted">The coach in the corner keeps this task in view while you work.</span>` : '<span class="muted">Do it right here on this page.</span>'}</div>
+            </div>` : ''}
             <div class="tm-quiz"><div class="cap-label">Quick check</div>${l.quiz.map((q, qi) => { const key = l.id + ':' + qi, ans = t.quiz[key]; return `<div class="qz"><div class="qz-q">${esc(q.q)}</div><div class="qz-a">${q.a.map((a, ai) => `<button class="qa ${ans === ai ? (ai === q.c ? 'right' : 'wrong') : ''} ${ans != null && ai === q.c ? 'answer' : ''}" data-action="t-quiz" data-k="${key}" data-a="${ai}">${esc(a)}</button>`).join('')}</div>${ans != null ? `<div class="qz-why ${ans === q.c ? 'right' : 'wrong'}">${ans === q.c ? ICON.check + '<b>Right.</b>' : '<b>Not quite —</b>'} ${esc(q.why)}${ans !== q.c ? ' Try again.' : ''}</div>` : ''}</div>`; }).join('')}</div>
             <div class="tm-nav">${idx > 0 ? `<button class="btn ghost" data-action="t-go" data-id="${CORE[idx - 1].id}">${ICON.back}Previous</button>` : '<span></span>'}${nextId ? `<button class="btn ${lessonDone(l) ? 'primary' : ''}" data-action="t-go" data-id="${nextId}">${nextId === 'exam-written' ? 'On to the final exams' : 'Next lesson'} ${ICON.right}</button>` : ''}</div>`;
       }
       return `
         <div class="page-head">
-          <div><h1>Coll Ledger Academy</h1><div class="sub">Three levels of hands-on lessons on a pretend bakery, then a written exam and a graded month-end. Pass both to earn the Professional Bookkeeping Certificate.</div></div>
+          <div><h1>Coll Ledger Academy</h1><div class="sub">Four levels of hands-on lessons on a pretend bakery, then a written exam and a graded month-end. Pass both to earn the Professional Bookkeeping Certificate.</div></div>
           <div class="actions">${p ? `<button class="btn" data-action="t-reset">${ICON.refresh}Reset practice account</button><button class="btn primary" data-action="t-open">${ICON.right}Open Bluebird Bakery</button>` : `<button class="btn primary" data-action="t-open">${ICON.spark}Create the practice account</button>`}</div>
         </div>
         <div class="train">
@@ -592,6 +788,7 @@
     't-go': el => { T().current = el.dataset.id; if (!/^exam/.test(el.dataset.id)) S.ui.exam = null; save(); if (S.route.page !== 'training') go('training'); else render(); $('#view').scrollTop = 0; },
     't-open': () => { const fresh = !practice(); ensurePractice(true, fresh ? 'dashboard' : 'dashboard'); if (fresh) U.toast('Bluebird Bakery is ready — the coach in the corner will guide you'); },
     't-do': el => { const l = LESSONS.find(x => x.id === el.dataset.id); T().current = l.id; T().coachHidden = false; save(); l.action[1](); },
+    't-drill-check': () => { const t = T(); t.drill = t.drill || {}; $$('[data-drill]').forEach(s => { const i = s.dataset.drill; t.drill[i] = t.drill[i] || {}; t.drill[i][s.dataset.side] = s.value; }); t.drillChecked = true; save(); sweep(); render(); },
     't-quiz': el => { T().quiz[el.dataset.k] = +el.dataset.a; save(); sweep(); render(); },
     't-reset': async () => {
       const keep = await U.confirmBox({ title: 'Reset the practice account?', body: 'Bluebird Bakery goes back to how it started, so you can practice the lessons again. Your real clients are not touched. Lesson progress is kept unless you choose to start the class over in the next step.', ok: 'Reset the bakery' });
@@ -626,7 +823,7 @@
     el.className = 'coach' + (ok ? ' ok' : '');
     el.innerHTML = `<div class="coach-head">${ICON.spark}<b>Training coach</b><span class="muted">${l.bonus ? 'Bonus' : `Lesson ${LESSONS.indexOf(l) + 1}`}</span><button class="icon-btn" data-action="t-coach-hide" aria-label="Hide coach">${ICON.close}</button></div>
       <div class="coach-title">${esc(l.title)}</div>
-      <div class="coach-task"><span class="tick ${ok ? 'on' : ''}">${ICON.check}</span><span>${esc(l.task)}</span></div>
+      <div class="coach-task"><span class="tick ${ok ? 'on' : ''}">${ICON.check}</span><span>${esc(l.task || 'Read the lesson and answer the questions.')}</span></div>
       ${needQuiz ? '<div class="coach-note">Task done! Answer the quick check to finish the lesson.</div>' : ok ? '<div class="coach-note">Lesson complete — on to the next one.</div>' : ''}
       <div class="coach-foot"><button class="btn sm ${ok ? 'primary' : ''}" data-nav="training">${ok ? 'Back to the lesson' : 'Open the lesson'}</button></div>`;
   }
@@ -644,6 +841,8 @@
       if (page === 'dashboard') t.flags.dashboard = true;
       if (page === 'reports' && S.ui.report.type === 'pl') t.flags.pl = true;
       if (page === 'reports' && S.ui.report.type === '1099') t.flags.r1099 = true;
+      if (page === 'reports' && S.ui.report.type === 'health') t.flags.rHealth = true;
+      if (page === 'cleanup' && S.ui.clean && S.ui.clean.scope === 'all') t.flags.cleanAll = true;
       if (page === 'planning' && S.ui.plan && S.ui.plan.tab === 'owner') t.flags.ownerTab = true;
       sweep();
     }
@@ -651,6 +850,7 @@
     banner(c, page);
     coach();
   });
+  document.addEventListener('change', e => { const el = e.target; if (!el.dataset || el.dataset.drill == null) return; const t = T(); t.drill = t.drill || {}; t.drill[el.dataset.drill] = t.drill[el.dataset.drill] || {}; t.drill[el.dataset.drill][el.dataset.side] = el.value; save(); });
   document.addEventListener('click', e => { if (e.target.closest('[data-action="month-email"]') && inPractice()) { T().flags.monthEmail = true; save(); setTimeout(sweep, 50); } }, true);
   // keep the coach fresh after quick actions that don't re-render a screen
   document.addEventListener('click', () => setTimeout(() => { if (inPractice()) coach(); }, 400));
