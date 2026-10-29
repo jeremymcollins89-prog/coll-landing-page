@@ -111,6 +111,8 @@ CREATE TABLE credentials (
   created_at  INTEGER NOT NULL
 );
 CREATE INDEX credentials_student ON credentials(student_id, program);
+-- One live (not revoked) certificate per student and program.
+CREATE UNIQUE INDEX credentials_one_live ON credentials(student_id, program) WHERE revoked = 0 AND student_id IS NOT NULL;
 
 -- Fixed-window rate limits. bucket is '<what>:<sha256 of the IP, shortened>'.
 CREATE TABLE rate_limits (
