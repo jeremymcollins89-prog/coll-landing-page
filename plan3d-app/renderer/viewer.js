@@ -3793,8 +3793,11 @@ function buildScene(THREE, plan, A) {
         const m3 = localSegBox(leafMesh, a0x, a0z, b0x, b0z, v0, v1, 0.14, M.leaf);
         const m4 = localSegBox(leafMesh, b1x, b1z, a1x, a1z, v0, v1, 0.14, M.leaf);
 
-        [m1, m2].forEach(m => outline(m));
-        pick.push(m1); pick.push(m2);
+        // one outline round the whole leaf: outlining the pieces it's built from (round the vision lite) drew lines
+        // across the door at the top and bottom of the glass
+        [m1, m2, m3, m4].forEach(m => pick.push(m));
+        { const ghost = localSegBox(leafMesh, a0x, a0z, a1x, a1z, 0.05, top, 0.14, M.leaf), ln = new THREE.LineSegments(new THREE.EdgesGeometry(ghost.geometry, 25), M.line);
+          ln.position.copy(ghost.position); ln.rotation.copy(ghost.rotation); ln.scale.copy(ghost.scale); leafMesh.remove(ghost); leafMesh.add(ln); }
 
         localSegBox(leafMesh, b0x, b0z, b1x, b1z, v0, v1, 0.06, M.lite);
 
