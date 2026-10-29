@@ -10,17 +10,31 @@
 <header class="bar">
   <div class="brand"><span class="mark" aria-hidden="true"></span><div><b>Coll Plan3D <span class="modechip" id="modeChip">Cleanroom</span></b><small id="docName">Untitled plan</small></div></div>
   <div class="actions">
-    <button id="bImport" class="btn primary" title="Import a DWG, DXF, Revit IFC, plan image or Plan3D project (Ctrl+I). With a plan already open, you can add the file to this project instead of replacing it.">Import plan…</button>
+    <div class="dd">
+      <button id="bFile" class="btn" aria-haspopup="menu" aria-expanded="false" title="Open, import and save">File <span class="caret" aria-hidden="true">▾</span></button>
+      <div class="menu" id="fileMenu" role="menu" hidden>
+        <button role="menuitem" id="bOpen"><span>Open… <small>a saved project</small></span><kbd>Ctrl+O</kbd></button>
+        <button role="menuitem" id="bImport"><span>Import plan… <small>DWG, DXF, Revit IFC or a picture of the plan</small></span><kbd>Ctrl+I</kbd></button>
+        <button role="menuitem" id="bOpenSample"><span>Open the sample <small>a finished cleanroom to try things on</small></span><kbd></kbd></button>
+        <div class="msep"></div>
+        <button role="menuitem" id="bSave2"><span>Save</span><kbd>Ctrl+S</kbd></button>
+        <button role="menuitem" id="bSaveAs"><span>Save as… <small>a copy under a new name</small></span><kbd>Ctrl+Shift+S</kbd></button>
+        <button role="menuitem" id="bNewPlan"><span>New plan <small>start over</small></span><kbd>Ctrl+N</kbd></button>
+      </div>
+    </div>
+    <button id="bSave" class="btn" title="Save project (Ctrl+S)">Save</button>
+    <div class="sep"></div>
     <div class="dd" data-only="cleanroom">
-      <button id="bCeilMenu" class="btn" aria-haspopup="menu" aria-expanded="false" title="Ceiling: add or edit a ceiling drawing, or generate the grid, FFUs and lights">Ceiling <span class="caret" aria-hidden="true">▾</span></button>
+      <button id="bCeilMenu" class="btn" aria-haspopup="menu" aria-expanded="false" title="Ceiling drawing, generated grid with FFUs and lights, and the lid">Ceiling <span class="caret" aria-hidden="true">▾</span></button>
       <div class="menu" id="ceilMenu" role="menu" hidden>
         <button role="menuitem" id="bCeiling" title="Add a ceiling drawing (DWG, DXF or picture) on top of the room"><span><i id="bCeilingLbl" style="font-style:normal">Add ceiling</i> <small>a DWG, DXF or picture of the ceiling</small></span><kbd></kbd></button>
         <button role="menuitem" id="bGenCeil" title="Lay out the ceiling grid, FFUs and lights inside the cleanroom walls"><span>Generate ceiling <small>grid, FFUs and lights laid out for you</small></span><kbd></kbd></button>
+        <div class="msep"></div>
+        <button role="menuitem" id="bLid"><span>Lid… <small>the roof deck over the cleanroom, from a deck drawing</small></span><kbd></kbd></button>
       </div>
     </div>
-    <button id="bLid" class="btn" data-only="cleanroom" title="The lid (roof deck) over the cleanroom: import a deck drawing and place it, piece by piece">Lid…</button>
     <div class="dd">
-      <button id="bBld" class="btn" aria-haspopup="menu" aria-expanded="false" title="Your library: save buildings, groups of pieces and ceilings, and place them in any project">Library <span class="caret" aria-hidden="true">▾</span></button>
+      <button id="bBld" class="btn" aria-haspopup="menu" aria-expanded="false" title="Your library: buildings, groups of pieces, ceilings and machines, for any project">Library <span class="caret" aria-hidden="true">▾</span></button>
       <div class="menu" id="bldMenu" role="menu" hidden>
         <button role="menuitem" id="bBldInsert"><span>Insert from the library… <small>buildings, groups, ceilings, machines</small></span><kbd></kbd></button>
         <button role="menuitem" id="bBldFile"><span>Insert a building from a project file… <small>any saved .plan3d</small></span><kbd></kbd></button>
@@ -32,32 +46,39 @@
         <button role="menuitem" id="bLibMach"><span>Add a machine from a drawing… <small>DWG or DXF of the equipment</small></span><kbd></kbd></button>
       </div>
     </div>
-    <button id="bOpen" class="btn" title="Open a saved project (Ctrl+O)">Open</button>
-    <button id="bSave" class="btn" title="Save project (Ctrl+S)">Save</button>
-    <div class="sep"></div>
     <div class="dd">
-      <button id="bExport" class="btn" aria-haspopup="menu" aria-expanded="false" title="Walkthrough, plan sheet, AutoCAD, Revit, 3D model, parts list">Export <span class="caret" aria-hidden="true">▾</span></button>
+      <button id="bJob" class="btn" aria-haspopup="menu" aria-expanded="false" title="Quote, submittal, change orders, purchase orders, fabrication, install and certification">Job <span class="caret" aria-hidden="true">▾</span></button>
+      <div class="menu" id="jobMenu" role="menu" hidden>
+        <div class="mhead">Sell</div>
+        <button role="menuitem" id="bQuote"><span>Quote &amp; proposal <small>prices, totals, customer PDF</small></span></button>
+        <button role="menuitem" id="bSubm"><span>Submittal package <small>for the customer's approval</small></span></button>
+        <div class="mhead">Changes</div>
+        <button role="menuitem" id="bApproved"><span>Mark as approved version <small>change orders compare against it</small></span></button>
+        <button role="menuitem" id="bCO"><span>Change order <small>what changed since approval, priced</small></span></button>
+        <div class="mhead">Build</div>
+        <button role="menuitem" id="bPOs"><span>Purchase orders <small>one per supplier, with order-by dates</small></span></button>
+        <button role="menuitem" id="bFab"><span>Fabrication sheets <small>wall elevations, panel numbers, cut list, crates</small></span></button>
+        <button role="menuitem" id="bSched"><span>Install schedule &amp; punch list <small>crew-days room by room</small></span></button>
+        <button role="menuitem" id="bSheet"><span>Plan sheet <small>PDF with dimensions</small></span><kbd>Ctrl+P</kbd></button>
+        <div class="mhead">Finish</div>
+        <button role="menuitem" id="bCert"><span>Certification checklist <small>ISO 14644 tests, room by room</small></span></button>
+      </div>
+    </div>
+    <div class="dd">
+      <button id="bExport" class="btn" aria-haspopup="menu" aria-expanded="false" title="Send the walkthrough to your customer, or export for AutoCAD, Revit, Twinmotion and Excel">Share <span class="caret" aria-hidden="true">▾</span></button>
       <div class="menu" id="exportMenu" role="menu" hidden>
+        <div class="mhead">To your customer</div>
         <button role="menuitem" id="bExportLink"><span>Walkthrough link <small>text or email it: opens on any phone or browser</small></span><kbd></kbd></button>
         <button role="menuitem" id="bExportHtml"><span>Walkthrough page <small>.html file to attach</small></span><kbd>Ctrl+E</kbd></button>
-        <button role="menuitem" id="bQuote"><span>Quote &amp; proposal <small>prices, totals, customer PDF</small></span></button>
-        <button role="menuitem" id="bFab"><span>Fabrication sheets <small>wall elevations, panel numbers, cut list, crates</small></span></button>
-        <button role="menuitem" id="bSubm"><span>Submittal package <small>for the customer's approval</small></span></button>
-        <button role="menuitem" id="bPOs"><span>Purchase orders <small>one per supplier, with order-by dates</small></span></button>
-        <button role="menuitem" id="bSched"><span>Install schedule &amp; punch list <small>crew-days room by room</small></span></button>
-        <button role="menuitem" id="bCert"><span>Certification checklist <small>ISO 14644 tests, room by room</small></span></button>
-        <button role="menuitem" id="bCO"><span>Change order <small>what changed since approval, priced</small></span></button>
-        <button role="menuitem" id="bApproved"><span>Mark as approved version <small>change orders compare against it</small></span></button>
-        <button role="menuitem" id="bSheet"><span>Plan sheet <small>PDF with dimensions</small></span><kbd>Ctrl+P</kbd></button>
-        <div class="msep"></div>
+        <div class="mhead">For other programs</div>
         <button role="menuitem" id="bExportCad"><span>AutoCAD drawing <small>DWG or DXF</small></span><kbd>Ctrl+D</kbd></button>
         <button role="menuitem" id="bExportIfc"><span>Revit 3D model <small>IFC, save as .rvt in Revit</small></span><kbd></kbd></button>
         <button role="menuitem" id="bExportTm"><span>Twinmotion model <small>.glb at real size, named materials, for photo-real renders</small></span><kbd></kbd></button>
         <button role="menuitem" id="bExportGlb"><span>3D model <small>.glb for SketchUp, Blender</small></span><kbd></kbd></button>
-        <div class="msep"></div>
         <button role="menuitem" id="bExportParts"><span>Parts list <small>.csv for Excel</small></span><kbd></kbd></button>
       </div>
     </div>
+    <button id="bFind" class="btn findbtn" title="Find any command: type what you want to do (Ctrl+K)"><span aria-hidden="true">⌕</span> Find <kbd>Ctrl K</kbd></button>
   </div>
   <div class="dd bellwrap"><button id="bBell" class="btn bell" aria-haspopup="true" aria-expanded="false" title="Customer comments: new ones on any of your jobs">🔔<span class="badge" hidden></span></button><div id="bellPanel" class="menu bellp" hidden></div></div>
   <button id="bUpdate" class="btn primary updbtn" hidden title="A new version of Coll Plan3D is ready">Update now</button>

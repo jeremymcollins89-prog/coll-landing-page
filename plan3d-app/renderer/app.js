@@ -2991,45 +2991,77 @@ function helpDialog() {
   });
 }
 
-$('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave').onclick = () => save(false);
-// Export dropdown
-{
-  const btn = $('#bExport'), menu = $('#exportMenu');
-  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
-  btn.onclick = (e) => { e.stopPropagation(); const open = menu.hidden; menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); if (open) menu.querySelector('button').focus(); };
-  document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target)) close(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); btn.focus(); } });
-  menu.addEventListener('keydown', (e) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault(); const items = [...menu.querySelectorAll('button')], i = items.indexOf(document.activeElement);
-    items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+$('#bSave').onclick = () => save(false);
+/* ---------- The top menus: File, Ceiling, Library, Job, Share ----------
+   They work like a menu bar: click one to open it, and while one is open, moving over another opens that
+   one. Arrow keys move through the items (← → to the next menu), Esc closes. */
+const MENUS = [...document.querySelectorAll('.actions .dd > .btn[aria-haspopup="menu"]')].map(btn => ({ btn, menu: btn.parentElement.querySelector('.menu') }));
+const openMenu = () => MENUS.find(m => !m.menu.hidden) || null;
+function closeMenus() { for (const m of MENUS) { m.menu.hidden = true; m.btn.setAttribute('aria-expanded', 'false'); } }
+function showMenu(m, focus) {
+  closeMenus(); m.menu.hidden = false; m.btn.setAttribute('aria-expanded', 'true');
+  // keep it on screen at the right edge of a narrow window
+  m.menu.style.left = ''; const r = m.menu.getBoundingClientRect(); if (r.right > innerWidth - 8) m.menu.style.left = (innerWidth - 8 - r.right) + 'px';
+  if (focus) { const b = [...m.menu.querySelectorAll('button')].find(x => x.offsetParent); if (b) b.focus(); }
+}
+const visibleMenus = () => MENUS.filter(m => m.btn.offsetParent);
+for (const m of MENUS) {
+  m.btn.onclick = (e) => { e.stopPropagation(); if (!m.menu.hidden) closeMenus(); else showMenu(m, e.detail === 0); };
+  m.btn.addEventListener('mouseenter', () => { const o = openMenu(); if (o && o !== m) showMenu(m, false); });
+  m.menu.addEventListener('keydown', (e) => {
+    const items = [...m.menu.querySelectorAll('button')].filter(x => x.offsetParent), i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); const V = visibleMenus(), k = V.indexOf(m); showMenu(V[(k + (e.key === 'ArrowRight' ? 1 : V.length - 1)) % V.length], true); }
   });
-  const item = (id, fn) => { $(id).onclick = () => { close(); fn(); }; };
+}
+document.addEventListener('click', (e) => { const o = openMenu(); if (o && !o.menu.contains(e.target)) closeMenus(); });
+document.addEventListener('keydown', (e) => { const o = openMenu(); if (e.key === 'Escape' && o) { closeMenus(); o.btn.focus(); } });
+{
+  const item = (id, fn) => { const b = $(id); if (b) b.onclick = (e) => { closeMenus(); fn(e); }; };
+  // File
+  item('#bOpen', openProject); item('#bImport', importPlan); item('#bOpenSample', openSample); item('#bSave2', () => save(false)); item('#bSaveAs', () => save(true)); item('#bNewPlan', newPlan);
+  // Ceiling
+  item('#bCeiling', (e) => ceilingMenu(e)); item('#bGenCeil', generateCeilingDialog); item('#bLid', lidMenu);
+  // Library
+  item('#bBldInsert', () => libraryDialog()); item('#bBldFile', insertFromFile); item('#bBldSave', saveBuildingDialog);
+  item('#bLibGroup', saveGroupDialog); item('#bLibCeil', saveCeilingDialog); item('#bLibMach', addMachineDialog);
+  // Job and Share
   item('#bExportLink', linkDialog); item('#bExportHtml', exportHtml); item('#bSubm', submittalDialog); item('#bPOs', poDialog); item('#bSched', scheduleDialog); item('#bCert', certExport); item('#bCO', () => changeOrderDialog()); item('#bApproved', () => markApproved('')); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
   item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportTm', exportTwinmotion); item('#bExportParts', exportParts);
 }
-// Ceiling dropdown: add / edit the ceiling drawing, or generate one
-{
-  const btn = $('#bCeilMenu'), menu = $('#ceilMenu');
-  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
-  btn.onclick = (e) => { e.stopPropagation(); const open = menu.hidden; document.querySelectorAll('.menu').forEach(m => { if (m !== menu) m.hidden = true; }); menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); if (open) menu.querySelector('button').focus(); };
-  document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target)) close(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); btn.focus(); } });
-  menu.addEventListener('keydown', (e) => { if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return; e.preventDefault(); const items = [...menu.querySelectorAll('button')], i = items.indexOf(document.activeElement); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); });
-  $('#bCeiling').onclick = (e) => { close(); ceilingMenu(e); }; $('#bGenCeil').onclick = () => { close(); generateCeilingDialog(); };
+/* ---------- Find (Ctrl+K): every menu command and tool, by what you type ---------- */
+function findDialog() {
+  closeMenus();
+  const L = [];
+  for (const b of document.querySelectorAll('.actions .menu [role=menuitem]')) {
+    const dd = b.closest('.dd'); if (dd && getComputedStyle(dd).display === 'none') continue;
+    const sp = b.querySelector('span'), sm = sp && sp.querySelector('small'), name = sp ? sp.firstChild.textContent.trim() || sp.textContent.trim() : b.textContent.trim();
+    const menuName = dd ? dd.querySelector('.btn').firstChild.textContent.trim() : '';
+    L.push({ name, sub: sm ? sm.textContent : '', where: menuName, kbd: (b.querySelector('kbd') || {}).textContent || '', run: () => b.click() });
+  }
+  for (const b of document.querySelectorAll('nav.tools [data-tool]')) {
+    if (getComputedStyle(b).display === 'none') continue;
+    const sp = [...b.querySelectorAll('span')].find(x => getComputedStyle(x).display !== 'none');
+    L.push({ name: (sp ? sp.textContent : b.dataset.tool) + ' tool', sub: (b.title || '').replace(/\s*\([^)]*\)\s*$/, ''), where: 'Tools', kbd: (b.querySelector('kbd') || {}).textContent || '', run: () => b.click() });
+  }
+  for (const b of document.querySelectorAll('.views [data-view]')) if (getComputedStyle(b).display !== 'none') L.push({ name: b.textContent.trim() + ' view', sub: '', where: 'View', kbd: { '2d': 'F1', split: 'F2', '3d': 'F3', build: 'F4' }[b.dataset.view] || '', run: () => b.click() });
+  let pick = 0, shown = L;
+  const score = (o, q) => { const t = (o.name + ' ' + o.sub + ' ' + o.where).toLowerCase(), n = o.name.toLowerCase(); if (!q) return 1; let s = 0; for (const w of q.split(/\s+/).filter(Boolean)) { if (n.startsWith(w)) s += 4; else if (n.includes(w)) s += 3; else if (t.includes(w)) s += 1; else return 0; } return s; };
+  const render = () => {
+    const q = $('#fdQ').value.trim().toLowerCase();
+    shown = L.map(o => [o, score(o, q)]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]).map(x => x[0]).slice(0, 12);
+    pick = Math.min(pick, Math.max(0, shown.length - 1));
+    $('#fdL').innerHTML = shown.length ? shown.map((o, i) => `<button class="fdi${i === pick ? ' on' : ''}" data-i="${i}"><span><b>${esc(o.name)}</b>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}</span><em>${esc(o.where)}${o.kbd ? ' · ' + esc(o.kbd) : ''}</em></button>`).join('') : '<p class="note" style="padding:8px 10px">Nothing matches. Try a different word.</p>';
+    $$('#fdL [data-i]').forEach(b => b.onclick = () => go(+b.dataset.i));
+  };
+  const go = (i) => { const o = shown[i]; if (!o) return; $('#dlg').close(); setTimeout(o.run, 30); };
+  dialogOpen({ title: 'Find a command', body: `<input id="fdQ" placeholder="Type what you want to do: quote, door, ceiling, AutoCAD…" autocomplete="off" style="width:100%;padding:9px 10px;font-size:14px"><div id="fdL" class="fdl"></div>`, buttons: [{ label: 'Close', ret: null }],
+    onOpen: (d) => { d.classList.add('finddlg'); const q = $('#fdQ'); q.focus(); render(); q.oninput = () => { pick = 0; render(); };
+      q.onkeydown = (e) => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); pick = (pick + (e.key === 'ArrowDown' ? 1 : shown.length - 1)) % Math.max(1, shown.length); render(); } else if (e.key === 'Enter') { e.preventDefault(); go(pick); } }; } });
 }
-// Buildings dropdown
-{
-  const btn = $('#bBld'), menu = $('#bldMenu');
-  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
-  btn.onclick = (e) => { e.stopPropagation(); const open = menu.hidden; menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); if (open) menu.querySelector('button').focus(); };
-  document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target)) close(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); btn.focus(); } });
-  const item = (id, fn) => { $(id).onclick = () => { close(); fn(); }; };
-  item('#bBldInsert', () => libraryDialog()); item('#bBldFile', insertFromFile); item('#bBldSave', saveBuildingDialog);
-  item('#bLibGroup', saveGroupDialog); item('#bLibCeil', saveCeilingDialog); item('#bLibMach', addMachineDialog);
-}
- $('#bLid').onclick = lidMenu; $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
+$('#bFind').onclick = findDialog;
+document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k' && !document.querySelector('dialog[open]')) { e.preventDefault(); findDialog(); } });
+ $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
 $('#wCleanroom').onclick = () => pickMode('cleanroom'); $('#wHouse').onclick = () => pickMode('house');
 $('#wBack').onclick = (e) => { e.preventDefault(); modePicked = false; updateChrome(); };
 $('#wDraw').onclick = () => { $('#welcome').hidden = true; ed.setTool('wall'); $('#plan').focus(); };
