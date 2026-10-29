@@ -20,7 +20,8 @@
   // ------------------------------------------------------------------
   const MILEAGE_RATES = [
     ['2026-07-01', 0.76], ['2026-01-01', 0.725], ['2025-01-01', 0.70], ['2024-01-01', 0.67],
-    ['2023-01-01', 0.655], ['2022-07-01', 0.625], ['2022-01-01', 0.585], ['2021-01-01', 0.56], ['1900-01-01', 0.575]
+    ['2023-01-01', 0.655], ['2022-07-01', 0.625], ['2022-01-01', 0.585], ['2021-01-01', 0.56],
+    ['2020-01-01', 0.575], ['2019-01-01', 0.58], ['2018-01-01', 0.545], ['1900-01-01', 0.535]
   ];
   const mileageRate = iso => (MILEAGE_RATES.find(([from]) => iso >= from) || MILEAGE_RATES[MILEAGE_RATES.length - 1])[1];
   const tripMiles = t => round2((+t.miles || 0) * (t.roundTrip ? 2 : 1));
@@ -119,9 +120,17 @@
   // ------------------------------------------------------------------
   // Owner pay and quarterly estimated taxes
   // IRS periods: Jan–Mar (due Apr 15), Apr–May (Jun 15), Jun–Aug (Sep 15),
-  // Sep–Dec (Jan 15 next year). Weekend due dates move to Monday.
+  // Sep–Dec (Jan 15 next year). Due dates on a weekend or federal holiday move to the next business day.
   // ------------------------------------------------------------------
-  const nextBusinessDay = iso => { let d = parseISO(iso); while (d.getDay() === 0 || d.getDay() === 6) d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1); return isoOf(d); };
+  // Holidays that can land on an estimated-tax due date: Martin Luther King Jr. Day (third Monday of
+  // January) and DC Emancipation Day (April 16, observed Friday/Monday), which the IRS treats as a legal holiday.
+  const isHoliday = d => {
+    const y = d.getFullYear(), m = d.getMonth(), day = d.getDate(), wd = d.getDay();
+    if (m === 0 && wd === 1 && day >= 15 && day <= 21) return true;
+    if (m === 3) { const e = new Date(y, 3, 16).getDay(); const obs = e === 6 ? 15 : e === 0 ? 17 : 16; if (day === obs) return true; }
+    return false;
+  };
+  const nextBusinessDay = iso => { let d = parseISO(iso); while (d.getDay() === 0 || d.getDay() === 6 || isHoliday(d)) d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1); return isoOf(d); };
   function taxQuarters(c, year) {
     const est = c.estTax || {};
     const pct = est.pct == null ? 25 : +est.pct;

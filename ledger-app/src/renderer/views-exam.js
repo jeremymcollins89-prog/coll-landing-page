@@ -1,7 +1,7 @@
 'use strict';
 /* =====================================================================
    Coll Ledger Academy — final exams and the certificate
-   - Written exam: 25 questions drawn from a 42-question bank, 80% to pass
+   - Written exam: 30 questions drawn from a 67-question bank, 80% to pass
    - Practical exam: a month-end for Juniper Flower Co. with planted
      problems, graded automatically, 80 points and a balanced
      reconciliation to pass
@@ -148,6 +148,9 @@
     const A = n => C.acctByName(c, n).id;
     C.acctByName(c, 'Business Checking').opening = 8000;
     C.acctByName(c, 'Business Savings').opening = 5000;
+    // last month's sales tax and card statement, paid off this month
+    C.acctByName(c, 'Sales Tax Payable').opening = 318.4;
+    C.acctByName(c, 'Business Credit Card').opening = 350.21;
     const K = {};
     const add = (key, date, description, amount, cat, opt = {}) => {
       const t = { id: C.uid(), date, description, payee: opt.payee || C.cleanPayee(description), amount: C.round2(amount), accountId: A(opt.account || 'Business Checking'), categoryId: cat ? A(cat) : '', memo: '', status: opt.review ? 'review' : 'posted', cleared: false, reconciled: false };

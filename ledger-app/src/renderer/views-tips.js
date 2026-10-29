@@ -75,7 +75,7 @@ window.ACADEMY_TIPS = {
   journals: [
     'Write a clear memo on every journal entry ("AJE #3 from Smith CPA — 2026 depreciation"). Future you will be grateful.',
     'Attach the CPA\'s email or schedule to the entry so the support travels with it.',
-    'Use the automatic reversal for accruals — it\'s the most common way bookkeepers accidentally double-count expenses.'
+    'Use the automatic reversal for accruals — forgetting to reverse is the most common way bookkeepers accidentally double-count expenses.'
   ],
   receipts: [
     'Ask clients to photograph receipts the moment they get them — a receipt in a pocket for a month is a receipt that\'s gone.',

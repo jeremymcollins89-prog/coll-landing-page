@@ -154,7 +154,13 @@ t('budget vs actual and forecast', () => {
 t('quarterly tax periods and due dates', () => {
   const qs = C.taxQuarters(C.newClient({}), 2026);
   assert.deepStrictEqual(qs.map(q => q.due), ['2026-04-15', '2026-06-15', '2026-09-15', '2027-01-15']);
-  assert.strictEqual(C.nextBusinessDay('2028-01-15'), '2028-01-17');
+  // Saturday, then Monday is Martin Luther King Jr. Day → Tuesday (as in January 2022)
+  assert.strictEqual(C.nextBusinessDay('2028-01-15'), '2028-01-18');
+  assert.strictEqual(C.nextBusinessDay('2022-01-15'), '2022-01-18');
+  // April 15 on Saturday, Emancipation Day observed Monday → Tuesday (2023); on Friday it's observed that day → Monday (2022)
+  assert.strictEqual(C.nextBusinessDay('2023-04-15'), '2023-04-18');
+  assert.strictEqual(C.nextBusinessDay('2022-04-15'), '2022-04-18');
+  assert.strictEqual(C.nextBusinessDay('2027-09-15'), '2027-09-15');
 });
 
 t('clean up finds duplicates and uncategorized items', () => {

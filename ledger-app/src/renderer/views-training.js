@@ -1,8 +1,8 @@
 'use strict';
 /* =====================================================================
    Coll Ledger — Practice account / Training
-   A pretend bakery to practice on, eleven short lessons with plain-
-   language explanations, quizzes, a coach that checks your work as you
+   A pretend bakery to practice on, four levels of lessons plus the
+   advanced track, with plain-language explanations, quizzes, a coach that checks your work as you
    go, and a certificate at the end.
    ===================================================================== */
 (() => {
@@ -110,7 +110,7 @@
     for (let back = 3; back >= 1; back--) {
       const iso = C.addDays(today(), -back);
       for (let k = 0; k < 6; k++) {
-        const gross = C.round2(4 + r() * 30), disc = k === 0 ? -1 : 0, net = C.round2(gross + disc), tax = C.round2(net * 0.0881), tip = [0, 1, 2][k % 3];
+        const gross = C.round2(4 + r() * 30), disc = k === 0 ? -1 : 0, net = C.round2(gross + disc), tax = C.round2(net * 0.0915), tip = [0, 1, 2][k % 3];
         const total = C.round2(net + tax + tip), cash = k === 5 ? total : 0, fee = cash ? 0 : -C.round2((total) * 0.026 + 0.15);
         rows.push([usDate(iso), `0${7 + k}:15`, `$${gross.toFixed(2)}`, disc ? '-$1.00' : '$0.00', `$${net.toFixed(2)}`, '$0.00', `$${tax.toFixed(2)}`, `$${tip.toFixed(2)}`, '$0.00', `$${total.toFixed(2)}`, `$${cash.toFixed(2)}`, fee ? `-$${(-fee).toFixed(2)}` : '$0.00', `$${C.round2(total + fee).toFixed(2)}`, `PR${back}${k}`, 'Complete']);
       }
@@ -212,7 +212,7 @@
     const d = tx ? tx.date : today();
     const cv = document.createElement('canvas'); cv.width = 520; cv.height = 760;
     const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.fillStyle = '#111';
-    const lines = ['SUNSHINE PACKAGING CO', '4410 Brighton Blvd', 'Denver CO 80216', '', `${d.slice(5, 7)}/${d.slice(8, 10)}/${d.slice(0, 4)}  10:42 AM`, '', 'BAKERY BOXES 10X10  50   42.50', 'PASTRY BAGS 500CT       31.20', 'LABEL ROLLS 2           15.65', '', 'SUBTOTAL                89.35', 'SALES TAX                6.95', 'TOTAL                   96.30', '', 'DEBIT ****4821           96.30', '', 'THANK YOU'];
+    const lines = ['SUNSHINE PACKAGING CO', '4410 Brighton Blvd', 'Denver CO 80216', '', `${d.slice(5, 7)}/${d.slice(8, 10)}/${d.slice(0, 4)}  10:42 AM`, '', 'BAKERY BOXES 10X10  50   42.50', 'PASTRY BAGS 500CT       31.20', 'LABEL ROLLS 2           14.53', '', 'SUBTOTAL                88.23', 'SALES TAX                8.07', 'TOTAL                   96.30', '', 'DEBIT ****4821           96.30', '', 'THANK YOU'];
     g.font = '22px "Courier New", monospace';
     lines.forEach((l, i) => g.fillText(l, 36, 60 + i * 38));
     const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
@@ -449,7 +449,7 @@
       id: 'receipts', level: 2, title: 'Receipts and the paper trail', mins: 4,
       learn: 'Which receipts the IRS expects, and how to read one into the books in seconds.',
       body: [
-        `<p>Every business expense needs proof. The bank statement shows <i>that</i> money left; the <b>receipt</b> shows <i>what it was for</i>. For travel, meals, lodging and gifts of <b>$75 or more</b>, the IRS specifically expects a receipt.</p>`,
+        `<p>Every business expense needs proof. The bank statement shows <i>that</i> money left; the <b>receipt</b> shows <i>what it was for</i>. For travel, meals and gifts of <b>$75 or more</b> — and lodging at any amount — the IRS specifically expects a receipt.</p>`,
         `<p><b>Read a receipt</b> (Transactions page, or the New button) reads a photo or PDF right on the computer and fills in the vendor, date and total. If the matching bank charge is already in the books, it attaches the receipt to it. Otherwise it adds a new expense or a bill.</p>`,
         `<p>Try it with the practice receipt — it's for the Sunshine Packaging charge you imported earlier.</p>`
       ],
@@ -485,7 +485,7 @@
       task: 'Add the practice check, then fix its amount so it matches the statement ($186.00).',
       action: ['Add the check and find it', () => { plantTypo(); ensurePractice(true, 'transactions'); Object.assign(S.ui.txn, { q: '1042', account: 'all', category: '', type: 'all', period: 'last-12' }); render(); }],
       check: () => { const c = P(), pl = T().planted; if (!c || !pl || !pl.typo) return false; const t = c.transactions.find(x => x.id === pl.typo); return !!t && Math.abs(t.amount + 186) < 0.005; },
-      quiz: [{ q: 'The reconcile difference is $36. What\'s a likely cause?', a: ['Swapped digits — 36 divides evenly by 9', 'The bank made a mistake', 'Sales tax'], c: 0, why: 'Transposed digits always leave a difference divisible by 9 — for example $63 typed as $27.' }]
+      quiz: [{ q: 'The reconcile difference is $36. What\'s a likely cause?', a: ['Swapped digits — 36 divides evenly by 9', 'The bank made a mistake', 'Sales tax'], c: 0, why: 'Transposed digits always leave a difference divisible by 9 — for example $73 typed as $37 (a $36 difference).' }]
     },
     {
       id: 'monthwrap', level: 2, title: 'Mileage, reminders and the month-end email', mins: 5,
@@ -519,7 +519,7 @@
       id: 'ownertax', level: 3, title: 'Owner pay and quarterly taxes', mins: 5,
       learn: 'Helping owners pay themselves safely and set aside enough for taxes.',
       body: [
-        `<p>Owners of sole proprietorships and LLCs don't get a paycheck — they take <b>draws</b>. Draws aren't expenses, so they don't lower profit — and the owner pays income tax on the <b>profit</b>, not on what they took.</p>`,
+        `<p>Owners of sole proprietorships, and of LLCs taxed as sole proprietorships or partnerships, don't get a paycheck — they take <b>draws</b>. Draws aren't expenses, so they don't lower profit — and the owner pays income tax on the <b>profit</b>, not on what they took.</p>`,
         `<p>With no tax withheld, owners usually pay <b>estimated taxes</b> four times a year: April 15, June 15, September 15 and January 15. Self-employment tax alone is 15.3%, so setting aside <b>25–30% of profit</b> is a common rule of thumb. The tax preparer gives the real number.</p>`,
         `<p>The <b>Owner pay & taxes</b> tab shows what's been taken, what to set aside each quarter, and a cautious "about safe to pay the owner" number.</p>`
       ],
@@ -604,7 +604,7 @@
       learn: 'Quoting a monthly fee you can live on — and catch-up work that pays for itself.',
       body: [
         `<p>Most independent bookkeepers charge a <b>monthly flat fee</b> based on volume (transactions and accounts) and extras (payroll, invoicing, bills, sales tax, inventory, advisory calls). Clients like predictable bills; you're rewarded for working efficiently.</p>`,
-        `<p>Price <b>catch-up</b> work separately — often about one monthly fee per month behind, more if records are a mess — and collect it before you start. Check your <b>effective hourly rate</b> (fee ÷ hours): if it's too low, raise the fee or trim the scope.</p>`,
+        `<p>Price <b>catch-up</b> work separately — often a little under one monthly fee for each month behind, and more if the records are a mess — and collect it before you start. Check your <b>effective hourly rate</b> (fee ÷ hours): if it's too low, raise the fee or trim the scope.</p>`,
         `<p>My studio → <b>Price a client</b> gives you a starting quote and turns it straight into an engagement letter.</p>`
       ],
       words: [['Flat fee', 'A set monthly price for a defined scope.'], ['Scope creep', 'Extra work that sneaks in without extra pay.'], ['Effective hourly rate', 'Your fee divided by the hours it really takes.']],
@@ -835,7 +835,7 @@
       action: ['Open the Sales Tax report', () => { S.ui.report.type = 'tax'; ensurePractice(true, 'reports'); }],
       check: () => !!T().flags.rSalesTax,
       quiz: [
-        { q: 'A Colorado client starts selling online to Texas customers — $140,000 a year. What do you flag?', a: ['Nothing — they\'re in Colorado', 'Possible economic nexus in Texas — talk to the client and their CPA', 'Only federal tax applies'], c: 1, why: 'Sales above a state\'s economic nexus threshold can require registering and collecting there.' },
+        { q: 'A Colorado client starts selling online to Arizona customers — $140,000 a year. What do you flag?', a: ['Nothing — they\'re in Colorado', 'Possible economic nexus in Arizona (its threshold is $100,000) — talk to the client and their CPA', 'Only federal tax applies'], c: 1, why: 'Sales above a state\'s economic nexus threshold can require registering and collecting there.' },
         { q: 'A wholesale customer says "we\'re buying for resale." Before skipping sales tax, the business needs…', a: ['A handshake', 'A valid resale certificate on file', 'A W-9'], c: 1, why: 'Without the certificate, the seller can owe the tax in an audit.' }
       ]
     },
@@ -877,7 +877,7 @@
       id: 'adv-info', track: 'adv', level: 6, title: '1099s, W-9s and backup withholding', mins: 6,
       learn: 'Information returns done right — the January deadline that trips up every small business.',
       body: [
-        `<p><b>1099-NEC</b> reports nonemployee pay — $2,000 or more for payments made in 2026 ($600 before). The same law raised most <b>1099-MISC</b> thresholds (rent, prizes and similar) too — check the current IRS instructions each year. Both are due <b>January 31</b> for nonemployee pay.</p>`,
+        `<p><b>1099-NEC</b> reports nonemployee pay — $2,000 or more for payments made in 2026 ($600 before). The same law raised most <b>1099-MISC</b> thresholds (rent, prizes and similar) too — check the current IRS instructions each year. The 1099-NEC is due to contractors <i>and</i> the IRS by <b>January 31</b>; the 1099-MISC is due to recipients by January 31 and to the IRS by February 28 on paper or March 31 if e-filed.</p>`,
         `<p>Payments to <b>corporations</b> are generally exempt — but <b>attorneys</b> get 1099s whether incorporated or not. Card and payment-app payments are reported by the processor on a 1099-K instead.</p>`,
         `<p>Collect a <b>W-9</b> before the first payment. If a payee won't provide a correct taxpayer ID, the business must <b>backup withhold 24%</b> from payments. Businesses filing <b>10 or more</b> information returns in total generally must file them electronically (the IRS's free IRIS portal works).</p>`
       ],

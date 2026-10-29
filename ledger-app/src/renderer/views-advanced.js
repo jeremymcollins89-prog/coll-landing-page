@@ -204,7 +204,7 @@
     </div>`;
     return `<div class="tm-head"><span class="tag navy">Advanced final · part 2 of 2</span>${prev && prev.passed ? `<span class="tag green">${ICON.check}Passed · ${prev.score}/100</span>` : ''}</div>
       <h2 class="tm-title">Practical: close ${U.fmtMonth(M.from)} for Aspen Trail Outfitters</h2>
-      <p class="tm-learn">A retail client on monthly accrual reporting. Use the source documents below to post the adjusting entries and fix two miscoded transactions, then close the month. Grading looks at the month-end balances, so any correct method earns full credit — journal entries, splits or recategorizing.</p>
+      <p class="tm-learn">A retail client on monthly accrual reporting. Use the source documents below to post the adjusting entries, fix two miscoded transactions and split the loan payment, then close the month. Grading looks at the month-end balances, so any correct method earns full credit — journal entries, splits or recategorizing.</p>
       ${docs}
       <p class="muted">8 checks worth 100 points (closing the month is required). Pass with 80+. A perfect close with a 92%+ written exam earns distinction.</p>
       ${res ? `<div class="exam-result ${res.passed ? 'pass' : ''}"><div class="er-score">${res.score}<span>/ 100</span></div><div><h2 class="tm-title" style="margin:0">${res.passed ? 'You passed the practical!' : 'Not passed yet'}</h2><div class="muted">${res.passed ? (res.score === 100 ? 'A perfect close.' : 'Solid work.') : !res.closed ? 'Close the month once the entries are in.' : 'Fix the items marked below, then grade again.'}</div></div></div>
