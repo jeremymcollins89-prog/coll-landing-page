@@ -3641,7 +3641,10 @@ function buildScene(THREE, plan, A) {
       for (const q of [{ s0: 0, s1: bq.s0 }, { s0: bq.s1, s1: i.len }]) box({ ...q, y0: 0, y1: 0.333 }, t + 0.022, M.base);
       // closed, it blocks walking like a wall; removed, you can walk through
       const ob = { x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, r: t / 2, doorGroup: { userData: { isOpen: false } } };
-      doorObs.push(ob); removable.push({ meshes: out, ob, o });
+      doorObs.push(ob);
+      // click it in 3D and the pieces come out of the wall and float to the side of the opening (click again: back)
+      const home = out.map(m => ({ p: m.position.clone(), ry: m.rotation.y, s: (m.position.x - ax) * i.ux + (m.position.z - az) * i.uz, w: m.geometry.parameters ? m.geometry.parameters.width : 1 }));
+      removable.push({ meshes: out, ob, o, home, ux: i.ux, uz: i.uz, nx, nz, len: i.len, t, k: 0, open: false, side: 1 });
       shadow((ax + bx) / 2, (az + bz) / 2, i.len, t, Math.atan2(-i.uz, i.ux));
     } else if (o.type === 'pass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill)), D = Math.max(t + 0.1, o.depth || 2), ph = head - sill;
@@ -4942,7 +4945,7 @@ function mount(container, plan, opts) {
     if (built.lid) built.lid.visible = lidOn || m === 'walk' || m === 'exterior';
     if (lidBtn) lidBtn.hidden = !(built.lid && built.lid.children.length);
     const RS = built.removable || []; if (remBtn) remBtn.hidden = !RS.length;
-    for (const r of RS) { for (const m of r.meshes) m.visible = !remOpen; r.ob.doorGroup.userData.isOpen = remOpen; }
+    for (const r of RS) { for (const m of r.meshes) m.visible = !remOpen; r.ob.doorGroup.userData.isOpen = remOpen || r.open; }
     if (built.roof) built.roof.visible = m === 'walk' || m === 'fly' || m === 'exterior';
     // several floors: Dollhouse and the overhead view look down into the floor being edited, so the ones above it hide
     if (built.levelObjs) { const act = (plan && plan.level) || 0, cut = m === 'doll' || m === 'plan'; for (const L of built.levelObjs) for (const o of L.objs) o.visible = !cut || L.k <= act; }
@@ -5006,6 +5009,44 @@ function mount(container, plan, opts) {
     return { x: p.x + dx / d * 1.0, z: p.z + dz / d * 1.0 };
   }
 
+  // removable wall sections: a click takes the panels out (they come toward you and float to the side of the
+  // opening), a second click puts them back
+  const remRay = new THREE.Raycaster();
+  function checkRemClick(clientX, clientY) {
+    const RS = built && built.removable; if (!RS || !RS.length) return false;
+    const r = canvas.getBoundingClientRect();
+    ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    remRay.setFromCamera(ndc, camera);
+    const all = []; for (const q of RS) for (const m of q.meshes) if (m.visible) all.push(m);
+    const hit = remRay.intersectObjects(all, false)[0]; if (!hit) return false;
+    // something else (a wall, a door) in front of it takes the click
+    const other = remRay.intersectObjects(built.pick.filter(m => !all.includes(m)), false)[0];
+    if (other && other.distance < hit.distance - 0.05) return false;
+    const q = RS.find(x => x.meshes.includes(hit.object)); if (!q) return false;
+    q.open = !q.open;
+    if (q.open) { const mx = (q.o.x1 + q.o.x2) / 2, mz = (q.o.y1 + q.o.y2) / 2; q.side = ((camera.position.x - mx) * q.nx + (camera.position.z - mz) * q.nz) >= 0 ? 1 : -1; }
+    q.ob.doorGroup.userData.isOpen = q.open || remOpen;
+    return true;
+  }
+  function stepRemovable(dt) {
+    const RS = built && built.removable; if (!RS) return;
+    const now = performance.now() / 1000, ease = (x) => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x), back = (x) => { if (x <= 0) return 0; if (x >= 1) return 1; const c = 1.4; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+    for (const q of RS) {
+      const goal = q.open ? 1 : 0; if (Math.abs(goal - q.k) < 0.0005 && !q.open) { if (q.k !== goal) { q.k = goal; q.home.forEach((h, j) => { q.meshes[j].position.copy(h.p); q.meshes[j].rotation.y = h.ry; }); } continue; }
+      q.k += Math.sign(goal - q.k) * Math.min(Math.abs(goal - q.k), dt / 1.4);
+      // the pieces left of the middle go out past the start of the opening, the rest past its end; the one nearest
+      // each end leaves first and floats farthest out, so they fan out in layers
+      const L = [], R = []; q.home.forEach((h, j) => (h.s < q.len / 2 ? L : R).push(j));
+      L.sort((a, b) => q.home[a].s - q.home[b].s); R.sort((a, b) => q.home[b].s - q.home[a].s);
+      for (const [grp, dir] of [[L, -1], [R, 1]]) grp.forEach((j, n) => {
+        const h = q.home[j], m = q.meshes[j], d = n * 0.12, a = back(Math.min(1, Math.max(0, (q.k - d) / 0.35))), b = ease((q.k - 0.3 - d) / 0.6);
+        const out = q.side * (q.t / 2 + 1.1 + n * 0.55) * a, sFin = dir < 0 ? -(h.w / 2 + 0.6 + n * 0.25) : q.len + h.w / 2 + 0.6 + n * 0.25, ds = (sFin - h.s) * b;
+        const lift = (0.35 + Math.sin(now * 1.7 + j * 1.3) * 0.07) * b;
+        m.position.set(h.p.x + q.nx * out + q.ux * ds, h.p.y + lift, h.p.z + q.nz * out + q.uz * ds);
+        m.rotation.y = h.ry + dir * q.side * 0.14 * b;
+      });
+    }
+  }
   const doorRay = new THREE.Raycaster();
   function checkDoorClick(clientX, clientY) {
     if (!built || !built.doors || !built.doors.length) return false;
@@ -5464,6 +5505,7 @@ function mount(container, plan, opts) {
     if (measureOn) { measureClick(e.clientX, e.clientY, e); return; }
     if (checkSurpriseClick(e.clientX, e.clientY)) return;
     if (checkSwitchClick(e.clientX, e.clientY)) return;
+    if (checkRemClick(e.clientX, e.clientY)) return;
     if (checkDoorClick(e.clientX, e.clientY)) return;
 
     if (mode === 'fly') return;
@@ -5857,6 +5899,7 @@ function mount(container, plan, opts) {
       else controls.update();   // orbit views only (Dollhouse, Plenum, Exterior, Plan); never in Walk or Drone
       if (game && mode !== 'fly') game.stop();
 
+      stepRemovable(dt);
       if (built && built.doors) {
         built.doors.forEach(doorGroup => {
           const targetOpenAngle = doorGroup.userData.isOpen ? (Math.PI / 2) * doorGroup.userData.swingDir : 0;
