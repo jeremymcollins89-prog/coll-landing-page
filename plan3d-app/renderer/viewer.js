@@ -3192,6 +3192,7 @@ function buildScene(THREE, plan, A) {
   // the ceiling track (the angle the grid rests on) shows only on walls taller than one 12′ panel; a single
   // panel reads as one smooth face, with no band or blocks at the ceiling line
   const trackOK = (h) => h > 12 + 1 / 96;
+  let wallCA = null;
   const M = {
     white: new THREE.MeshPhongMaterial({ color: 0xf7f8f8, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 }),
     edge: new THREE.MeshPhongMaterial({ color: 0xf2f3f3, emissive: 0x121313, specular: 0x111111, shininess: 10 }),
@@ -3285,8 +3286,10 @@ function buildScene(THREE, plan, A) {
     // smooth panel up to the top. Only drawn on a wall taller than one 12′ panel; a single panel shows no band.
     if (p.h > H + 0.05 && trackOK(p.h)) {
       const L0 = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, nx = -(p.z2 - p.z1) / L0, nz = (p.x2 - p.x1) / L0, mx = (p.x1 + p.x2) / 2, mz = (p.z1 + p.z2) / 2;
-      const FPw = footprint(A), side = (sd) => { for (const t of [0.5, 0.2, 0.8]) { const x = p.x1 + (p.x2 - p.x1) * t + nx * sd * (p.t / 2 + 0.4), z = p.z1 + (p.z2 - p.z1) * t + nz * sd * (p.t / 2 + 0.4); if (inCeiling(plan, FPw, x, z)) return true; } return false; };
-      for (const sd of [1, -1]) if (side(sd)) { const o = sd * (p.t / 2 + 0.016); segBox(p.x1 + nx * o, p.z1 + nz * o, p.x2 + nx * o, p.z2 + nz * o, H - 0.17, H, 0.024, M.track); }
+      // at that side's own ceiling height (a room with a raised or dropped ceiling area has its track up or down
+      // there, not at the plan's ceiling line)
+      const FPw = footprint(A), CAw = wallCA || (wallCA = ceilAreas(plan, A)), side = (sd) => { for (const t of [0.5, 0.2, 0.8]) { const x = p.x1 + (p.x2 - p.x1) * t + nx * sd * (p.t / 2 + 0.4), z = p.z1 + (p.z2 - p.z1) * t + nz * sd * (p.t / 2 + 0.4); if (inCeiling(plan, FPw, x, z)) return ceilingAt(CAw, H, x, z); } return 0; };
+      for (const sd of [1, -1]) { const hc = side(sd); if (!hc || p.h <= hc + 0.05) continue; const o = sd * (p.t / 2 + 0.016); segBox(p.x1 + nx * o, p.z1 + nz * o, p.x2 + nx * o, p.z2 + nz * o, hc - 0.17, hc, 0.024, M.track); }
     }
     // panels come up to 12′ tall in one piece; a taller wall is a 12′ panel with a second one stacked on it,
     // joined with a horizontal H-channel
