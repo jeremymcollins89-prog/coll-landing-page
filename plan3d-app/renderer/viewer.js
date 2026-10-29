@@ -3620,7 +3620,7 @@ function buildScene(THREE, plan, A) {
     cMap = new THREE.CanvasTexture(al); cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.repeat.set(B.w / 2, B.d / 2); cMap.anisotropy = ANISO;
   }
   const cMat = TT === 'alum'
-    ? new THREE.MeshPhongMaterial({ map: cMap, color: 0xd8dde0, emissive: 0x3c4043, specular: 0xbfc5c9, shininess: 70, name: 'Ceiling tile, aluminum' })
+    ? new THREE.MeshPhongMaterial({ map: cMap, color: 0xd8dde0, emissive: 0x6a6f72, emissiveMap: cMap, specular: 0xbfc5c9, shininess: 70, name: 'Ceiling tile, aluminum' })
     : new THREE.MeshLambertMaterial({ map: cMap, color: 0xc4c6c6, emissive: 0x9c9e9e, emissiveMap: cMap, name: 'Ceiling tile, vinyl-covered gypsum' });
   let ceil;
   if (FP) {
@@ -4404,9 +4404,11 @@ function mount(container, plan, opts) {
   const REAL_TUNE = [
     [/floor/i, { roughness: 0.3, metalness: 0, envMapIntensity: 0.38 }],
     [/glass/i, { roughness: 0.04, envMapIntensity: 0.9 }],
+    // the ceiling isn't lit by the lights below it (they face down), so it gets the bounce light it would have
+    // in a white room: a little glow of its own
+    [/ceiling tile, aluminum/i, { roughness: 0.42, metalness: 0.5, envMapIntensity: 1.2, emissiveIntensity: 2.2 }],
+    [/ceiling tile, vinyl/i, { roughness: 0.55, metalness: 0, envMapIntensity: 0.6, emissiveIntensity: 1.3 }],
     [/grid|track|aluminum|hardware|stainless|galvanized|damper|kick/i, { roughness: 0.3, metalness: 0.9, envMapIntensity: 1.3 }],
-    [/ceiling tile, aluminum/i, { roughness: 0.32, metalness: 0.9, envMapIntensity: 1.1 }],
-    [/ceiling tile, vinyl/i, { roughness: 0.55, metalness: 0, envMapIntensity: 0.45 }],
     [/ceiling tile|ceiling, solid/i, { roughness: 0.92, metalness: 0, envMapIntensity: 0.35 }],
     [/wall panel|door leaf|door frame|fixture housing|ffu housing/i, { roughness: 0.36, metalness: 0, envMapIntensity: 0.85 }],
     [/rubber/i, { roughness: 0.82, envMapIntensity: 0.3 }]
@@ -4414,7 +4416,7 @@ function mount(container, plan, opts) {
   function tuneMat(m, on) {
     if (!m || !m.isMeshStandardMaterial) return;
     const t = REAL_TUNE.find(([re]) => re.test(m.name || '')); if (!t) return;
-    if (on) { if (!matOrig.has(m)) matOrig.set(m, { roughness: m.roughness, metalness: m.metalness, envMapIntensity: m.envMapIntensity }); Object.assign(m, t[1]); }
+    if (on) { if (!matOrig.has(m)) matOrig.set(m, { roughness: m.roughness, metalness: m.metalness, envMapIntensity: m.envMapIntensity, emissiveIntensity: m.emissiveIntensity }); Object.assign(m, t[1]); }
     else if (matOrig.has(m)) Object.assign(m, matOrig.get(m));
   }
   function indoorEnv() {
