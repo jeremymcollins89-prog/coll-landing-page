@@ -4384,12 +4384,12 @@ function mount(container, plan, opts) {
   // view stays exactly as it was when it's off.
   const realBtn = container.querySelector('.p3v-real');
   const canReal = GFX && !!(THREE.EffectComposer && THREE.SSAOPass && THREE.RectAreaLight && THREE.RectAreaLightUniformsLib) && renderer.capabilities.isWebGL2 && !opts.preserve;
-  let real = false, rComp = null, rPlain = null, rSSAO = null, rFXAA = null, rBloom = null, envIn = null;
+  let lightGain = 1.7, real = false, rComp = null, rPlain = null, rSSAO = null, rFXAA = null, rBloom = null, envIn = null;
   const envOut = scene.environment, tmOut = renderer.toneMapping, expOut = renderer.toneMappingExposure;
   const roomLights = new THREE.Group(); roomLights.name = 'room lights'; scene.add(roomLights);
   const matOrig = new Map();
   const REAL_TUNE = [
-    [/floor/i, { roughness: 0.32, metalness: 0, envMapIntensity: 0.55 }],
+    [/floor/i, { roughness: 0.3, metalness: 0, envMapIntensity: 0.38 }],
     [/glass/i, { roughness: 0.04, envMapIntensity: 0.9 }],
     [/grid|track|aluminum|hardware|stainless|galvanized|damper|kick/i, { roughness: 0.3, metalness: 0.9, envMapIntensity: 1.3 }],
     [/ceiling tile|ceiling, solid/i, { roughness: 0.92, metalness: 0, envMapIntensity: 0.35 }],
@@ -4412,10 +4412,14 @@ function mount(container, plan, opts) {
     const t = pm.fromScene(es, 0.04).texture; pm.dispose(); return t;
   }
   function makeComposer() {
-    const rt = new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType });
+    // full 24-bit depth everywhere (a target without a stencil gets a 16-bit depth buffer, and the rubber base,
+    // floor and wall faces, a fraction of an inch apart, flicker through each other)
+    const rt = new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, stencilBuffer: true });
     rComp = new THREE.EffectComposer(renderer, rt);
     rPlain = new THREE.RenderPass(scene, camera); rPlain.enabled = false; rComp.addPass(rPlain);   // used when the corner shading is off
-    rSSAO = new THREE.SSAOPass(scene, camera, 2, 2); rSSAO.kernelRadius = 0.7; rSSAO.minDistance = 0.002; rSSAO.maxDistance = 0.05;
+    rSSAO = new THREE.SSAOPass(scene, camera, 2, 2); rSSAO.kernelRadius = 1.2; rSSAO.minDistance = 0.0015; rSSAO.maxDistance = 0.06;
+    if (rSSAO.beautyRenderTarget) rSSAO.beautyRenderTarget.stencilBuffer = true;
+    if (rSSAO.normalRenderTarget && rSSAO.normalRenderTarget.depthTexture) rSSAO.normalRenderTarget.depthTexture.type = THREE.UnsignedIntType;
     rComp.addPass(rSSAO);
     if (THREE.UnrealBloomPass) { rBloom = new THREE.UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.45, 0.92); rComp.addPass(rBloom); }
     rComp.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));
@@ -4440,7 +4444,7 @@ function mount(container, plan, opts) {
     }
     if (!list.length && A && !A.empty && A.hardAny) { const b = A.bounds; list.push({ cx: b.minX + b.w / 2, cz: b.minZ + b.d / 2, w: b.w * 0.9, d: b.d * 0.9, H: A.H || 8, k: 1.2 }); }
     list.sort((a, b) => b.w * b.d - a.w * a.d).slice(0, 16).forEach(L => {
-      const l = new THREE.RectAreaLight(0xfff6ea, L.k, L.w, L.d); l.position.set(L.cx, L.H - 0.03, L.cz); l.lookAt(L.cx, 0, L.cz); roomLights.add(l);
+      const l = new THREE.RectAreaLight(0xfff6ea, L.k * lightGain, L.w, L.d); l.position.set(L.cx, L.H - 0.03, L.cz); l.lookAt(L.cx, 0, L.cz); roomLights.add(l);
     });
   }
   function setReal(on) {
@@ -4448,10 +4452,13 @@ function mount(container, plan, opts) {
     const KN = global.P3REAL || {};
     if (real && !rComp) { try { THREE.RectAreaLightUniformsLib.init(); makeComposer(); } catch (e) { console.error(e); real = false; } }
     if (real && !envIn) { try { envIn = indoorEnv(); } catch (e) { envIn = null; } }
-    renderer.toneMapping = real ? THREE.ACESFilmicToneMapping : tmOut; renderer.toneMappingExposure = real ? (KN.exp || 0.92) : expOut; if (rSSAO) { rSSAO.enabled = KN.ao !== false; rPlain.enabled = !rSSAO.enabled; if (KN.kr) rSSAO.kernelRadius = KN.kr; if (KN.min) rSSAO.minDistance = KN.min; if (KN.max) rSSAO.maxDistance = KN.max; }
+    renderer.toneMapping = real ? (KN.tm === 'none' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping) : tmOut; renderer.toneMappingExposure = real ? (KN.exp || 0.92) : expOut; if (rSSAO) { rSSAO.enabled = KN.ao !== false; rPlain.enabled = !rSSAO.enabled; if (KN.kr) rSSAO.kernelRadius = KN.kr; if (KN.min) rSSAO.minDistance = KN.min; if (KN.max) rSSAO.maxDistance = KN.max; }
     scene.environment = real && envIn && KN.env !== false ? envIn : envOut;
     for (const m of upCache.values()) { tuneMat(m, real); m.needsUpdate = true; }
     scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); });
+    const amb = KN.amb != null ? KN.amb : 0.5;
+    scene.children.forEach(o => { if (o.isHemisphereLight || o.isAmbientLight) { if (o.userData.i0 == null) o.userData.i0 = o.intensity; o.intensity = o.userData.i0 * (real ? amb : 1); } });
+    lightGain = KN.k != null ? KN.k : 1.7;
     placeRoomLights(); roomLights.visible = KN.lights !== false;
     if (realBtn) realBtn.setAttribute('aria-pressed', String(real));
     try { localStorage.setItem('p3v.real', real ? '1' : '0'); } catch (e) { /* ok */ }
