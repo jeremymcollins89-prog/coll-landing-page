@@ -283,5 +283,118 @@ function certHTML(plan, X) {
   return F.doc(pages);
 }
 
-global.Plan3DDocs = { roomsOf, submittalHTML, crates, PANEL_PSF, poGroups, posHTML, posCSV, SUPPLIER_GROUPS, LEAD_DAYS, installPlan, scheduleHTML, PUNCH, certHTML, sampleLocations, ISO_LIMIT };
+/* ---------------------------------------------------------------- 6. Change orders
+   A version of the plan the customer approved (plan.baseline: its parts and a short description of its layout),
+   compared with the plan as it is now: what was added, removed or changed, priced like the quote (your unit
+   cost × markup, tax on materials, labor by the square foot), on a page the customer signs. */
+const baseItem = (t) => String(t || '').replace(/\s*\([^)]*\)\s*$/, '');   // "Ceiling tiles to order, … (120 full + …)" → one part, whatever the count
+// cut tiles of every size count as one line on a change order ("Ceiling tile, aluminum, cut pieces"), each size
+// still priced at its own price
+const coItem = (l) => { const b = baseItem(l.item), m = /^(Ceiling tile, .*?), cut( and notched)?$/.exec(b); return m ? m[1] + ', cut pieces (all sizes)' : b; };
+const coCut = (l) => /^Ceiling tile, .*, cut( and notched)?$/.test(baseItem(l.item));
+const normKey = (l) => l.cat + '|' + coItem(l) + '|' + (l.unit === 'ea' && !coCut(l) ? l.size || '' : '') + '|' + l.unit;
+function layoutOf(plan) {
+  const R = roomsOf(plan); let fx = []; try { fx = V().ceilingFixtures(plan, V().analyze(plan)); } catch (e) { fx = []; }
+  const op = plan.openings || [], pc = V().panelColorOf ? V().panelColorOf(plan) : 'white';
+  return {
+    rooms: R.map(r => ({ name: r.name, iso: r.iso || null, area: Math.round(r.area), ffus: r.ffus.length, lights: r.lights.length })),
+    doors: op.filter(o => /door|overhead/.test(o.type || '')).length, glass: op.filter(o => o.type === 'glass' || o.type === 'window').length,
+    ffus: fx.filter(f => f.type === 'ffu').length, lights: fx.filter(f => f.type !== 'ffu').length, walls: (plan.walls || []).length,
+    tiles: V().tileName ? V().tileName(plan) : '', grid: V().gridColorOf ? V().gridColorOf(plan) : 'white',
+    panel: (V().PANEL_COLORS && V().PANEL_COLORS[pc]) ? V().PANEL_COLORS[pc][0] : 'White'
+  };
+}
+function snapshot(plan, label) {
+  return { date: new Date().toISOString(), label: label || '', area: Q().floorArea(plan), layout: layoutOf(plan),
+    lines: partsLines(plan).map(l => ({ key: l.key, cat: l.cat, item: l.item, size: l.size || '', unit: l.unit, qty: l.qty, order: l.order || 0 })) };
+}
+// the changes between a snapshot and the plan now. prices: the price book; S: the quote settings
+function changes(base, plan, prices, S, X) {
+  X = X || {}; prices = prices || {}; S = S || {};
+  const mk = 1 + (+S.markup || 0) / 100, by = new Map();
+  const put = (l, side) => {
+    const k = normKey(l); let e = by.get(k);
+    if (!e) by.set(k, e = { cat: l.cat, item: coItem(l), size: coCut(l) ? '' : l.size || '', unit: l.unit, order: l.order || 0, was: 0, now: 0, cost: 0, prices: new Set(), unpriced: false });
+    const q = +l.qty || 0, pr = +prices[l.key] || 0;
+    e[side] = Math.round((e[side] + q) * 100) / 100;
+    if (pr) { e.cost += (side === 'now' ? 1 : -1) * q * pr; e.prices.add(pr); } else if (q) e.unpriced = true;
+  };
+  for (const l of (base && base.lines) || []) put(l, 'was');
+  for (const l of partsLines(plan)) put(l, 'now');
+  let materialSell = 0, unpriced = 0;
+  const rows = [...by.values()].filter(e => Math.abs(e.now - e.was) > 0.004).map(e => {
+    const d = Math.round((e.now - e.was) * 100) / 100, priced = !e.unpriced;
+    if (!priced) unpriced++;
+    const ext = e.cost * mk; materialSell += ext;
+    // one unit price to show when the line has one (cut pieces of several sizes don't)
+    return { ...e, d, sell: e.prices.size === 1 ? [...e.prices][0] * mk : null, ext, priced };
+  }).sort((a, b) => a.order - b.order || a.item.localeCompare(b.item));
+  const areaNow = Q().floorArea(plan), dArea = areaNow - ((base && base.area) || 0);
+  const labor = X.labor != null && X.labor !== '' ? +X.labor || 0 : (S.laborMode === 'lump' ? 0 : (+S.laborRate || 0) * dArea);
+  const tax = materialSell * (+S.tax || 0) / 100, other = +X.other || 0;
+  const total = materialSell + tax + labor + other;
+  // the layout, in words
+  const was = (base && base.layout) || {}, now = layoutOf(plan), notes = [];
+  const rmW = new Map((was.rooms || []).map(r => [r.name, r])), rmN = new Map(now.rooms.map(r => [r.name, r]));
+  for (const r of now.rooms) {
+    const o = rmW.get(r.name);
+    if (!o) { notes.push(`Added room ${r.name}${r.iso ? ' (ISO ' + r.iso + ')' : ''}, ${num(r.area)} sq ft.`); continue; }
+    const bits = [];
+    if (Math.abs(r.area - o.area) >= 1) bits.push(`${num(o.area)} → ${num(r.area)} sq ft`);
+    if ((r.iso || null) !== (o.iso || null)) bits.push(`class ${o.iso ? 'ISO ' + o.iso : 'none'} → ${r.iso ? 'ISO ' + r.iso : 'none'}`);
+    if (r.ffus !== o.ffus) bits.push(`FFUs ${o.ffus} → ${r.ffus}`);
+    if (r.lights !== o.lights) bits.push(`lights ${o.lights} → ${r.lights}`);
+    if (bits.length) notes.push(`${r.name}: ${bits.join(', ')}.`);
+  }
+  for (const r of was.rooms || []) if (!rmN.has(r.name)) notes.push(`Removed room ${r.name}.`);
+  const cnt = (k, label) => { const a = +was[k] || 0, b = +now[k] || 0; if (a !== b) notes.push(`${label}: ${a} → ${b} (${b > a ? '+' : '−'}${Math.abs(b - a)}).`); };
+  cnt('doors', 'Doors'); cnt('glass', 'Windows and vision glass'); cnt('ffus', 'Fan filter units'); cnt('lights', 'Light fixtures');
+  if (was.tiles && was.tiles !== now.tiles) notes.push(`Ceiling tiles: ${was.tiles} → ${now.tiles}.`);
+  if (was.grid && was.grid !== now.grid) notes.push(`Ceiling grid: ${was.grid} → ${now.grid}.`);
+  if (was.panel && was.panel !== now.panel) notes.push(`Wall panel color: ${String(was.panel).toLowerCase()} → ${String(now.panel).toLowerCase()}.`);
+  if (Math.abs(dArea) >= 1) notes.push(`Cleanroom floor area: ${num(base.area)} → ${num(areaNow)} sq ft.`);
+  return { rows, notes, materialSell, tax, labor, other, total, unpriced, dArea, areaNow };
+}
+function changeOrderHTML(plan, X) {
+  // X: { co, cust, number, date, base, C (from changes), desc, otherDesc, schedule, contract (before, or null) }
+  const co = X.co || {}, cu = X.cust || {}, project = cu.project || plan.name || 'Cleanroom', C = X.C;
+  const F = frame(project + ' change order ' + X.number, co, 'Change order', X.number);
+  const sg = (v) => (v < 0 ? '−' : '') + money(Math.abs(v));
+  const qty = (v, u) => (v < 0 ? '−' : v > 0 ? '+' : '') + num(Math.abs(v), 2) + (u === 'ea' ? '' : ' ' + u);
+  const head = '<tr><th>Item</th><th class="n">Was</th><th class="n">Now</th><th class="n">Change</th><th class="n">Price</th><th class="n">Amount</th></tr>';
+  let cat = ''; const rows = [];
+  for (const r of C.rows) {
+    if (r.cat !== cat) rows.push(`<tr class="cat"><td colspan="6">${esc(cat = r.cat)}</td></tr>`);
+    rows.push(`<tr><td>${esc(r.item)}${r.size && !r.item.includes(r.size) ? `<small>${esc(r.size)}</small>` : ''}</td><td class="n">${num(r.was, 2)}</td><td class="n">${num(r.now, 2)}</td><td class="n"><b>${qty(r.d, r.unit)}</b></td><td class="n">${!r.priced ? '<small>not priced</small>' : r.sell != null ? money(r.sell) : '<small>by size</small>'}</td><td class="n">${r.priced ? sg(r.ext) : (r.ext ? sg(r.ext) + '<small>part priced</small>' : '')}</td></tr>`);
+  }
+  if (!rows.length) rows.push('<tr><td colspan="6">No change to the materials.</td></tr>');
+  const before = X.contract != null && X.contract !== '' && isFinite(+X.contract) ? +X.contract : null;
+  const totals = `<table style="width:3.6in;margin-left:auto;margin-top:12px"><tbody>
+    <tr><td>Materials</td><td class="n">${sg(C.materialSell)}</td></tr>
+    ${C.tax ? `<tr><td>Sales tax</td><td class="n">${sg(C.tax)}</td></tr>` : ''}
+    <tr><td>Labor</td><td class="n">${sg(C.labor)}</td></tr>
+    ${C.other ? `<tr><td>${esc(X.otherDesc || 'Other')}</td><td class="n">${sg(C.other)}</td></tr>` : ''}
+    <tr><td><b>This change order ${C.total < 0 ? '(credit)' : ''}</b></td><td class="n"><b>${sg(C.total)}</b></td></tr>
+    ${before != null ? `<tr><td>Contract before this change</td><td class="n">${money(before)}</td></tr><tr><td><b>New contract amount</b></td><td class="n"><b>${money(before + C.total)}</b></td></tr>` : ''}
+  </tbody></table>`;
+  const baseTxt = X.base ? fmtDate(new Date(X.base.date)) + (X.base.label ? ' (' + X.base.label + ')' : '') : '';
+  const intro = `<div class="kv"><span>Change order</span><b>${esc(X.number)}</b><span>Date</span><b>${esc(X.date || fmtDate(new Date()))}</b><span>Project</span><b>${esc(project)}</b><span>Customer</span><b>${esc([cu.name, cu.company].filter(Boolean).join(', '))}</b><span>Changes from</span><b>${esc(baseTxt ? 'the version approved ' + baseTxt : 'the approved version')}</b><span>Schedule</span><b>${esc(X.schedule || 'No change')}</b></div>
+    ${X.desc ? `<h3>Description</h3><p style="white-space:pre-wrap;margin:0">${esc(X.desc)}</p>` : ''}
+    ${C.notes.length ? `<h3>What changed in the layout</h3><ul style="margin:0;padding-left:18px">${C.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}<h3>Materials</h3>`;
+  const sign = `${totals}${C.unpriced ? `<p class="note">${C.unpriced} part${C.unpriced === 1 ? ' has' : 's have'} no price in the price book and ${C.unpriced === 1 ? 'is' : 'are'} not in the amount.</p>` : ''}
+    <h3>Approval</h3><p class="note">The work described here is added to (or removed from) the contract at the amount above. All other terms of the contract stay the same. Work on this change starts when it is signed.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:18px">
+      <div class="stamp"><b>CUSTOMER</b><div style="margin-top:22px">Signature <span class="blank" style="min-width:2in"></span></div><div style="margin-top:12px">Name <span class="blank" style="min-width:2.25in"></span></div><div style="margin-top:12px">Date <span class="blank" style="min-width:1.2in"></span></div></div>
+      <div class="stamp"><b>${esc((co.name || 'Coll Business Solutions LLC').toUpperCase())}</b><div style="margin-top:22px">Signature <span class="blank" style="min-width:2in"></span></div><div style="margin-top:12px">Name <span class="blank" style="min-width:2.25in"></span></div><div style="margin-top:12px">Date <span class="blank" style="min-width:1.2in"></span></div></div>
+    </div>`;
+  // the materials table over as many pages as it needs, the totals and signatures after it
+  const firstRows = Math.max(4, 22 - C.notes.length - (X.desc ? Math.ceil(X.desc.length / 90) + 2 : 0));
+  const pages = tablePages(F, 'Change order ' + X.number, 'Change order', intro, head, rows, firstRows, 34);
+  const lastFits = rows.length <= firstRows ? rows.length <= firstRows - 12 : ((rows.length - firstRows) % 34) <= 20 && ((rows.length - firstRows) % 34) > 0;
+  if (lastFits) pages[pages.length - 1] = pages[pages.length - 1].replace('</tbody></table>', '</tbody></table>' + sign);
+  else pages.push(F.page('Change order ' + X.number, `<h2>Change order ${esc(X.number)}: total and approval</h2>` + sign));
+  return F.doc(pages);
+}
+
+global.Plan3DDocs = { snapshot, changes, changeOrderHTML, layoutOf, roomsOf, submittalHTML, crates, PANEL_PSF, poGroups, posHTML, posCSV, SUPPLIER_GROUPS, LEAD_DAYS, installPlan, scheduleHTML, PUNCH, certHTML, sampleLocations, ISO_LIMIT };
 })(window);

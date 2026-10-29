@@ -1358,6 +1358,62 @@ function scheduleDialog() {
     await pdfOut(R.html, (c.cust.project || P.name || 'Cleanroom') + ' install schedule', `Install schedule saved: ${R.P.total.toFixed(1)} working days.`);
   });
 }
+/* ---------- Change orders: the plan now against the version the customer approved ---------- */
+function markApproved(label, snap) {
+  const S = snap || Plan3DDocs.snapshot(ed.plan, label);
+  ed.edit(Q => { Q.baseline = S; });
+  toast('Saved as the approved version' + (label ? ' (' + label + ')' : '') + '. Change orders compare against it.');
+}
+async function compareFile() {
+  const r = await api.openFile('project'); if (!r) return null;
+  if (r.kind !== 'project') { toast("That file couldn't be read."); return null; }
+  let p; try { p = JSON.parse(r.json); } catch (e) { toast('That project file is damaged.'); return null; }
+  if (!p.walls) { toast('That isn’t a Plan3D plan.'); return null; }
+  const S = Plan3DDocs.snapshot(p, r.name || p.name || 'from a file'); S.fromFile = true; return S;
+}
+async function changeOrderDialog(base0) {
+  if (!needWalls()) return; const c = docCtx(), P = c.P;
+  let base = base0 || P.baseline || null;
+  if (!base) {
+    const r = await dialogOpen({ title: 'Change order', body: `<p>A change order compares this plan with the version the customer approved and prices the difference.</p><p class="note">There's no approved version saved in this plan yet. If this plan is what the customer approved, mark it now, make the changes, then come back here. Or compare with a copy of the plan saved before the changes.</p>`,
+      buttons: [{ label: 'Cancel', ret: null }, { label: 'Compare with a plan file…', ret: 'file' }, { label: 'Mark this version approved', primary: true, ret: 'mark' }] });
+    if (r === 'mark') markApproved(''); 
+    if (r === 'file') { const S = await compareFile(); if (S) changeOrderDialog(S); }
+    return;
+  }
+  const prices = QS.get('prices', {}), S = { ...QDEF, ...QS.get('quoteDefaults', {}), ...((P.quote || {}).money || {}) };
+  const hist = P.changeOrders || [], next = 'CO-' + String(hist.length + 1).padStart(3, '0');
+  const lastAmt = hist.length && hist[hist.length - 1].after != null ? hist[hist.length - 1].after : '';
+  const C0 = Plan3DDocs.changes(base, P, prices, S, {});
+  const money = (v) => (v < 0 ? '−$' : '$') + Math.abs(Math.round(v * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const inp = (id, v, ph) => `<input type="text" id="${id}" value="${esc(v == null ? '' : v)}" ${ph ? `placeholder="${esc(ph)}"` : ''}>`;
+  const bdate = new Date(base.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  const r = await dialogOpen({ title: 'Change order', wide: true, body: `
+    <p class="note">Compared with ${base.fromFile ? 'the plan file <b>' + esc(base.label) + '</b>' : 'the version approved <b>' + esc(bdate) + '</b>' + (base.label ? ' (' + esc(base.label) + ')' : '')}.</p>
+    <div id="coPrev" style="max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:6px 0 10px;font-size:12px"></div>
+    <div class="row" style="gap:10px;flex-wrap:wrap">${fld('Number', inp('coNo', next))}${fld('Schedule', inp('coSch', 'No change', 'e.g. adds 2 working days'))}</div>
+    ${fld('Description', `<textarea id="coDesc" rows="2" placeholder="What the customer asked for, in a sentence or two"></textarea>`)}
+    <div class="row" style="gap:10px;flex-wrap:wrap">${fld('Labor', inp('coLab', S.laborMode === 'lump' ? '' : Math.round(C0.labor * 100) / 100, '$ for this change'))}${fld('Other', inp('coOth', '', '$ (+ or −)'))}${fld('Other is for', inp('coOthD', '', 'e.g. freight, engineering'))}</div>
+    ${fld('Contract so far', inp('coCon', lastAmt, '$ before this change (optional)'))}
+    <label class="chk"><input type="checkbox" id="coNext" checked> After making it, this plan becomes the approved version (for the next change order)</label>`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Compare with a file…', ret: 'file' }, { label: 'Make change order PDF', primary: true, value: () => ({ number: $('#coNo').value.trim() || next, schedule: $('#coSch').value.trim(), desc: $('#coDesc').value.trim(), labor: $('#coLab').value.replace(/[^\d.-]/g, ''), other: $('#coOth').value.replace(/[^\d.-]/g, ''), otherDesc: $('#coOthD').value.trim(), contract: $('#coCon').value.replace(/[^\d.-]/g, ''), next: $('#coNext').checked }) }],
+    onOpen: () => {
+      const show = () => {
+        const C = Plan3DDocs.changes(base, P, prices, S, { labor: $('#coLab').value.replace(/[^\d.-]/g, ''), other: $('#coOth').value.replace(/[^\d.-]/g, '') });
+        $('#coPrev').innerHTML = (C.notes.length ? `<ul style="margin:0 0 6px;padding-left:16px">${C.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '')
+          + (C.rows.length ? `<table style="width:100%;border-collapse:collapse">${C.rows.map(q => `<tr><td>${esc(q.item)}${q.size ? ` <span style="opacity:.6">${esc(q.size)}</span>` : ''}</td><td style="text-align:right;white-space:nowrap">${q.d > 0 ? '+' : '−'}${Math.abs(q.d).toLocaleString()} ${q.unit === 'ea' ? '' : esc(q.unit)}</td><td style="text-align:right;white-space:nowrap">${q.priced ? money(q.ext) : '<span style="opacity:.6">no price</span>'}</td></tr>`).join('')}</table>` : '<p style="margin:0">No change to the materials.</p>')
+          + `<p style="margin:8px 0 0"><b>Change order total: ${money(C.total)}</b>${C.unpriced ? ` · <span style="opacity:.7">${C.unpriced} part${C.unpriced === 1 ? '' : 's'} not priced (Quote &amp; proposal)</span>` : ''}</p>`;
+      };
+      ['#coLab', '#coOth'].forEach(id => $(id).addEventListener('input', show)); show();
+    } });
+  if (r === 'file') { const S2 = await compareFile(); if (S2) changeOrderDialog(S2); return; }
+  if (!r) return;
+  const C = Plan3DDocs.changes(base, P, prices, S, { labor: r.labor, other: r.other });
+  const html = Plan3DDocs.changeOrderHTML(P, { co: c.co, cust: c.cust, number: r.number, date: c.date, base, C, desc: r.desc, otherDesc: r.otherDesc, schedule: r.schedule, contract: r.contract });
+  await pdfOut(html, (c.cust.project || P.name || 'Cleanroom') + ' change order ' + r.number, `Change order ${r.number} saved: ${money(C.total)}.`);
+  const before = r.contract !== '' && isFinite(+r.contract) ? +r.contract : null;
+  ed.edit(Q => { Q.changeOrders = (Q.changeOrders || []).concat([{ number: r.number, date: new Date().toISOString(), total: Math.round(C.total * 100) / 100, before, after: before != null ? Math.round((before + C.total) * 100) / 100 : null }]); if (r.next) Q.baseline = Plan3DDocs.snapshot(Q, 'after ' + r.number); });
+}
 async function certExport() {
   if (!needWalls()) return; const c = docCtx(), P = c.P;
   const R = Plan3DDocs.roomsOf(P);
@@ -2914,7 +2970,7 @@ $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave
     items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
   });
   const item = (id, fn) => { $(id).onclick = () => { close(); fn(); }; };
-  item('#bExportLink', linkDialog); item('#bExportHtml', exportHtml); item('#bSubm', submittalDialog); item('#bPOs', poDialog); item('#bSched', scheduleDialog); item('#bCert', certExport); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
+  item('#bExportLink', linkDialog); item('#bExportHtml', exportHtml); item('#bSubm', submittalDialog); item('#bPOs', poDialog); item('#bSched', scheduleDialog); item('#bCert', certExport); item('#bCO', () => changeOrderDialog()); item('#bApproved', () => markApproved('')); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
   item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportTm', exportTwinmotion); item('#bExportParts', exportParts);
 }
 // Ceiling dropdown: add / edit the ceiling drawing, or generate one
