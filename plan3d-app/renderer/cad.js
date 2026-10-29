@@ -74,6 +74,15 @@ function toDxf(plan, opts) {
   const text = (layer, x, y, str, hFt, rotPlan) => {
     if (!str) return;
     const rot = r6(-(rotPlan || 0));
+    if (opts.plainText) {
+      // for a DWG made with LibreDWG: it drops a text's alignment point, which would send every centred label to
+      // the drawing's origin. So the label is written left-aligned at its baseline, moved back by half its width
+      // and down by half its height (about 0.8 of the height a letter) so it still sits centred where it goes.
+      const h = hFt * 12, w = String(str).length * h * 0.8, a = rot * Math.PI / 180, c = Math.cos(a), sn = Math.sin(a);
+      const ix = X(x) - c * w / 2 + sn * h / 2, iy = Y(y) - sn * w / 2 - c * h / 2;
+      put(0, 'TEXT', 8, layer, 10, r6(ix), 20, r6(iy), 30, 0, 40, r6(h), 1, dxfStr(str), 50, rot);
+      return;
+    }
     put(0, 'TEXT', 8, layer, 10, X(x), 20, Y(y), 30, 0, 40, r6(hFt * 12), 1, dxfStr(str), 50, rot, 72, 1, 11, X(x), 21, Y(y), 31, 0, 73, 2);
   };
   const quad = (x1, y1, x2, y2, t) => { const L = Math.hypot(x2 - x1, y2 - y1) || 1, nx = -(y2 - y1) / L * t / 2, ny = (x2 - x1) / L * t / 2; return [[x1 + nx, y1 + ny], [x2 + nx, y2 + ny], [x2 - nx, y2 - ny], [x1 - nx, y1 - ny]]; };
