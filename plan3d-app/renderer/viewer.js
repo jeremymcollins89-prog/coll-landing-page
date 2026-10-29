@@ -3613,7 +3613,8 @@ function buildScene(THREE, plan, A) {
       // removable wall section (equipment access): see removableLayout. Show removed (3D) hides the panels and
       // the studs between them, so you can see the opening a machine comes through.
       const RL = removableOf(plan, A, i), WP = i.hard ? IP : wallPM(null), tb = t + 0.004, EE = [WP.edge, WP.edge, WP.edge, WP.edge];
-      const metal = M.remMetal || (M.remMetal = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xb8bfc3, specular: 0x8a9196, shininess: 70 }); m.name = 'Removable section frame, 3x3 steel tube'; return m; })());
+      // the steel tube is painted to match the room (the wall panels' colour), a little glossier than the panels
+      const metal = M['remSteel' + WP.label] || (M['remSteel' + WP.label] = (() => { const m = new THREE.MeshPhongMaterial({ color: new THREE.Color(WP.face).multiplyScalar(0.97), emissive: WP.emissive, specular: 0x3a3d3f, shininess: 45 }); m.name = 'Removable section frame, 3x3 steel tube, painted ' + WP.label.toLowerCase(); return m; })());
       const box = (q, th, mat, line) => { const [p0x, p0z] = along(q.s0), [p1x, p1z] = along(q.s1); const m = segBox(p0x, p0z, p1x, p1z, q.y0, q.y1, th, mat); if (line) outline(m); pick.push(m); return m; };
       const face = M['remFace' + WP.label] || (M['remFace' + WP.label] = (() => { const m = new THREE.MeshPhongMaterial({ color: new THREE.Color(WP.face).multiplyScalar(0.955), emissive: WP.emissive, specular: 0x1c1c1c, shininess: 16 }); m.name = 'Wall panel, removable, ' + WP.label.toLowerCase(); return m; })());
       const stud = M.studIns || (M.studIns = (() => { const tx = new THREE.CanvasTexture(cachedCanvas('studIns', () => makeCanvas(32, 64, (g, w, h) => {

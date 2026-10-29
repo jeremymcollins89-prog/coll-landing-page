@@ -335,13 +335,13 @@ function partsList(plan) {
       // removable wall section: the same wall panels in a frame of 3″ × 3″ steel tube (posts to the lid, a header
       // tube), a 1″ white wall start inside the tubes, H-studs with inserts at the panel joints and in the
       // header panels over it (see removableLayout)
-      const RL = V.removableOf(plan, A, i);
+      const RL = V.removableOf(plan, A, i), paint = V.PANEL_COLORS && V.panelColorOf ? ((V.PANEL_COLORS[V.panelColorOf(plan, i.host)] || ['white'])[0]).toLowerCase() : 'white';
       add('Wall panels', 'Removable wall panel (equipment access section)', inch(RL.panelW) + ' × ' + ftin(RL.panelH), RL.n, 'ea', 10.5);
       for (const q of RL.headers) add('Wall panels', 'Header panel over removable section', inch(q.s1 - q.s0) + ' × ' + ftin(q.y1 - q.y0), 1, 'ea', 10.6);
       if (RL.studs.length) add('Studs & posts', 'H-stud, 3″ with insert (removable section joint)', '3″ × ' + ftin(RL.panelH), RL.studs.length, 'ea', 20.5);
       if (RL.hstuds.length) add('Studs & posts', 'H-stud, 3″ with insert (header panel over removable section)', '3″ × ' + ftin(RL.top - RL.head), RL.hstuds.length, 'ea', 20.6);
-      add('Studs & posts', 'Removable section post, 3″ × 3″ steel tube (floor to lid)', '3″ × 3″ × ' + ftin(RL.top), 2, 'ea', 25.5);
-      add('Studs & posts', 'Removable section header tube, 3″ × 3″ steel', '3″ × 3″ × ' + ftin(RL.headerTube.s1 - RL.headerTube.s0), 1, 'ea', 25.6);
+      add('Studs & posts', 'Removable section post, 3″ × 3″ steel tube, painted ' + paint + ' (floor to lid)', '3″ × 3″ × ' + ftin(RL.top), 2, 'ea', 25.5);
+      add('Studs & posts', 'Removable section header tube, 3″ × 3″ steel, painted ' + paint, '3″ × 3″ × ' + ftin(RL.headerTube.s1 - RL.headerTube.s0), 1, 'ea', 25.6);
       add('Trim', 'Wall start, white (inside removable section frame)', '', Math.ceil(RL.startFt), 'lin ft', 53.5);
     }
   }
