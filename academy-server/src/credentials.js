@@ -99,6 +99,7 @@ export function buildCredential(e) {
 
 // ---------------------------------------------------------------- signing (Web Crypto)
 let cachedKey = null; // { pem, key }
+export async function signingStatus(env) { try { await signingKey(env); return 'ok'; } catch (e) { return (e && e.message) || 'unavailable'; } }
 async function signingKey(env) {
   let pem = env.CREDENTIAL_SIGNING_KEY;
   if (!pem || !String(pem).trim()) fail(503, 'signing_unavailable', 'Certificates can\'t be issued right now (the signing key isn\'t set up). Please try again later.');

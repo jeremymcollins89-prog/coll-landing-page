@@ -176,3 +176,13 @@ jobs:
             echo "2. Use the same address as the API base in the Coll Ledger app (see \`academy-server/API.md\`)."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::notice title=Academy server address::$URL"
+
+      - name: Live check (enroll, exams, practical, sync, sign-in code, CORS, signing key)
+        if: steps.guard.outputs.ready == 'true' && steps.deploy.outputs.url != ''
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          sleep 5
+          node scripts/live-check.mjs "$URL" | tee live-check.txt
+          { echo; echo "### Live check"; echo '```'; cat live-check.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          grep -q "All live checks passed" live-check.txt

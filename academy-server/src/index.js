@@ -18,6 +18,7 @@
 //   POST   /api/credential/claim       token    issue the signed certificate
 //   GET    /api/credentials/:id        public   look up a certificate (any website may ask)
 //   POST   /api/admin/revoke           admin    withdraw a certificate
+import { signingStatus } from './credentials.js';
 import { ApiError, json, errorResponse, corsHeaders, withHeaders, originAllowed, readJson, examParam, fail } from './http.js';
 import { safeEqual, isoTime } from './util.js';
 import * as students from './students.js';
@@ -70,7 +71,7 @@ async function route(request, env, url, now) {
   const { pathname } = url, method = request.method;
   const auth = () => students.authenticate(env, request);
 
-  if (pathname === '/' || pathname === '/api' || pathname === '/api/health') return json({ ok: true, service: 'Coll Ledger Academy API', by: 'Coll Business Solutions LLC', time: isoTime(now) });
+  if (pathname === '/' || pathname === '/api' || pathname === '/api/health') return json({ ok: true, service: 'Coll Ledger Academy API', by: 'Coll Business Solutions LLC', time: isoTime(now), ...(pathname === '/api/health' ? { signing: await signingStatus(env), admin: !!(env.ADMIN_TOKEN && String(env.ADMIN_TOKEN).length >= 16) } : {}) });
 
   // Public credential lookup
   const cred = /^\/api\/credentials\/([^/]+)$/.exec(pathname);
