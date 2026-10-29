@@ -1579,7 +1579,7 @@ async function cadDialog() {
     fmtNow = 'dxf';
   }
   let dxf;
-  try { dxf = Plan3DCad.toDxf(clonePlan(), { dims: o.dims, fixtures: o.fixtures }); }
+  try { dxf = Plan3DCad.toDxf(clonePlan(), { dims: o.dims, fixtures: o.fixtures, plainText: fmtNow === 'dwg' }); }
   catch (e) { toast('Couldn’t make the drawing: ' + e.message); return; }
   msg(fmtNow === 'dwg' ? 'Making the DWG…' : 'Saving the DXF…');
   const r = await api.exportCad({ dxf, name: ed.plan.name, format: fmtNow, version: o.version });
