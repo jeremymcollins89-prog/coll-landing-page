@@ -332,7 +332,7 @@ function partsList(plan) {
     else if (o.type === 'open') add('Doors & glass', 'Cased opening frame', inch(W) + ' × ' + ftin(o.head || 7), 1, 'ea', 34);
     else if (o.type === 'overhead') add('Doors & glass', 'Overhead door, sectional steel (with tracks, opener)', ftin(W) + ' × ' + ftin(o.head || 12), 1, 'ea', 35);
     else if (o.type === 'removable' && V.removableOf) {
-      // removable wall section: the same wall panels in a frame of 2″ aluminum tube (posts to the lid, a header
+      // removable wall section: the same wall panels in a frame of 3″ × 3″ steel tube (posts to the lid, a header
       // tube), a 1″ white wall start inside the tubes, H-studs with inserts at the panel joints and in the
       // header panels over it (see removableLayout)
       const RL = V.removableOf(plan, A, i);
@@ -340,8 +340,8 @@ function partsList(plan) {
       for (const q of RL.headers) add('Wall panels', 'Header panel over removable section', inch(q.s1 - q.s0) + ' × ' + ftin(q.y1 - q.y0), 1, 'ea', 10.6);
       if (RL.studs.length) add('Studs & posts', 'H-stud, 3″ with insert (removable section joint)', '3″ × ' + ftin(RL.panelH), RL.studs.length, 'ea', 20.5);
       if (RL.hstuds.length) add('Studs & posts', 'H-stud, 3″ with insert (header panel over removable section)', '3″ × ' + ftin(RL.top - RL.head), RL.hstuds.length, 'ea', 20.6);
-      add('Studs & posts', 'Removable section post, 2″ aluminum tube (floor to lid)', '2″ × ' + ftin(RL.top), 2, 'ea', 25.5);
-      add('Studs & posts', 'Removable section header tube, 2″ aluminum', ftin(RL.headerTube.s1 - RL.headerTube.s0), 1, 'ea', 25.6);
+      add('Studs & posts', 'Removable section post, 3″ × 3″ steel tube (floor to lid)', '3″ × 3″ × ' + ftin(RL.top), 2, 'ea', 25.5);
+      add('Studs & posts', 'Removable section header tube, 3″ × 3″ steel', '3″ × 3″ × ' + ftin(RL.headerTube.s1 - RL.headerTube.s0), 1, 'ea', 25.6);
       add('Trim', 'Wall start, white (inside removable section frame)', '', Math.ceil(RL.startFt), 'lin ft', 53.5);
     }
   }
