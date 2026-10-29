@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { makeApp, KEY, ADMIN_TOKEN, REPO, HOUR, DAY } from './helpers/harness.js';
 import { answerSheet, solvePro, solveAdv } from './helpers/solve.js';
 import { assertVerifies } from './helpers/verify.js';
+import worker from '../src/index.js';
 import PRO_BANK from '../src/banks/pro.js';
 import ADV_BANK from '../src/banks/adv.js';
 
@@ -464,8 +465,9 @@ describe('certificates', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'academy-'));
     const file = path.join(dir, 'credentials.json');
     const flat = { id: e.id, name: e.name, awarded: e.awarded, written: e.written, practical: e.practical, distinction: e.distinction, program: e.program };
-    execFileSync('node', [path.join(REPO, 'scripts/credentials/sign.js'), '--file', file, JSON.stringify(flat)], { env: { ...process.env, CREDENTIAL_SIGNING_KEY: KEY.pem } });
+    execFileSync(process.execPath, [path.join(REPO, 'scripts/credentials/sign.js'), '--file', file, JSON.stringify(flat)], { env: { ...process.env, CREDENTIAL_SIGNING_KEY: KEY.pem } });
     const fromScript = JSON.parse(fs.readFileSync(file, 'utf8'))[0];
+    fs.rmSync(dir, { recursive: true, force: true });
     const strip = x => { const y = structuredClone(x); delete y.credential.proof.created; delete y.credential.proof.proofValue; delete y.existing; return y; };
     assert.deepEqual(strip({ ...e }), strip(fromScript));
   });
@@ -544,5 +546,21 @@ describe('data deletion', () => {
     await app.call('DELETE', '/api/me', { token: s.token, body: { confirm: 'DELETE', keepCredentials: true } });
     const pub = await app.call('GET', '/api/credentials/' + e.id);
     assert.equal(pub.status, 200); assert.equal(pub.body.name, e.name);
+  });
+});
+
+// ======================================================================
+describe('daily clean-up', () => {
+  test('removes expired codes, old rate-limit windows and stale tries; keeps live data', async () => {
+    const app = makeApp(); const s = await enroll(app);
+    await app.call('POST', '/api/code', { token: s.token });
+    await passWritten(app, s.token, 'pro', 10); // one failed try on record
+    const count = t => app.env.DB.db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n;
+    assert.equal(count('signin_codes'), 1); assert(count('rate_limits') >= 1); assert.equal(count('tries'), 2);
+    await worker.scheduled({}, app.env);
+    assert.equal(count('signin_codes'), 1, 'a live code stays');
+    app.advance(31 * DAY);
+    await worker.scheduled({}, app.env);
+    assert.deepEqual([count('signin_codes'), count('rate_limits'), count('tries'), count('students')], [0, 0, 0, 1]);
   });
 });

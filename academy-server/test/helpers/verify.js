@@ -41,8 +41,10 @@ export async function assertVerifies(entry) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'academy-'));
     const file = path.join(dir, 'credentials.json');
     fs.writeFileSync(file, JSON.stringify([entry], null, 2));
-    const out = execFileSync('node', [path.join(REPO, 'scripts/credentials/verify.js'), '--file', file, '--require-signed'], { encoding: 'utf8' });
-    assert.match(out, /1 signed, 0 not signed, 0 failed/);
+    try {
+      const out = execFileSync(process.execPath, [path.join(REPO, 'scripts/credentials/verify.js'), '--file', file, '--require-signed'], { encoding: 'utf8' });
+      assert.match(out, /1 signed, 0 not signed, 0 failed/);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 }
 

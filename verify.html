@@ -99,6 +99,11 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
   </div>
 </footer>
 <script>
+// The Academy server's address. Certificates earned in the app are looked up
+// there first, then in /credentials.json (credentials registered by hand).
+// Paste the address the "Academy server" deploy workflow prints, for example
+// 'https://coll-academy-api.yourname.workers.dev'. Leave it '' to use only /credentials.json.
+var ACADEMY_API = '';
 (function () {
   var out = document.getElementById('out'), q = document.getElementById('q');
   var esc = function (s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
@@ -146,12 +151,24 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
       }, function () { return 'unsigned'; }); // browser without Ed25519 support
     }).catch(function () { return 'unsigned'; });
   }
+  // Finds the entry: the Academy server first, then /credentials.json (also if the server can't be reached).
+  function lookup(id) {
+    var fromFile = function () {
+      return fetch('/credentials.json?ts=' + Date.now()).then(function (r) { return r.json(); }).then(function (list) {
+        return (list || []).find(function (x) { return String(x.id).toUpperCase() === id; }) || null;
+      });
+    };
+    if (!ACADEMY_API) return fromFile();
+    return fetch(ACADEMY_API.replace(/\/+$/, '') + '/api/credentials/' + encodeURIComponent(id))
+      .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (c) { return c && String(c.id).toUpperCase() === id ? c : fromFile(); })
+      .catch(fromFile);
+  }
   function show(id) {
     id = String(id || '').trim().toUpperCase();
     if (!id) { out.innerHTML = ''; return; }
     out.innerHTML = '<p class="lede">Checking…</p>';
-    fetch('/credentials.json?ts=' + Date.now()).then(function (r) { return r.json(); }).then(function (list) {
-      var c = (list || []).find(function (x) { return String(x.id).toUpperCase() === id; });
+    lookup(id).then(function (c) {
       if (!c) {
         out.innerHTML = '<div class="card miss"><h2>No credential found for ' + esc(id) + '</h2><p>Check the ID for typos. A newly earned certificate shows here once Coll Business Solutions LLC has registered it — that usually takes a day or two.</p></div>';
         return;
