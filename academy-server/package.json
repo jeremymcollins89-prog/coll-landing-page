@@ -5,7 +5,7 @@
   "description": "Coll Ledger Academy server: enrollment, progress sync, server-graded exams and signed credentials. Cloudflare Workers + D1. Coll Business Solutions LLC.",
   "type": "module",
   "scripts": {
-    "test": "node --no-warnings=ExperimentalWarning --test test/",
+    "test": "node --no-warnings=ExperimentalWarning --test \"test/*.test.js\"",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },

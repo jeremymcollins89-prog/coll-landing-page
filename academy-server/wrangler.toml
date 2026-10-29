@@ -1,0 +1,27 @@
+# Coll Ledger Academy server — Cloudflare Worker settings.
+# Deployed by .github/workflows/academy-server.yml (free Workers + D1 plan).
+name = "coll-academy-api"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+# Daily clean-up of expired sign-in codes, old rate-limit windows and stale tries rows.
+[triggers]
+crons = ["17 9 * * *"]
+
+# The database. The deploy workflow creates "coll-academy" if it doesn't exist
+# and writes its real id over the placeholder below before deploying.
+[[d1_databases]]
+binding = "DB"
+database_name = "coll-academy"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+# Extra browser origins allowed to call the private API, comma-separated
+# (the website, localhost and the desktop app are always allowed).
+[vars]
+ALLOWED_ORIGINS = ""
+
+# Secrets (set by the workflow with `wrangler secret put`, never stored here):
+#   CREDENTIAL_SIGNING_KEY  the Ed25519 private key PEM that signs certificates
+#   ADMIN_TOKEN             protects POST /api/admin/revoke

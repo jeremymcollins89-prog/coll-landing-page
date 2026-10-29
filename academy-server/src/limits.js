@@ -1,6 +1,6 @@
 // Rate limits and the exam tries rule, both kept in D1.
 import { fail } from './http.js';
-import { sha256 } from './util.js';
+import { sha256, isoTime } from './util.js';
 
 // ---------------------------------------------------------------- rate limits
 // Fixed one-hour windows per IP. The IP is never stored: only a shortened hash.
@@ -52,7 +52,7 @@ export async function assertNotLocked(env, student, key, now, what) {
   const st = await triesStatus(env, student, key, now);
   if (st.lockedUntil) {
     const mins = Math.ceil((st.lockedUntil - now) / 60000), h = Math.floor(mins / 60), m = mins % 60;
-    fail(423, 'locked', `${what} opens again in ${h ? `${h} hr${m ? ` ${m} min` : ''}` : `${m} min`} — three tries in a row, then a 24-hour break. A good time to review.`, { lockedUntil: st.lockedUntil });
+    fail(423, 'locked', `${what} opens again in ${h ? `${h} hr${m ? ` ${m} min` : ''}` : `${m} min`} — three tries in a row, then a 24-hour break. A good time to review.`, { lockedUntil: isoTime(st.lockedUntil) });
   }
   return st;
 }
