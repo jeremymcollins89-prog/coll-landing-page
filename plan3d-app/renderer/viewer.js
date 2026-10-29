@@ -4266,7 +4266,7 @@ function mount(container, plan, opts) {
       <div class="p3v-right"><div class="p3v-panel p3v-modes" role="group" aria-label="View"><button data-m="walk">Walk</button><button data-m="fly" title="Drone: fly a little drone anywhere, through walls, up into the plenum, outside round the building. W A S D to move, Space or R up, C or F down, Shift faster, drag to look, V for the drone’s own camera">Drone</button><button data-m="doll">Dollhouse</button><button data-m="plenum" hidden title="Looks into the plenum: the grid ceiling stays, the top comes off">Plenum</button><button data-m="exterior" hidden title="The outside, with the roof on">Exterior</button><button data-m="plan">Plan</button></div>
       <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button>
       <button class="p3v-panel p3v-look p3v-lidb" aria-pressed="false" hidden title="Show the lid (the top of the cleanroom, or a roof deck you placed) in every view, or take it off again">Lid</button>
-      <button class="p3v-panel p3v-look p3v-real" aria-pressed="false" hidden title="Realistic lighting: the ceiling lights light the rooms, soft shadows in the corners, reflections in the floor and metal, a glow on the lights. Turn it off for the plain view (faster on older computers).">Realistic</button>
+      
       <button class="p3v-panel p3v-look p3v-air" aria-pressed="true" hidden title="Show or hide the airflow: air down out of the FFUs, into the return grilles, and along the floor out through the doors and out of the building">Airflow</button>
       <button class="p3v-panel p3v-look p3v-meas" aria-pressed="false" title="Measure: click two points for the distance between them. It snaps to corners, edges, the top of a filter, the ceiling grid and tiles, floors and walls (green dot = snapped). Shift: straight up/down from the first point; Ctrl: level with it. M turns it on and off, Esc drops a half-done measurement">📏 Measure <kbd>M</kbd></button><button class="p3v-panel p3v-look p3v-mclear" hidden title="Take all the measurements off">✕ Clear</button>
       <button class="p3v-panel p3v-look p3v-snap" title="Save a picture of this view with a note (and your measurements), to come back to later (P)">📷 Snapshot <kbd>P</kbd></button>
@@ -4439,7 +4439,8 @@ function mount(container, plan, opts) {
   // floor) for the epoxy, aluminum and stainless, and a soft glow on the light lenses. An option: the plain
   // view stays exactly as it was when it's off.
   const realBtn = container.querySelector('.p3v-real');
-  const canReal = GFX && !!(THREE.EffectComposer && THREE.SSAOPass && THREE.RectAreaLight && THREE.RectAreaLightUniformsLib) && renderer.capabilities.isWebGL2 && !opts.preserve;
+  // the Realistic view was taken out (1.6.2): the regular 3D view and Super render are the two looks
+  const canReal = false;
   let lightGain = 1.7, real = false, rGrade = null, rComp = null, rPlain = null, rSSAO = null, rFXAA = null, rBloom = null, envIn = null;
   const envOut = scene.environment, tmOut = renderer.toneMapping, expOut = renderer.toneMappingExposure;
   const roomLights = new THREE.Group(); roomLights.name = 'room lights'; scene.add(roomLights);
