@@ -155,7 +155,8 @@ function elevation(wl, x0, yb, sc) {
   // dashed outline round the panels that come out and the note REMOVABLE
   for (const r of wl.rems || []) {
     const rect = (q, fill, sw) => `<rect x="${X(q.s0)}" y="${Y(q.y1)}" width="${n3(Math.max(0.006, (q.s1 - q.s0) * sc))}" height="${n3((q.y1 - q.y0) * sc)}" fill="${fill}" stroke="#222" stroke-width="${sw || 0.008}"/>`;
-    for (const q of r.posts) s += rect(q, '#aab3b8'); s += rect(r.tube, '#aab3b8');
+    // 3″ × 3″ steel tube, painted to match the room: drawn white, a heavier outline
+    for (const q of r.posts) s += rect(q, '#ffffff', 0.016); s += rect(r.tube, '#ffffff', 0.016);
     for (const q of r.starts) s += rect(q, '#ffffff', 0.006);
     for (const q of r.studs) s += rect(q, '#eef1f2', 0.006);
     const P0 = r.RL.panels, lo = Math.min(...r.starts.map(q => q.s0)), hi = Math.max(...r.starts.map(q => q.s1)), ph = r.RL.panelH;
