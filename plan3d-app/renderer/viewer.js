@@ -4475,7 +4475,7 @@ function mount(container, plan, opts) {
     const rt = new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, stencilBuffer: true });
     rComp = new THREE.EffectComposer(renderer, rt);
     rPlain = new THREE.RenderPass(scene, camera); rPlain.enabled = false; rComp.addPass(rPlain);   // used when the corner shading is off
-    rSSAO = new THREE.SSAOPass(scene, camera, 2, 2); rSSAO.kernelRadius = 1.2; rSSAO.minDistance = 0.0015; rSSAO.maxDistance = 0.06;
+    rSSAO = new THREE.SSAOPass(scene, camera, 2, 2); rSSAO.kernelRadius = 4; rSSAO.minDistance = 0.0015; rSSAO.maxDistance = 0.15;   // wide and soft: the corners and the wall-ceiling joint shade like a real room
     if (rSSAO.beautyRenderTarget) rSSAO.beautyRenderTarget.stencilBuffer = true;
     if (rSSAO.normalRenderTarget && rSSAO.normalRenderTarget.depthTexture) rSSAO.normalRenderTarget.depthTexture.type = THREE.UnsignedIntType;
     rComp.addPass(rSSAO);
@@ -4498,7 +4498,7 @@ function mount(container, plan, opts) {
   let gloss = null;
   function placeGloss() {
     if (gloss) { scene.remove(gloss); gloss.getRenderTarget().dispose(); gloss.geometry.dispose(); gloss.material.dispose(); gloss = null; }
-    if (!real || !A || A.empty || !A.hardAny || !THREE.Reflector || (global.P3REAL || {}).gloss === false) return;
+    if (!real || !A || A.empty || !A.hardAny || !THREE.Reflector || (global.P3REAL || {}).gloss === false || gov.level >= 1) return;
     const b = A.bounds, pr = renderer.getPixelRatio(), tw = Math.max(256, Math.round((container.clientWidth || 800) * pr * 0.5)), th = Math.max(256, Math.round((container.clientHeight || 600) * pr * 0.5));
     gloss = new THREE.Reflector(new THREE.PlaneGeometry(b.w + 0.5, b.d + 0.5), { textureWidth: tw, textureHeight: th, clipBias: 0.003, color: 0xffffff, shader: FLOOR_GLOSS });
     gloss.material.transparent = true; gloss.material.depthWrite = false; gloss.material.uniforms.opacity.value = (global.P3REAL || {}).gl || 0.2; gloss.material.uniforms.texel.value.set(1 / tw, 1 / th);
@@ -4524,11 +4524,12 @@ function mount(container, plan, opts) {
     });
   }
   function setReal(on) {
+    govReset();
     real = !!on && canReal;
     const KN = global.P3REAL || {};
     if (real && !rComp) { try { THREE.RectAreaLightUniformsLib.init(); makeComposer(); } catch (e) { console.error(e); real = false; } }
     if (real && !envIn) { try { envIn = indoorEnv(); } catch (e) { envIn = null; } }
-    renderer.toneMapping = real ? (KN.tm === 'aces' ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping) : tmOut; renderer.toneMappingExposure = real ? (KN.exp || 1) : expOut; if (rSSAO) { rSSAO.enabled = KN.ao !== false; rPlain.enabled = !rSSAO.enabled; if (KN.kr) rSSAO.kernelRadius = KN.kr; if (KN.min) rSSAO.minDistance = KN.min; if (KN.max) rSSAO.maxDistance = KN.max; }
+    renderer.toneMapping = real ? (KN.tm === 'aces' ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping) : tmOut; renderer.toneMappingExposure = real ? (KN.exp || 1) : expOut; if (rSSAO) { rSSAO.enabled = KN.ao !== false && gov.level < 3; rPlain.enabled = !rSSAO.enabled; if (KN.kr) rSSAO.kernelRadius = KN.kr; if (KN.min) rSSAO.minDistance = KN.min; if (KN.max) rSSAO.maxDistance = KN.max; }
     scene.environment = real && envIn && KN.env !== false ? envIn : envOut;
     for (const m of upCache.values()) { tuneMat(m, real); m.needsUpdate = true; }
     scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); });
@@ -5428,10 +5429,27 @@ function mount(container, plan, opts) {
   const ro = new ResizeObserver(resize); ro.observe(container);
 
   const tmp = new THREE.Vector3(); let last = performance.now(), raf = 0, alive = true, turnHeld = 0, sweepN = 0, aoOff = false;
+  /* Smooth on any machine: when a big plan draws slowly (steadily under ~24 frames a second for a few seconds),
+     the extras step down one at a time: the floor reflection, then the sharpness (pixel ratio 1), then the
+     corner shading. Hitches (a frame over half a second: loading, rebuilding) don't count. It never turns
+     anything back up on its own; turning Realistic off and on starts it over. */
+  const PR0 = renderer.getPixelRatio();
+  const gov = { ema: 1 / 60, slow: 0, level: 0 };
+  function govReset() { gov.ema = 1 / 60; gov.slow = 0; if (gov.level) { gov.level = 0; aoOff = false; if (renderer.getPixelRatio() !== PR0) { renderer.setPixelRatio(PR0); resize(); } } }
+  function govStep(rawDt) {
+    if (rawDt <= 0 || rawDt > 0.5 || document.hidden || global.P3NOAUTO) return;
+    gov.ema += (rawDt - gov.ema) * 0.08;
+    if (gov.ema > 1 / 24) gov.slow += rawDt; else gov.slow = Math.max(0, gov.slow - rawDt * 0.5);
+    if (gov.slow < 3 || gov.level >= 3) return;
+    gov.slow = 0; gov.level++;
+    if (gov.level === 1) { if (real && gloss) { scene.remove(gloss); gloss.getRenderTarget().dispose(); gloss = null; } aoOff = true; }
+    else if (gov.level === 2) { if (renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); resize(); } }
+    else if (gov.level === 3) { if (rSSAO && real) { rSSAO.enabled = false; rPlain.enabled = true; } }
+  }
   function loop(now) {
     if (!alive) return;
     // up to 1/8 s per frame, so turning and walking keep their speed even when the 3D draws slowly
-    const rawDt = Math.max(0, (now - last) / 1000), dt = Math.min(0.125, rawDt); last = now;
+    const rawDt = Math.max(0, (now - last) / 1000), dt = Math.min(0.125, rawDt); last = now; govStep(rawDt);
     if (A) {
       // the tour keeps real time even when the 3D draws slowly
       if (tour && !tween) { stepTour(Math.min(0.5, rawDt)); applyWalkCam(); }
