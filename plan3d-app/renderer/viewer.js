@@ -358,6 +358,9 @@ const TILE_TYPES = { vcg: { label: 'Vinyl-covered gypsum', short: 'vinyl-covered
 const tileTypeOf = (plan) => (plan && TILE_TYPES[plan.tileType]) ? plan.tileType : 'vcg';
 // aluminum tiles are usually painted: plan.tileColor is a panel colour key, or 'natural' for bare aluminum
 const tileColorOf = (plan) => (plan && plan.tileColor && plan.tileColor !== 'natural' && PANEL_COLORS[plan.tileColor]) ? plan.tileColor : 'natural';
+// the tee grid's enamel (plan.gridColor): white is standard
+const GRID_COLORS = { white: ['White', 0xdfe3e5], black: ['Black', 0x26292c], alum: ['Aluminum', 0xb4babe] };
+const gridColorOf = (plan) => (plan && GRID_COLORS[plan.gridColor]) ? plan.gridColor : 'white';
 const tileName = (plan) => tileTypeOf(plan) === 'alum' ? 'aluminum' + (tileColorOf(plan) !== 'natural' ? ', painted ' + PANEL_COLORS[tileColorOf(plan)][0].toLowerCase() : '') : 'vinyl-covered gypsum';
 const PANEL_COLORS = { white: ['White', '#f7f8f8'], ltgray: ['Light gray', '#d6dadd'], gray: ['Gray', '#8f979c'], black: ['Black', '#25282c'], pink: ['Pink', '#f3a3c4'], red: ['Red', '#d33f3f'], orange: ['Orange', '#f28a2a'], yellow: ['Yellow', '#f4cf3f'], green: ['Green', '#4caa5a'], blue: ['Blue', '#3b7bd0'], ltblue: ['Light blue', '#9ccaf0'], purple: ['Purple', '#8858c4'] };
 const panelColorOf = (plan, w) => { const k = (w && w.color && PANEL_COLORS[w.color]) ? w.color : (plan && PANEL_COLORS[plan.panelColor]) ? plan.panelColor : 'white'; return k; };
@@ -3607,10 +3610,20 @@ function buildScene(THREE, plan, A) {
   ground.rotation.x = -Math.PI / 2; ground.position.set(B.cx, -0.08 - gDrop, B.cz); root.add(ground);
 
   const ceiling = new THREE.Group(); root.add(ceiling);
+  let gridLines = null;
   const cTex = new THREE.CanvasTexture(ceilCanvas); cTex.wrapS = cTex.wrapT = THREE.RepeatWrapping; cTex.repeat.set(B.w / 2, B.d / 4); cTex.anisotropy = ANISO;
   const built = isBuilt(plan), ownGrid = built || (Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length > 0);
   const ownLines = () => (built ? builtLines(plan) : ceilingLines(plan, A));
   let cMap = cTex;
+  // the tees are real geometry wherever the ceiling is laid out (FP), so the tiles carry no painted lines there,
+  // only a faint shadow where each pan meets its tee
+  const geoGrid = !!FP && !A.house, lined = !ownGrid && !geoGrid;
+  const GC = new THREE.Color(GRID_COLORS[gridColorOf(plan)][1]), GRID_NAME = gridColorOf(plan) === 'alum' ? 'Ceiling grid, aluminum' : 'Ceiling grid, enamel';
+  const edge = (g, w, h) => { g.fillStyle = 'rgba(0,0,0,.07)'; g.fillRect(0, 0, w, 3); g.fillRect(0, 0, 3, h); g.fillStyle = 'rgba(0,0,0,.035)'; g.fillRect(0, 3, w, 3); g.fillRect(3, 0, 3, h); };
+  if (!ownGrid && geoGrid && tileTypeOf(plan) !== 'alum') {
+    cMap = new THREE.CanvasTexture(cachedCanvas('ceilVcgEdge', () => makeCanvas(128, 256, (g, w, h) => { g.fillStyle = '#f3f4f3'; g.fillRect(0, 0, w, h); for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(150,154,156,${Math.random() * .06})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } edge(g, w, h); })));
+    cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.anisotropy = ANISO;
+  }
   if (ownGrid) {
     const plain = cachedCanvas('ceilPlainVcg', () => makeCanvas(128, 128, (g, w, h) => { g.fillStyle = '#f3f4f3'; g.fillRect(0, 0, w, h); for (let i = 0; i < 250; i++) { g.fillStyle = `rgba(150,154,156,${Math.random() * .06})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } }));
     cMap = new THREE.CanvasTexture(plain); cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.repeat.set(B.w / 2, B.d / 2); cMap.anisotropy = ANISO;
@@ -3630,19 +3643,19 @@ function buildScene(THREE, plan, A) {
   if (TT === 'alum' && TC !== 'natural') {
     // painted pans: the paint is in the texture (so the grid stays white), a smooth satin face
     const hex = PANEL_COLORS[TC][1];
-    cMap = tileTex(cachedCanvas('ceilPaint' + hex + (ownGrid ? 'P' : 'G'), () => makeCanvas(128, ownGrid ? 128 : 256, (g, w, h) => {
+    cMap = tileTex(cachedCanvas('ceilPaint' + hex + (ownGrid ? 'P' : lined ? 'G' : 'E'), () => makeCanvas(128, ownGrid ? 128 : 256, (g, w, h) => {
       g.fillStyle = hex; g.fillRect(0, 0, w, h);
       for (let i = 0; i < 160; i++) { g.fillStyle = `rgba(${Math.random() < .5 ? '0,0,0' : '255,255,255'},${Math.random() * .035})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
       // a soft shadow line along the pan's turned-down edge
-      if (!ownGrid) { g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(4, 4, w - 4, 3); g.fillRect(4, 4, 3, h - 4); grid(g, w, h); }
+      if (lined) { g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(4, 4, w - 4, 3); g.fillRect(4, 4, 3, h - 4); grid(g, w, h); } else if (!ownGrid) edge(g, w, h);
     })));
     cMat = new THREE.MeshPhongMaterial({ map: cMap, color: 0xf2f2f2, emissive: 0x858585, emissiveMap: cMap, specular: 0x333333, shininess: 30, name: 'Ceiling tile, ' + tileName(plan) });
   } else if (TT === 'alum') {
     // natural pans: a fine brushed grain
-    cMap = tileTex(cachedCanvas('ceilAlum' + (ownGrid ? 'P' : 'G'), () => makeCanvas(128, ownGrid ? 128 : 256, (g, w, h) => {
+    cMap = tileTex(cachedCanvas('ceilAlum' + (ownGrid ? 'P' : lined ? 'G' : 'E'), () => makeCanvas(128, ownGrid ? 128 : 256, (g, w, h) => {
       g.fillStyle = '#c9ced1'; g.fillRect(0, 0, w, h);
       for (let y = 0; y < h; y++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '90,96,100'},${Math.random() * .12})`; g.fillRect(0, y, w, 1); }
-      if (!ownGrid) { g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(4, 4, w - 4, 3); g.fillRect(4, 4, 3, h - 4); grid(g, w, h); }
+      if (lined) { g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(4, 4, w - 4, 3); g.fillRect(4, 4, 3, h - 4); grid(g, w, h); } else if (!ownGrid) edge(g, w, h);
     })));
     cMat = new THREE.MeshPhongMaterial({ map: cMap, color: 0xd8dde0, emissive: 0x6a6f72, emissiveMap: cMap, specular: 0xbfc5c9, shininess: 70, name: 'Ceiling tile, aluminum' });
   } else cMat = new THREE.MeshLambertMaterial({ map: cMap, color: 0xc4c6c6, emissive: 0x9c9e9e, emissiveMap: cMap, name: 'Ceiling tile, vinyl-covered gypsum' });
@@ -3696,6 +3709,7 @@ function buildScene(THREE, plan, A) {
       for (let x = CG.ox + Math.ceil((B.minX - CG.ox) / CG.cw) * CG.cw; x <= B.maxX; x += CG.cw) runs(x, B.minZ, B.maxZ, true);
       for (let z = CG.oz + Math.ceil((B.minZ - CG.oz) / CG.cl) * CG.cl; z <= B.maxZ; z += CG.cl) runs(z, B.minX, B.maxX, false);
     }
+    gridLines = lines;
     const tp = [], web = 0.014;
     for (const q of [].concat(...lines.map(l => splitByAreas(l, CA, H)))) {
       const y0 = q[4] + 0.004, y1 = q[4] + 0.14;
@@ -3704,7 +3718,7 @@ function buildScene(THREE, plan, A) {
       for (const sd of [1, -1]) { const a = [q[0] + nx * sd, y0, q[1] + nz * sd], b = [q[2] + nx * sd, y0, q[3] + nz * sd], c = [q[2] + nx * sd, y1, q[3] + nz * sd], d = [q[0] + nx * sd, y1, q[1] + nz * sd]; tp.push(...a, ...b, ...c, ...a, ...c, ...d); }
       const a = [q[0] + nx, y1, q[1] + nz], b = [q[2] + nx, y1, q[3] + nz], c = [q[2] - nx, y1, q[3] - nz], d = [q[0] - nx, y1, q[1] - nz]; tp.push(...a, ...b, ...c, ...a, ...c, ...d);
     }
-    if (tp.length) { const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3)); tg.computeVertexNormals(); ceiling.add(new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ color: 0xf4f6f7, emissive: 0x303234, side: THREE.DoubleSide, name: 'Ceiling, solid' }))); }
+    if (tp.length) { const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3)); tg.computeVertexNormals(); ceiling.add(new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ color: GC.clone().lerp(new THREE.Color(0xffffff), 0.25), emissive: GC.clone().multiplyScalar(0.2), side: THREE.DoubleSide, name: 'Ceiling grid tees, top' }))); }
   }
   // the roof (houses): gable, hip or flat, over the outside walls with an overhang
   const roof = new THREE.Group(); root.add(roof);
@@ -3810,16 +3824,18 @@ function buildScene(THREE, plan, A) {
     root.add(g);
   }
   curRef = null;
-  if (ownGrid) {
-    const tw = 0.078 / 2, pos = [];
-    for (const q of [].concat(...ownLines().map(l => splitByAreas(l, CA, H)))) {
+  const underLines = ownGrid ? ownLines() : gridLines;
+  if (underLines && underLines.length) {
+    // the tees' 15/16″ faces from below, a hair under the tiles (the tiles' edge shadow sets them off)
+    const tw = (15 / 16 / 12) / 2, pos = [];
+    for (const q of [].concat(...underLines.map(l => splitByAreas(l, CA, H)))) {
       const L = Math.hypot(q[2] - q[0], q[3] - q[1]); if (!(L > 0.01)) continue;
       const nx = -(q[3] - q[1]) / L * tw, nz = (q[2] - q[0]) / L * tw, y = q[4] - 0.012;
       const a = [q[0] + nx, y, q[1] + nz], b = [q[2] + nx, y, q[3] + nz], c = [q[2] - nx, y, q[3] - nz], d = [q[0] - nx, y, q[1] - nz];
       pos.push(...a, ...c, ...b, ...a, ...d, ...c);
     }
     const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    ceiling.add(new THREE.Mesh(gg, new THREE.MeshBasicMaterial({ color: 0xd0d6d9, side: THREE.DoubleSide, name: 'Ceiling grid, aluminum' })));
+    ceiling.add(new THREE.Mesh(gg, new THREE.MeshBasicMaterial({ color: GC, side: THREE.DoubleSide, name: GRID_NAME })));
   }
   if (plan.ceilingImage && plan.ceilingImage.dataUrl) {
     const I = plan.ceilingImage, q = (I.rot || 0) % 180 ? [I.h, I.w] : [I.w, I.h];
@@ -3886,7 +3902,7 @@ function buildScene(THREE, plan, A) {
   // lines come with the tiles
   const FXL = ceilingFixtures(plan, A);
   try {
-    const teeMat = new THREE.MeshBasicMaterial({ color: 0xd0d6d9, side: THREE.DoubleSide, name: 'Ceiling grid, aluminum' }), tw = 15 / 16 / 12;
+    const teeMat = new THREE.MeshBasicMaterial({ color: GC, side: THREE.DoubleSide, name: GRID_NAME }), tw = 15 / 16 / 12;
     for (const [x1, z1, x2, z2] of fixtureFrames(plan, A).lines) {
       const L = Math.hypot(x2 - x1, z2 - z1), hc = ceilingAt(CA, H, (x1 + x2) / 2, (z1 + z2) / 2), t = new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(x2 - x1) > 0.01 ? L + tw : tw, Math.abs(z2 - z1) > 0.01 ? L + tw : tw), teeMat);
       t.rotation.x = Math.PI / 2; t.position.set((x1 + x2) / 2, hc - 0.007, (z1 + z2) / 2); fixtures.add(t);
@@ -5508,7 +5524,7 @@ function mount(container, plan, opts) {
         byName.set(name, o);
         let r = 0.6, mt = 0;
         if (/glass/.test(n)) { r = 0.05; o.transparent = true; o.opacity = 0.25; }
-        else if (/painted/.test(n)) r = 0.45;
+        else if (/painted|enamel|tees, top/.test(n)) r = 0.45;
         else if (/stainless|aluminum|galvanized|hardware|grid|damper|ffu galvanized/.test(n)) { r = 0.35; mt = 0.85; }
         else if (/steel beam/.test(n)) { r = 0.55; mt = 0.6; }
         else if (/wall panel|door leaf|door frame|fixture housing|ffu housing/.test(n)) r = 0.42;
@@ -5561,5 +5577,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { TILE_TYPES, tileTypeOf, tileColorOf, tileName, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);

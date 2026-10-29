@@ -271,7 +271,7 @@ function toIfc(plan, opts) {
     grille: style('Coll return grille', 0.8, 0.82, 0.83, 0, 0.1, 16),
     floor: style('Coll floor, gray epoxy', 0.6, 0.62, 0.63, 0, 0.06, 22),
     ceiling: V.tileTypeOf(plan) === 'alum' && V.tileColorOf(plan) !== 'natural' ? (() => { const n = parseInt(V.PANEL_COLORS[V.tileColorOf(plan)][1].slice(1), 16); return style('Coll ceiling tile, ' + V.tileName(plan), ((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 0, 0.12, 18); })() : V.tileTypeOf(plan) === 'alum' ? style('Coll ceiling tile, aluminum', 0.8, 0.82, 0.83, 0, 0.6, 50, 'METAL') : style('Coll ceiling tile, vinyl-covered gypsum, white', 0.95, 0.95, 0.94, 0, 0.12, 12),
-    grid: style('Coll ceiling grid, white', 0.96, 0.97, 0.97, 0, 0.13, 24),
+    grid: ({ white: () => style('Coll ceiling grid, white', 0.96, 0.97, 0.97, 0, 0.13, 24), black: () => style('Coll ceiling grid, black', 0.15, 0.16, 0.17, 0, 0.13, 24), alum: () => style('Coll ceiling grid, aluminum', 0.72, 0.75, 0.76, 0, 0.5, 50, 'METAL') }[V.gridColorOf ? V.gridColorOf(plan) : 'white'])(),
     led: style('Coll LED light lens', 1, 1, 1, 0, 0.05, 8),
     ffu: style('Coll FFU, white powder coat', 0.95, 0.96, 0.96, 0, 0.13, 18),
     face: style('Coll FFU filter face', 0.78, 0.8, 0.81, 0, 0.1, 16),

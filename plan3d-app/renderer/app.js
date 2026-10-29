@@ -742,6 +742,7 @@ function renderProps(opt) {
     ${house ? '' : fld('Panel color', panelColorSelect('pPCall', Plan3DViewer.panelColorOf(P), null))}
     ${house ? '' : fld('Ceiling tiles', `<select id="pTile">${Object.entries(Plan3DViewer.TILE_TYPES).map(([k, v]) => `<option value="${k}" ${Plan3DViewer.tileTypeOf(P) === k ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select>`)}
     ${!house && Plan3DViewer.tileTypeOf(P) === 'alum' ? fld('Tile color', (() => { const c = Plan3DViewer.tileColorOf(P), PC = Plan3DViewer.PANEL_COLORS; return `<div style="display:flex;gap:6px;align-items:center"><span style="width:18px;height:18px;border-radius:4px;border:1px solid var(--line);flex:0 0 auto;background:${c === 'natural' ? 'linear-gradient(135deg,#e6e9eb,#a9afb3)' : PC[c][1]}"></span><select id="pTileC" style="flex:1"><option value="natural" ${c === 'natural' ? 'selected' : ''}>Natural aluminum</option>${Object.entries(PC).map(([k, v]) => `<option value="${k}" ${c === k ? 'selected' : ''}>Painted ${esc(v[0].toLowerCase())}</option>`).join('')}</select></div>`; })()) : ''}
+    ${house ? '' : fld('Ceiling grid', (() => { const g = Plan3DViewer.gridColorOf(P), GC = Plan3DViewer.GRID_COLORS; return `<div style="display:flex;gap:6px;align-items:center"><span style="width:18px;height:18px;border-radius:4px;border:1px solid var(--line);flex:0 0 auto;background:#${GC[g][1].toString(16).padStart(6, '0')}"></span><select id="pGrid" style="flex:1">${Object.entries(GC).map(([k, v]) => `<option value="${k}" ${g === k ? 'selected' : ''}>${esc(v[0])} 15/16″ tee</option>`).join('')}</select></div>`; })())}
     ${fld('New wall type', `<select id="pNK">${kindList.map(([k, v]) => `<option value="${k}" ${(P.newKind || (house ? 'wood' : 'hardwall')) === k ? 'selected' : ''}>${esc(v.short)}</option>`).join('')}</select>`)}
     ${fld('New walls', txt('pWT', fmtIn(P.wallT || 0.25)))}
     ${(P.walls.some(w => !Plan3DViewer.isHard(w) && !Plan3DViewer.isFrame(w)) || shellNew) ? fld('Building wall height', txt('pSH', fmt(P.shellH || 20))) : ''}
@@ -844,6 +845,7 @@ function renderProps(opt) {
   for (const [id, key] of [['fSid', 'siding'], ['fSidC', 'sidingColor'], ['fRoof', 'roof'], ['fRoofC', 'roofColor'], ['fPaint', 'paint'], ['fCab', 'cabinet'], ['fCtr', 'counter']]) if ($('#' + id)) $('#' + id).onchange = e => ed.edit(Pl => { Pl.finish = Object.assign({}, Pl.finish || {}, { [key]: e.target.value }); });
   $('#pMode').onchange = e => { const m = e.target.value; ed.edit(Pl => { if (m === 'house') houseDefaults(Pl, true); else Pl.mode = 'cleanroom'; }); updateChrome(); renderProps(); };
   bindLen('pWT', 'in', v => { ed.plan.wallT = Math.max(1 / 48, v); renderProps(); });
+  if ($('#pGrid')) $('#pGrid').onchange = e => { const v = e.target.value; ed.edit(Q => { if (v === 'white') delete Q.gridColor; else Q.gridColor = v; }); toast('Ceiling grid: ' + Plan3DViewer.GRID_COLORS[v][0].toLowerCase() + '.'); renderProps(); queue3D(); };
   if ($('#pTileC')) $('#pTileC').onchange = e => { const v = e.target.value; ed.edit(Q => { if (v === 'natural') delete Q.tileColor; else Q.tileColor = v; }); toast('Ceiling tiles: ' + Plan3DViewer.tileName(ed.plan) + '.'); renderProps(); queue3D(); };
   if ($('#pTile')) $('#pTile').onchange = e => { const v = e.target.value; ed.edit(Q => { if (v === 'vcg') delete Q.tileType; else Q.tileType = v; }); toast('Ceiling tiles: ' + Plan3DViewer.TILE_TYPES[v].label.toLowerCase() + '. The parts list, quote and exports follow.'); renderProps(); queue3D(); };
   if ($('#pPCall')) $('#pPCall').onchange = e => { const v = e.target.value, own = (P.walls || []).filter(w => w.color && w.color !== v).length; ed.edit(Q => { if (v === 'white') delete Q.panelColor; else Q.panelColor = v; }); toast(`Panels are ${Plan3DViewer.PANEL_COLORS[v][0].toLowerCase()}${own ? ` (${own} wall${own === 1 ? ' keeps its' : 's keep their'} own color)` : ''}.`); renderProps(); queue3D(); };
@@ -1168,6 +1170,23 @@ async function exportParts() {
    Prices live in a price book on this computer (one price per part, for every project); the customer, scope
    and the job's own numbers (labor, freight, markup, tax) are saved in the plan (plan.quote). */
 const QS = { get(k, d) { try { const v = localStorage.getItem('p3.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('p3.' + k, JSON.stringify(v)); } catch (e) { /* full */ } } };
+// 1.5.97 named the tile type in the ceiling tile parts ("Ceiling tile, vinyl-covered gypsum, full 2′ × 4′"); the
+// prices saved under the old names move to the vinyl-covered gypsum ones, once
+(function migrateTilePrices() {
+  if (QS.get('mig.tiles', false)) return;
+  const P = QS.get('prices', null);
+  if (P) {
+    let n = 0;
+    for (const k of Object.keys(P)) {
+      const f = k.split('|');
+      if (f[0] !== 'Ceiling' || !/^Ceiling tile, (full|cut|2×4)/.test(f[1] || '')) continue;
+      f[1] = f[1].replace(/^Ceiling tile, /, 'Ceiling tile, vinyl-covered gypsum, ');
+      const nk = f.join('|'); if (P[nk] == null) { P[nk] = P[k]; n++; }
+    }
+    if (n) QS.set('prices', P);
+  }
+  QS.set('mig.tiles', true);
+})();
 const QDEF = { markup: 25, tax: 0, laborMode: 'sqft', laborRate: 0, laborLump: 0, freight: 0, showLines: false, validDays: 30,
   terms: 'Prices are good for 30 days. 50% deposit to order, balance due on completion.\nIncludes the cleanroom shown: panels, doors, ceiling grid, fan filter units, lights and listed equipment, delivered and installed.\nNot included unless listed: HVAC and building tie-ins, electrical service to the cleanroom panel, permits, fire sprinkler work and cleanroom certification.' };
 function quoteDialog() {

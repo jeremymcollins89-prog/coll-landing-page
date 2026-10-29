@@ -439,11 +439,13 @@ function partsList(plan) {
       add('Ceiling', 'Ceiling grid (area, approx.)', '', Math.ceil(area), 'sq ft', 63);
       // tee takeoff from the grid as laid out
       const T = V.gridTakeoff ? V.gridTakeoff(plan, A) : null;
+      // white is the standard enamel; another colour is named on each tee so it's priced and ordered on its own
+      const gcol = V.gridColorOf ? V.gridColorOf(plan) : 'white', gsfx = gcol === 'white' ? '' : ', ' + V.GRID_COLORS[gcol][0].toLowerCase();
       if (T) {
-        if (T.mainPcs) add('Ceiling grid', 'Main tee, 15/16″, 12′ (runs spliced, +5%)', '12′', T.mainPcs, 'ea', 70);
-        if (T.cross4) add('Ceiling grid', 'Cross tee, 15/16″, 4′', '', T.cross4, 'ea', 71);
-        if (T.framePcs) add('Ceiling grid', 'Cross tee, 15/16″, 4′, cut to frame FFUs and lights off the grid (' + Math.ceil(T.frameFt) + ' ft)', '', T.framePcs, 'ea', 71.5);
-        if (T.cross2) add('Ceiling grid', 'Cross tee, 15/16″, 2′ (at 2 × 2 fixtures)', '', T.cross2, 'ea', 72);
+        if (T.mainPcs) add('Ceiling grid', 'Main tee, 15/16″, 12′' + gsfx + ' (runs spliced, +5%)', '12′', T.mainPcs, 'ea', 70);
+        if (T.cross4) add('Ceiling grid', 'Cross tee, 15/16″, 4′' + gsfx, '', T.cross4, 'ea', 71);
+        if (T.framePcs) add('Ceiling grid', 'Cross tee, 15/16″, 4′' + gsfx + ', cut to frame FFUs and lights off the grid (' + Math.ceil(T.frameFt) + ' ft)', '', T.framePcs, 'ea', 71.5);
+        if (T.cross2) add('Ceiling grid', 'Cross tee, 15/16″, 2′' + gsfx + ' (at 2 × 2 fixtures)', '', T.cross2, 'ea', 72);
         if (T.hangers) add('Ceiling grid', 'Hanger wire, 12 ga (every 4′ on mains + 4 per fixture)', '', T.hangers, 'ea', 73);
       }
     }
