@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 contextBridge.exposeInMainWorld('desktop', {
   isDesktop: true,
@@ -22,5 +22,7 @@ contextBridge.exposeInMainWorld('desktop', {
   openBackupFolder: () => ipcRenderer.invoke('backup:open'),
   saveAttachment: (id, base64) => ipcRenderer.invoke('att:save', { id, base64 }),
   readAttachment: (id) => ipcRenderer.invoke('att:read', id),
-  deleteAttachment: (id) => ipcRenderer.invoke('att:delete', id)
+  deleteAttachment: (id) => ipcRenderer.invoke('att:delete', id),
+  readReceipt: (base64, name) => ipcRenderer.invoke('ocr:read', { base64, name }),
+  setZoom: (f) => webFrame.setZoomFactor(f)
 });

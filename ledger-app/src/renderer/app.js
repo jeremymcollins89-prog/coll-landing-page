@@ -51,6 +51,8 @@ const App = (() => {
       c.closes = c.closes || []; c.imports = c.imports || []; c.lockDate = c.lockDate || null; c.checklistDismissed = !!c.checklistDismissed;
       for (const a of c.accounts) if (a.sub === 'clearing' && a.type !== 'asset') a.type = 'asset';
       c.bills = c.bills || []; c.recurring = c.recurring || [];
+      c.budgets = c.budgets || {}; c.trips = c.trips || []; c.todos = c.todos || []; c.notes = c.notes || ''; c.cleanupOk = c.cleanupOk || [];
+      c.estTax = Object.assign({ pct: 25, paid: {} }, c.estTax || {});
       if (!C.acctByKey(c, 'ap')) C.ensureAP(c);
     }
     d.studio = d.studio || { customers: [], time: [], invoices: [], nextInvoice: 1001, prefix: 'S-', rate: 50 };
@@ -103,12 +105,15 @@ const App = (() => {
   // ---------------- navigation ----------------
   const NAV = [
     { label: null, items: [['clients', 'All clients', 'home'], ['studio', 'My studio', 'studio']] },
-    { label: 'Overview', items: [['dashboard', 'Dashboard', 'dash']] },
-    { label: 'Daily work', items: [['review', 'To Review', 'inbox'], ['transactions', 'Transactions', 'swap'], ['invoices', 'Invoices', 'file'], ['bills', 'Bills', 'bill'], ['contacts', 'Customers & Vendors', 'people'], ['import', 'Import', 'upload']] },
-    { label: 'Month end', items: [['reconcile', 'Reconcile', 'check'], ['close', 'Close the month', 'lock'], ['reports', 'Reports', 'report']] },
+    { label: 'Overview', items: [['dashboard', 'Dashboard', 'dash'], ['planning', 'Planning', 'plan']] },
+    { label: 'Daily work', items: [['review', 'To Review', 'inbox'], ['transactions', 'Transactions', 'swap'], ['invoices', 'Invoices', 'file'], ['bills', 'Bills', 'bill'], ['mileage', 'Mileage', 'car'], ['contacts', 'Customers & Vendors', 'people'], ['import', 'Import', 'upload']] },
+    { label: 'Month end', items: [['reconcile', 'Reconcile', 'check'], ['cleanup', 'Clean up', 'broom'], ['close', 'Close the month', 'lock'], ['reports', 'Reports', 'report']] },
     { label: 'Setup', items: [['accounts', 'Chart of Accounts', 'list'], ['rules', 'Smart Rules', 'bolt']] }
   ];
   const NAV_ICON = {
+    plan: '<svg viewBox="0 0 24 24"><path d="m3.5 18.5 6-6 4 4L22 6.9 20.6 5.5l-7.1 8-4-4L2 17z"/></svg>',
+    car: '<svg viewBox="0 0 24 24"><path d="M18.9 6a1.5 1.5 0 0 0-1.4-1h-11a1.5 1.5 0 0 0-1.4 1L3 12v8a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h12v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-8zM6.5 16A1.5 1.5 0 1 1 8 14.5 1.5 1.5 0 0 1 6.5 16m11 0a1.5 1.5 0 1 1 1.5-1.5 1.5 1.5 0 0 1-1.5 1.5M5 11l1.5-4.5h11L19 11z"/></svg>',
+    broom: '<svg viewBox="0 0 24 24"><path d="m19.4 3-6.3 6.3-1.4-1.4-1.4 1.4 1.4 1.4L4 18.4V21h2.6l7.7-7.7 1.4 1.4 1.4-1.4-1.4-1.4L22 5.6zM9 21l1-3 3 1z"/><path d="M3 13h4v2H3zm2-4h4v2H5z"/></svg>',
     home: ICON.home, dash: '<svg viewBox="0 0 24 24"><path d="M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z"/></svg>',
     inbox: '<svg viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2m0 12h-4a3 3 0 0 1-6 0H5V5h14z"/></svg>',
     swap: '<svg viewBox="0 0 24 24"><path d="M7 7h11l-3-3 1.4-1.4L22.8 9l-6.4 6.4L15 14l3-3H7zm10 10H6l3 3-1.4 1.4L1.2 15l6.4-6.4L9 10l-3 3h11z"/></svg>',
@@ -117,7 +122,7 @@ const App = (() => {
     bill: '<svg viewBox="0 0 24 24"><path d="M18 2H6a2 2 0 0 0-2 2v18l3-2 3 2 2-1.5L14 22l3-2 3 2V4a2 2 0 0 0-2-2m-2 13H8v-2h8zm0-4H8V9h8zm0-4H8V5h8z"/></svg>',
     studio: '<svg viewBox="0 0 24 24"><path d="M20 6h-4V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2m-6 0h-4V4h4z"/></svg>'
   };
-  const TITLES = { bills: 'Bills', studio: 'My studio', training: 'Practice / Training', clients: 'All clients', dashboard: 'Dashboard', review: 'To Review', transactions: 'Transactions', invoices: 'Invoices', contacts: 'Customers & Vendors', import: 'Import', reconcile: 'Reconcile', close: 'Close the month', accounts: 'Chart of Accounts', rules: 'Smart Rules', reports: 'Reports', settings: 'Settings' };
+  const TITLES = { planning: 'Planning', mileage: 'Mileage', cleanup: 'Clean up', handbook: "Bookkeeper's Handbook", bills: 'Bills', studio: 'My studio', training: 'Practice / Training', clients: 'All clients', dashboard: 'Dashboard', review: 'To Review', transactions: 'Transactions', invoices: 'Invoices', contacts: 'Customers & Vendors', import: 'Import', reconcile: 'Reconcile', close: 'Close the month', accounts: 'Chart of Accounts', rules: 'Smart Rules', reports: 'Reports', settings: 'Settings' };
 
   function go(page, params = {}) {
     if (page !== 'reconcile' && S.ui.recon) { S.ui.parkedRecon = S.ui.recon; S.ui.recon = null; }
@@ -179,7 +184,7 @@ const App = (() => {
     let c = client();
     if (!c && S.data.clients.length) { S.data.activeClientId = S.data.clients[0].id; c = client(); }
     let page = S.route.page;
-    if (!c && !['clients', 'settings', 'training', 'studio'].includes(page)) page = S.route.page = 'clients';
+    if (!c && !['clients', 'settings', 'training', 'studio', 'handbook'].includes(page)) page = S.route.page = 'clients';
     renderChrome();
     const v = views[page] || views.dashboard;
     try {
@@ -217,12 +222,22 @@ const App = (() => {
         ['Profit & Loss', 'Income, expenses and profit', ICON.report, () => { S.ui.report.type = 'pl'; go('reports'); }],
         ['Balance Sheet', 'What the business owns and owes', ICON.report, () => { S.ui.report.type = 'bs'; go('reports'); }],
         ['Client package PDF', 'Monthly report pack for the client', ICON.pdf, () => actions['client-package']()],
+        ['Read a receipt', 'Photo or PDF — fills in vendor, date and total', ICON.spark, () => actions['read-receipt']()],
+        ['Log a trip', 'Business mileage', ICON.calendar, () => go('mileage')],
+        ['Cash flow forecast', 'What cash will do over the next 90 days', ICON.report, () => { S.ui.plan.tab = 'cash'; go('planning'); }],
+        ['Budget', 'Budget vs. actual', ICON.report, () => { S.ui.plan.tab = 'budget'; go('planning'); }],
+        ['Owner pay & quarterly taxes', 'What to set aside and what\'s safe to take', ICON.bank, () => { S.ui.plan.tab = 'owner'; go('planning'); }],
+        ['Send payment reminders', 'Polite emails for overdue invoices', ICON.mail, () => actions['remind-all']()],
+        ['Month-end email', 'A short summary for the client', ICON.mail, () => actions['month-email']()],
+        ['Clean up', 'Duplicates, loose ends, missing receipts', ICON.check, () => go('cleanup')],
+        ["Bookkeeper's Handbook", 'Tips, rules, deadlines, FAQs, glossary', ICON.help, () => go('handbook')],
+        ['Dark mode', 'Switch light and dark', ICON.spark, () => actions['toggle-dark']()],
         ['Add a client', 'Set up a new business', ICON.plus, () => actions['new-client']()],
         ['Help', 'How-to guides and shortcuts', ICON.help, () => help()],
         ['Practice / Training', 'Mini class with a practice account', ICON.spark, () => go('training')],
         ['Settings', 'Studio, client profile, backups', ICON.dots, () => go('settings')]
       ];
-      for (const [l, s, i, f] of cmds) if ((c || /client|help|settings|training|time/i.test(l)) && (match(l) || match(s))) add('Actions', l, s, i, f);
+      for (const [l, s, i, f] of cmds) if ((c || /client|help|settings|training|time|handbook|dark/i.test(l)) && (match(l) || match(s))) add('Actions', l, s, i, f);
       if (c) for (const [k, t] of Object.entries(TITLES)) if (q && match(t) && !cmds.some(x => x[0] === t)) add('Go to', t, '', NAV_ICON.dash, () => go(k));
       for (const x of S.data.clients) if (q && match(x.name) && x !== c) add('Switch client', x.name, x.industry || '', `<span class="avatar xs" style="background:${x.color}">${esc(U.initials(x.name))}</span>`, () => switchClient(x.id, 'dashboard'));
       if (c && q) {
@@ -267,6 +282,7 @@ const App = (() => {
     const m = U.openModal(`${U.modalHead('Help', 'Short answers to the everyday questions')}
       <div class="modal-body">
         <div class="train-cta"><div class="train-cta-ic">${ICON.spark}</div><div><b>Practice account / Training</b><div class="muted">A mini class with a pretend bakery to practice on. Eleven short lessons with explanations, quizzes and a coach that checks your work.</div></div><button class="btn primary" data-g="train">Start training</button></div>
+        <div class="train-cta hb-cta"><div class="train-cta-ic">${ICON.help}</div><div><b>Bookkeeper's Handbook</b><div class="muted">Quick tips, rules of the road, tax rules and deadlines, month-end and year-end checklists, FAQs and a glossary.</div></div><button class="btn primary" data-g="book">Open the handbook</button></div>
         <div class="guides">${GUIDES.map(([t, d, page], i) => `<div class="guide"><div><b>${t}</b><div class="muted">${d}</div></div><button class="btn sm" data-g="${i}">Show me</button></div>`).join('')}</div>
         <div class="card" style="box-shadow:none"><div class="card-head"><h3>Keyboard shortcuts</h3></div><div class="card-body shortcuts">
           <div><span class="kbd">${mod}</span> <span class="kbd">K</span> Search & jump anywhere</div>
@@ -279,7 +295,7 @@ const App = (() => {
         </div></div>
         <div class="muted">Coll Ledger by Coll Business Solutions LLC · collbusinesssolutions@gmail.com</div>
       </div>`, { wide: true });
-    $$('[data-g]', m).forEach(b => b.onclick = () => { U.closeModal(); if (b.dataset.g === 'train') return go('training'); const g = GUIDES[+b.dataset.g]; if (client()) go(g[2]); });
+    $$('[data-g]', m).forEach(b => b.onclick = () => { U.closeModal(); if (b.dataset.g === 'train') return go('training'); if (b.dataset.g === 'book') return go('handbook'); const g = GUIDES[+b.dataset.g]; if (client()) go(g[2]); });
   }
 
   // ---------------- events ----------------

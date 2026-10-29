@@ -28,6 +28,14 @@ Download: https://collbusinesssolutions.com/projects.html#coll-ledger
 - **Tax time**: Trial Balance, 1099 Contractors ($600 threshold through 2025, $2,000 from 2026), Sales Tax, and a one-click year-end PDF package for the CPA with the General Ledger as a spreadsheet.
 - **My studio**: the bookkeeper's own clients, a start/stop timer, monthly fees plus hourly time, and branded invoices ("Bill this month" does every client at once).
 - **Password lock** (Settings → Protection & backups): AES-256 encryption of the books, backups and receipts, a recovery code, and auto-lock when idle. **Cloud backup**: pick a OneDrive, Google Drive or Dropbox folder and a dated copy is written there every day.
+- **Planning**: a 90-day cash-flow forecast (invoices, bills, repeating items and everyday activity), budget vs. actual with "fill from the last 3 months", and owner pay with quarterly estimated-tax set-asides and an "about safe to pay the owner" number.
+- **Read a receipt**: drop in a photo or PDF and it fills in the vendor, date and total (read on the computer with Tesseract — nothing leaves it), matches it to the bank transaction, or adds it as an expense or a bill.
+- **Mileage log** at the IRS rate in effect on each trip's date (72.5¢ Jan–Jun 2026, 76¢ from July 1, 2026), recorded monthly to Car & Truck, with a printable log.
+- **Clean up**: finds possible duplicates, uncategorized items, items waiting in review over 30 days, unusually large charges, travel/meal receipts the IRS expects, and invoices over 90 days late — with one-click fixes.
+- **Payment reminders** (friendly, firm, final notice) grouped per customer, and a **month-end email** that writes the client's monthly summary.
+- **Notes and to-dos** for each client on the Dashboard; due to-dos show under "Needs your attention".
+- **Text size** (Settings, or Ctrl + / − / 0) and a one-click light/dark switch.
+- **Bookkeeper's Handbook** under Help: quick tips, rules of the road, tax rules, a deadline calendar, month-end and year-end checklists, FAQs, a glossary and shortcuts — searchable.
 - **Search anything** with Ctrl K. Help (?) with short how-to guides.
 - Double-entry underneath, so the Balance Sheet always balances. Data stays on the computer, with 30 days of daily backups. Updates install themselves.
 

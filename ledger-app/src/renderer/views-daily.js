@@ -63,7 +63,7 @@
                 <div class="${h.unrec.length ? 'warn' : ''}"><span>${h.unrec.length}</span>to reconcile</div>
                 <div class="${h.overdue.length ? 'bad' : ''}"><span>${h.overdue.length}</span>overdue</div>
               </div>
-              <div class="cc-foot muted">${h.closedThrough ? `${ICON.lock} Closed through ${U.fmtMonth(h.closedThrough)}` : 'No months closed yet'}${h.lastTxn ? ` · activity through ${fmtDateShort(h.lastTxn)}` : ''}</div>
+              <div class="cc-foot muted">${App.openTodos && App.openTodos(c).length ? `<span class="cc-todo">${ICON.check}${App.openTodos(c).length} to-do${App.openTodos(c).length > 1 ? 's' : ''}</span> · ` : ''}${h.closedThrough ? `${ICON.lock} Closed through ${U.fmtMonth(h.closedThrough)}` : 'No months closed yet'}${h.lastTxn ? ` · activity through ${fmtDateShort(h.lastTxn)}` : ''}</div>
             </div>`).join('')}
           <div class="card client-card add" data-action="new-client" tabindex="0"><div class="add-ic">${ICON.plus}</div><b>Add a client</b><div class="muted">About a minute to set up</div></div>
         </div>`;
@@ -173,7 +173,7 @@
 
       const attention = [];
       if (h.review) attention.push(`<div class="row"><span class="tag gold"><span class="dot"></span>${h.review}</span><div class="grow"><b>Transactions to review</b><div class="muted">New activity waiting for a category</div></div><button class="btn sm" data-nav="review">Review</button></div>`);
-      if (overdue.length) attention.push(`<div class="row"><span class="tag red"><span class="dot"></span>${overdue.length}</span><div class="grow"><b>Overdue invoice${overdue.length > 1 ? 's' : ''}</b><div class="muted">${money(h.overdueTotal)} past due</div></div><button class="btn sm" data-action="inv-filter" data-v="overdue">View</button></div>`);
+      if (overdue.length) attention.push(`<div class="row"><span class="tag red"><span class="dot"></span>${overdue.length}</span><div class="grow"><b>Overdue invoice${overdue.length > 1 ? 's' : ''}</b><div class="muted">${money(h.overdueTotal)} past due</div></div><div class="btn-pair"><button class="btn sm" data-action="remind-all">Remind</button><button class="btn sm ghost" data-action="inv-filter" data-v="overdue">View</button></div></div>`);
       for (const a of h.unrec) {
         const lr = lastRecon(c, a);
         attention.push(`<div class="row"><span class="tag blue">${a.sub === 'credit' ? ICON.card : ICON.bank}</span><div class="grow"><b>Reconcile ${esc(a.name)}</b><div class="muted">${lr ? 'Done through ' + fmtDate(lr.date) : 'Not reconciled yet'}</div></div><button class="btn sm" data-action="start-recon" data-id="${a.id}">Start</button></div>`);
@@ -183,6 +183,7 @@
       if (billsDue.length) attention.push(`<div class="row"><span class="tag ${billsDue.some(s => s.status === 'overdue') ? 'red' : 'gold'}"><span class="dot"></span>${billsDue.length}</span><div class="grow"><b>Bill${billsDue.length > 1 ? 's' : ''} to pay</b><div class="muted">${money(billsDue.reduce((s, x) => s + x.due, 0))} due within a week${billsDue.some(s => s.status === 'overdue') ? ' or late' : ''}</div></div><button class="btn sm" data-action="bill-filter" data-v="${billsDue.some(s => s.status === 'overdue') ? 'overdue' : 'soon'}">Pay</button></div>`);
       const drafts = invStates.filter(x => x.s.status === 'draft');
       if (drafts.length) attention.push(`<div class="row"><span class="tag">${drafts.length}</span><div class="grow"><b>Draft invoice${drafts.length > 1 ? 's' : ''}</b><div class="muted">Ready to finish and send</div></div><button class="btn sm" data-action="inv-filter" data-v="draft">Open</button></div>`);
+      if (App.todoAttention) attention.push(...App.todoAttention(c));
       const lastClose = c.lockDate;
       if (!h.review && !h.unrec.length && (!lastClose || lastClose < h.lastMonthEnd) && c.transactions.length) attention.push(`<div class="row"><span class="tag green">${ICON.lock}</span><div class="grow"><b>Ready to close ${U.fmtMonth(h.lastMonthEnd)}</b><div class="muted">Everything is reviewed and reconciled</div></div><button class="btn sm primary" data-nav="close">Close</button></div>`);
 
@@ -215,7 +216,8 @@
             <div class="card-body list-rows">${[...banks, ...cards].map(a => `<div class="row clickable-row" data-action="register" data-id="${a.id}"><span class="tag ${a.sub === 'credit' ? 'gold' : 'green'}">${a.sub === 'credit' ? ICON.card : ICON.bank}</span><div class="grow"><b>${esc(a.name)}</b><div class="muted">${a.sub === 'credit' ? 'Owed' : a.sub === 'clearing' ? 'Waiting to deposit' : 'Balance'}</div></div><div class="num" style="font-weight:600">${money(bal.get(a.id))}</div></div>`).join('') || '<div class="muted">No bank accounts yet.</div>'}</div></div>
           <div class="card"><div class="card-head"><h3>Latest activity</h3><button class="btn sm ghost" data-nav="transactions" style="margin-left:auto">All</button></div>
             <div class="card-body list-rows">${recent.length ? recent.map(t => `<div class="row clickable-row" data-action="edit-txn" data-id="${t.id}"><div class="grow" style="min-width:0"><div class="ellip" style="font-weight:550">${esc(t.payee || t.description)}</div><div class="muted">${fmtDateShort(t.date)}${t.status === 'review' ? ' · <span style="color:var(--warn)">needs review</span>' : ''}</div></div><div class="num">${signed(t.amount)}</div></div>`).join('') : '<div class="muted">Nothing yet — import a bank file to begin.</div>'}</div></div>
-        </div>`;
+        </div>
+        ${App.notesCard ? App.notesCard(c) : ''}`;
     }
   });
   act({

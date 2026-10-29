@@ -1,7 +1,7 @@
 {
   "name": "coll-ledger",
   "productName": "Coll Ledger",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "Premium bookkeeping for independent bookkeepers. Coll Business Solutions LLC.",
   "author": "Coll Business Solutions LLC <collbusinesssolutions@gmail.com>",
   "license": "UNLICENSED",
@@ -15,7 +15,10 @@
     "test": "node scripts/test-core.js"
   },
   "dependencies": {
-    "electron-updater": "6.8.10"
+    "@tesseract.js-data/eng": "1.0.0",
+    "electron-updater": "6.8.10",
+    "pdfjs-dist": "6.4.299",
+    "tesseract.js": "7.0.0"
   },
   "devDependencies": {
     "electron": "44.7.1",
@@ -32,7 +35,17 @@
     "files": [
       "src/**/*",
       "build/icon.png",
-      "package.json"
+      "package.json",
+      "!node_modules/tesseract.js-core/*.wasm.js",
+      "!node_modules/@tesseract.js-data/eng/4.0.0/**",
+      "!node_modules/pdfjs-dist/web/**",
+      "!node_modules/pdfjs-dist/build/**",
+      "!node_modules/pdfjs-dist/image_decoders/**",
+      "!node_modules/pdfjs-dist/types/**",
+      "!node_modules/pdfjs-dist/**/*.map",
+      "!node_modules/@napi-rs/**",
+      "!node_modules/**/*.md",
+      "!node_modules/**/*.d.ts"
     ],
     "win": {
       "target": "nsis",
@@ -58,6 +71,7 @@
         "provider": "generic",
         "url": "https://github.com/jeremymcollins89-prog/coll-landing-page/releases/download/coll-ledger/"
       }
-    ]
+    ],
+    "asar": false
   }
 }

@@ -1,6 +1,6 @@
 // Checks the accounting engine and file readers. Run with: npm test
 const assert = require('assert');
-const C = require('../src/renderer/core.js');
+const C = require('../src/renderer/plus.js');
 const I = require('../src/renderer/imports.js');
 let n = 0;
 const t = (name, fn) => { fn(); n++; console.log('  ✓ ' + name); };
@@ -121,6 +121,52 @@ t('trial balance debits equal credits', () => {
 t('1099 thresholds and repeating dates', () => {
   assert.strictEqual(C.threshold1099(2025), 600); assert.strictEqual(C.threshold1099(2026), 2000);
   assert.strictEqual(C.nextDate('2026-01-31', 'month'), '2026-02-28'); assert.strictEqual(C.nextDate('2026-11-15', 'quarter'), '2027-02-15'); assert.strictEqual(C.nextDate('2026-01-01', 'twoweeks'), '2026-01-15');
+});
+
+
+t('mileage rates and values', () => {
+  assert.strictEqual(C.mileageRate('2025-06-01'), 0.70); assert.strictEqual(C.mileageRate('2026-06-30'), 0.725); assert.strictEqual(C.mileageRate('2026-07-01'), 0.76);
+  assert.strictEqual(C.tripValue({ date: '2026-08-01', miles: 10, roundTrip: true }), 15.2);
+});
+
+t('reads receipts', () => {
+  const c = C.newClient({});
+  const r = C.readReceipt(c, 'HOME DEPOT #1532\n2455 PAVILION BLVD\nDENVER CO 80216\n10/14/2026 02:31 PM\nSUBTOTAL 45.32\nSALES TAX 3.92\nTOTAL 49.24\nVISA ****4421 49.24');
+  assert.deepStrictEqual([r.vendor, r.date, r.amount], ['Home Depot', '2026-10-14', 49.24]);
+  const p = C.readReceipt(c, 'Adobe Inc.\nInvoice date: Oct 3, 2026\nSubtotal $59.99\nTax $0.00\nTotal due $59.99');
+  assert.deepStrictEqual([p.vendor, p.date, p.amount], ['Adobe Inc.', '2026-10-03', 59.99]);
+  assert.strictEqual(C.receiptTotal('SUBTOTAL 1,204.50\nTAX 95.10\n**** TOTAL 1,299.60'), 1299.6);
+});
+
+t('budget vs actual and forecast', () => {
+  const c = C.newClient({ startDate: '2026-01-01' });
+  const chk = C.acctByName(c, 'Business Checking'), rent = C.acctByName(c, 'Rent & Lease');
+  chk.opening = 5000;
+  c.transactions.push({ id: 'r', date: '2026-02-01', amount: -1200, accountId: chk.id, categoryId: rent.id, status: 'posted' });
+  c.budgets = { [rent.id]: 1000 };
+  const b = C.budgetVsActual(c, '2026-02-01', '2026-02-28');
+  const row = b.expense.find(x => x.a.id === rent.id);
+  assert.strictEqual(row.budget, 1000); assert.strictEqual(row.actual, 1200); assert.strictEqual(row.diff, -200);
+  const f = C.forecast(c, { days: 30, typical: false });
+  assert.strictEqual(f.start, 3800); assert.strictEqual(f.series.length, 31);
+});
+
+t('quarterly tax periods and due dates', () => {
+  const qs = C.taxQuarters(C.newClient({}), 2026);
+  assert.deepStrictEqual(qs.map(q => q.due), ['2026-04-15', '2026-06-15', '2026-09-15', '2027-01-15']);
+  assert.strictEqual(C.nextBusinessDay('2028-01-15'), '2028-01-17');
+});
+
+t('clean up finds duplicates and uncategorized items', () => {
+  const c = C.newClient({ startDate: '2026-01-01' });
+  const chk = C.acctByName(c, 'Business Checking'), unc = C.acctByKey(c, 'unc_exp');
+  const d = C.todayISO();
+  c.transactions.push({ id: 'a', date: d, amount: -42.5, accountId: chk.id, categoryId: unc.id, payee: 'Shell Oil', description: 'SHELL OIL 123', status: 'posted' });
+  c.transactions.push({ id: 'b', date: d, amount: -42.5, accountId: chk.id, categoryId: unc.id, payee: 'Shell Oil', description: 'SHELL OIL 123', status: 'posted' });
+  const s = C.cleanupScan(c);
+  assert.strictEqual(s.filter(x => x.type === 'dup').length, 1); assert.strictEqual(s.filter(x => x.type === 'unc').length, 2);
+  c.cleanupOk = [s.find(x => x.type === 'dup').key];
+  assert.strictEqual(C.cleanupScan(c).filter(x => x.type === 'dup').length, 0);
 });
 
 (async () => {

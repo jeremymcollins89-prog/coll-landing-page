@@ -172,7 +172,12 @@ ipcMain.handle('pdf:save', async (_e, { html, defaultName }) => {
 
 ipcMain.handle('app:openDataFolder', () => shell.openPath(dataDir()));
 ipcMain.handle('app:info', () => ({ version: app.getVersion(), platform: process.platform, dataPath: dataDir() }));
-ipcMain.handle('app:openExternal', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
+ipcMain.handle('app:openExternal', (_e, url) => { if (/^(https:\/\/|mailto:)/.test(url)) shell.openExternal(url); });
+
+// ---------- Reading receipts on this computer (no internet, no account) ----------
+const ocr = require('./ocr');
+ipcMain.handle('ocr:read', (_e, { base64, name }) => ocr.read(Buffer.from(base64, 'base64'), name, app.getPath('userData')));
+app.on('will-quit', () => ocr.stop());
 
 app.whenReady().then(() => {
   if (!gotLock) return;

@@ -170,16 +170,21 @@
     const files = await U.pickFiles('.pdf,.png,.jpg,.jpeg,.heic,.webp,.gif,.csv,.xlsx,.docx,.txt', true);
     if (!files.length) return 0;
     target.attachments = target.attachments || [];
-    for (const f of files) {
-      if (f.buffer.byteLength > MAX) { U.toast(`${f.name} is over 15 MB — skipped`, null, 'warn'); continue; }
-      const id = C.uid();
-      let bytes = new Uint8Array(f.buffer);
-      if (S.sec) bytes = await Secure.encryptBytes(S.sec.dek, bytes);
-      await window.desktop.saveAttachment(id, Secure.b64(bytes));
-      target.attachments.push({ id, name: f.name, size: f.buffer.byteLength, enc: !!S.sec, added: C.todayISO() });
-    }
+    for (const f of files) await storeFile(target, f.name, f.buffer, true);
     save();
     return files.length;
+  }
+  async function storeFile(target, name, buffer, quiet) {
+    if (!window.desktop) return false;
+    if (buffer.byteLength > MAX) { U.toast(`${name} is over 15 MB — skipped`, null, 'warn'); return false; }
+    target.attachments = target.attachments || [];
+    const id = C.uid();
+    let bytes = new Uint8Array(buffer);
+    if (S.sec) bytes = await Secure.encryptBytes(S.sec.dek, bytes);
+    await window.desktop.saveAttachment(id, Secure.b64(bytes));
+    target.attachments.push({ id, name, size: buffer.byteLength, enc: !!S.sec, added: C.todayISO() });
+    if (!quiet) save();
+    return true;
   }
   const mimeOf = n => ({ pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', txt: 'text/plain', csv: 'text/plain' })[String(n).split('.').pop().toLowerCase()] || 'application/octet-stream';
   async function readAttachment(a) {
@@ -216,5 +221,5 @@
     root.querySelectorAll('[data-att-view]').forEach(a => a.onclick = e => { e.preventDefault(); const x = target.attachments.find(y => y.id === a.dataset.attView); if (x) viewAttachment(x); });
     root.querySelectorAll('[data-att-rm]').forEach(b => b.onclick = async e => { e.preventDefault(); if (!await U.confirmBox({ title: 'Remove this file?', body: 'The attached file will be deleted.', ok: 'Remove', danger: true })) return; await removeAttachment(target, b.dataset.attRm); redraw(); });
   }
-  App.attach = { attachStrip, wireStrip, addAttachments, viewAttachment };
+  App.attach = { attachStrip, wireStrip, addAttachments, viewAttachment, storeFile };
 })();

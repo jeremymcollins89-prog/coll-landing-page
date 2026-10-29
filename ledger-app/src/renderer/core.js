@@ -115,7 +115,8 @@ const Core = (() => {
       reconciliations: [],
       closes: [],
       imports: [],
-      lockDate: null
+      lockDate: null,
+      budgets: {}, trips: [], todos: [], notes: '', cleanupOk: [], estTax: { pct: 25, paid: {} }
     };
   }
 
