@@ -260,7 +260,7 @@
             </div>
             <div>
               <button class="cat-btn ${cat ? '' : 'empty'}" data-action="review-pick" data-id="${t.id}" data-menu>${cat ? esc(catName(c, cat)) : 'Choose a category'}${ICON.chev}</button>
-              ${s && cat === s.categoryId ? `<div class="suggest ${s.source === 'guess' ? 'soft' : ''}">${{ rule: ICON.bolt + 'From a smart rule', history: ICON.spark + 'Same as last time', guess: ICON.spark + 'Best guess — please check', you: ICON.check + 'You chose this when importing' }[s.source]}</div>` : cat ? `<label class="check small"><input type="checkbox" data-action="review-rule" data-id="${t.id}" ${rule ? 'checked' : ''}>Always use for “${esc(C.keyOf(t.description) || 'this')}”</label>` : '<div class="muted small-note">Press C or click to choose</div>'}
+              ${s && cat === s.categoryId ? `<div class="suggest ${s.source === 'guess' ? 'soft' : ''}">${{ rule: ICON.bolt + 'From a smart rule', history: ICON.spark + 'Same as last time', guess: ICON.spark + 'Best guess — please check', you: ICON.check + 'You chose this when importing', invoice: ICON.file + `Pays invoice ${esc(s.docNumber || '')}${s.payee ? ' from ' + esc(s.payee) : ''}`, bill: ICON.file + `Pays the ${esc(s.payee || '')} bill${s.docNumber ? ' ' + esc(s.docNumber) : ''}` }[s.source]}</div>` : cat ? `<label class="check small"><input type="checkbox" data-action="review-rule" data-id="${t.id}" ${rule ? 'checked' : ''}>Always use for “${esc(C.keyOf(t.description) || 'this')}”</label>` : '<div class="muted small-note">Press C or click to choose</div>'}
             </div>
             <div class="amt ${t.amount > 0 ? 'pos' : ''}">${t.amount > 0 ? '+' : ''}${money(t.amount)}</div>
             <div class="ri-actions">
@@ -289,6 +289,7 @@
     const p = pending.get(t.id) || {};
     const s = C.suggest(c, t);
     return {
+      doc: s && (s.invoiceId || s.billId) && (p.categoryId === undefined || p.categoryId === s.categoryId) ? s : null,
       categoryId: p.categoryId !== undefined ? p.categoryId : (s ? s.categoryId : ''),
       payee: (p.payee !== undefined ? p.payee : (s && s.payee ? s.payee : (t.payee || C.cleanPayee(t.description)))).trim(),
       rule: !!p.rule
@@ -300,6 +301,8 @@
     t.categoryId = ch.categoryId;
     t.payee = ch.payee || t.payee;
     t.status = 'posted';
+    if (ch.doc && ch.doc.invoiceId) { t.invoiceId = ch.doc.invoiceId; t.memo = t.memo || `Payment for ${ch.doc.docNumber}`; }
+    if (ch.doc && ch.doc.billId) { t.billId = ch.doc.billId; t.vendorId = ch.doc.vendorId; }
     delete t.splits;
     if (ch.rule) {
       const text = C.keyOf(t.description);

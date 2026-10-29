@@ -948,3 +948,58 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.55; resize: ve
 .hb-date span { color: var(--ink-2); line-height: 1.55; }
 .hb mark { background: var(--gold-soft); color: inherit; border-radius: 3px; padding: 0; }
 @media (max-width: 1000px) { .hb { grid-template-columns: 1fr; } .hb-toc { position: static; } .hb-items { grid-template-columns: 1fr; } .hb-gloss, .hb-date { grid-template-columns: 1fr; gap: 2px; } }
+
+/* =====================================================================
+   1.5 — Coll Ledger Academy: levels, exams, certificate
+   ===================================================================== */
+.lvl-badges { display: flex; gap: 6px; margin-top: 12px; }
+.lvl-badge { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--sunken); color: var(--ink-3); border: 1px solid var(--line); }
+.lvl-badge svg { width: 14px; height: 14px; }
+.lvl-badge.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.lvl-badge.exam.on { background: linear-gradient(180deg, #E9C77E, #B98A3A); border-color: #B98A3A; }
+.tl-group { font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--ink-3); font-weight: 650; padding: 14px 10px 6px; display: flex; align-items: center; gap: 6px; }
+.tl-group .tag { padding: 0 5px; }
+.tl-group .tag svg { width: 11px; height: 11px; }
+.tl.locked { opacity: .55; }
+.tl.locked .step-n svg { width: 12px; height: 12px; }
+.cert-req { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px dashed var(--line-strong); font-size: 12.5px; display: flex; flex-direction: column; gap: 6px; color: var(--ink-2); }
+.cert-req > div { display: flex; gap: 6px; align-items: center; }
+.cert-req > div.ok { color: var(--pos); font-weight: 600; }
+.cert-req svg { width: 14px; height: 14px; }
+.exam-rules { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0; }
+.exam-rules > div { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; }
+.exam-rules b { font-family: var(--serif); font-size: 24px; font-weight: 500; }
+.exam-rules span { font-size: 12px; color: var(--ink-3); }
+.exam-history { margin: 14px 0; display: flex; flex-direction: column; gap: 4px; }
+.exam-history > div:not(.cap-label) { display: flex; gap: 14px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.exam-history > div > span:first-child { color: var(--ink-3); width: 110px; }
+.exam-opts { display: flex; flex-direction: column; gap: 10px; margin: 18px 0 20px; }
+.exam-opt { display: flex; gap: 14px; align-items: center; text-align: left; padding: 14px 16px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface); cursor: pointer; font: inherit; font-size: 14.5px; color: var(--ink); transition: border-color .12s, background .12s; }
+.exam-opt:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.exam-opt.on { border-color: var(--accent); background: var(--accent-soft); }
+.eo-k { width: 28px; height: 28px; border-radius: 8px; background: var(--sunken); display: grid; place-items: center; font-weight: 700; font-size: 12.5px; flex: none; color: var(--ink-2); }
+.exam-opt.on .eo-k { background: var(--accent); color: #fff; }
+.exam-dots { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.exam-dots button { width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); font-size: 11.5px; color: var(--ink-3); cursor: pointer; }
+.exam-dots button.ans { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 650; }
+.exam-dots button.cur { outline: 2px solid var(--accent); outline-offset: 1px; }
+.exam-result { display: flex; gap: 20px; align-items: center; padding: 18px 20px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); margin: 6px 0 4px; }
+.exam-result.pass { background: linear-gradient(90deg, var(--accent-soft), transparent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.er-score { font-family: var(--serif); font-size: 46px; line-height: 1; color: var(--ink); white-space: nowrap; }
+.er-score span { font-size: 20px; color: var(--ink-3); margin-left: 4px; }
+.exam-result.pass .er-score { color: var(--accent); }
+.qz-a div.qa { cursor: default; }
+.exam-brief { margin: 4px 0 14px; color: var(--ink-2); line-height: 1.6; font-size: 14px; }
+.exam-brief .t-stmt { margin: 14px 0; }
+.grade-list { margin: 14px 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.gl { display: flex; gap: 12px; align-items: flex-start; padding: 11px 14px; border-bottom: 1px solid var(--line); font-size: 13.5px; background: var(--surface); }
+.gl:last-child { border-bottom: 0; }
+.gl .tick { margin-top: 1px; }
+.gl:not(.ok) .tick { background: var(--neg-soft); color: var(--neg); border-color: transparent; }
+.gl .num { font-weight: 650; white-space: nowrap; color: var(--ink-2); }
+.gl.ok .num { color: var(--pos); }
+.cert-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.cert-sum > div { background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; }
+.cert-sum span { font-size: 11.5px; color: var(--ink-3); }
+.cert-sum b { font-size: 18px; }
+@media (max-width: 900px) { .exam-rules { grid-template-columns: 1fr 1fr; } }

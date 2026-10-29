@@ -455,8 +455,30 @@ const Core = (() => {
     return null;
   }
 
+  function docMatch(c, t) {
+    if (!isMoneyAccount(acct(c, t.accountId)) || !t.amount) return null;
+    const cents = Math.round(Math.abs(t.amount) * 100), td = t.date || todayISO();
+    const words = normName(t.description + ' ' + (t.payee || ''));
+    const pick = list => list.sort((a, b) => (b.named - a.named) || Math.abs(daysBetween(a.date, td)) - Math.abs(daysBetween(b.date, td)))[0];
+    if (t.amount > 0) {
+      const ar = acctByKey(c, 'ar'); if (!ar) return null;
+      const open = c.invoices.map(i => ({ i, s: invoiceState(c, i) })).filter(x => ['open', 'partial', 'overdue'].includes(x.s.status) && Math.round(x.s.due * 100) === cents && x.i.date <= addDays(td, 3))
+        .map(x => { const cu = contact(c, x.i.contactId); return { id: x.i.id, num: x.i.number, name: cu ? cu.name : '', date: x.i.date, named: cu && words.includes(normName(cu.name).split(' ')[0]) ? 1 : 0 }; });
+      const best = pick(open);
+      return best ? { categoryId: ar.id, payee: best.name, source: 'invoice', invoiceId: best.id, docNumber: best.num } : null;
+    }
+    const ap = acctByKey(c, 'ap'); if (!ap) return null;
+    const open = (c.bills || []).map(b => ({ b, s: billState(c, b) })).filter(x => ['open', 'soon', 'overdue'].includes(x.s.status) && Math.round(x.s.due * 100) === cents && x.b.date <= addDays(td, 3))
+      .map(x => { const v = contact(c, x.b.vendorId); return { id: x.b.id, num: x.b.ref || '', name: v ? v.name : '', vendorId: x.b.vendorId, date: x.b.date, named: v && words.includes(normName(v.name).split(' ')[0]) ? 1 : 0 }; });
+    const best = pick(open);
+    return best ? { categoryId: ap.id, payee: best.name, source: 'bill', billId: best.id, vendorId: best.vendorId, docNumber: best.num } : null;
+  }
+
   function suggest(c, t) {
     if (t.suggestedId && acct(c, t.suggestedId) && t.suggestedId !== t.accountId) return { categoryId: t.suggestedId, payee: '', source: 'you' };
+    // A deposit that equals an open invoice, or a payment that equals an open bill
+    const m = docMatch(c, t);
+    if (m) return m;
     const r = ruleFor(c, t);
     if (r && acct(c, r.categoryId) && r.categoryId !== t.accountId) return { categoryId: r.categoryId, payee: r.payee || '', source: 'rule', rule: r };
     const k = keyOf(t.description);

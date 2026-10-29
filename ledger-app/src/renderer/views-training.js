@@ -20,7 +20,7 @@
     if (t.coachHidden == null) t.coachHidden = false;
     return t;
   };
-  const practice = () => S.data.clients.find(c => c.practice) || null;
+  const practice = () => S.data.clients.find(c => c.practice && !c.exam) || null;
   const pad = n => String(n).padStart(2, '0');
   const lastMonthEnd = () => { const d = C.parseISO(today()); return C.isoOf(new Date(d.getFullYear(), d.getMonth(), 0)); };
 
@@ -140,6 +140,52 @@
   };
 
   // ------------------------------------------------------------------
+  // Practice material for the Level 2 and 3 lessons
+  // ------------------------------------------------------------------
+  const plantDate = c => { const d = today(); return c.lockDate && d <= c.lockDate ? C.addDays(c.lockDate, 1) : d; };
+  function plantMistakes() {
+    const c = ensurePractice(false); const t = T(); t.planted = t.planted || {};
+    if (t.planted.dup && c.transactions.some(x => x.id === t.planted.unc)) return;
+    const d = plantDate(c), chk = C.acctByName(c, 'Business Checking').id;
+    const mk = (desc, payee, amt, cat) => { const x = { id: C.uid(), date: d, description: desc, payee, amount: amt, accountId: chk, categoryId: cat, memo: '', status: 'posted', cleared: false, reconciled: false }; c.transactions.push(x); return x; };
+    mk('XCEL ENERGY ONLINE PMT', 'Xcel Energy', -164.22, C.acctByName(c, 'Utilities').id);
+    mk('XCEL ENERGY ONLINE PMT', 'Xcel Energy', -164.22, C.acctByName(c, 'Utilities').id);
+    const u = mk('SQ *MILE HIGH FARMERS MKT', 'Mile High Farmers Market', -58, C.acctByKey(c, 'unc_exp').id);
+    Object.assign(t.planted, { dup: true, dupDesc: 'XCEL ENERGY ONLINE PMT', dupAmt: -164.22, dupDate: d, unc: u.id });
+    save();
+  }
+  function plantTypo() {
+    const c = ensurePractice(false); const t = T(); t.planted = t.planted || {};
+    if (t.planted.typo && c.transactions.some(x => x.id === t.planted.typo)) return;
+    const x = { id: C.uid(), date: plantDate(c), description: 'CHECK #1042 GARDNER SUPPLY', payee: 'Gardner Supply', amount: -168, accountId: C.acctByName(c, 'Business Checking').id, categoryId: C.acctByName(c, 'Cost of Goods Sold').id, memo: 'Entered by hand from the checkbook', status: 'posted', cleared: false, reconciled: false };
+    c.transactions.push(x); t.planted.typo = x.id; save();
+  }
+  function plantContractor() {
+    const c = ensurePractice(false);
+    if (c.contacts.some(x => x.name === 'Front Range Window Cleaning')) return;
+    const v = { id: C.uid(), kind: 'vendor', name: 'Front Range Window Cleaning', email: 'billing@frwindows.example', phone: '', address: '2200 Federal Blvd\nDenver, CO 80211', notes: 'Monthly storefront windows · sole proprietor', tin: '' };
+    c.contacts.push(v);
+    const d = plantDate(c), chk = C.acctByName(c, 'Business Checking').id, lab = C.acctByName(c, 'Contract Labor').id;
+    ['3301', '3342', '3388'].forEach(n => c.transactions.push({ id: C.uid(), date: d, description: `FRONT RANGE WINDOW CLEANING INV ${n}`, payee: v.name, vendorId: v.id, amount: -750, accountId: chk, categoryId: lab, memo: '', status: 'posted', cleared: false, reconciled: false }));
+    save();
+  }
+  // Draws a realistic receipt for the Sunshine Packaging charge and reads it
+  async function practiceReceipt() {
+    T().flags.receiptTried = true; save();
+    const c = P(); if (!c) return;
+    const tx = c.transactions.find(x => /SUNSHINE PACKAGING/i.test(x.description));
+    const d = tx ? tx.date : today();
+    const cv = document.createElement('canvas'); cv.width = 520; cv.height = 760;
+    const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.fillStyle = '#111';
+    const lines = ['SUNSHINE PACKAGING CO', '4410 Brighton Blvd', 'Denver CO 80216', '', `${d.slice(5, 7)}/${d.slice(8, 10)}/${d.slice(0, 4)}  10:42 AM`, '', 'BAKERY BOXES 10X10  50   42.50', 'PASTRY BAGS 500CT       31.20', 'LABEL ROLLS 2           15.65', '', 'SUBTOTAL                89.35', 'SALES TAX                6.95', 'TOTAL                   96.30', '', 'DEBIT ****4821           96.30', '', 'THANK YOU'];
+    g.font = '22px "Courier New", monospace';
+    lines.forEach((l, i) => g.fillText(l, 36, 60 + i * 38));
+    const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+    const buffer = await blob.arrayBuffer();
+    App.readReceipt({ file: { name: 'sunshine-packaging-receipt.png', buffer } });
+  }
+
+  // ------------------------------------------------------------------
   // The class
   // ------------------------------------------------------------------
   const inPractice = () => { const c = client(); return c && c.practice ? c : null; };
@@ -247,7 +293,7 @@
       learn: 'Billing customers, recording payments, and what Accounts Receivable means.',
       body: [
         `<p>An <b>invoice</b> records income the moment the work is done, even before the customer pays. Until they pay, that money sits in <b>Accounts Receivable</b> — "money customers owe us."</p>`,
-        `<p>When the payment arrives, open the invoice and click <b>Record payment</b>. That moves the money into the bank and clears what the customer owes. <b>Don't</b> also categorize that deposit as Sales — the income was already counted on the invoice, so it would count twice. (If the deposit came in through a bank import, exclude it.)</p>`,
+        `<p>When the payment arrives, open the invoice and click <b>Record payment</b>. That moves the money into the bank and clears what the customer owes. <b>Don't</b> also categorize that deposit as Sales — the income was already counted on the invoice, so it would count twice. If the deposit arrives in a bank import instead, To Review spots it and suggests <b>Pays invoice …</b> — accept that and the invoice is marked paid.</p>`,
         `<p>Two things to do: Maple Elementary PTA has paid invoice <b>BB-102</b>, and Riverside Coffee needs a new invoice for <b>40 dozen bagels at $14</b>.</p>`
       ],
       words: [['Invoice', 'A bill to a customer. Recording it counts the income.'], ['Accounts Receivable (A/R)', 'Money customers owe the business.']],
@@ -298,6 +344,137 @@
       check: () => { const c = P(); return !!c && !!T().flags.pl && !!c.lockDate && c.lockDate >= lastMonthEnd(); },
       quiz: [{ q: 'Why lock a month after you close it?', a: ['To delete old transactions', 'So the numbers already sent to the client cannot change by accident', 'Because the bank requires it'], c: 1, why: 'Once a client has the report, it should stay the same. Locking makes any later change ask first.' }]
     },
+
+    // ================= Level 2 · Month-end professional =================
+    {
+      id: 'bills', level: 2, title: 'Bills and what the business owes', mins: 5,
+      learn: 'Entering vendor bills when they arrive, paying them on time, and what Accounts Payable means.',
+      body: [
+        `<p>Invoices are money coming <i>in</i>. <b>Bills</b> are the other direction: a vendor sends the business a bill, and the business pays it later. Until it's paid, it sits in <b>Accounts Payable</b> — "money we owe vendors."</p>`,
+        `<p>Entering bills when they arrive (not when they're paid) means the owner always knows what's coming up, and the Bills page shows what's <b>due soon</b> or <b>overdue</b>. Paying is one click — Coll Ledger records the payment from the bank and clears the bill.</p>`,
+        `<p>When a bill payment later shows up in a bank import, To Review recognizes it and suggests <b>Pays the … bill</b>, so it isn't counted as a second expense.</p>`
+      ],
+      words: [['Bill', 'A request for payment from a vendor.'], ['Accounts Payable (A/P)', 'Money the business owes vendors for bills not yet paid.']],
+      task: 'Enter a bill for Bluebird Bakery (for example $380 from Restaurant Depot), then pay it.',
+      action: ['Open Bills', () => ensurePractice(true, 'bills')],
+      check: () => { const c = P(); return !!c && (c.bills || []).some(b => C.billState(c, b).status === 'paid'); },
+      quiz: [{ q: 'A $380 bill arrives today, due in 30 days. Where does it show until it\'s paid?', a: ['Accounts Payable', 'Accounts Receivable', 'Cost of Goods Sold only'], c: 0, why: 'Accounts Payable tracks what the business owes. The expense is counted when the bill is entered; paying it just clears what is owed.' }]
+    },
+    {
+      id: 'receipts', level: 2, title: 'Receipts and the paper trail', mins: 4,
+      learn: 'Which receipts the IRS expects, and how to read one into the books in seconds.',
+      body: [
+        `<p>Every business expense needs proof. The bank statement shows <i>that</i> money left; the <b>receipt</b> shows <i>what it was for</i>. For travel, meals, lodging and gifts of <b>$75 or more</b>, the IRS specifically expects a receipt.</p>`,
+        `<p><b>Read a receipt</b> (Transactions page, or the New button) reads a photo or PDF right on the computer and fills in the vendor, date and total. If the matching bank charge is already in the books, it attaches the receipt to it. Otherwise it adds a new expense or a bill.</p>`,
+        `<p>Try it with the practice receipt — it's for the Sunshine Packaging charge you imported earlier.</p>`
+      ],
+      words: [['Receipt', 'Proof of what a purchase was: vendor, date, items and amount.'], ['Paper trail', 'The documents behind each number in the books.']],
+      task: 'Read the practice receipt and attach it to its transaction.',
+      action: ['Read the practice receipt', () => { ensurePractice(true, 'transactions'); setTimeout(practiceReceipt, 80); }],
+      check: () => { const c = P(); return !!c && (c.transactions.some(t => (t.attachments || []).length) || (c.bills || []).some(b => (b.attachments || []).length) || (!window.desktop && T().flags.receiptTried)); },
+      quiz: [{ q: 'A client spent $96 on a business lunch. What does the IRS expect?', a: ['Nothing — the bank statement is enough', 'A receipt, plus who attended and the business reason', 'Only a note in the memo'], c: 1, why: 'Meals of $75 or more need a receipt, and the business purpose and attendees should be noted.' }]
+    },
+    {
+      id: 'cleanup', level: 2, title: 'Catch mistakes with Clean up', mins: 4,
+      learn: 'Finding duplicates and loose ends before they reach a client report.',
+      body: [
+        `<p>Even careful bookkeepers end up with a doubled transaction (a file imported twice, a charge entered by hand <i>and</i> imported) or something left in <b>Uncategorized</b>. Clients notice these first — "why did I pay the electric bill twice?"</p>`,
+        `<p><b>Clean up</b> (under Month end) scans the books and lists likely problems side by side with one-click fixes. Make it a habit right before you close a month.</p>`,
+        `<p>Click the button below to add two practice mistakes to Bluebird's books, then fix them.</p>`
+      ],
+      words: [['Duplicate', 'The same transaction recorded twice.'], ['Uncategorized', 'A holding category for items nobody has sorted yet.']],
+      task: 'Add the practice mistakes, then use Clean up to remove the duplicate and categorize the uncategorized item.',
+      action: ['Add the mistakes and open Clean up', () => { plantMistakes(); ensurePractice(true, 'cleanup'); }],
+      check: () => { const c = P(), pl = T().planted; if (!c || !pl || !pl.dup) return false; const d = c.transactions.filter(t => t.description === pl.dupDesc && Math.abs(t.amount - pl.dupAmt) < 0.005 && t.date === pl.dupDate).length; const u = c.transactions.find(t => t.id === pl.unc); const unc = u && ['unc_inc', 'unc_exp'].includes((C.acct(c, u.categoryId) || {}).key); return d === 1 && !!u && !unc; },
+      quiz: [{ q: 'Two identical $164.22 Xcel payments on the same day. What should you do?', a: ['Keep both — the bank knows best', 'Compare with the bank statement, then remove the extra one', 'Change one to $0'], c: 1, why: 'Check the statement: if Xcel was paid once, the second entry is a duplicate and should be removed.' }]
+    },
+    {
+      id: 'troubleshoot', level: 2, title: 'When the reconciliation won\'t balance', mins: 5,
+      learn: 'The detective work: how to find the one entry that\'s off.',
+      body: [
+        `<p>A difference that won't go away is almost always one of four things: a <b>missing</b> transaction, a <b>duplicate</b>, something ticked that isn't on the statement, or an amount <b>typed wrong</b>.</p>`,
+        `<p>Two tricks pros use: if the difference equals one transaction exactly, look for that amount. If the difference <b>divides evenly by 9</b> (like $54 or $18), two digits were probably swapped — $186.00 typed as $168.00.</p>`,
+        `<p>Click below to add a check Bluebird wrote. The bakery's copy of the bank statement shows <b>check #1042 to Gardner Supply for $186.00</b> — find the entry in the books and correct it.</p>`
+      ],
+      words: [['Transposition', 'Two digits swapped while typing. The error always divides evenly by 9.']],
+      task: 'Add the practice check, then fix its amount so it matches the statement ($186.00).',
+      action: ['Add the check and find it', () => { plantTypo(); ensurePractice(true, 'transactions'); Object.assign(S.ui.txn, { q: '1042', account: 'all', category: '', type: 'all', period: 'last-12' }); render(); }],
+      check: () => { const c = P(), pl = T().planted; if (!c || !pl || !pl.typo) return false; const t = c.transactions.find(x => x.id === pl.typo); return !!t && Math.abs(t.amount + 186) < 0.005; },
+      quiz: [{ q: 'The reconcile difference is $36. What\'s a likely cause?', a: ['Swapped digits — 36 divides evenly by 9', 'The bank made a mistake', 'Sales tax'], c: 0, why: 'Transposed digits always leave a difference divisible by 9 — for example $63 typed as $27.' }]
+    },
+    {
+      id: 'monthwrap', level: 2, title: 'Mileage, reminders and the month-end email', mins: 5,
+      learn: 'The extras that make clients love you: deductions they\'d miss, getting them paid, and a clear monthly note.',
+      body: [
+        `<p><b>Mileage</b> is one of the most-missed deductions. Every business mile is worth the IRS standard rate. Log the date, miles and business reason for each trip — Coll Ledger records the month's total in the books.</p>`,
+        `<p><b>Payment reminders</b> on the Invoices page write friendly, firm or final-notice emails for overdue customers. Getting a client paid faster is a service they'll remember.</p>`,
+        `<p>The <b>Month-end email</b> (on Reports and Close the month) writes a short summary — money in, money out, profit, cash, what's owed. Send it with the client package every month.</p>`
+      ],
+      words: [['Standard mileage rate', 'The IRS amount per business mile, which covers gas, wear and insurance.']],
+      task: 'Log one business trip for Bluebird, then open the Month-end email.',
+      action: ['Open Mileage', () => ensurePractice(true, 'mileage')],
+      check: () => { const c = P(); return !!c && (c.trips || []).length > 0 && !!T().flags.monthEmail; },
+      quiz: [{ q: 'Which mileage log entry is complete?', a: ['"About 300 miles in March"', 'Oct 3 · Office → Restaurant Depot · 12 miles · pick up supplies', 'Just the yearly total'], c: 1, why: 'Each trip needs the date, miles and business reason.' }]
+    },
+    // ================= Level 3 · Client advisor =================
+    {
+      id: 'planning', level: 3, title: 'Cash flow and budgets', mins: 5,
+      learn: 'Looking ahead: will the client have enough cash, and are they spending to plan?',
+      body: [
+        `<p>Bookkeeping looks back. <b>Advising</b> looks ahead — and it's what clients will pay more for. The <b>Cash flow</b> tab in Planning projects the bank balance for the next 90 days from unpaid invoices, upcoming bills, repeating items and everyday activity. If cash could run short, it says when.</p>`,
+        `<p>A <b>budget</b> is a monthly plan for each category. Comparing <i>budget vs. actual</i> each month shows where the business is overspending. <b>Fill from last 3 months</b> gives you a realistic starting point.</p>`
+      ],
+      words: [['Cash-flow forecast', 'A projection of the bank balance over the coming weeks.'], ['Budget vs. actual', 'Planned amounts compared with what really happened.']],
+      task: 'Set up a budget for Bluebird (Fill from last 3 months is fine).',
+      action: ['Open Planning → Budget', () => { S.ui.plan.tab = 'budget'; ensurePractice(true, 'planning'); }],
+      check: () => { const c = P(); return !!c && Object.keys(c.budgets || {}).length > 0; },
+      quiz: [{ q: 'The forecast shows cash dipping below $0 in five weeks. Most useful advice?', a: ['Ignore it — it\'s only a forecast', 'Chase overdue invoices and look at moving a bill date or two', 'Close the business account'], c: 1, why: 'A forecast is an early warning. Collecting money owed and timing payments can keep cash above zero.' }]
+    },
+    {
+      id: 'ownertax', level: 3, title: 'Owner pay and quarterly taxes', mins: 5,
+      learn: 'Helping owners pay themselves safely and set aside enough for taxes.',
+      body: [
+        `<p>Owners of sole proprietorships and LLCs don't get a paycheck — they take <b>draws</b>. Draws aren't expenses, so they don't lower profit — and the owner pays income tax on the <b>profit</b>, not on what they took.</p>`,
+        `<p>With no tax withheld, owners usually pay <b>estimated taxes</b> four times a year: April 15, June 15, September 15 and January 15. Self-employment tax alone is 15.3%, so setting aside <b>25–30% of profit</b> is a common rule of thumb. The tax preparer gives the real number.</p>`,
+        `<p>The <b>Owner pay & taxes</b> tab shows what's been taken, what to set aside each quarter, and a cautious "about safe to pay the owner" number.</p>`
+      ],
+      words: [['Estimated tax', 'Tax paid during the year by people without withholding.'], ['Self-employment tax', 'Social Security and Medicare for the self-employed — 15.3%.']],
+      task: 'Open Bluebird\'s Owner pay & taxes tab.',
+      action: ['Open Owner pay & taxes', () => { S.ui.plan.tab = 'owner'; ensurePractice(true, 'planning'); }],
+      check: () => !!T().flags.ownerTab,
+      quiz: [
+        { q: 'A sole proprietor made $60,000 profit and took $40,000 in draws. Income tax is based on…', a: ['$40,000 of draws', '$60,000 of profit', '$20,000 — the difference'], c: 1, why: 'Draws aren\'t expenses. Tax is on the business profit, whatever the owner took out.' },
+        { q: 'When is the third-quarter estimated tax payment due?', a: ['September 15', 'September 30', 'October 15'], c: 0, why: 'April 15, June 15, September 15 and January 15 (next business day on weekends).' }
+      ]
+    },
+    {
+      id: 'yearend', level: 3, title: 'Year-end and 1099s', mins: 5,
+      learn: 'The January rush: contractors, the CPA package, and locking the year.',
+      body: [
+        `<p>Businesses send a <b>1099-NEC</b> to unincorporated contractors they paid for services. Starting with payments made in <b>2026</b>, the threshold is <b>$2,000</b> (it was $600 through 2025). Payments by card or apps are reported by the payment company instead. Forms are due <b>January 31</b> — so collect a <b>W-9</b> before the first payment.</p>`,
+        `<p>Mark contractors as <b>1099 contractors</b> on their vendor record and the <b>1099 Contractors</b> report adds up what each was paid by check or bank. Then Reports → <b>Year-end for the CPA</b> builds the whole package.</p>`,
+        `<p>Bluebird paid a window-cleaning contractor this year. Click below to add those payments, then mark the vendor as a 1099 contractor.</p>`
+      ],
+      words: [['1099-NEC', 'The form reporting what a business paid a contractor.'], ['W-9', 'The contractor\'s form with their legal name, address and tax ID.']],
+      task: 'Mark Front Range Window Cleaning as a 1099 contractor, then open the 1099 Contractors report.',
+      action: ['Add the contractor and open the vendor list', () => { plantContractor(); ensurePractice(true, 'contacts'); }],
+      check: () => { const c = P(); return !!c && c.contacts.some(x => x.name === 'Front Range Window Cleaning' && x.is1099) && !!T().flags.r1099; },
+      quiz: [{ q: 'In 2026 a contractor is paid $2,250 by bank transfer. Is a 1099-NEC needed?', a: ['Yes — it\'s $2,000 or more', 'No — only over $10,000', 'No — bank transfers never count'], c: 0, why: 'For payments made in 2026, $2,000 or more to an unincorporated contractor for services generally needs a 1099-NEC.' }]
+    },
+    {
+      id: 'pro', level: 3, title: 'Working like a professional', mins: 4,
+      learn: 'Engagement letters, access, confidentiality and knowing where your role ends.',
+      body: [
+        `<p>Put every client relationship in writing with an <b>engagement letter</b>: what you'll do, how often, what the client provides and by when, the fee, and what's <i>not</i> included — like tax returns.</p>`,
+        `<p>Ask for <b>read-only or accountant access</b> to bank accounts — never store a client's full password. Turn on the <b>password lock</b> and <b>cloud backup</b> in Settings; the books hold private financial information.</p>`,
+        `<p>Know your lane. Unless you're an EA, CPA or attorney, don't give tax advice or sign returns. Hand off clean books and let the preparer make the tax calls. The <b>Bookkeeper's Handbook</b> under Help has the rules, deadlines and checklists to keep handy.</p>`
+      ],
+      words: [['Engagement letter', 'A written agreement on scope, timing and fees.'], ['Read-only access', 'Permission to view accounts without moving money.']],
+      task: 'Open the Bookkeeper\'s Handbook and skim the Tax rules and Deadline calendar.',
+      action: ['Open the handbook', () => go('handbook')],
+      check: () => !!T().flags.handbook,
+      quiz: [{ q: 'A client asks you, a bookkeeper, to file their tax return. You\'re not an EA or CPA. Best answer?', a: ['File it anyway', 'Refer them to a tax preparer and send clean books', 'Tell them to skip filing'], c: 1, why: 'Bookkeepers prepare the books; credentialed preparers handle returns and tax advice.' }]
+    },
     {
       id: 'quickbooks', title: 'Bonus: moving a client from QuickBooks', mins: 4, bonus: true,
       learn: 'The order to bring a client over so every category lines up.',
@@ -313,10 +490,17 @@
       quiz: [{ q: 'Which QuickBooks file should you import first?', a: ['Transactions', 'Chart of accounts', 'Customers'], c: 1, why: 'With the chart of accounts in place, every transaction finds its matching category.' }]
     }
   ];
+  LESSONS.forEach(l => { l.level = l.level || 1; });
+  const LEVELS = [
+    { n: 1, title: 'Level 1 · Foundations', blurb: 'The daily work: accounts, importing, categorizing, invoices, reconciling and closing.' },
+    { n: 2, title: 'Level 2 · Month-end professional', blurb: 'Bills, receipts, catching mistakes, troubleshooting and client extras.' },
+    { n: 3, title: 'Level 3 · Client advisor', blurb: 'Cash flow, budgets, owner pay, taxes, year-end and professional practice.' }
+  ];
   const CORE = LESSONS.filter(l => !l.bonus);
+  const levelsWithLessons = () => LEVELS.map(L => ({ ...L, lessons: CORE.filter(l => l.level === L.n) }));
   const lessonDone = l => { const t = T(); return !!t.done[l.id]; };
   const quizDone = l => l.quiz.every((q, i) => T().quiz[l.id + ':' + i] === q.c);
-  const currentLesson = () => { const t = T(); return LESSONS.find(l => l.id === t.current) || LESSONS.find(l => !lessonDone(l)) || LESSONS[0]; };
+  const currentLesson = () => { const t = T(); return LESSONS.find(l => l.id === t.current) || CORE.find(l => !lessonDone(l)) || LESSONS[0]; };
 
   // Mark lessons complete when their task check and quiz both pass
   function sweep() {
@@ -327,7 +511,7 @@
       if (ok && quizDone(l)) { t.done[l.id] = C.todayISO(); newly = l; }
     }
     if (newly) {
-      if (!t.current || t.current === newly.id) { const next = LESSONS.find(l => !t.done[l.id]); if (next) t.current = next.id; }
+      if (!t.current || t.current === newly.id) { const next = CORE.find(l => !t.done[l.id]); t.current = next ? next.id : 'exam-written'; }
       save(); U.toast(`Lesson complete: ${newly.title}`);
     }
     return newly;
@@ -340,25 +524,41 @@
     render() {
       const t = T();
       sweep();
-      const l = currentLesson();
-      const idx = LESSONS.indexOf(l);
-      const doneN = CORE.filter(lessonDone).length;
-      const allDone = doneN === CORE.length;
-      let taskOk = false; try { taskOk = l.check(); } catch (e) { }
+      const AC = App.academy;
+      const levels = levelsWithLessons();
+      const lessonsDone = CORE.filter(lessonDone).length;
+      const allLessons = lessonsDone === CORE.length;
+      const wOk = AC.writtenPassed(), pOk = AC.practicalPassed();
+      const req = CORE.length + 2, doneN = lessonsDone + (wOk ? 1 : 0) + (pOk ? 1 : 0);
+      const earned = allLessons && wOk && pOk;
+      const examView = t.current === 'exam-written' || t.current === 'exam-practical';
       const p = practice();
-      return `
-        <div class="page-head">
-          <div><h1>Practice / Training</h1><div class="sub">A mini class on a pretend bakery. Read, try it in the practice account, answer a quick question — the coach ticks each lesson off as you go.</div></div>
-          <div class="actions">${p ? `<button class="btn" data-action="t-reset">${ICON.refresh}Reset practice account</button><button class="btn primary" data-action="t-open">${ICON.right}Open Bluebird Bakery</button>` : `<button class="btn primary" data-action="t-open">${ICON.spark}Create the practice account</button>`}</div>
+      const lvlDone = L => L.lessons.every(lessonDone);
+      const sideItem = (x, n) => `<button class="tl ${x.id === t.current || (!examView && x === currentLesson()) ? 'on' : ''} ${lessonDone(x) ? 'done' : ''}" data-action="t-go" data-id="${x.id}"><span class="step-n">${lessonDone(x) ? ICON.check : x.bonus ? '★' : n}</span><span><b>${esc(x.title)}</b><span class="muted">${x.mins} min${x.bonus ? ' · bonus' : ''}</span></span></button>`;
+      let n = 0;
+      const side = `
+        <div class="train-prog"><div class="tp-top"><b>${doneN} of ${req} steps</b><span class="muted">${Math.round(doneN / req * 100)}%</span></div><div class="progress"><div style="width:${doneN / req * 100}%"></div></div>
+          <div class="lvl-badges">${levels.map(L => `<span class="lvl-badge ${lvlDone(L) ? 'on' : ''}" title="${esc(L.title)}">${lvlDone(L) ? ICON.check : L.n}</span>`).join('')}<span class="lvl-badge exam ${wOk && pOk ? 'on' : ''}" title="Final exams">${wOk && pOk ? ICON.check : 'E'}</span></div></div>
+        <div class="train-list">
+          ${levels.map(L => `<div class="tl-group">${esc(L.title)}${lvlDone(L) ? ` <span class="tag green">${ICON.check}</span>` : ''}</div>${L.lessons.map(x => sideItem(x, ++n)).join('')}`).join('')}
+          <div class="tl-group">Final exams${allLessons ? '' : ` <span class="muted" style="text-transform:none;letter-spacing:0">· after all lessons</span>`}</div>
+          <button class="tl ${t.current === 'exam-written' ? 'on' : ''} ${wOk ? 'done' : ''} ${allLessons ? '' : 'locked'}" data-action="t-go" data-id="exam-written"><span class="step-n">${wOk ? ICON.check : allLessons ? 'W' : ICON.lock}</span><span><b>Written exam</b><span class="muted">25 questions · 80% to pass</span></span></button>
+          <button class="tl ${t.current === 'exam-practical' ? 'on' : ''} ${pOk ? 'done' : ''} ${allLessons ? '' : 'locked'}" data-action="t-go" data-id="exam-practical"><span class="step-n">${pOk ? ICON.check : allLessons ? 'P' : ICON.lock}</span><span><b>Practical exam</b><span class="muted">A graded month-end</span></span></button>
+          <div class="tl-group">Bonus</div>${LESSONS.filter(l => l.bonus).map(x => sideItem(x, 0)).join('')}
         </div>
-        <div class="train">
-          <aside class="card train-side">
-            <div class="train-prog"><div class="tp-top"><b>${doneN} of ${CORE.length} lessons</b><span class="muted">${Math.round(doneN / CORE.length * 100)}%</span></div><div class="progress"><div style="width:${doneN / CORE.length * 100}%"></div></div></div>
-            <div class="train-list">${LESSONS.map((x, i) => `<button class="tl ${x === l ? 'on' : ''} ${lessonDone(x) ? 'done' : ''}" data-action="t-go" data-id="${x.id}"><span class="step-n">${lessonDone(x) ? ICON.check : x.bonus ? '★' : i + 1}</span><span><b>${esc(x.title)}</b><span class="muted">${x.mins} min${x.bonus ? ' · bonus' : ''}</span></span></button>`).join('')}</div>
-            ${allDone ? `<div class="cert-cta">${ICON.spark}<div><b>Class complete!</b><div class="muted">Download your certificate.</div></div><button class="btn sm gold" data-action="t-cert">Certificate</button></div>` : ''}
-          </aside>
-          <article class="card train-main">
-            <div class="tm-head"><span class="tag ${l.bonus ? 'gold' : 'blue'}">${l.bonus ? 'Bonus lesson' : `Lesson ${idx + 1} of ${CORE.length}`} · about ${l.mins} minutes</span>${lessonDone(l) ? `<span class="tag green">${ICON.check}Complete</span>` : ''}</div>
+        ${earned ? `<div class="cert-cta">${ICON.spark}<div><b>${t.cert ? 'Certificate earned' : 'You earned it!'}</b><div class="muted">${t.cert ? esc(t.cert.id) : 'Professional Bookkeeping Certificate'}</div></div><button class="btn sm gold" data-action="t-cert">${t.cert ? 'Download' : 'Get it'}</button></div>` : `<div class="cert-req"><div class="cap-label">To earn the certificate</div><div class="${allLessons ? 'ok' : ''}">${allLessons ? ICON.check : '○'} All ${CORE.length} lessons <span class="muted">(${lessonsDone} done)</span></div><div class="${wOk ? 'ok' : ''}">${wOk ? ICON.check : '○'} Written exam, 80% or better</div><div class="${pOk ? 'ok' : ''}">${pOk ? ICON.check : '○'} Practical exam, 80+ and balanced</div></div>`}`;
+      let main;
+      if (examView) {
+        main = !allLessons ? `<div class="tm-head"><span class="tag gold">Final exams</span></div><h2 class="tm-title">Finish the lessons first</h2><p class="tm-learn">The exams cover all three levels. You have ${plural(CORE.length - lessonsDone, 'lesson')} to go — the exams unlock as soon as they're done.</p><div class="tm-nav"><span></span><button class="btn primary" data-action="t-go" data-id="${(CORE.find(l => !lessonDone(l)) || CORE[0]).id}">Go to the next lesson ${ICON.right}</button></div>`
+          : t.current === 'exam-written' ? AC.renderWritten() : AC.renderPractical();
+      } else {
+        const l = currentLesson();
+        const idx = CORE.indexOf(l);
+        let taskOk = false; try { taskOk = l.check(); } catch (e) { }
+        const L = LEVELS.find(x => x.n === l.level);
+        const nextId = l.bonus ? null : (idx < CORE.length - 1 ? CORE[idx + 1].id : 'exam-written');
+        main = `
+            <div class="tm-head"><span class="tag ${l.bonus ? 'gold' : 'blue'}">${l.bonus ? 'Bonus lesson' : `${esc(L.title)} · lesson ${idx + 1} of ${CORE.length}`} · about ${l.mins} minutes</span>${lessonDone(l) ? `<span class="tag green">${ICON.check}Complete</span>` : ''}</div>
             <h2 class="tm-title">${esc(l.title)}</h2>
             <p class="tm-learn"><b>You'll learn:</b> ${esc(l.learn)}</p>
             <div class="tm-body">${l.body.join('')}</div>
@@ -368,8 +568,16 @@
               <div class="tt-foot">${taskOk ? '<span class="pos">Done — nicely handled.</span>' : `<button class="btn primary" data-action="t-do" data-id="${l.id}">${esc(l.action[0])} ${ICON.right}</button><span class="muted">The coach in the corner keeps this task in view while you work.</span>`}</div>
             </div>
             <div class="tm-quiz"><div class="cap-label">Quick check</div>${l.quiz.map((q, qi) => { const key = l.id + ':' + qi, ans = t.quiz[key]; return `<div class="qz"><div class="qz-q">${esc(q.q)}</div><div class="qz-a">${q.a.map((a, ai) => `<button class="qa ${ans === ai ? (ai === q.c ? 'right' : 'wrong') : ''} ${ans != null && ai === q.c ? 'answer' : ''}" data-action="t-quiz" data-k="${key}" data-a="${ai}">${esc(a)}</button>`).join('')}</div>${ans != null ? `<div class="qz-why ${ans === q.c ? 'right' : 'wrong'}">${ans === q.c ? ICON.check + '<b>Right.</b>' : '<b>Not quite —</b>'} ${esc(q.why)}${ans !== q.c ? ' Try again.' : ''}</div>` : ''}</div>`; }).join('')}</div>
-            <div class="tm-nav">${idx > 0 ? `<button class="btn ghost" data-action="t-go" data-id="${LESSONS[idx - 1].id}">${ICON.back}Previous</button>` : '<span></span>'}${idx < LESSONS.length - 1 ? `<button class="btn ${lessonDone(l) ? 'primary' : ''}" data-action="t-go" data-id="${LESSONS[idx + 1].id}">Next lesson ${ICON.right}</button>` : ''}</div>
-          </article>
+            <div class="tm-nav">${idx > 0 ? `<button class="btn ghost" data-action="t-go" data-id="${CORE[idx - 1].id}">${ICON.back}Previous</button>` : '<span></span>'}${nextId ? `<button class="btn ${lessonDone(l) ? 'primary' : ''}" data-action="t-go" data-id="${nextId}">${nextId === 'exam-written' ? 'On to the final exams' : 'Next lesson'} ${ICON.right}</button>` : ''}</div>`;
+      }
+      return `
+        <div class="page-head">
+          <div><h1>Coll Ledger Academy</h1><div class="sub">Three levels of hands-on lessons on a pretend bakery, then a written exam and a graded month-end. Pass both to earn the Professional Bookkeeping Certificate.</div></div>
+          <div class="actions">${p ? `<button class="btn" data-action="t-reset">${ICON.refresh}Reset practice account</button><button class="btn primary" data-action="t-open">${ICON.right}Open Bluebird Bakery</button>` : `<button class="btn primary" data-action="t-open">${ICON.spark}Create the practice account</button>`}</div>
+        </div>
+        <div class="train">
+          <aside class="card train-side">${side}</aside>
+          <article class="card train-main">${main}</article>
         </div>`;
     },
     after() {
@@ -380,7 +588,7 @@
   });
 
   act({
-    't-go': el => { T().current = el.dataset.id; save(); render(); $('#view').scrollTop = 0; },
+    't-go': el => { T().current = el.dataset.id; if (!/^exam/.test(el.dataset.id)) S.ui.exam = null; save(); if (S.route.page !== 'training') go('training'); else render(); $('#view').scrollTop = 0; },
     't-open': () => { const fresh = !practice(); ensurePractice(true, fresh ? 'dashboard' : 'dashboard'); if (fresh) U.toast('Bluebird Bakery is ready — the coach in the corner will guide you'); },
     't-do': el => { const l = LESSONS.find(x => x.id === el.dataset.id); T().current = l.id; T().coachHidden = false; save(); l.action[1](); },
     't-quiz': el => { T().quiz[el.dataset.k] = +el.dataset.a; save(); sweep(); render(); },
@@ -394,17 +602,7 @@
       if (S.data.activeClientId && !S.data.clients.some(x => x.id === S.data.activeClientId)) S.data.activeClientId = c.id;
       commit(); U.toast('Practice account reset');
     },
-    't-cert': () => {
-      const f = S.data.firm, name = f.owner || 'Bookkeeper';
-      U.printDoc(App.docShell('Certificate', `<div class="page" style="height:11in;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:14px solid #1E6B53;outline:2px solid #B8893B;outline-offset:-24px">
-        <div style="font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:#6B756F">Coll Ledger Training</div>
-        <div class="serif" style="font-size:48px;margin:24px 0 8px;color:#1E6B53">Certificate of Completion</div>
-        <div class="muted" style="font-size:15px">This certifies that</div>
-        <div class="serif" style="font-size:40px;margin:16px 0;border-bottom:1px solid #B8893B;padding:0 40px 10px">${esc(name)}</div>
-        <div style="font-size:15px;max-width:520px;line-height:1.6;color:#4A5550">completed the Coll Ledger bookkeeping class: categorizing, smart rules, splits, invoices and receivables, bank reconciliation, Square sales, reports and month-end close.</div>
-        <div style="margin-top:50px;display:flex;gap:80px;font-size:12px;color:#6B756F"><div><div class="serif" style="font-size:16px;color:#16201C">${fmtDate(C.todayISO())}</div>Date</div><div><div class="serif" style="font-size:16px;color:#16201C">${esc(f.name || 'Coll Ledger')}</div>Studio</div></div>
-        <div style="margin-top:60px;font-size:11px;color:#9AA39E">Coll Business Solutions LLC</div></div>`), `Coll Ledger certificate - ${name}.pdf`);
-    },
+    't-cert': () => App.academy.certificate(levelsWithLessons()),
     't-coach-hide': () => { T().coachHidden = true; save(); coach(); },
     't-coach-show': () => { T().coachHidden = false; save(); coach(); }
   });
@@ -417,6 +615,7 @@
     const c = client();
     if (!c || !c.practice || S.route.page === 'training' || !S.data.setupDone) { if (el) el.remove(); return; }
     if (!el) { el = document.createElement('div'); el.id = 'coach'; document.body.appendChild(el); }
+    if (c.exam) { el.className = 'coach'; el.innerHTML = `<div class="coach-head">${ICON.spark}<b>Practical exam</b><span class="muted">${U.fmtMonth(c.examKey.month.from)}</span></div><div class="coach-task"><span>Categorize, apply the invoice payment, clean up, reconcile to ${money(c.examKey.statement)}, then close the month.</span></div><div class="coach-foot"><button class="btn sm primary" data-action="t-go" data-id="exam-practical">Grade my work</button></div>`; return; }
     const t = T();
     const l = currentLesson();
     let ok = false; try { ok = l.check(); } catch (e) { }
@@ -434,7 +633,7 @@
     const inner = $('#view .view-inner'); if (!inner) return;
     const b = document.createElement('div');
     b.className = 'practice-banner';
-    b.innerHTML = `${ICON.spark}<span><b>Practice account</b> — Bluebird Bakery is pretend. Try anything; nothing here touches a real client.</span><button class="btn sm" data-nav="training">Training</button>`;
+    b.innerHTML = c.exam ? `${ICON.spark}<span><b>Practical exam</b> — Juniper Flower Co. is pretend. Do the month-end, then grade your work in the Academy.</span><button class="btn sm" data-action="t-go" data-id="exam-practical">Exam page</button>` : `${ICON.spark}<span><b>Practice account</b> — Bluebird Bakery is pretend. Try anything; nothing here touches a real client.</span><button class="btn sm" data-nav="training">Academy</button>`;
     inner.prepend(b);
   }
   App.hooks.push((c, page) => {
@@ -442,12 +641,16 @@
       const t = T();
       if (page === 'dashboard') t.flags.dashboard = true;
       if (page === 'reports' && S.ui.report.type === 'pl') t.flags.pl = true;
+      if (page === 'reports' && S.ui.report.type === '1099') t.flags.r1099 = true;
+      if (page === 'planning' && S.ui.plan && S.ui.plan.tab === 'owner') t.flags.ownerTab = true;
       sweep();
     }
+    if (page === 'handbook') { T().flags.handbook = true; sweep(); }
     banner(c, page);
     coach();
   });
+  document.addEventListener('click', e => { if (e.target.closest('[data-action="month-email"]') && inPractice()) { T().flags.monthEmail = true; save(); setTimeout(sweep, 50); } }, true);
   // keep the coach fresh after quick actions that don't re-render a screen
   document.addEventListener('click', () => setTimeout(() => { if (inPractice()) coach(); }, 400));
-  App.practice = { ensurePractice, LESSONS };
+  App.practice = { ensurePractice, LESSONS, CORE };
 })();

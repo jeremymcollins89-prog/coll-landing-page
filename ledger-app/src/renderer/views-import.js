@@ -131,7 +131,7 @@
     let md = g.amount >= 0 ? 'single' : 'split';
     const picks = new Map(); // row key -> { categoryId, payee } chosen in the preview
     let current = [];
-    const SRC = { rule: [ICON.bolt, 'Smart rule'], history: [ICON.spark, 'Same as last time'], guess: [ICON.spark, 'Best guess'], you: [ICON.check, 'You chose'] };
+    const SRC = { rule: [ICON.bolt, 'Smart rule'], history: [ICON.spark, 'Same as last time'], guess: [ICON.spark, 'Best guess'], you: [ICON.check, 'You chose'], invoice: [ICON.file, 'Pays an open invoice'], bill: [ICON.file, 'Pays an open bill'] };
     const m = U.openModal(`${U.modalHead('Bank or card statement', `<b>${esc(name)}</b> · ${plural(body.length, 'row')}`)}
       <div class="modal-body">
         ${recognized('bank')}
@@ -178,13 +178,14 @@
         if (!x.dup) { const ti = transfers.findIndex(t => Math.abs(t.amount + x.amt) < 0.005 && Math.abs(C.daysBetween(t.date, x.date)) <= 4); if (ti >= 0) { x.dup = true; x.transfer = true; transfers.splice(ti, 1); } }
         const sk = k + '|' + (seenKey.get(k) || 0); seenKey.set(k, (seenKey.get(k) || 0) + 1); x.key = sk;
         if (!x.dup) {
-          const tmp = { description: x.desc, payee: '', amount: x.amt, accountId: acc };
+          const tmp = { description: x.desc, payee: '', amount: x.amt, accountId: acc, date: x.date };
           const sg = C.suggest(c, tmp);
           const p = picks.get(sk);
           x.categoryId = p ? p.categoryId : (sg ? sg.categoryId : '');
           x.source = p ? 'you' : (sg ? sg.source : null);
           x.payee = (sg && sg.payee) || C.cleanPayee(x.desc);
           x.rule = sg && sg.rule;
+          x.doc = sg && (sg.invoiceId || sg.billId) && !p ? sg : null;
         }
       }
       return out;
@@ -217,7 +218,7 @@
       for (const x of fresh) {
         const t = { id: C.uid(), date: x.date, description: x.desc, payee: x.payee, amount: x.amt, accountId: acc, categoryId: null, memo: '', status: 'review', cleared: true, reconciled: false, imported: true };
         const auto = x.rule && x.rule.autoAccept && x.source === 'rule';
-        if (x.categoryId && C.acct(c, x.categoryId) && x.categoryId !== acc && (acceptFilled || auto)) { t.categoryId = x.categoryId; if (x.rule && x.rule.payee) t.payee = x.rule.payee; t.status = 'posted'; posted++; }
+        if (x.categoryId && C.acct(c, x.categoryId) && x.categoryId !== acc && (acceptFilled || auto)) { t.categoryId = x.categoryId; if (x.rule && x.rule.payee) t.payee = x.rule.payee; t.status = 'posted'; posted++; if (x.doc && x.doc.invoiceId) { t.invoiceId = x.doc.invoiceId; t.memo = `Payment for ${x.doc.docNumber}`; } if (x.doc && x.doc.billId) { t.billId = x.doc.billId; t.vendorId = x.doc.vendorId; } }
         else if (x.source === 'you' && x.categoryId) t.suggestedId = x.categoryId;
         c.transactions.push(t); ids.push(t.id);
       }

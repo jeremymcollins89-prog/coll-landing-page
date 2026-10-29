@@ -169,6 +169,20 @@ t('clean up finds duplicates and uncategorized items', () => {
   assert.strictEqual(C.cleanupScan(c).filter(x => x.type === 'dup').length, 0);
 });
 
+t('deposits match open invoices and payments match open bills', () => {
+  const c = C.newClient({ startDate: '2026-01-01' });
+  const chk = C.acctByName(c, 'Business Checking');
+  const cu = { id: 'cu', kind: 'customer', name: 'Hotel Teatro' }; c.contacts.push(cu);
+  c.invoices.push({ id: 'i1', number: 'J-201', contactId: 'cu', date: '2026-09-03', dueDate: '2026-09-18', status: 'sent', taxRate: 0, discount: 0, lines: [{ id: 'l', desc: 'Flowers', qty: 4, rate: 160, accountId: C.acctByKey(c, 'sales').id }] });
+  const s = C.suggest(c, { description: 'MOBILE DEPOSIT HOTEL TEATRO', amount: 640, accountId: chk.id });
+  assert.strictEqual(s.source, 'invoice'); assert.strictEqual(s.invoiceId, 'i1'); assert.strictEqual(s.categoryId, C.acctByKey(c, 'ar').id);
+  assert.notStrictEqual((C.suggest(c, { description: 'MOBILE DEPOSIT', amount: 641, accountId: chk.id }) || {}).source, 'invoice');
+  const v = { id: 'v', kind: 'vendor', name: 'Roastworks' }; c.contacts.push(v);
+  c.bills.push({ id: 'b1', vendorId: 'v', date: '2026-09-01', dueDate: '2026-10-01', status: 'open', lines: [{ id: 'l', desc: 'Beans', accountId: C.acctByKey(c, 'cogs').id, amount: 1180 }] });
+  const b = C.suggest(c, { description: 'ROASTWORKS ACH', amount: -1180, accountId: chk.id });
+  assert.strictEqual(b.source, 'bill'); assert.strictEqual(b.billId, 'b1');
+});
+
 (async () => {
   const Sec = require('../src/renderer/secure.js');
   const lock = await Sec.create('correct horse', 'hint');

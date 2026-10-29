@@ -186,7 +186,7 @@
   async function readReceiptFlow(opts = {}) {
     const c = client(); if (!c) return;
     if (!window.desktop || !window.desktop.readReceipt) return U.toast('Receipt reading works in the desktop app', null, 'warn');
-    const [f] = await U.pickFiles('.png,.jpg,.jpeg,.webp,.gif,.bmp,.pdf'); if (!f) return;
+    const [f] = opts.file ? [opts.file] : await U.pickFiles('.png,.jpg,.jpeg,.webp,.gif,.bmp,.pdf'); if (!f) return;
     const isPdf = /\.pdf$/i.test(f.name);
     const url = URL.createObjectURL(new Blob([f.buffer], { type: isPdf ? 'application/pdf' : 'image/' + (f.name.split('.').pop().toLowerCase().replace('jpg', 'jpeg')) }));
     const wait = U.openModal(`${U.modalHead('Reading the receipt…', esc(f.name))}<div class="modal-body"><div class="reading"><div class="spinner"></div><div><b>Reading it on this computer</b><div class="muted">Usually a second or two. Nothing is sent anywhere.</div></div></div></div>`);
