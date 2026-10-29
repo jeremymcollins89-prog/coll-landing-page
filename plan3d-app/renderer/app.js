@@ -208,7 +208,7 @@ function updateChrome() {
 /* ---------- 3D ---------- */
 function ensureViewer() {
   if (viewer) return viewer;
-  viewer = Plan3DViewer.mount($('#view3d'), clonePlan(), { superSrc: 'vendor/superrender.js', onSnapshot: (sn) => { ed.edit(P => { P.snaps = (P.snaps || []).concat([sn]); }); toast('Snapshot saved with the plan (Plan panel → Snapshots).'); } });
+  viewer = Plan3DViewer.mount($('#view3d'), clonePlan(), { superSrc: 'vendor/superrender.js', onSnapshot: (sn) => { ed.edit(P => { P.snaps = (P.snaps || []).concat([sn]); }); toast('Snapshot saved with the plan.', { label: 'Review snapshots', fn: () => snapsDialog() }); } });
   return viewer;
 }
 // the 3D view doesn't need the background drawing or the snapshot pictures (big), so they stay out of its copy
@@ -1130,7 +1130,7 @@ window.addEventListener('focus', () => checkComments(false));
 function snapsGroupHtml(P) {
   const L = P.snaps || [];
   if (!L.length) return `<div class="grp"><h3>Snapshots</h3><p class="note">In 3D, press 📷 Snapshot (or P) to save a picture of an area you want to work on, with a note. They're listed here; Go there flies the 3D view back to the spot.</p></div>`;
-  return `<div class="grp"><h3>Snapshots <small>${L.filter(x => !x.done).length} open</small></h3><div class="snaps">${L.map((x, i) => `<div class="snap${x.done ? ' done' : ''}"><img src="${x.img}" alt=""><div><b>${i + 1}.</b> ${esc(x.note || 'No note')}<small>${esc((x.at || '').slice(0, 16).replace('T', ' '))}${x.meas && x.meas.length ? ' · ' + x.meas.length + ' measurement' + (x.meas.length === 1 ? '' : 's') : ''}</small>
+  return `<div class="grp"><h3>Snapshots <small>${L.filter(x => !x.done).length} open</small></h3><div class="row" style="margin-bottom:6px"><button class="btn small" data-sview="1">View them large…</button></div><div class="snaps">${L.map((x, i) => `<div class="snap${x.done ? ' done' : ''}"><img src="${x.img}" alt=""><div><b>${i + 1}.</b> ${esc(x.note || 'No note')}<small>${esc((x.at || '').slice(0, 16).replace('T', ' '))}${x.meas && x.meas.length ? ' · ' + x.meas.length + ' measurement' + (x.meas.length === 1 ? '' : 's') : ''}</small>
     <div class="row"><button class="btn small" data-sgo="${x.id}">Go there</button><button class="btn small" data-sdone="${x.id}">${x.done ? 'Reopen' : 'Done'}</button><button class="btn small" data-ssave="${x.id}">Save picture</button><button class="btn small danger" data-sdel="${x.id}">Delete</button></div></div></div>`).join('')}</div></div>`;
 }
 function bindSnaps(P) {
@@ -1138,7 +1138,70 @@ function bindSnaps(P) {
   $$('[data-sgo]').forEach(b => b.onclick = () => { const x = find(b.dataset.sgo); if (!x) return; if (view === '2d') setView('split'); requestAnimationFrame(() => { if (viewer && viewer.flyTo) viewer.flyTo(x.cam); }); });
   $$('[data-sdone]').forEach(b => b.onclick = () => ed.edit(Q => { const x = (Q.snaps || []).find(y => y.id === b.dataset.sdone); if (x) x.done = !x.done; }));
   $$('[data-sdel]').forEach(b => b.onclick = () => ed.edit(Q => { Q.snaps = (Q.snaps || []).filter(y => y.id !== b.dataset.sdel); }));
-  $$('[data-ssave]').forEach(b => b.onclick = async () => { const x = find(b.dataset.ssave); if (!x || !api.exportFile) return; const bin = atob(x.img.split(',')[1]); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); const p = await api.exportFile(u, (ed.plan.name || 'Plan3D') + ' snapshot ' + ((ed.plan.snaps || []).indexOf(x) + 1), 'jpg'); if (p) toast('Picture saved.', { label: 'Open it', fn: () => api.openPath(p) }); });
+  $$('[data-ssave]').forEach(b => b.onclick = () => saveSnapPicture(find(b.dataset.ssave)));
+  $$('[data-sview]').forEach(b => b.onclick = () => snapsDialog());
+  $$('.snaps .snap img').forEach((im, i) => { im.style.cursor = 'zoom-in'; im.title = 'View it large'; im.onclick = () => snapsDialog((ed.plan.snaps || [])[i] && ed.plan.snaps[i].id); });
+}
+async function saveSnapPicture(x) {
+  if (!x || !api.exportFile) return;
+  const bin = atob(x.img.split(',')[1]); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  const p = await api.exportFile(u, (ed.plan.name || 'Plan3D') + ' snapshot ' + ((ed.plan.snaps || []).indexOf(x) + 1), 'jpg');
+  if (p) toast('Picture saved.', { label: 'Open it', fn: () => api.openPath(p) });
+}
+/* Snapshots, large: every picture taken in 3D in one place, as a gallery of thumbnails with a filter (open,
+   done, all). Clicking one shows it big with its note (which can be edited), date and measurements; arrows
+   or ← → step through them, and Go there flies the 3D view back to where it was taken. */
+function snapsDialog(startId) {
+  closeMenus();
+  const all = () => ed.plan.snaps || [];
+  if (!all().length) { toast('No snapshots yet. In the 3D view, press 📷 Snapshot (or P) to save a picture of a spot with a note.', { label: 'Open 3D', fn: () => setView('3d') }); return; }
+  let filter = 'open', cur = startId || null;
+  if (startId) { const x = all().find(y => y.id === startId); if (x && x.done) filter = 'all'; }
+  if (!all().some(x => !x.done) && !startId) filter = 'all';
+  const list = () => all().filter(x => filter === 'all' || (filter === 'done' ? x.done : !x.done));
+  const when = (x) => { const d = new Date(x.at || ''); return isNaN(d) ? '' : d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); };
+  const num = (x) => all().indexOf(x) + 1;
+  const render = () => {
+    const L = list(), B = $('#sgBody'); if (!B) return;
+    const nOpen = all().filter(x => !x.done).length, nDone = all().length - nOpen;
+    $('#sgTabs').innerHTML = [['open', 'Open', nOpen], ['done', 'Done', nDone], ['all', 'All', all().length]].map(([k, l, n]) => `<button class="btn small${filter === k ? ' primary' : ''}" data-sf="${k}">${l} <small>${n}</small></button>`).join('');
+    $$('#sgTabs [data-sf]').forEach(b => b.onclick = () => { filter = b.dataset.sf; cur = null; render(); });
+    const x = cur && L.find(y => y.id === cur);
+    if (!x) {
+      cur = null;
+      B.innerHTML = L.length ? `<div class="sg-grid">${L.map(y => `<button class="sg-th${y.done ? ' done' : ''}" data-sid="${y.id}"><img src="${y.img}" alt=""><span><b>${num(y)}.</b> ${esc(y.note || 'No note')}</span><small>${esc(when(y))}${y.done ? ' · done' : ''}</small></button>`).join('')}</div>`
+        : `<p class="note" style="padding:20px 4px">${filter === 'done' ? 'None marked done yet.' : 'Nothing open: every snapshot is marked done.'}</p>`;
+      $$('#sgBody [data-sid]').forEach(b => b.onclick = () => { cur = b.dataset.sid; render(); });
+      return;
+    }
+    const i = L.indexOf(x);
+    B.innerHTML = `<div class="sg-one">
+      <div class="sg-pic"><button class="sg-nav" data-nav="-1" title="Previous (←)"${i > 0 ? '' : ' disabled'}>‹</button><img src="${x.img}" alt=""><button class="sg-nav r" data-nav="1" title="Next (→)"${i < L.length - 1 ? '' : ' disabled'}>›</button></div>
+      <div class="sg-info"><b>${num(x)}.</b> <small>${esc(when(x))}${x.meas && x.meas.length ? ' · ' + x.meas.length + ' measurement' + (x.meas.length === 1 ? '' : 's') + ' (shown when you go there)' : ''}${x.done ? ' · done' : ''} · ${i + 1} of ${L.length}</small></div>
+      <textarea id="sgNote" rows="2" placeholder="What needs work here?">${esc(x.note || '')}</textarea>
+      <div class="row"><button class="btn small" data-sa="back">◂ All pictures</button><span style="flex:1"></span><button class="btn small primary" data-sa="go">Go there in 3D</button><button class="btn small" data-sa="done">${x.done ? 'Reopen' : 'Mark done'}</button><button class="btn small" data-sa="save">Save picture</button><button class="btn small danger" data-sa="del">Delete</button></div></div>`;
+    const keepNote = () => { const t = $('#sgNote'); if (t && t.value !== (x.note || '')) { const v = t.value; ed.edit(Q => { const y = (Q.snaps || []).find(z => z.id === x.id); if (y) y.note = v; }); } };
+    $('#sgNote').onblur = keepNote;
+    $$('#sgBody [data-nav]').forEach(b => b.onclick = () => { keepNote(); const y = L[i + +b.dataset.nav]; if (y) { cur = y.id; render(); } });
+    $$('#sgBody [data-sa]').forEach(b => b.onclick = () => {
+      const a = b.dataset.sa; keepNote();
+      if (a === 'back') { cur = null; render(); }
+      else if (a === 'go') { $('#dlg').close(); if (view === '2d') setView('split'); setTimeout(() => { if (viewer && viewer.flyTo) viewer.flyTo(x.cam); }, 60); }
+      else if (a === 'done') { ed.edit(Q => { const y = (Q.snaps || []).find(z => z.id === x.id); if (y) y.done = !y.done; }); const L2 = list(); if (!L2.some(y => y.id === x.id)) cur = (L2[i] || L2[i - 1] || {}).id || null; render(); }
+      else if (a === 'save') saveSnapPicture(x);
+      else if (a === 'del') { ed.edit(Q => { Q.snaps = (Q.snaps || []).filter(y => y.id !== x.id); }); if (!all().length) { $('#dlg').close(); toast('Snapshot deleted.'); return; } const L2 = list(); cur = (L2[i] || L2[i - 1] || {}).id || null; render(); }
+    });
+  };
+  dialogOpen({ title: 'Snapshots', wide: true, body: `<div id="sgTabs" class="row sg-tabs"></div><div id="sgBody"></div>`, buttons: [{ label: 'Close', ret: null }],
+    onOpen: (d) => {
+      d.classList.add('snapsdlg'); render();
+      d.onkeydown = (e) => { if (e.target && e.target.tagName === 'TEXTAREA') return; if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { const b = $(`#sgBody [data-nav="${e.key === 'ArrowLeft' ? -1 : 1}"]`); if (b && !b.disabled) { e.preventDefault(); b.click(); } } else if (e.key === 'Backspace' && cur) { e.preventDefault(); cur = null; render(); } };
+      const cl = d.onclose; d.onclose = () => {
+        // a note typed and not yet left keeps on close too
+        const t = $('#sgNote'), id = cur; if (t && id) { const v = t.value, y0 = all().find(z => z.id === id); if (y0 && v !== (y0.note || '')) ed.edit(Q => { const y = (Q.snaps || []).find(z => z.id === id); if (y) y.note = v; }); }
+        d.classList.remove('snapsdlg'); d.onkeydown = null; if (cl) cl();
+      };
+    } });
 }
 function commentsGroupHtml(P) {
   const L = P.comments || [];
@@ -3087,7 +3150,7 @@ document.addEventListener('keydown', (e) => { const o = openMenu(); if (e.key ==
   item('#bBldInsert', () => libraryDialog()); item('#bBldFile', insertFromFile); item('#bBldSave', saveBuildingDialog);
   item('#bLibGroup', saveGroupDialog); item('#bLibCeil', saveCeilingDialog); item('#bLibMach', addMachineDialog);
   // Job and Share
-  item('#bExportLink', linkDialog); item('#bExportHtml', exportHtml); item('#bSubm', submittalDialog); item('#bPOs', poDialog); item('#bSched', scheduleDialog); item('#bCert', certExport); item('#bCO', () => changeOrderDialog()); item('#bApproved', () => markApproved('')); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
+  item('#bExportLink', linkDialog); item('#bExportHtml', exportHtml); item('#bSubm', submittalDialog); item('#bPOs', poDialog); item('#bSched', scheduleDialog); item('#bCert', certExport); item('#bSnaps', () => snapsDialog()); item('#bCO', () => changeOrderDialog()); item('#bApproved', () => markApproved('')); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
   item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportTm', exportTwinmotion); item('#bExportParts', exportParts);
 }
 /* ---------- Find (Ctrl+K): every menu command and tool, by what you type ---------- */
@@ -3121,6 +3184,8 @@ function findDialog() {
       q.onkeydown = (e) => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); pick = (pick + (e.key === 'ArrowDown' ? 1 : shown.length - 1)) % Math.max(1, shown.length); render(); } else if (e.key === 'Enter') { e.preventDefault(); go(pick); } }; } });
 }
 $('#bFind').onclick = findDialog;
+// Shift+P: the snapshots, large (P on its own takes one in 3D)
+document.addEventListener('keydown', (e) => { if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'p' && !e.repeat && !document.querySelector('dialog[open]') && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '') && !(e.target && e.target.isContentEditable)) { e.preventDefault(); snapsDialog(); } });
 document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k' && !document.querySelector('dialog[open]')) { e.preventDefault(); findDialog(); } });
  $('#wImport').onclick = importPlan; $('#wSample').onclick = openSample;
 $('#wCleanroom').onclick = () => pickMode('cleanroom'); $('#wHouse').onclick = () => pickMode('house');
@@ -3174,5 +3239,5 @@ window.addEventListener('drop', async e => {
 
 renderProps(); updateChrome(); toolHint('select');
 if (api.rendererReady) api.rendererReady();
-window.__app = { lightsDrawingDialog, ensureShare, checkComments, recordPublished, linkPlan, mergeComments, markApproved, changeOrderDialog, exportHtml, wallHeightDialog, setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
+window.__app = { snapsDialog, lightsDrawingDialog, ensureShare, checkComments, recordPublished, linkPlan, mergeComments, markApproved, changeOrderDialog, exportHtml, wallHeightDialog, setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
 })();
