@@ -4421,7 +4421,7 @@ function mount(container, plan, opts) {
     if (rSSAO.beautyRenderTarget) rSSAO.beautyRenderTarget.stencilBuffer = true;
     if (rSSAO.normalRenderTarget && rSSAO.normalRenderTarget.depthTexture) rSSAO.normalRenderTarget.depthTexture.type = THREE.UnsignedIntType;
     rComp.addPass(rSSAO);
-    if (THREE.UnrealBloomPass) { rBloom = new THREE.UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.45, 0.92); rComp.addPass(rBloom); }
+    if (THREE.UnrealBloomPass) { rBloom = new THREE.UnrealBloomPass(new THREE.Vector2(256, 256), 0.4, 0.5, 1.4);   // only what's brighter than white glows: the light lenses rComp.addPass(rBloom); }
     rComp.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));
     rFXAA = new THREE.ShaderPass(THREE.FXAAShader); rComp.addPass(rFXAA);
     sizeReal();
@@ -4456,6 +4456,8 @@ function mount(container, plan, opts) {
     scene.environment = real && envIn && KN.env !== false ? envIn : envOut;
     for (const m of upCache.values()) { tuneMat(m, real); m.needsUpdate = true; }
     scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); });
+    // light lenses brighter than white in the realistic view, so they (and nothing else) glow
+    scene.traverse(o => { const m = o.material; if (m && !Array.isArray(m) && /light lens/i.test(m.name || '') && m.color) { if (m.userData.c0 == null) m.userData.c0 = m.color.getHex(); m.color.setHex(m.userData.c0); if (real) m.color.multiplyScalar(3); } });
     const amb = KN.amb != null ? KN.amb : 0.5;
     scene.children.forEach(o => { if (o.isHemisphereLight || o.isAmbientLight) { if (o.userData.i0 == null) o.userData.i0 = o.intensity; o.intensity = o.userData.i0 * (real ? amb : 1); } });
     lightGain = KN.k != null ? KN.k : 1.7;
