@@ -212,6 +212,8 @@ function ensureViewer() {
   return viewer;
 }
 // the 3D view doesn't need the background drawing or the snapshot pictures (big), so they stay out of its copy
+// a copy for the customer: no prices, markup, purchase orders or the app's own records
+function linkPlan() { const p = clonePlan(); for (const k of ['quote', 'pos', 'baseline', 'changeOrders', 'published', 'approvals', 'submittal', 'install']) delete p[k]; return p; }
 function clonePlan() { const sn = ed.plan.snaps; if (sn) delete ed.plan.snaps; let p; try { p = JSON.parse(JSON.stringify(ed.plan)); } finally { if (sn) ed.plan.snaps = sn; } delete p.background; return p; }
 function queue3D() {
   if (view === '2d' || !viewer) return;
@@ -742,6 +744,7 @@ function renderProps(opt) {
     ${house ? '' : fld('Panel color', panelColorSelect('pPCall', Plan3DViewer.panelColorOf(P), null))}
     ${house ? '' : fld('Ceiling tiles', `<select id="pTile">${Object.entries(Plan3DViewer.TILE_TYPES).map(([k, v]) => `<option value="${k}" ${Plan3DViewer.tileTypeOf(P) === k ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select>`)}
     ${!house && Plan3DViewer.tileTypeOf(P) === 'alum' ? fld('Tile color', (() => { const c = Plan3DViewer.tileColorOf(P), PC = Plan3DViewer.PANEL_COLORS; return `<div style="display:flex;gap:6px;align-items:center"><span style="width:18px;height:18px;border-radius:4px;border:1px solid var(--line);flex:0 0 auto;background:${c === 'natural' ? 'linear-gradient(135deg,#e6e9eb,#a9afb3)' : PC[c][1]}"></span><select id="pTileC" style="flex:1"><option value="natural" ${c === 'natural' ? 'selected' : ''}>Natural aluminum</option>${Object.entries(PC).map(([k, v]) => `<option value="${k}" ${c === k ? 'selected' : ''}>Painted ${esc(v[0].toLowerCase())}</option>`).join('')}</select></div>`; })()) : ''}
+    ${house ? '' : fld('Ceiling grid', (() => { const g = Plan3DViewer.gridColorOf(P), GC = Plan3DViewer.GRID_COLORS; return `<div style="display:flex;gap:6px;align-items:center"><span style="width:18px;height:18px;border-radius:4px;border:1px solid var(--line);flex:0 0 auto;background:#${GC[g][1].toString(16).padStart(6, '0')}"></span><select id="pGrid" style="flex:1">${Object.entries(GC).map(([k, v]) => `<option value="${k}" ${g === k ? 'selected' : ''}>${esc(v[0])} 15/16″ tee</option>`).join('')}</select></div>`; })())}
     ${fld('New wall type', `<select id="pNK">${kindList.map(([k, v]) => `<option value="${k}" ${(P.newKind || (house ? 'wood' : 'hardwall')) === k ? 'selected' : ''}>${esc(v.short)}</option>`).join('')}</select>`)}
     ${fld('New walls', txt('pWT', fmtIn(P.wallT || 0.25)))}
     ${(P.walls.some(w => !Plan3DViewer.isHard(w) && !Plan3DViewer.isFrame(w)) || shellNew) ? fld('Building wall height', txt('pSH', fmt(P.shellH || 20))) : ''}
@@ -844,6 +847,7 @@ function renderProps(opt) {
   for (const [id, key] of [['fSid', 'siding'], ['fSidC', 'sidingColor'], ['fRoof', 'roof'], ['fRoofC', 'roofColor'], ['fPaint', 'paint'], ['fCab', 'cabinet'], ['fCtr', 'counter']]) if ($('#' + id)) $('#' + id).onchange = e => ed.edit(Pl => { Pl.finish = Object.assign({}, Pl.finish || {}, { [key]: e.target.value }); });
   $('#pMode').onchange = e => { const m = e.target.value; ed.edit(Pl => { if (m === 'house') houseDefaults(Pl, true); else Pl.mode = 'cleanroom'; }); updateChrome(); renderProps(); };
   bindLen('pWT', 'in', v => { ed.plan.wallT = Math.max(1 / 48, v); renderProps(); });
+  if ($('#pGrid')) $('#pGrid').onchange = e => { const v = e.target.value; ed.edit(Q => { if (v === 'white') delete Q.gridColor; else Q.gridColor = v; }); toast('Ceiling grid: ' + Plan3DViewer.GRID_COLORS[v][0].toLowerCase() + '.'); renderProps(); queue3D(); };
   if ($('#pTileC')) $('#pTileC').onchange = e => { const v = e.target.value; ed.edit(Q => { if (v === 'natural') delete Q.tileColor; else Q.tileColor = v; }); toast('Ceiling tiles: ' + Plan3DViewer.tileName(ed.plan) + '.'); renderProps(); queue3D(); };
   if ($('#pTile')) $('#pTile').onchange = e => { const v = e.target.value; ed.edit(Q => { if (v === 'vcg') delete Q.tileType; else Q.tileType = v; }); toast('Ceiling tiles: ' + Plan3DViewer.TILE_TYPES[v].label.toLowerCase() + '. The parts list, quote and exports follow.'); renderProps(); queue3D(); };
   if ($('#pPCall')) $('#pPCall').onchange = e => { const v = e.target.value, own = (P.walls || []).filter(w => w.color && w.color !== v).length; ed.edit(Q => { if (v === 'white') delete Q.panelColor; else Q.panelColor = v; }); toast(`Panels are ${Plan3DViewer.PANEL_COLORS[v][0].toLowerCase()}${own ? ` (${own} wall${own === 1 ? ' keeps its' : 's keep their'} own color)` : ''}.`); renderProps(); queue3D(); };
@@ -988,8 +992,29 @@ async function registerShare() {
   const S = ed.plan.share; if (!S || !S.key || shareReg === S.id) return;
   try { const r = await fetch(PLAN3D_CLOUD + '/shares', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shareId: S.id, key: S.key, project: ed.plan.name || '' }) }); if (r.ok) shareReg = S.id; } catch (e) { /* offline: tried again on the next check */ }
 }
+// a customer's decision on a walkthrough link (Approve / Request changes) arrives as a comment marked
+// ref.kind 'approval', ref.id the version of the link they looked at
+const isApproval = (c) => !!(c && c.ref && c.ref.kind === 'approval');
+function mergeApprovals(list) {
+  const got = [];
+  for (const c of list) {
+    if (!isApproval(c) || (ed.plan.approvals || []).some(a => a.id === String(c.id))) continue;
+    const a = { id: String(c.id), decision: c.target === 'approve' ? 'approve' : 'changes', by: String(c.by || '').slice(0, 60), at: String(c.at || ''), text: String(c.text || '').slice(0, 2000), ver: String(c.ref.id || '') };
+    const pubs = ed.plan.published || [], pub = pubs.find(q => q.ver === a.ver);
+    a.matched = !!pub;
+    ed.edit(Q => { Q.approvals = (Q.approvals || []).concat([a]); if (a.decision === 'approve' && pub) Q.baseline = Object.assign({}, pub.snap, { label: 'approved by ' + (a.by || 'the customer') + ' on the walkthrough link', date: a.at || pub.snap.date }); });
+    got.push(a);
+  }
+  for (const a of got) {
+    if (a.decision === 'approve') toast(`✓ ${a.by || 'Your customer'} approved “${ed.plan.name || 'this plan'}”.` + (a.matched ? ' Saved as the approved version: change orders compare against it.' : ' (an earlier version of the link than this plan: mark the approved version yourself if it still matches)'), a.matched ? null : { label: 'Mark approved', fn: () => markApproved('approved by ' + (a.by || 'the customer')) });
+    else toast(`${a.by || 'Your customer'} asked for changes on “${ed.plan.name || 'this plan'}”${a.text ? ': ' + a.text.slice(0, 120) : '.'}`);
+  }
+  if (got.length) { renderProps(); updateChrome(); }
+  return got.length;
+}
 function mergeComments(list) {
   let n = 0; const who = new Set();
+  n += mergeApprovals(list); list = list.filter(c => !isApproval(c));
   ed.edit(Pl => { Pl.comments = Pl.comments || []; for (const c of list) { if (!c || !c.text || !isFinite(c.x) || !isFinite(c.y)) continue; const old = Pl.comments.find(q => q.id === String(c.id)); if (old) { if (old.text !== c.text) { old.text = String(c.text).slice(0, 2000); n++; } continue; } Pl.comments.push({ id: String(c.id || Plan3DEditor.uid()), x: +c.x, y: +c.y, h: +c.h || 0, text: String(c.text).slice(0, 2000), by: String(c.by || '').slice(0, 60), at: String(c.at || ''), ref: c.ref || null }); n++; if (c.by) who.add(c.by); } });
   return { n, who: [...who] };
 }
@@ -1059,7 +1084,8 @@ async function openJob(id) {
 function desktopNotify(o, n) {
   try {
     if (!('Notification' in window)) return;
-    const go = () => { const nt = new Notification(`${n} new comment${n === 1 ? '' : 's'} on ${o.name || 'a job'}`, { body: (o.lastBy ? o.lastBy + ': ' : '') + (o.lastText || ''), silent: false }); nt.onclick = () => { window.focus(); openJob(o.id); }; };
+    const title = o.lastDecision === 'approve' ? `✓ ${o.lastBy || 'Your customer'} approved ${o.name || 'a job'}` : o.lastDecision === 'changes' ? `${o.lastBy || 'Your customer'} asked for changes on ${o.name || 'a job'}` : `${n} new comment${n === 1 ? '' : 's'} on ${o.name || 'a job'}`;
+    const go = () => { const nt = new Notification(title, { body: (o.lastBy ? o.lastBy + ': ' : '') + (o.lastText || ''), silent: false }); nt.onclick = () => { window.focus(); openJob(o.id); }; };
     if (Notification.permission === 'granted') go(); else if (Notification.permission !== 'denied') Notification.requestPermission().then(p => { if (p === 'granted') go(); });
   } catch (e) { /* no notifications here */ }
 }
@@ -1082,7 +1108,7 @@ async function pollJobs() {
         const d = await r.json(), list = (d.comments || []).filter(c => c && c.text);
         if (d.last > (o.notified || 0)) { o.notified = d.last; changed = true; }
         if (list.length) {
-          const c = list[list.length - 1]; o.lastText = String(c.text).slice(0, 160); o.lastBy = String(c.by || '').slice(0, 60); o.lastAt = c.at || new Date().toISOString(); o.newAt = Date.now();
+          const c = list[list.length - 1]; o.lastText = String(c.text).slice(0, 160); o.lastDecision = isApproval(c) ? (c.target === 'approve' ? 'approve' : 'changes') : ''; o.lastBy = String(c.by || '').slice(0, 60); o.lastAt = c.at || new Date().toISOString(); o.newAt = Date.now();
           // the job that's open and on screen gets them straight into its comments (checkComments); still listed
           const open = ed.plan.share && ed.plan.share.id === o.id && document.hasFocus();
           if (!open) { o.unread = (o.unread || 0) + list.length; fresh.push([o, list.length]); }
@@ -1117,7 +1143,9 @@ function bindSnaps(P) {
 function commentsGroupHtml(P) {
   const L = P.comments || [];
   const rows = L.map((c, i) => `<div class="pl-row"><span><b>${i + 1}.</b> ${esc(c.text)}<small>${esc(c.by || 'Customer')} · ${esc((c.at || '').slice(0, 10))}${c.done ? ' · done' : ''}</small></span><b><button class="btn small" data-cdone="${esc(c.id)}" title="${c.done ? 'Mark open' : 'Mark done'}">${c.done ? '↺' : '✓'}</button><button class="btn small danger" data-cdel="${esc(c.id)}" title="Delete">✕</button></b></div>`).join('');
-  return `<div class="grp"><h3>Customer comments</h3>${L.length ? `<div class="pl">${rows}</div>` : '<p class="note">Export a walkthrough page and send it, or open the plan in the phone viewer. Your customer clicks 💬 Comment, leaves notes on anything and taps Send comments: they show up here on their own, with pins where they were left.</p>'}
+  const AP = (P.approvals || []).slice(-4).reverse();
+  const apHtml = AP.length ? `<div class="pl" style="margin-bottom:8px">${AP.map(a => `<div class="pl-row"><span>${a.decision === 'approve' ? '<b style="color:#3fb36b">✓ Approved</b>' : '<b style="color:#e0a43a">Changes requested</b>'} ${esc(a.text && a.decision !== 'approve' ? a.text : '')}<small>${esc(a.by || 'Customer')} · ${esc((a.at || '').slice(0, 10))}${a.decision === 'approve' && !a.matched ? ' · an earlier version of the link' : ''}</small></span></div>`).join('')}</div>` : '';
+  return `<div class="grp"><h3>Customer comments</h3>${apHtml}${L.length ? `<div class="pl">${rows}</div>` : '<p class="note">Export a walkthrough page and send it, or open the plan in the phone viewer. Your customer clicks 💬 Comment, leaves notes on anything and taps Send comments: they show up here on their own, with pins where they were left.</p>'}
     <div class="row">${P.share && P.share.key ? '<button class="btn small" id="pCChk">Check for comments</button>' : ''}<button class="btn small" id="pCImp">Import comments file…</button></div>
     ${L.length ? '<p class="note">Numbered pins show on the plan and in 3D where each comment was left. Comments go out with the next walkthrough you send, so your customer sees what you marked done.</p>' : ''}</div>`;
 }
@@ -1168,6 +1196,23 @@ async function exportParts() {
    Prices live in a price book on this computer (one price per part, for every project); the customer, scope
    and the job's own numbers (labor, freight, markup, tax) are saved in the plan (plan.quote). */
 const QS = { get(k, d) { try { const v = localStorage.getItem('p3.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('p3.' + k, JSON.stringify(v)); } catch (e) { /* full */ } } };
+// 1.5.97 named the tile type in the ceiling tile parts ("Ceiling tile, vinyl-covered gypsum, full 2′ × 4′"); the
+// prices saved under the old names move to the vinyl-covered gypsum ones, once
+(function migrateTilePrices() {
+  if (QS.get('mig.tiles', false)) return;
+  const P = QS.get('prices', null);
+  if (P) {
+    let n = 0;
+    for (const k of Object.keys(P)) {
+      const f = k.split('|');
+      if (f[0] !== 'Ceiling' || !/^Ceiling tile, (full|cut|2×4)/.test(f[1] || '')) continue;
+      f[1] = f[1].replace(/^Ceiling tile, /, 'Ceiling tile, vinyl-covered gypsum, ');
+      const nk = f.join('|'); if (P[nk] == null) { P[nk] = P[k]; n++; }
+    }
+    if (n) QS.set('prices', P);
+  }
+  QS.set('mig.tiles', true);
+})();
 const QDEF = { markup: 25, tax: 0, laborMode: 'sqft', laborRate: 0, laborLump: 0, freight: 0, showLines: false, validDays: 30,
   terms: 'Prices are good for 30 days. 50% deposit to order, balance due on completion.\nIncludes the cleanroom shown: panels, doors, ceiling grid, fan filter units, lights and listed equipment, delivered and installed.\nNot included unless listed: HVAC and building tie-ins, electrical service to the cleanroom panel, permits, fire sprinkler work and cleanroom certification.' };
 function quoteDialog() {
@@ -1338,6 +1383,62 @@ function scheduleDialog() {
     const R = Plan3DDocs.scheduleHTML(P, { co: c.co, cust: c.cust, crew: r.crew, start: new Date((r.start || iso(today)) + 'T12:00:00') });
     await pdfOut(R.html, (c.cust.project || P.name || 'Cleanroom') + ' install schedule', `Install schedule saved: ${R.P.total.toFixed(1)} working days.`);
   });
+}
+/* ---------- Change orders: the plan now against the version the customer approved ---------- */
+function markApproved(label, snap) {
+  const S = snap || Plan3DDocs.snapshot(ed.plan, label);
+  ed.edit(Q => { Q.baseline = S; });
+  toast('Saved as the approved version' + (label ? ' (' + label + ')' : '') + '. Change orders compare against it.');
+}
+async function compareFile() {
+  const r = await api.openFile('project'); if (!r) return null;
+  if (r.kind !== 'project') { toast("That file couldn't be read."); return null; }
+  let p; try { p = JSON.parse(r.json); } catch (e) { toast('That project file is damaged.'); return null; }
+  if (!p.walls) { toast('That isn’t a Plan3D plan.'); return null; }
+  const S = Plan3DDocs.snapshot(p, r.name || p.name || 'from a file'); S.fromFile = true; return S;
+}
+async function changeOrderDialog(base0) {
+  if (!needWalls()) return; const c = docCtx(), P = c.P;
+  let base = base0 || P.baseline || null;
+  if (!base) {
+    const r = await dialogOpen({ title: 'Change order', body: `<p>A change order compares this plan with the version the customer approved and prices the difference.</p><p class="note">There's no approved version saved in this plan yet. If this plan is what the customer approved, mark it now, make the changes, then come back here. Or compare with a copy of the plan saved before the changes.</p>`,
+      buttons: [{ label: 'Cancel', ret: null }, { label: 'Compare with a plan file…', ret: 'file' }, { label: 'Mark this version approved', primary: true, ret: 'mark' }] });
+    if (r === 'mark') markApproved(''); 
+    if (r === 'file') { const S = await compareFile(); if (S) changeOrderDialog(S); }
+    return;
+  }
+  const prices = QS.get('prices', {}), S = { ...QDEF, ...QS.get('quoteDefaults', {}), ...((P.quote || {}).money || {}) };
+  const hist = P.changeOrders || [], next = 'CO-' + String(hist.length + 1).padStart(3, '0');
+  const lastAmt = hist.length && hist[hist.length - 1].after != null ? hist[hist.length - 1].after : '';
+  const C0 = Plan3DDocs.changes(base, P, prices, S, {});
+  const money = (v) => (v < 0 ? '−$' : '$') + Math.abs(Math.round(v * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const inp = (id, v, ph) => `<input type="text" id="${id}" value="${esc(v == null ? '' : v)}" ${ph ? `placeholder="${esc(ph)}"` : ''}>`;
+  const bdate = new Date(base.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  const r = await dialogOpen({ title: 'Change order', wide: true, body: `
+    <p class="note">Compared with ${base.fromFile ? 'the plan file <b>' + esc(base.label) + '</b>' : 'the version approved <b>' + esc(bdate) + '</b>' + (base.label ? ' (' + esc(base.label) + ')' : '')}.</p>
+    <div id="coPrev" style="max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:6px 0 10px;font-size:12px"></div>
+    <div class="row" style="gap:10px;flex-wrap:wrap">${fld('Number', inp('coNo', next))}${fld('Schedule', inp('coSch', 'No change', 'e.g. adds 2 working days'))}</div>
+    ${fld('Description', `<textarea id="coDesc" rows="2" placeholder="What the customer asked for, in a sentence or two"></textarea>`)}
+    <div class="row" style="gap:10px;flex-wrap:wrap">${fld('Labor', inp('coLab', S.laborMode === 'lump' ? '' : Math.round(C0.labor * 100) / 100, '$ for this change'))}${fld('Other', inp('coOth', '', '$ (+ or −)'))}${fld('Other is for', inp('coOthD', '', 'e.g. freight, engineering'))}</div>
+    ${fld('Contract so far', inp('coCon', lastAmt, '$ before this change (optional)'))}
+    <label class="chk"><input type="checkbox" id="coNext" checked> After making it, this plan becomes the approved version (for the next change order)</label>`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Compare with a file…', ret: 'file' }, { label: 'Make change order PDF', primary: true, value: () => ({ number: $('#coNo').value.trim() || next, schedule: $('#coSch').value.trim(), desc: $('#coDesc').value.trim(), labor: $('#coLab').value.replace(/[^\d.-]/g, ''), other: $('#coOth').value.replace(/[^\d.-]/g, ''), otherDesc: $('#coOthD').value.trim(), contract: $('#coCon').value.replace(/[^\d.-]/g, ''), next: $('#coNext').checked }) }],
+    onOpen: () => {
+      const show = () => {
+        const C = Plan3DDocs.changes(base, P, prices, S, { labor: $('#coLab').value.replace(/[^\d.-]/g, ''), other: $('#coOth').value.replace(/[^\d.-]/g, '') });
+        $('#coPrev').innerHTML = (C.notes.length ? `<ul style="margin:0 0 6px;padding-left:16px">${C.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '')
+          + (C.rows.length ? `<table style="width:100%;border-collapse:collapse">${C.rows.map(q => `<tr><td>${esc(q.item)}${q.size ? ` <span style="opacity:.6">${esc(q.size)}</span>` : ''}</td><td style="text-align:right;white-space:nowrap">${q.d > 0 ? '+' : '−'}${Math.abs(q.d).toLocaleString()} ${q.unit === 'ea' ? '' : esc(q.unit)}</td><td style="text-align:right;white-space:nowrap">${q.priced ? money(q.ext) : '<span style="opacity:.6">no price</span>'}</td></tr>`).join('')}</table>` : '<p style="margin:0">No change to the materials.</p>')
+          + `<p style="margin:8px 0 0"><b>Change order total: ${money(C.total)}</b>${C.unpriced ? ` · <span style="opacity:.7">${C.unpriced} part${C.unpriced === 1 ? '' : 's'} not priced (Quote &amp; proposal)</span>` : ''}</p>`;
+      };
+      ['#coLab', '#coOth'].forEach(id => $(id).addEventListener('input', show)); show();
+    } });
+  if (r === 'file') { const S2 = await compareFile(); if (S2) changeOrderDialog(S2); return; }
+  if (!r) return;
+  const C = Plan3DDocs.changes(base, P, prices, S, { labor: r.labor, other: r.other });
+  const html = Plan3DDocs.changeOrderHTML(P, { co: c.co, cust: c.cust, number: r.number, date: c.date, base, C, desc: r.desc, otherDesc: r.otherDesc, schedule: r.schedule, contract: r.contract });
+  await pdfOut(html, (c.cust.project || P.name || 'Cleanroom') + ' change order ' + r.number, `Change order ${r.number} saved: ${money(C.total)}.`);
+  const before = r.contract !== '' && isFinite(+r.contract) ? +r.contract : null;
+  ed.edit(Q => { Q.changeOrders = (Q.changeOrders || []).concat([{ number: r.number, date: new Date().toISOString(), total: Math.round(C.total * 100) / 100, before, after: before != null ? Math.round((before + C.total) * 100) / 100 : null }]); if (r.next) Q.baseline = Plan3DDocs.snapshot(Q, 'after ' + r.number); });
 }
 async function certExport() {
   if (!needWalls()) return; const c = docCtx(), P = c.P;
@@ -2779,13 +2880,15 @@ async function openSample() {
 async function save(as) {
   if (!api.saveProject) return null;
   if (ed.plan.walls.length) ensureShare();
+  // a plan sent as a link: the version the link is about to show is recorded in the file being saved
+  const pubVer = ed.plan.share && ed.plan.share.pub ? recordPublished() : null;
   const p = await api.saveProject(JSON.stringify(ed.plan), as ? null : projectPath, ed.plan.name);
   if (p) {
     projectPath = p; ed.dirty = false; updateChrome(); trackJob();
     // a plan sent as a link: the link now shows what was just saved
     const pub = ed.plan.share && ed.plan.share.pub;
     toast(pub ? 'Saved. Updating the walkthrough link…' : 'Saved', { label: 'Show in folder', fn: () => api.showInFolder(p) });
-    if (pub) publishLink().then(() => toast('Saved. The walkthrough link shows this version.', { label: 'Show in folder', fn: () => api.showInFolder(p) })).catch(() => toast('Saved. The walkthrough link couldn’t update (no connection?); it will next time you save.'));
+    if (pub) publishLink(pubVer).then(() => toast('Saved. The walkthrough link shows this version.', { label: 'Show in folder', fn: () => api.showInFolder(p) })).catch(() => toast('Saved. The walkthrough link couldn’t update (no connection?); it will next time you save.'));
   }
   return p;
 }
@@ -2793,9 +2896,15 @@ async function save(as) {
    and opens from collbusinesssolutions.com/plan3d-viewer/?w=… on any phone or browser: nothing to attach or
    download. Saving the plan afterwards updates what the link shows. */
 const VIEWER_LINK = 'https://collbusinesssolutions.com/plan3d-viewer/?w=';
-async function publishLink() {
+function recordPublished() {
+  const ver = new Date().toISOString();
+  try { const snap = Plan3DDocs.snapshot(ed.plan, 'walkthrough link ' + ver.slice(0, 10)); ed.plan.published = (ed.plan.published || []).concat([{ ver, snap }]).slice(-6); } catch (e) { console.error(e); }
+  return ver;
+}
+async function publishLink(verIn) {
   const S = ensureShare();
-  const put = async () => { await registerShare(); const plan = clonePlan(); plan.share = { id: S.id }; return fetch(PLAN3D_CLOUD + '/walkthroughs/' + encodeURIComponent(S.id), { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Plan3D-Key': S.key }, body: JSON.stringify({ plan }) }); };
+  const ver = verIn || recordPublished(); if (!verIn) ed.dirty = true;
+  const put = async () => { await registerShare(); const plan = linkPlan(); plan.share = { id: S.id }; plan.ver = ver; return fetch(PLAN3D_CLOUD + '/walkthroughs/' + encodeURIComponent(S.id), { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Plan3D-Key': S.key }, body: JSON.stringify({ plan }) }); };
   let r = await put();
   if (r.status === 404) { shareReg = ''; r = await put(); }  // the server didn't have this plan's key yet
   if (!r.ok) { let m = ''; try { m = (await r.json()).error; } catch (e) { /* not json */ } throw new Error(m || 'The server said ' + r.status + '.'); }
@@ -2820,7 +2929,8 @@ async function exportHtml() {
   const a = await api.getAssets();
   const safe = (s) => s.replace(/<\/script/gi, '<\\/script');
   const S = ensureShare();
-  const plan = clonePlan(); plan.share = { id: S.id };  // the walkthrough can send comments, never read them
+  const plan = linkPlan(); plan.share = { id: S.id };  // the walkthrough can send comments, never read them
+  plan.ver = recordPublished(); ed.dirty = true;
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(plan.name)} — 3D Walkthrough</title>
@@ -2895,7 +3005,7 @@ $('#bImport').onclick = importPlan; $('#bOpen').onclick = openProject; $('#bSave
     items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
   });
   const item = (id, fn) => { $(id).onclick = () => { close(); fn(); }; };
-  item('#bExportLink', linkDialog); item('#bExportHtml', exportHtml); item('#bSubm', submittalDialog); item('#bPOs', poDialog); item('#bSched', scheduleDialog); item('#bCert', certExport); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
+  item('#bExportLink', linkDialog); item('#bExportHtml', exportHtml); item('#bSubm', submittalDialog); item('#bPOs', poDialog); item('#bSched', scheduleDialog); item('#bCert', certExport); item('#bCO', () => changeOrderDialog()); item('#bApproved', () => markApproved('')); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
   item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportTm', exportTwinmotion); item('#bExportParts', exportParts);
 }
 // Ceiling dropdown: add / edit the ceiling drawing, or generate one
@@ -2971,5 +3081,5 @@ window.addEventListener('drop', async e => {
 
 renderProps(); updateChrome(); toolHint('select');
 if (api.rendererReady) api.rendererReady();
-window.__app = { ensureShare, checkComments, exportHtml, wallHeightDialog, setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
+window.__app = { ensureShare, checkComments, recordPublished, linkPlan, mergeComments, markApproved, changeOrderDialog, exportHtml, wallHeightDialog, setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
 })();

@@ -55,6 +55,8 @@ const CSS = `
 .p3v-clist ol{margin:6px 0;padding-left:20px}.p3v-clist li{margin:3px 0}.p3v-clist small{color:#9fb0b7}.p3v-clist button{font:600 12px inherit;margin:6px 6px 0 0;padding:6px 10px;border-radius:7px;border:0;background:#f2c84b;color:#1a1f22;cursor:pointer}.p3v-clist button.x{background:transparent;color:#9fb0b7;padding:0 4px;margin:0}
 .p3v-cform{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:8;display:flex;flex-direction:column;gap:8px;padding:14px;width:min(340px,calc(100% - 40px));color:#e8edef;font:13px system-ui,sans-serif;pointer-events:auto}
 .p3v-cform textarea,.p3v-cform input{font:13px system-ui,sans-serif;padding:7px 8px;border-radius:7px;border:1px solid #3d4a50;background:#1b2226;color:#e8edef}
+.p3v-clist button.p3v-abtn{display:block;width:100%;margin:2px 0 8px;padding:9px 10px;font-size:13px;background:#3fb36b;color:#fff}.p3v-clist button.p3v-abtn.done{background:#28343a;color:#8fd9a8}
+.p3v-adec button{flex:1;margin:0!important;background:#28343a!important;color:#e8edef!important}.p3v-adec button[aria-pressed=true]{background:#3fb36b!important;color:#fff!important}.p3v-adec button[data-dec=changes][aria-pressed=true]{background:#f2c84b!important;color:#1a1f22!important}
 .p3v-cform button{font:600 13px inherit;padding:7px 12px;border-radius:7px;border:0;margin-right:6px;cursor:pointer;background:#f2c84b;color:#1a1f22}.p3v-cform .p3v-ccancel{background:#3d4a50;color:#e8edef}
 .p3v-empty{position:absolute;inset:0;display:grid;place-items:center;color:#5b676d;font-size:16px;pointer-events:none;z-index:2}
 `;
@@ -358,6 +360,9 @@ const TILE_TYPES = { vcg: { label: 'Vinyl-covered gypsum', short: 'vinyl-covered
 const tileTypeOf = (plan) => (plan && TILE_TYPES[plan.tileType]) ? plan.tileType : 'vcg';
 // aluminum tiles are usually painted: plan.tileColor is a panel colour key, or 'natural' for bare aluminum
 const tileColorOf = (plan) => (plan && plan.tileColor && plan.tileColor !== 'natural' && PANEL_COLORS[plan.tileColor]) ? plan.tileColor : 'natural';
+// the tee grid's enamel (plan.gridColor): white is standard
+const GRID_COLORS = { white: ['White', 0xdfe3e5], black: ['Black', 0x26292c], alum: ['Aluminum', 0xb4babe] };
+const gridColorOf = (plan) => (plan && GRID_COLORS[plan.gridColor]) ? plan.gridColor : 'white';
 const tileName = (plan) => tileTypeOf(plan) === 'alum' ? 'aluminum' + (tileColorOf(plan) !== 'natural' ? ', painted ' + PANEL_COLORS[tileColorOf(plan)][0].toLowerCase() : '') : 'vinyl-covered gypsum';
 const PANEL_COLORS = { white: ['White', '#f7f8f8'], ltgray: ['Light gray', '#d6dadd'], gray: ['Gray', '#8f979c'], black: ['Black', '#25282c'], pink: ['Pink', '#f3a3c4'], red: ['Red', '#d33f3f'], orange: ['Orange', '#f28a2a'], yellow: ['Yellow', '#f4cf3f'], green: ['Green', '#4caa5a'], blue: ['Blue', '#3b7bd0'], ltblue: ['Light blue', '#9ccaf0'], purple: ['Purple', '#8858c4'] };
 const panelColorOf = (plan, w) => { const k = (w && w.color && PANEL_COLORS[w.color]) ? w.color : (plan && PANEL_COLORS[plan.panelColor]) ? plan.panelColor : 'white'; return k; };
@@ -3607,10 +3612,20 @@ function buildScene(THREE, plan, A) {
   ground.rotation.x = -Math.PI / 2; ground.position.set(B.cx, -0.08 - gDrop, B.cz); root.add(ground);
 
   const ceiling = new THREE.Group(); root.add(ceiling);
+  let gridLines = null;
   const cTex = new THREE.CanvasTexture(ceilCanvas); cTex.wrapS = cTex.wrapT = THREE.RepeatWrapping; cTex.repeat.set(B.w / 2, B.d / 4); cTex.anisotropy = ANISO;
   const built = isBuilt(plan), ownGrid = built || (Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length > 0);
   const ownLines = () => (built ? builtLines(plan) : ceilingLines(plan, A));
   let cMap = cTex;
+  // the tees are real geometry wherever the ceiling is laid out (FP), so the tiles carry no painted lines there,
+  // only a faint shadow where each pan meets its tee
+  const geoGrid = !!FP && !A.house, lined = !ownGrid && !geoGrid;
+  const GC = new THREE.Color(GRID_COLORS[gridColorOf(plan)][1]), GRID_NAME = gridColorOf(plan) === 'alum' ? 'Ceiling grid, aluminum' : 'Ceiling grid, enamel';
+  const edge = (g, w, h) => { g.fillStyle = 'rgba(0,0,0,.07)'; g.fillRect(0, 0, w, 3); g.fillRect(0, 0, 3, h); g.fillStyle = 'rgba(0,0,0,.035)'; g.fillRect(0, 3, w, 3); g.fillRect(3, 0, 3, h); };
+  if (!ownGrid && geoGrid && tileTypeOf(plan) !== 'alum') {
+    cMap = new THREE.CanvasTexture(cachedCanvas('ceilVcgEdge', () => makeCanvas(128, 256, (g, w, h) => { g.fillStyle = '#f3f4f3'; g.fillRect(0, 0, w, h); for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(150,154,156,${Math.random() * .06})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } edge(g, w, h); })));
+    cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.anisotropy = ANISO;
+  }
   if (ownGrid) {
     const plain = cachedCanvas('ceilPlainVcg', () => makeCanvas(128, 128, (g, w, h) => { g.fillStyle = '#f3f4f3'; g.fillRect(0, 0, w, h); for (let i = 0; i < 250; i++) { g.fillStyle = `rgba(150,154,156,${Math.random() * .06})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } }));
     cMap = new THREE.CanvasTexture(plain); cMap.wrapS = cMap.wrapT = THREE.RepeatWrapping; cMap.repeat.set(B.w / 2, B.d / 2); cMap.anisotropy = ANISO;
@@ -3630,19 +3645,19 @@ function buildScene(THREE, plan, A) {
   if (TT === 'alum' && TC !== 'natural') {
     // painted pans: the paint is in the texture (so the grid stays white), a smooth satin face
     const hex = PANEL_COLORS[TC][1];
-    cMap = tileTex(cachedCanvas('ceilPaint' + hex + (ownGrid ? 'P' : 'G'), () => makeCanvas(128, ownGrid ? 128 : 256, (g, w, h) => {
+    cMap = tileTex(cachedCanvas('ceilPaint' + hex + (ownGrid ? 'P' : lined ? 'G' : 'E'), () => makeCanvas(128, ownGrid ? 128 : 256, (g, w, h) => {
       g.fillStyle = hex; g.fillRect(0, 0, w, h);
       for (let i = 0; i < 160; i++) { g.fillStyle = `rgba(${Math.random() < .5 ? '0,0,0' : '255,255,255'},${Math.random() * .035})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
       // a soft shadow line along the pan's turned-down edge
-      if (!ownGrid) { g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(4, 4, w - 4, 3); g.fillRect(4, 4, 3, h - 4); grid(g, w, h); }
+      if (lined) { g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(4, 4, w - 4, 3); g.fillRect(4, 4, 3, h - 4); grid(g, w, h); } else if (!ownGrid) edge(g, w, h);
     })));
     cMat = new THREE.MeshPhongMaterial({ map: cMap, color: 0xf2f2f2, emissive: 0x858585, emissiveMap: cMap, specular: 0x333333, shininess: 30, name: 'Ceiling tile, ' + tileName(plan) });
   } else if (TT === 'alum') {
     // natural pans: a fine brushed grain
-    cMap = tileTex(cachedCanvas('ceilAlum' + (ownGrid ? 'P' : 'G'), () => makeCanvas(128, ownGrid ? 128 : 256, (g, w, h) => {
+    cMap = tileTex(cachedCanvas('ceilAlum' + (ownGrid ? 'P' : lined ? 'G' : 'E'), () => makeCanvas(128, ownGrid ? 128 : 256, (g, w, h) => {
       g.fillStyle = '#c9ced1'; g.fillRect(0, 0, w, h);
       for (let y = 0; y < h; y++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '90,96,100'},${Math.random() * .12})`; g.fillRect(0, y, w, 1); }
-      if (!ownGrid) { g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(4, 4, w - 4, 3); g.fillRect(4, 4, 3, h - 4); grid(g, w, h); }
+      if (lined) { g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(4, 4, w - 4, 3); g.fillRect(4, 4, 3, h - 4); grid(g, w, h); } else if (!ownGrid) edge(g, w, h);
     })));
     cMat = new THREE.MeshPhongMaterial({ map: cMap, color: 0xd8dde0, emissive: 0x6a6f72, emissiveMap: cMap, specular: 0xbfc5c9, shininess: 70, name: 'Ceiling tile, aluminum' });
   } else cMat = new THREE.MeshLambertMaterial({ map: cMap, color: 0xc4c6c6, emissive: 0x9c9e9e, emissiveMap: cMap, name: 'Ceiling tile, vinyl-covered gypsum' });
@@ -3696,6 +3711,7 @@ function buildScene(THREE, plan, A) {
       for (let x = CG.ox + Math.ceil((B.minX - CG.ox) / CG.cw) * CG.cw; x <= B.maxX; x += CG.cw) runs(x, B.minZ, B.maxZ, true);
       for (let z = CG.oz + Math.ceil((B.minZ - CG.oz) / CG.cl) * CG.cl; z <= B.maxZ; z += CG.cl) runs(z, B.minX, B.maxX, false);
     }
+    gridLines = lines;
     const tp = [], web = 0.014;
     for (const q of [].concat(...lines.map(l => splitByAreas(l, CA, H)))) {
       const y0 = q[4] + 0.004, y1 = q[4] + 0.14;
@@ -3704,7 +3720,7 @@ function buildScene(THREE, plan, A) {
       for (const sd of [1, -1]) { const a = [q[0] + nx * sd, y0, q[1] + nz * sd], b = [q[2] + nx * sd, y0, q[3] + nz * sd], c = [q[2] + nx * sd, y1, q[3] + nz * sd], d = [q[0] + nx * sd, y1, q[1] + nz * sd]; tp.push(...a, ...b, ...c, ...a, ...c, ...d); }
       const a = [q[0] + nx, y1, q[1] + nz], b = [q[2] + nx, y1, q[3] + nz], c = [q[2] - nx, y1, q[3] - nz], d = [q[0] - nx, y1, q[1] - nz]; tp.push(...a, ...b, ...c, ...a, ...c, ...d);
     }
-    if (tp.length) { const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3)); tg.computeVertexNormals(); ceiling.add(new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ color: 0xf4f6f7, emissive: 0x303234, side: THREE.DoubleSide, name: 'Ceiling, solid' }))); }
+    if (tp.length) { const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3)); tg.computeVertexNormals(); ceiling.add(new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ color: GC.clone().lerp(new THREE.Color(0xffffff), 0.25), emissive: GC.clone().multiplyScalar(0.2), side: THREE.DoubleSide, name: 'Ceiling grid tees, top' }))); }
   }
   // the roof (houses): gable, hip or flat, over the outside walls with an overhang
   const roof = new THREE.Group(); root.add(roof);
@@ -3810,16 +3826,18 @@ function buildScene(THREE, plan, A) {
     root.add(g);
   }
   curRef = null;
-  if (ownGrid) {
-    const tw = 0.078 / 2, pos = [];
-    for (const q of [].concat(...ownLines().map(l => splitByAreas(l, CA, H)))) {
+  const underLines = ownGrid ? ownLines() : gridLines;
+  if (underLines && underLines.length) {
+    // the tees' 15/16″ faces from below, a hair under the tiles (the tiles' edge shadow sets them off)
+    const tw = (15 / 16 / 12) / 2, pos = [];
+    for (const q of [].concat(...underLines.map(l => splitByAreas(l, CA, H)))) {
       const L = Math.hypot(q[2] - q[0], q[3] - q[1]); if (!(L > 0.01)) continue;
       const nx = -(q[3] - q[1]) / L * tw, nz = (q[2] - q[0]) / L * tw, y = q[4] - 0.012;
       const a = [q[0] + nx, y, q[1] + nz], b = [q[2] + nx, y, q[3] + nz], c = [q[2] - nx, y, q[3] - nz], d = [q[0] - nx, y, q[1] - nz];
       pos.push(...a, ...c, ...b, ...a, ...d, ...c);
     }
     const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    ceiling.add(new THREE.Mesh(gg, new THREE.MeshBasicMaterial({ color: 0xd0d6d9, side: THREE.DoubleSide, name: 'Ceiling grid, aluminum' })));
+    ceiling.add(new THREE.Mesh(gg, new THREE.MeshBasicMaterial({ color: GC, side: THREE.DoubleSide, name: GRID_NAME })));
   }
   if (plan.ceilingImage && plan.ceilingImage.dataUrl) {
     const I = plan.ceilingImage, q = (I.rot || 0) % 180 ? [I.h, I.w] : [I.w, I.h];
@@ -3886,7 +3904,7 @@ function buildScene(THREE, plan, A) {
   // lines come with the tiles
   const FXL = ceilingFixtures(plan, A);
   try {
-    const teeMat = new THREE.MeshBasicMaterial({ color: 0xd0d6d9, side: THREE.DoubleSide, name: 'Ceiling grid, aluminum' }), tw = 15 / 16 / 12;
+    const teeMat = new THREE.MeshBasicMaterial({ color: GC, side: THREE.DoubleSide, name: GRID_NAME }), tw = 15 / 16 / 12;
     for (const [x1, z1, x2, z2] of fixtureFrames(plan, A).lines) {
       const L = Math.hypot(x2 - x1, z2 - z1), hc = ceilingAt(CA, H, (x1 + x2) / 2, (z1 + z2) / 2), t = new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(x2 - x1) > 0.01 ? L + tw : tw, Math.abs(z2 - z1) > 0.01 ? L + tw : tw), teeMat);
       t.rotation.x = Math.PI / 2; t.position.set((x1 + x2) / 2, hc - 0.007, (z1 + z2) / 2); fixtures.add(t);
@@ -4264,6 +4282,7 @@ function mount(container, plan, opts) {
     <div class="p3v-bottom"><canvas class="p3v-mini p3v-panel" aria-label="Mini map. Click to jump there."></canvas><div class="p3v-chips"></div></div>
     <div class="p3v-hint"></div>
     <div class="p3v-panel p3v-clist" hidden></div>
+    <form class="p3v-panel p3v-cform p3v-aform" hidden><b>Approve this design?</b><small class="p3v-ainfo" style="color:#9fb0b7">Your designer gets your answer right away.</small><div class="p3v-adec" style="display:flex;gap:6px"><button type="button" data-dec="approve" aria-pressed="true">✓ Approve</button><button type="button" data-dec="changes" aria-pressed="false">✎ Request changes</button></div><textarea rows="3" placeholder="Anything to add (optional)"></textarea><input placeholder="Your name" maxlength="60" required><div><button type="submit">Send</button><button type="button" class="p3v-ccancel">Cancel</button></div><small class="p3v-aerr" style="color:#f0a3a3"></small></form>
     <form class="p3v-panel p3v-cform" hidden><b>Comment</b><textarea rows="3" placeholder="What should change here?" required></textarea><input placeholder="Your name" maxlength="60"><div><button type="submit">Save</button><button type="button" class="p3v-ccancel">Cancel</button></div></form>
     <div class="p3v-empty" hidden>Draw or import walls to see them in 3D.</div>`;
   const $ = (s) => container.querySelector(s);
@@ -4459,7 +4478,7 @@ function mount(container, plan, opts) {
     const rt = new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, stencilBuffer: true });
     rComp = new THREE.EffectComposer(renderer, rt);
     rPlain = new THREE.RenderPass(scene, camera); rPlain.enabled = false; rComp.addPass(rPlain);   // used when the corner shading is off
-    rSSAO = new THREE.SSAOPass(scene, camera, 2, 2); rSSAO.kernelRadius = 1.2; rSSAO.minDistance = 0.0015; rSSAO.maxDistance = 0.06;
+    rSSAO = new THREE.SSAOPass(scene, camera, 2, 2); rSSAO.kernelRadius = 4; rSSAO.minDistance = 0.0015; rSSAO.maxDistance = 0.15;   // wide and soft: the corners and the wall-ceiling joint shade like a real room
     if (rSSAO.beautyRenderTarget) rSSAO.beautyRenderTarget.stencilBuffer = true;
     if (rSSAO.normalRenderTarget && rSSAO.normalRenderTarget.depthTexture) rSSAO.normalRenderTarget.depthTexture.type = THREE.UnsignedIntType;
     rComp.addPass(rSSAO);
@@ -4482,7 +4501,7 @@ function mount(container, plan, opts) {
   let gloss = null;
   function placeGloss() {
     if (gloss) { scene.remove(gloss); gloss.getRenderTarget().dispose(); gloss.geometry.dispose(); gloss.material.dispose(); gloss = null; }
-    if (!real || !A || A.empty || !A.hardAny || !THREE.Reflector || (global.P3REAL || {}).gloss === false) return;
+    if (!real || !A || A.empty || !A.hardAny || !THREE.Reflector || (global.P3REAL || {}).gloss === false || gov.level >= 1) return;
     const b = A.bounds, pr = renderer.getPixelRatio(), tw = Math.max(256, Math.round((container.clientWidth || 800) * pr * 0.5)), th = Math.max(256, Math.round((container.clientHeight || 600) * pr * 0.5));
     gloss = new THREE.Reflector(new THREE.PlaneGeometry(b.w + 0.5, b.d + 0.5), { textureWidth: tw, textureHeight: th, clipBias: 0.003, color: 0xffffff, shader: FLOOR_GLOSS });
     gloss.material.transparent = true; gloss.material.depthWrite = false; gloss.material.uniforms.opacity.value = (global.P3REAL || {}).gl || 0.2; gloss.material.uniforms.texel.value.set(1 / tw, 1 / th);
@@ -4508,11 +4527,12 @@ function mount(container, plan, opts) {
     });
   }
   function setReal(on) {
+    govReset();
     real = !!on && canReal;
     const KN = global.P3REAL || {};
     if (real && !rComp) { try { THREE.RectAreaLightUniformsLib.init(); makeComposer(); } catch (e) { console.error(e); real = false; } }
     if (real && !envIn) { try { envIn = indoorEnv(); } catch (e) { envIn = null; } }
-    renderer.toneMapping = real ? (KN.tm === 'aces' ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping) : tmOut; renderer.toneMappingExposure = real ? (KN.exp || 1) : expOut; if (rSSAO) { rSSAO.enabled = KN.ao !== false; rPlain.enabled = !rSSAO.enabled; if (KN.kr) rSSAO.kernelRadius = KN.kr; if (KN.min) rSSAO.minDistance = KN.min; if (KN.max) rSSAO.maxDistance = KN.max; }
+    renderer.toneMapping = real ? (KN.tm === 'aces' ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping) : tmOut; renderer.toneMappingExposure = real ? (KN.exp || 1) : expOut; if (rSSAO) { rSSAO.enabled = KN.ao !== false && gov.level < 3; rPlain.enabled = !rSSAO.enabled; if (KN.kr) rSSAO.kernelRadius = KN.kr; if (KN.min) rSSAO.minDistance = KN.min; if (KN.max) rSSAO.maxDistance = KN.max; }
     scene.environment = real && envIn && KN.env !== false ? envIn : envOut;
     for (const m of upCache.values()) { tuneMat(m, real); m.needsUpdate = true; }
     scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); });
@@ -5140,12 +5160,14 @@ function mount(container, plan, opts) {
     finally { hid.forEach(o => { o.visible = true; }); srBtn.disabled = false; srBtn.textContent = lbl; }
   }
   srBtn.onclick = (e) => { e.stopPropagation(); superRender(); };
-  const cBtn = $('.p3v-cbtn'), cList = $('.p3v-clist'), cForm = $('.p3v-cform');
+  const cBtn = $('.p3v-cbtn:not(.p3v-abtn)'), cList = $('.p3v-clist'), cForm = $('.p3v-cform:not(.p3v-aform)');
   const pins = new THREE.Group(); scene.add(pins);
   let commentMode = false, pendingAt = null, myComments = [];
   const storeKey = () => 'p3v-comments:' + ((plan && (plan.name || '')) + ':' + ((plan && plan.walls) ? plan.walls.length : 0));
   const loadMine = () => { if (!opts.comments) { myComments = []; return; } try { myComments = JSON.parse(localStorage.getItem(storeKey()) || '[]') || []; } catch (e) { myComments = []; } };
   const saveMine = () => { try { localStorage.setItem(storeKey(), JSON.stringify(myComments)); } catch (e) { /* private window: kept for this visit only */ } };
+  // the customer's copy (a walkthrough link: a share id, no private key) can approve or ask for changes
+  const aOk = () => !!(opts.comments && opts.approve !== false && plan && plan.share && plan.share.id && !plan.share.key);
   const allComments = () => [...((plan && plan.comments) || []).map(c => ({ ...c, theirs: true })), ...myComments];
   const pinTex = {};
   function pinSprite(n, done) {
@@ -5160,10 +5182,11 @@ function mount(container, plan, opts) {
     if (!opts.comments && !L.length) { cList.hidden = true; return; }
     cList.hidden = !opts.comments && !L.length;
     const esc2 = (t) => String(t || '').replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
-    cList.innerHTML = `<b>Comments${L.length ? ' (' + L.length + ')' : ''}</b>` + (L.length ? '<ol>' + L.map((c, i) => `<li>${esc2(c.text)}<br><small>${esc2(c.by || '')}${c.by ? ' · ' : ''}${esc2((c.at || '').slice(0, 10))}${c.done ? ' · done' : ''}</small>${!c.theirs && opts.comments ? ` <button class="x" data-del="${esc2(c.id)}" title="Delete">✕</button>` : ''}</li>`).join('') + '</ol>' : '<br><small>Turn on 💬 Comment, then click anything in the model.</small>')
+    cList.innerHTML = (aOk() ? '<button class="p3v-abtn" title="Tell your designer this design is approved, or what should change">✓ Approve or request changes</button>' : '') + `<b>Comments${L.length ? ' (' + L.length + ')' : ''}</b>` + (L.length ? '<ol>' + L.map((c, i) => `<li>${esc2(c.text)}<br><small>${esc2(c.by || '')}${c.by ? ' · ' : ''}${esc2((c.at || '').slice(0, 10))}${c.done ? ' · done' : ''}</small>${!c.theirs && opts.comments ? ` <button class="x" data-del="${esc2(c.id)}" title="Delete">✕</button>` : ''}</li>`).join('') + '</ol>' : '<br><small>Turn on 💬 Comment, then click anything in the model.</small>')
       + (opts.comments && myComments.some(c => !c.sent) ? '<button class="p3v-csend">Send comments</button>' : opts.comments && myComments.length ? '<p><small>All sent to your designer ✓</small></p>' : '');
     cList.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { myComments = myComments.filter(c => c.id !== b.dataset.del); saveMine(); drawPins(); });
     const sb = cList.querySelector('.p3v-csend'); if (sb) sb.onclick = () => sendComments(false);
+    const ab = cList.querySelector('.p3v-abtn'); if (ab) { ab.onclick = (e) => { e.stopPropagation(); openApprove(); }; aState(); }
   }
   // with a share id (set by the app), comments go straight to the designer's app through the server;
   // without one, or with no connection, they're saved as a file to email back
@@ -5224,6 +5247,46 @@ function mount(container, plan, opts) {
     saveMine(); pendingAt = null; cForm.hidden = true; drawPins();
   });
   cForm.querySelector('.p3v-ccancel').onclick = () => { pendingAt = null; cForm.hidden = true; };
+  // ---- Approve or request changes (a walkthrough link only: a plan with a share id and no private key, i.e.
+  // the customer's copy). It goes to the designer's app like a comment, marked as a decision on this version.
+  const aForm = $('.p3v-aform');
+  const aKey = () => 'p3v-decision:' + ((plan && plan.share && plan.share.id) || '') + ':' + ((plan && plan.ver) || '');
+  function aState() {
+    let d = null; try { d = JSON.parse(localStorage.getItem(aKey()) || 'null'); } catch (e) { d = null; }
+    const b = cList.querySelector('.p3v-abtn');
+    if (b) { b.classList.toggle('done', !!d); b.textContent = d ? (d.decision === 'approve' ? '✓ You approved this design' : '✎ You asked for changes') + ' · change' : '✓ Approve or request changes'; }
+    return d;
+  }
+  function aSetup() { aForm.hidden = true; }
+  function openApprove() {
+    const d = aState();
+    aForm.querySelector('.p3v-ainfo').textContent = d ? `You sent “${d.decision === 'approve' ? 'approved' : 'changes requested'}” on ${new Date(d.at).toLocaleDateString()}. You can send a new answer.` : 'Your designer gets your answer right away.';
+    aForm.querySelector('.p3v-aerr').textContent = ''; setDec(d && d.decision === 'changes' ? 'changes' : 'approve');
+    try { aForm.querySelector('input[maxlength]').value = localStorage.getItem('p3v-name') || ''; } catch (err) { /* ok */ }
+    aForm.hidden = false;
+  };
+  aForm.querySelector('.p3v-ccancel').onclick = () => { aForm.hidden = true; };
+  let aDec = 'approve';
+  const setDec = (d) => { aDec = d; aForm.querySelectorAll('[data-dec]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.dec === d))); const ta = aForm.querySelector('textarea'); ta.placeholder = d === 'changes' ? 'What should change?' : 'Anything to add (optional)'; ta.required = d === 'changes'; };
+  aForm.querySelectorAll('[data-dec]').forEach(b => b.onclick = (e) => { e.preventDefault(); setDec(b.dataset.dec); });
+  aForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const decision = aDec;
+    const note = aForm.querySelector('textarea').value.trim(), by = aForm.querySelector('input[maxlength]').value.trim();
+    if (!by) return; if (decision === 'changes' && !note) return;
+    try { localStorage.setItem('p3v-name', by); } catch (err) { /* ok */ }
+    const b = A && A.bounds, at = new Date().toISOString();
+    const c = { id: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: (decision === 'approve' ? 'Approved the design.' : 'Requested changes.') + (note ? ' ' + note : ''), by, at, x: b ? b.minX + b.w / 2 : 0, y: b ? b.minZ + b.d / 2 : 0, h: 0, ref: { kind: 'approval', id: String((plan && plan.ver) || '') }, target: decision };
+    const sb = aForm.querySelector('button[type=submit]'); sb.disabled = true; sb.textContent = 'Sending…';
+    let err = '';
+    try { const r = await fetch(COMMENTS_URL + encodeURIComponent(plan.share.id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ comments: [c], project: (plan && plan.name) || '' }) }); if (!r.ok) err = 'The server said ' + r.status + '.'; }
+    catch (x) { err = navigator.onLine === false ? 'No internet connection right now.' : 'Couldn’t reach the server.'; }
+    sb.disabled = false; sb.textContent = 'Send';
+    if (err) { aForm.querySelector('.p3v-aerr').textContent = 'Not sent: ' + err + ' Try again in a moment.'; return; }
+    try { localStorage.setItem(aKey(), JSON.stringify({ decision, at })); } catch (x) { /* ok */ }
+    aForm.hidden = true; drawPins();
+    hint.textContent = decision === 'approve' ? 'Sent ✓ Your designer has your approval.' : 'Sent ✓ Your designer has your requested changes.'; hint.classList.remove('gone'); setTimeout(() => hint.classList.add('gone'), 4500);
+  });
   if (opts.comments) { cBtn.hidden = false; cBtn.onclick = (e) => { e.stopPropagation(); commentMode = !commentMode; cBtn.setAttribute('aria-pressed', commentMode); hint.textContent = commentMode ? 'Click anything to comment on it' : ''; hint.classList.toggle('gone', !commentMode); }; }
   canvas.addEventListener('pointerup', endPointer);
   canvas.addEventListener('pointercancel', endPointer);
@@ -5377,7 +5440,7 @@ function mount(container, plan, opts) {
     try { refreshAir(); applySwitches(); } catch (e) { console.error(e); }
     try { stopTour(); refreshTour(); } catch (e) { console.error(e); }
     try { upgradeScene(scene); let top = (A && A.H) || 10; try { const LP = levelPlans(p); top = LP[LP.length - 1].elev + 30; } catch (e) { } fitSun(A && A.bounds, top); } catch (e) { console.error(e); }
-    if (typeof drawPins === 'function' && cList) { loadMine(); drawPins(); }
+    if (typeof drawPins === 'function' && cList) { loadMine(); drawPins(); aSetup(); }
     emptyEl.hidden = !A.empty;
     // the Plenum view only when there is a plenum
     const pb = modeBtns.find(b => b.dataset.m === 'plenum'); if (pb) pb.hidden = !(A.PL > 0);
@@ -5412,10 +5475,27 @@ function mount(container, plan, opts) {
   const ro = new ResizeObserver(resize); ro.observe(container);
 
   const tmp = new THREE.Vector3(); let last = performance.now(), raf = 0, alive = true, turnHeld = 0, sweepN = 0, aoOff = false;
+  /* Smooth on any machine: when a big plan draws slowly (steadily under ~24 frames a second for a few seconds),
+     the extras step down one at a time: the floor reflection, then the sharpness (pixel ratio 1), then the
+     corner shading. Hitches (a frame over half a second: loading, rebuilding) don't count. It never turns
+     anything back up on its own; turning Realistic off and on starts it over. */
+  const PR0 = renderer.getPixelRatio();
+  const gov = { ema: 1 / 60, slow: 0, level: 0 };
+  function govReset() { gov.ema = 1 / 60; gov.slow = 0; if (gov.level) { gov.level = 0; aoOff = false; if (renderer.getPixelRatio() !== PR0) { renderer.setPixelRatio(PR0); resize(); } } }
+  function govStep(rawDt) {
+    if (rawDt <= 0 || rawDt > 0.5 || document.hidden || global.P3NOAUTO) return;
+    gov.ema += (rawDt - gov.ema) * 0.08;
+    if (gov.ema > 1 / 24) gov.slow += rawDt; else gov.slow = Math.max(0, gov.slow - rawDt * 0.5);
+    if (gov.slow < 3 || gov.level >= 3) return;
+    gov.slow = 0; gov.level++;
+    if (gov.level === 1) { if (real && gloss) { scene.remove(gloss); gloss.getRenderTarget().dispose(); gloss = null; } aoOff = true; }
+    else if (gov.level === 2) { if (renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); resize(); } }
+    else if (gov.level === 3) { if (rSSAO && real) { rSSAO.enabled = false; rPlain.enabled = true; } }
+  }
   function loop(now) {
     if (!alive) return;
     // up to 1/8 s per frame, so turning and walking keep their speed even when the 3D draws slowly
-    const rawDt = Math.max(0, (now - last) / 1000), dt = Math.min(0.125, rawDt); last = now;
+    const rawDt = Math.max(0, (now - last) / 1000), dt = Math.min(0.125, rawDt); last = now; govStep(rawDt);
     if (A) {
       // the tour keeps real time even when the 3D draws slowly
       if (tour && !tween) { stepTour(Math.min(0.5, rawDt)); applyWalkCam(); }
@@ -5508,7 +5588,7 @@ function mount(container, plan, opts) {
         byName.set(name, o);
         let r = 0.6, mt = 0;
         if (/glass/.test(n)) { r = 0.05; o.transparent = true; o.opacity = 0.25; }
-        else if (/painted/.test(n)) r = 0.45;
+        else if (/painted|enamel|tees, top/.test(n)) r = 0.45;
         else if (/stainless|aluminum|galvanized|hardware|grid|damper|ffu galvanized/.test(n)) { r = 0.35; mt = 0.85; }
         else if (/steel beam/.test(n)) { r = 0.55; mt = 0.6; }
         else if (/wall panel|door leaf|door frame|fixture housing|ffu housing/.test(n)) r = 0.42;
@@ -5561,5 +5641,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { TILE_TYPES, tileTypeOf, tileColorOf, tileName, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
