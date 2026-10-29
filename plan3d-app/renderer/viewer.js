@@ -3577,14 +3577,21 @@ function buildScene(THREE, plan, A) {
     const ax = o.x1, az = o.y1, bx = o.x2, bz = o.y2;
     const along = (s) => [ax + i.ux * s, az + i.uz * s];
     if (o.type === 'removable') {
-      // removable wall section (equipment access): the same wall panels, held in a frame of tubes like a door
-      // frame — a post each side and a header across — all flush with the wall faces, so the wall reads as one
-      // flat face with the frame lines round the section. Pull the panels out to bring equipment through.
-      const PW = 2 / 12, WP = i.hard ? IP : wallPM(null), hd = Math.max(PW + 1, head), tb = t + 0.004;
-      const [k1x, k1z] = along(PW), [k2x, k2z] = along(i.len - PW);
-      // an H-stud with its insert on each side, between the wall panels and the frame (as the wall's own studs)
-      const SW = 3 / 12, sm = M.studIns || (M.studIns = (() => { const tx = new THREE.CanvasTexture(cachedCanvas('studIns', () => makeCanvas(32, 64, (g, w, h) => {
-        const half = w / 2, ins = 0.6 * w / 3, cx = w / 2;
+      // removable wall section (equipment access), across the wall: wall panel | metal tube (the frame) | white
+      // wall start | removable panel | H-stud with insert | removable panel | … | white start | metal tube | wall.
+      // The same across the top: a metal header tube with a white start under it. All flush with the wall faces.
+      const TW = 2 / 12, ST = 1 / 12, SW = 3 / 12, WP = i.hard ? IP : wallPM(null), hd = Math.max(TW + ST + 1, head), tb = t + 0.004;
+      const metal = M.remMetal || (M.remMetal = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xb8bfc3, specular: 0x8a9196, shininess: 70 }); m.name = 'Removable section frame, aluminum tube'; return m; })());
+      const box = (s0, s1, y0, y1, th, mat, pk) => { const [p0x, p0z] = along(s0), [p1x, p1z] = along(s1); const m = segBox(p0x, p0z, p1x, p1z, y0, y1, th, mat); outline(m); if (pk) pick.push(m); return m; };
+      // the metal tubes: a post each side, the header across the top
+      box(0, TW, 0, hd, tb, metal, true); box(i.len - TW, i.len, 0, hd, tb, metal, true); box(TW, i.len - TW, hd - TW, hd, tb, metal, true);
+      // the white wall start inside the tubes
+      box(TW, TW + ST, 0, hd - TW, tb, WP.trim); box(i.len - TW - ST, i.len - TW, 0, hd - TW, tb, WP.trim); box(TW + ST, i.len - TW - ST, hd - TW - ST, hd - TW, tb, WP.trim);
+      // the removable panels, with an H-stud and its insert at each joint (one in the middle of a pair)
+      const a0 = TW + ST, a1 = i.len - TW - ST, top0 = hd - TW - ST, n = Math.max(1, Math.round((a1 - a0) / 4)), pw = (a1 - a0 - (n - 1) * SW) / n;
+      const face = M['remFace' + WP.label] || (M['remFace' + WP.label] = (() => { const m = new THREE.MeshPhongMaterial({ color: new THREE.Color(WP.face).multiplyScalar(0.955), emissive: WP.emissive, specular: 0x1c1c1c, shininess: 16 }); m.name = 'Wall panel, removable, ' + WP.label.toLowerCase(); return m; })());
+      const stud = M.studIns || (M.studIns = (() => { const tx = new THREE.CanvasTexture(cachedCanvas('studIns', () => makeCanvas(32, 64, (g, w, h) => {
+        const ins = 0.6 * w / 3, cx = w / 2;
         g.fillStyle = '#fbfbfb'; g.fillRect(0, 0, w, h);
         g.fillStyle = '#a3aaae'; g.fillRect(0, 0, 1.4, h); g.fillRect(w - 1.4, 0, 1.4, h);
         g.fillStyle = '#ffffff'; g.fillRect(1.6, 0, 1, h);
@@ -3593,16 +3600,12 @@ function buildScene(THREE, plan, A) {
         g.fillStyle = '#b3babd'; g.fillRect(cx - ins - 1, 0, 1, h); g.fillRect(cx + ins, 0, 1, h);
         g.fillStyle = '#ffffff'; g.fillRect(cx - ins, 0, 0.8, h);
       }))); tx.anisotropy = ANISO; const m = new THREE.MeshPhongMaterial({ map: tx, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 }); m.name = 'H-stud with insert'; return m; })());
-      const sc = (WP.face === 0xffffff) ? sm : (() => { const m = sm.clone(); m.color.set(WP.face); m.emissive.set(WP.emissive); return m; })();
-      for (const [s0, s1] of [[-SW, 0], [i.len, i.len + SW]]) { const [p0x, p0z] = along(s0), [p1x, p1z] = along(s1); const st = segBox(p0x, p0z, p1x, p1z, 0, Math.max(hd, top), t + 0.008, [WP.edge, WP.edge, WP.edge, WP.edge, sc, sc]); pick.push(st); }
-      for (const [p, q] of [[[ax, az], [k1x, k1z]], [[k2x, k2z], [bx, bz]]]) { const j = segBox(p[0], p[1], q[0], q[1], 0, hd, tb, WP.trim); outline(j); pick.push(j); }
-      const hb = segBox(k1x, k1z, k2x, k2z, hd - PW, hd, tb, WP.trim); outline(hb); pick.push(hb);
-      const pw = i.len - 2 * PW, n = Math.max(1, Math.ceil(pw / 4 - 0.01));
-      const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO; tex.repeat.set(n, 1);
-      const face = new THREE.MeshPhongMaterial({ map: tex, color: WP.face, emissive: WP.emissive, specular: 0x1c1c1c, shininess: 16 }); face.name = 'Wall panel, removable, ' + WP.label.toLowerCase();
-      const pn = segBox(k1x, k1z, k2x, k2z, 0, hd - PW, t, [WP.edge, WP.edge, WP.edge, WP.edge, face, face]); outline(pn); pick.push(pn);
+      const sc = WP.face === 0xffffff ? stud : (() => { const m = stud.clone(); m.color.set(WP.face); m.emissive.set(WP.emissive); return m; })();
+      for (let k = 0; k < n; k++) {
+        const s0 = a0 + k * (pw + SW); box(s0, s0 + pw, 0, top0, t, [WP.edge, WP.edge, WP.edge, WP.edge, face, face], true);
+        if (k < n - 1) { const [p0x, p0z] = along(s0 + pw), [p1x, p1z] = along(s0 + pw + SW); pick.push(segBox(p0x, p0z, p1x, p1z, 0, top0, t + 0.006, [WP.edge, WP.edge, WP.edge, WP.edge, sc, sc])); }
+      }
       segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base);
-      // the header panel over it, up to the opening's top (the wall above that is drawn already)
       shadow((ax + bx) / 2, (az + bz) / 2, i.len, t, Math.atan2(-i.uz, i.ux));
     } else if (o.type === 'pass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill)), D = Math.max(t + 0.1, o.depth || 2), ph = head - sill;
