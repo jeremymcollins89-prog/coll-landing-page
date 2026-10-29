@@ -604,13 +604,13 @@ function renderProps(opt) {
     return;
   }
   if (s && o && s.kind === 'fixture') {
-    h = `<div class="hd"><span class="kind">${o.type === 'ffu' ? 'Fan filter unit' : 'LED light'}</span><button class="btn small danger" id="pDel">Delete</button></div>
-      ${fld('Type', `<select id="pFx"><option value="led" ${o.type !== 'ffu' ? 'selected' : ''}>LED light, 2×4</option><option value="ffu" ${o.type === 'ffu' ? 'selected' : ''}>Fan filter unit, 2×4</option></select>`)}
+    h = `<div class="hd"><span class="kind">${o.type === 'ffu' ? 'Fan filter unit' : o.em ? 'Emergency light' : 'LED light'}</span><button class="btn small danger" id="pDel">Delete</button></div>
+      ${fld('Type', `<select id="pFx"><option value="led" ${o.type !== 'ffu' && !o.em ? 'selected' : ''}>LED light, 2×4</option><option value="em" ${o.type !== 'ffu' && o.em ? 'selected' : ''}>Emergency light, 2×4 (battery backup)</option><option value="ffu" ${o.type === 'ffu' ? 'selected' : ''}>Fan filter unit, 2×4</option></select>`)}
       <div class="row"><button class="btn small" id="pFxTurn">Turn 90° (R)</button><button class="btn small" id="pFxSnap">Snap into the grid</button></div>
       ${o.type === 'ffu' ? `<label class="chk" title="It looks like every other filter. In the 3D view, walkthroughs and the phone viewer, clicking it plays a fart and puffs out a cloud of green gas."><input type="checkbox" id="pFxSur" ${o.surprise ? 'checked' : ''}> 💨 Surprise filter (hidden: click it in 3D)</label>` : ''}
       <p class="note">Sits in the 2′ × 4′ ceiling grid. Turned across the grid, it takes half of two cells side by side: the cross tee moves to its edge and the other half gets one 2′ × 4′ tile laid the same way.</p>`;
     box.innerHTML = h;
-    $('#pFx').onchange = e => ed.edit(() => { o.type = e.target.value; });
+    $('#pFx').onchange = e => ed.edit(() => { const v = e.target.value; o.type = v === 'em' ? 'led' : v; if (v === 'em') o.em = true; else delete o.em; });
     if ($('#pFxSur')) $('#pFxSur').onchange = e => ed.edit(() => { if (e.target.checked) o.surprise = true; else delete o.surprise; });
     $('#pFxTurn').onclick = () => ed.turnFixture(o); $('#pFxSnap').onclick = () => snapFixturesIn(new Set([o.id]));
     $('#pDel').onclick = () => ed.deleteSel();
@@ -1558,6 +1558,67 @@ async function openCadProject(r) {
 }
 
 /* ---------- Generate ceiling: grid, FFUs and lights laid out inside the cleanroom walls ---------- */
+/* ---------- Lights from a lighting drawing: put the fixtures on the plan to move by hand ----------
+   Reads every light in a DWG / DXF however it was drawn (blocks, polylines, four loose lines) and what's in it
+   (a diagonal: a light; cross-hatching: an emergency light), lines it up with the floor plan (the same drawing
+   origin when the plan came from a drawing in the same coordinates, else centred on the building), and puts
+   them on the plan as fixtures you can drag. Lights already on the plan at the same spots are matched, not
+   doubled: a hatched one there is marked emergency. */
+async function lightsDrawingDialog(r0) {
+  const P = ed.plan; if (!P.walls.length) { toast('Add or import the floor plan first, then the lights on top of it.'); return; }
+  const r = r0 && r0.kind ? r0 : await api.openFile('ceiling'); if (!r) return;
+  if (r.kind === 'error') { handleLoaded(r); return; }
+  if (r.kind !== 'dxf') { toast('Pick the lighting drawing as a DWG or DXF.'); return; }
+  const k = IMP.UNIT_FT[r.insunits] || 1 / 12;
+  let L = []; try { L = Plan3DCeiling.lightsFromDrawing(r, k); } catch (e) { console.error(e); }
+  if (!L.length) { await dialogOpen({ title: 'No lights found', body: `<p>No light fixtures in <b>${esc(r.name)}</b>. Lights are found as rectangles 1′ to 6′ a side with a diagonal across them (a light) or cross-hatched (an emergency light).</p>`, buttons: [{ label: 'OK', primary: true, ret: null }] }); return; }
+  const A = Plan3DViewer.analyze(P), FP = Plan3DViewer.footprint(A, true), B = A.bounds, O = P.dxfOrigin;
+  const inside = (x, y) => FP ? FP.has(x, y) : (x >= B.minX && x <= B.maxX && y >= B.minZ && y <= B.maxZ);
+  // Where they go: on the lights already on the plan when there are some (the shift that lands the most of them
+  // on one), else the project's own drawing origin, else centred on the building
+  let tf = null, how = '';
+  const ex = (P.ceilingMode === 'manual' ? (P.fixtures || []) : Plan3DViewer.ceilingFixtures(P)).filter(f => f.type !== 'ffu');
+  if (ex.length >= 3) {
+    const votes = new Map(), q2 = (v) => Math.round(v / 0.25);
+    for (const q of L.slice(0, 120)) for (const e of ex) { if (Math.abs(Math.max(q.w, q.h) - Math.max(e.w || 2, e.h || 4)) > 0.6) continue; const kk = q2(e.x - q.cx * k) + ',' + q2(e.y + q.cy * k); votes.set(kk, (votes.get(kk) || 0) + 1); }
+    let best = null, bn = 0; for (const [kk, n] of votes) if (n > bn) { bn = n; best = kk; }
+    if (best && bn >= Math.min(3, L.length)) {
+      // refine: the average offset of the pairs that agree with the winner
+      const [bx, by] = best.split(',').map(v => +v * 0.25); let sx = 0, sy = 0, n = 0;
+      for (const q of L) { const e = ex.find(f => Math.abs(f.x - (q.cx * k + bx)) < 0.4 && Math.abs(f.y - (-q.cy * k + by)) < 0.4); if (e) { sx += e.x - q.cx * k; sy += e.y + q.cy * k; n++; } }
+      const dx = n ? sx / n : bx, dy = n ? sy / n : by; tf = (x, y) => [x * k + dx, -y * k + dy]; how = `lined up on the ${n} light${n === 1 ? '' : 's'} already on the plan`;
+    }
+  }
+  const frac = (f) => L.filter(q => { const [x, y] = f(q.cx, q.cy); return inside(x, y); }).length / L.length;
+  if (!tf && O && frac((x, y) => [x * k - O.x0, O.y0 - y * k]) >= 0.5) { tf = (x, y) => [x * k - O.x0, O.y0 - y * k]; how = 'at the drawing’s own coordinates (same as the floor plan)'; }
+  if (!tf) {
+    let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18; for (const q of L) { const x = q.cx * k, y = -q.cy * k; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    const mx = B.cx - (x0 + x1) / 2, my = B.cz - (y0 + y1) / 2; tf = (x, y) => [x * k + mx, -y * k + my]; how = 'centred on the building (move the whole set with the arrow keys after selecting them, or one at a time)';
+  }
+  const placed = L.map(q => { const [x, y] = tf(q.cx, q.cy); return { ...q, x, y }; }), kept = placed.filter(q => inside(q.x, q.y)), nEm = kept.filter(q => q.em).length;
+  const fx0 = P.ceilingMode === 'manual' ? (P.fixtures || []) : Plan3DViewer.ceilingFixtures(P);
+  const match = (q) => fx0.find(f => Math.hypot(f.x - q.x, f.y - q.y) < 0.75);
+  const nMatch = kept.filter(match).length;
+  const choice = await dialogOpen({ title: 'Lights from ' + r.name, body: `<p>Found <b>${kept.length} light${kept.length === 1 ? '' : 's'}</b>${nEm ? `, <b>${nEm} of them emergency lights</b> (cross-hatched: battery backup)` : ''}, ${how}.${placed.length > kept.length ? ` ${placed.length - kept.length} outside the building (a legend or notes) are left off.` : ''}</p>
+      ${nMatch ? `<p>${nMatch} sit where lights already are on the plan: those are matched, not doubled${nEm ? ', and the cross-hatched ones are marked emergency' : ''}.</p>` : ''}
+      <p class="note">On the plan, emergency lights are drawn cross-hatched. Drag any light where you want it; click one to change its type or turn it.</p>`,
+    buttons: [{ label: 'Cancel', ret: null }, ...(fx0.some(f => f.type !== 'ffu') ? [{ label: 'Replace the plan’s lights with these', ret: 'replace' }] : []), { label: kept.length - nMatch ? `Add ${kept.length - nMatch} new and mark emergency` : 'Mark emergency lights', primary: true, ret: 'merge' }] });
+  if (!choice) return;
+  let nNew = 0, nMarked = 0;
+  ed.edit(Q => {
+    if (Q.ceilingMode !== 'manual') { Q.fixtures = Plan3DViewer.ceilingFixtures(Q).map(f => ({ ...f, id: f.id || Plan3DEditor.uid() })); Q.ceilingMode = 'manual'; }
+    Q.fixtures = Q.fixtures || [];
+    if (choice === 'replace') Q.fixtures = Q.fixtures.filter(f => f.type === 'ffu');
+    for (const q of kept) {
+      const f = Q.fixtures.find(g => Math.hypot(g.x - q.x, g.y - q.y) < 0.75);
+      if (f) { if (f.type !== 'ffu' && q.em && !f.em) { f.em = true; nMarked++; } continue; }
+      Q.fixtures.push({ id: Plan3DEditor.uid(), type: 'led', x: q.x, y: q.y, w: q.w, h: q.h, ...(q.em ? { em: true } : {}) }); nNew++;
+    }
+    Q.lightsSource = r.name;
+  });
+  toast(`${nNew} light${nNew === 1 ? '' : 's'} added${nMarked ? `, ${nMarked} marked emergency` : ''}. Drag them where you want them.`);
+  if (view === '3d') setView('split');
+}
 async function generateCeilingDialog() {
   const P = ed.plan;
   if (!P.walls.length) { toast('Draw or import the cleanroom walls first, then generate the ceiling inside them.'); return; }
@@ -3021,7 +3082,7 @@ document.addEventListener('keydown', (e) => { const o = openMenu(); if (e.key ==
   // File
   item('#bOpen', openProject); item('#bImport', importPlan); item('#bOpenSample', openSample); item('#bSave2', () => save(false)); item('#bSaveAs', () => save(true)); item('#bNewPlan', newPlan);
   // Ceiling
-  item('#bCeiling', (e) => ceilingMenu(e)); item('#bGenCeil', generateCeilingDialog); item('#bLid', lidMenu);
+  item('#bCeiling', (e) => ceilingMenu(e)); item('#bGenCeil', generateCeilingDialog); item('#bLightsDwg', lightsDrawingDialog); item('#bLid', lidMenu);
   // Library
   item('#bBldInsert', () => libraryDialog()); item('#bBldFile', insertFromFile); item('#bBldSave', saveBuildingDialog);
   item('#bLibGroup', saveGroupDialog); item('#bLibCeil', saveCeilingDialog); item('#bLibMach', addMachineDialog);
@@ -3113,5 +3174,5 @@ window.addEventListener('drop', async e => {
 
 renderProps(); updateChrome(); toolHint('select');
 if (api.rendererReady) api.rendererReady();
-window.__app = { ensureShare, checkComments, recordPublished, linkPlan, mergeComments, markApproved, changeOrderDialog, exportHtml, wallHeightDialog, setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
+window.__app = { lightsDrawingDialog, ensureShare, checkComments, recordPublished, linkPlan, mergeComments, markApproved, changeOrderDialog, exportHtml, wallHeightDialog, setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
 })();
