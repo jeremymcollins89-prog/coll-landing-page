@@ -1250,3 +1250,5 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.55; resize: ve
 @media (max-width: 760px) { .lc-grid { grid-template-columns: 1fr; } }
 .lab-body .tm-title { margin: 2px 0 8px; line-height: 1.2; } .lab-body .tm-learn { line-height: 1.6; } .lab-body .card-body > .tm-head:first-child { margin-bottom: 8px; }
 .tries-line { font-size: 12px; margin: -4px 0 10px; }
+.sync-meta { margin-top: 12px; font-size: 12px; }
+.academy-mode [data-action="new-client"], .academy-mode [data-nav="studio"] { display: none !important; }

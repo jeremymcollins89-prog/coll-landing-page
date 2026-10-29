@@ -30,7 +30,7 @@ const App = (() => {
   const act = obj => Object.assign(actions, obj);
 
   // ---------------- saving ----------------
-  const LS_KEY = 'coll-ledger-data-v1';
+  const LS_KEY = window.COLL_ACADEMY ? 'coll-ledger-academy-v1' : 'coll-ledger-data-v1';
   async function load() {
     let d = null;
     try {
@@ -80,7 +80,7 @@ const App = (() => {
     const raw = JSON.stringify(S.data);
     try { if (window.desktop) window.desktop.saveSync(raw); else localStorage.setItem(LS_KEY, raw); } catch (e) { }
   });
-  function commit(rerender = true) { save(); if (rerender) render(); }
+  function commit(rerender = true) { const c = client(); if (c) c.touchedAt = Date.now(); save(); if (rerender) render(); }
 
   // Undo for anything: snapshot the client before a change, restore on Undo
   function snapshot(c = client()) {
@@ -155,7 +155,7 @@ const App = (() => {
 
   function renderChrome() {
     const c = client();
-    $('#firmName').textContent = S.data.firm.name || 'Bookkeeping Studio';
+    $('#firmName').textContent = S.data.firm.name || (window.COLL_ACADEMY ? 'Bookkeeping training' : 'Bookkeeping Studio');
     const cs = $('#clientSwitch');
     cs.innerHTML = c
       ? `<div class="avatar" style="background:${c.color}">${esc(U.initials(c.name))}</div><div style="min-width:0;flex:1"><div class="cs-label">Working on</div><div class="cs-name">${esc(c.name)}</div></div><span class="chev">${ICON.chev}</span>`
