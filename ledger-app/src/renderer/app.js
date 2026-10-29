@@ -234,7 +234,7 @@ const App = (() => {
         ['Dark mode', 'Switch light and dark', ICON.spark, () => actions['toggle-dark']()],
         ['Add a client', 'Set up a new business', ICON.plus, () => actions['new-client']()],
         ['Help', 'How-to guides and shortcuts', ICON.help, () => help()],
-        ['Practice / Training', 'Mini class with a practice account', ICON.spark, () => go('training')],
+        ['Practice / Training', 'The Academy: lessons, exams and a certificate', ICON.spark, () => go('training')],
         ['Settings', 'Studio, client profile, backups', ICON.dots, () => go('settings')]
       ];
       for (const [l, s, i, f] of cmds) if ((c || /client|help|settings|training|time|handbook|dark/i.test(l)) && (match(l) || match(s))) add('Actions', l, s, i, f);
@@ -281,7 +281,7 @@ const App = (() => {
     const mod = window.desktop && window.desktop.platform === 'darwin' ? '⌘' : 'Ctrl';
     const m = U.openModal(`${U.modalHead('Help', 'Short answers to the everyday questions')}
       <div class="modal-body">
-        <div class="train-cta"><div class="train-cta-ic">${ICON.spark}</div><div><b>Practice account / Training</b><div class="muted">A mini class with a pretend bakery to practice on. Eleven short lessons with explanations, quizzes and a coach that checks your work.</div></div><button class="btn primary" data-g="train">Start training</button></div>
+        <div class="train-cta"><div class="train-cta-ic">${ICON.spark}</div><div><b>Practice account / Training</b><div class="muted">The Coll Ledger Academy: hands-on lessons on a pretend bakery, a written and a practical exam, and a certificate you can add to LinkedIn.</div></div><button class="btn primary" data-g="train">Start training</button></div>
         <div class="train-cta hb-cta"><div class="train-cta-ic">${ICON.help}</div><div><b>Bookkeeper's Handbook</b><div class="muted">Quick tips, rules of the road, tax rules and deadlines, month-end and year-end checklists, FAQs and a glossary.</div></div><button class="btn primary" data-g="book">Open the handbook</button></div>
         <div class="guides">${GUIDES.map(([t, d, page], i) => `<div class="guide"><div><b>${t}</b><div class="muted">${d}</div></div><button class="btn sm" data-g="${i}">Show me</button></div>`).join('')}</div>
         <div class="card" style="box-shadow:none"><div class="card-head"><h3>Keyboard shortcuts</h3></div><div class="card-body shortcuts">
