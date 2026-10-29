@@ -15,7 +15,7 @@ const DATA_TAG = 'COLLPLAN3D';
 const LAYERS = [
   ['A-WALL', 7, 'CONTINUOUS'], ['A-WALL-SP', 2, 'CONTINUOUS'], ['A-WALL-JOINT', 8, 'CONTINUOUS'], ['A-WALL-POST', 7, 'CONTINUOUS'], ['A-WALL-BLDG', 8, 'CONTINUOUS'],
   ['A-DOOR', 4, 'CONTINUOUS'], ['A-DOOR-SWING', 4, 'DASHED'], ['A-GLAZ', 5, 'CONTINUOUS'], ['A-PASS', 6, 'CONTINUOUS'],
-  ['A-OPEN', 4, 'DASHED'], ['A-CHASE', 8, 'CONTINUOUS'], ['A-CHASE-HATCH', 9, 'CONTINUOUS'], ['A-GRILLE', 7, 'CONTINUOUS'],
+  ['A-OPEN', 4, 'DASHED'], ['A-WALL-REMV', 30, 'CONTINUOUS'], ['A-WALL-REMV-FRAM', 8, 'CONTINUOUS'], ['A-CHASE', 8, 'CONTINUOUS'], ['A-CHASE-HATCH', 9, 'CONTINUOUS'], ['A-GRILLE', 7, 'CONTINUOUS'],
   ['A-CLNG-FIXT', 8, 'DASHED'], ['A-CLNG-FIXT-EMER', 1, 'CONTINUOUS'], ['A-CLNG-GRID', 9, 'CONTINUOUS'], ['S-BEAM', 30, 'DASHED'], ['A-DIMS', 3, 'CONTINUOUS'], ['A-ANNO-ROOM', 7, 'CONTINUOUS'], ['A-ANNO-TAG', 2, 'CONTINUOUS'],
   [DATA_LAYER, 8, 'CONTINUOUS', true]
 ];
@@ -140,6 +140,15 @@ function toDxf(plan, opts) {
       pline('A-PASS', q, true);
       line('A-PASS', q[0][0], q[0][1], q[2][0], q[2][1]); line('A-PASS', q[1][0], q[1][1], q[3][0], q[3][1]);
       text('A-ANNO-TAG', cx + nx * (d / 2 + 0.8), cy + nz * (d / 2 + 0.8), 'PT', TAG_H, 0);
+    } else if (o.type === 'removable' && V.removableLayout) {
+      // removable wall section: the panels (A-WALL-REMV), the tube posts and H-studs (A-WALL-REMV-FRAM), tag R
+      const RL = V.removableLayout(i.len, o.head || 8, 99), at = (a) => [o.x1 + i.ux * a, o.y1 + i.uz * a];
+      const seg = (q, layer) => { const [ax, ay] = at(q.s0), [bx, by] = at(q.s1); pline(layer, quad(ax, ay, bx, by, t), true); };
+      for (const q of RL.panels) seg(q, 'A-WALL-REMV');
+      for (const q of RL.posts) seg(q, 'A-WALL-REMV-FRAM');
+      for (const q of RL.studs) seg(q, 'A-WALL-REMV-FRAM');
+      for (const q of RL.starts.slice(0, 2)) seg(q, 'A-WALL-REMV-FRAM');
+      text('A-ANNO-TAG', cx + nx * sw * (t / 2 + 1.1), cy + nz * sw * (t / 2 + 1.1), 'R', TAG_H, 0);
     } else {
       jamb(o.x1, o.y1, 'A-OPEN'); jamb(o.x2, o.y2, 'A-OPEN');
       line('A-OPEN', o.x1, o.y1, o.x2, o.y2);

@@ -237,6 +237,17 @@ function makeSheet(plan, opts) {
       poly(q, `fill="#e6e6e6" stroke="#111" stroke-width="${lw.thin * 1.4}"`);
       line(q[0][0], q[0][1], q[2][0], q[2][1], `stroke="#111" stroke-width="${lw.hair}"`); line(q[1][0], q[1][1], q[3][0], q[3][1], `stroke="#111" stroke-width="${lw.hair}"`);
       tags.push({ x: cx + nx * (d / 2 + 0.8), y: cy + nz * (d / 2 + 0.8), s: 'PT', box: true });
+    } else if (o.type === 'removable') {
+      // removable wall section: the wall panels carry on (solid), tube posts at the ends filled grey, the joints
+      // ticked, a dashed line along each face and an R tag with the width
+      poly(quad(o.x1, o.y1, o.x2, o.y2, t), `fill="#fff" stroke="#111" stroke-width="${lw.thin}"`);
+      const RL = V.removableLayout ? V.removableLayout(i.len, o.head || 8, 99) : null, at = (a) => [o.x1 + i.ux * a, o.y1 + i.uz * a];
+      if (RL) {
+        for (const q of RL.posts) { const [ax, ay] = at(q.s0), [bx, by] = at(q.s1); poly(quad(ax, ay, bx, by, t), `fill="#9aa3a8" stroke="#111" stroke-width="${lw.thin}"`); }
+        for (const q of RL.studs) { const [ax, ay] = at((q.s0 + q.s1) / 2); line(ax + nx * t / 2, ay + nz * t / 2, ax - nx * t / 2, ay - nz * t / 2, `stroke="#111" stroke-width="${lw.thin}"`); }
+      }
+      for (const f of [-1, 1]) { const off = f * (t / 2 + 0.15); line(o.x1 + nx * off, o.y1 + nz * off, o.x2 + nx * off, o.y2 + nz * off, `stroke="#111" stroke-width="${lw.hair}" stroke-dasharray="0.05 0.03"`); }
+      tags.push({ x: cx + nx * sw * (t / 2 + 1.1), y: cy + nz * sw * (t / 2 + 1.1), s: 'R ' + dimText(i.len), box: true });
     } else {
       line(o.x1, o.y1, o.x2, o.y2, `stroke="#111" stroke-width="${lw.hair}" stroke-dasharray="0.04 0.03"`);
     }
@@ -310,7 +321,7 @@ function makeSheet(plan, opts) {
   tbOut.push(`<text x="${n3(tb.x + 0.1)}" y="${n3(tb.y + tb.h - 0.12)}" font-size="0.065" fill="#555">FLOOR PLAN · ${esc(dimText(B.w))} × ${esc(dimText(B.d))} · Drawn with Coll Plan3D</text>`);
   // legend
   tbOut.push(`<g transform="translate(${fx(0.30) + 0.1},${n3(tb.y + tb.h - 0.27)})"><rect width="0.22" height="0.1" fill="#f6e27a" stroke="#111" stroke-width="${lw.hair}"/><text x="0.28" y="0.085" font-size="0.07" fill="#333">S.P. PANEL</text>
-    <rect x="1.05" width="0.22" height="0.1" fill="#fff" stroke="#111" stroke-width="${lw.hair}"/><text x="1.33" y="0.085" font-size="0.07" fill="#333">3070 / 6070 DOOR · G GLASS · PT PASS-THRU</text></g>`);
+    <rect x="1.05" width="0.22" height="0.1" fill="#fff" stroke="#111" stroke-width="${lw.hair}"/><text x="1.33" y="0.085" font-size="0.07" fill="#333">3070 / 6070 DOOR · G GLASS · PT PASS-THRU${(plan.openings || []).some(o => o.type === 'removable') ? ' · R REMOVABLE WALL SECTION' : ''}</text></g>`);
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${PW}in" height="${PH}in" viewBox="0 0 ${PW} ${PH}" font-family="Arial Narrow, Bahnschrift, Arial, Helvetica, sans-serif">
 <rect width="${PW}" height="${PH}" fill="#fff"/>

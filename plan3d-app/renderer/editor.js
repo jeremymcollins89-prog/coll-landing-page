@@ -47,10 +47,10 @@ function segProj(px, py, x1, y1, x2, y2) {
   return { d: Math.hypot(px - x, py - y), t, tc, x, y, len: Math.sqrt(l2) };
 }
 
-const DEFAULT_W = { door: 3, door2: 6, glass: 4, open: 3, pass: 2, window: 3, overhead: 12 };
+const DEFAULT_W = { door: 3, door2: 6, glass: 4, open: 3, pass: 2, window: 3, overhead: 12, removable: 8 + 6 / 12 };
 // houses: 2′-8″ doors, 5′ pairs, 3′ windows, 6′-8″ heads
-const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2, overhead: 16 };
-const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass', 'overhead']);
+const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2, overhead: 16, removable: 8 + 6 / 12 };
+const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass', 'overhead', 'removable']);
 const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas', gzone: 'gridZones', tile: 'ceilTiles', deck: 'deckPieces', lstep: 'lidSteps', header: 'headers', grille: 'grilles' };
 const COL = {
   bg: '#1a2024', gridMinor: 'rgba(255,255,255,.035)', gridMajor: 'rgba(255,255,255,.08)', axis: 'rgba(255,255,255,.14)',
@@ -710,6 +710,7 @@ class Editor {
       else if (this.house && (T === 'door' || T === 'door2' || T === 'open')) o.head = 6 + 8 / 12;
       else if (T === 'glass') { o.sill = 3; o.head = 7; }
       else if (T === 'pass') { o.sill = 3; o.head = 5; o.depth = 2; }
+      else if (T === 'removable') { delete o.swing; o.head = Math.min(8, this.plan.ceiling || 8); }
       else if (T === 'overhead') { const W = pv.wall, V = global.Plan3DViewer, wh = W && V ? (V.isHard(W) ? (this.plan.ceiling || 8) : V.isFrame(W) ? (W.h || this.plan.ceiling || 8) : V.shellHeight(this.plan, W)) : 16; o.head = Math.max(7, Math.min(14, wh - 2)); }
       else o.head = 7;
       this.edit(P => P.openings.push(o)); return;
@@ -1272,6 +1273,24 @@ class Editor {
         const dd = Math.min(len, (o.head || 12)) * 0.9, sd = sw;
         g.setLineDash([6, 4]); g.lineWidth = 1; g.strokeStyle = COL.wallLine; g.beginPath();
         g.moveTo(this.sx(o.x1 + nx * sd * t / 2), this.sy(o.y1 + ny * sd * t / 2)); g.lineTo(this.sx(o.x1 + nx * sd * (t / 2 + dd)), this.sy(o.y1 + ny * sd * (t / 2 + dd))); g.lineTo(this.sx(o.x2 + nx * sd * (t / 2 + dd)), this.sy(o.y2 + ny * sd * (t / 2 + dd))); g.lineTo(this.sx(o.x2 + nx * sd * t / 2), this.sy(o.y2 + ny * sd * t / 2)); g.stroke(); g.setLineDash([]);
+      } else if (o.type === 'removable') {
+        // removable wall section: the wall carries on through it (panels that come out), with the metal tube
+        // posts at its ends drawn solid, the panel joints (H-studs) ticked, a dashed line along each face and an
+        // R tag with the width
+        const RL = global.Plan3DViewer && global.Plan3DViewer.removableLayout ? global.Plan3DViewer.removableLayout(len, o.head || 8, 99) : null;
+        quad(o.x1, o.y1, o.x2, o.y2, t - 0.04); g.fillStyle = COL.wall; g.fill();
+        const at = (a) => [o.x1 + ux * a, o.y1 + uy * a];
+        const bx = (a, b, fill) => { const [p0x, p0y] = at(a), [p1x, p1y] = at(b); quad(p0x, p0y, p1x, p1y, t - 0.04); g.fillStyle = fill; g.fill(); g.strokeStyle = COL.wallLine; g.lineWidth = 1; g.stroke(); };
+        if (RL) { for (const q of RL.posts) bx(q.s0, q.s1, '#9aa3a8'); for (const q of RL.studs) bx(q.s0, q.s1, COL.wall); }
+        g.save(); g.strokeStyle = '#e0a43a'; g.lineWidth = 1.2; g.setLineDash([5, 4]);
+        for (const k of [-0.5, 0.5]) { g.beginPath(); g.moveTo(this.sx(o.x1 + nx * (t * k + 0.12 * Math.sign(k))), this.sy(o.y1 + ny * (t * k + 0.12 * Math.sign(k)))); g.lineTo(this.sx(o.x2 + nx * (t * k + 0.12 * Math.sign(k))), this.sy(o.y2 + ny * (t * k + 0.12 * Math.sign(k)))); g.stroke(); }
+        g.restore();
+        if (len * s > 34) {
+          const mx = (o.x1 + o.x2) / 2 + nx * (t / 2 + 0.9) * sw, my = (o.y1 + o.y2) / 2 + ny * (t / 2 + 0.9) * sw, lbl = 'R ' + fmt(len);
+          g.save(); g.font = '600 10px Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+          const tw = g.measureText(lbl).width; g.fillStyle = 'rgba(26,32,36,.85)'; g.fillRect(this.sx(mx) - tw / 2 - 4, this.sy(my) - 8, tw + 8, 16);
+          g.strokeStyle = '#e0a43a'; g.lineWidth = 1; g.strokeRect(this.sx(mx) - tw / 2 - 4, this.sy(my) - 8, tw + 8, 16); g.fillStyle = '#e0a43a'; g.fillText(lbl, this.sx(mx), this.sy(my)); g.restore();
+        }
       } else if (o.type === 'pass') {
         // stainless box through the wall, drawn at its full depth with an X
         const d = Math.max(t, o.depth || 2);
