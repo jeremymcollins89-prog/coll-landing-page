@@ -56,7 +56,8 @@
             <div class="card client-card" data-action="open-client" data-id="${c.id}" tabindex="0">
               <div class="cc-top"><div class="avatar lg" style="background:${c.color}">${esc(U.initials(c.name))}</div>
                 <div style="min-width:0"><div class="cc-name">${esc(c.name)}</div><div class="muted">${esc(c.industry || 'Client')}</div></div>
-                ${c.practice ? `<span class="tag gold cc-ok">Practice</span>` : h.score ? '' : `<span class="tag green cc-ok">${ICON.check}Up to date</span>`}</div>
+                ${c.practice ? `<span class="tag gold cc-ok">Practice</span>` : h.score ? '' : `<span class="tag green cc-ok">${ICON.check}Up to date</span>`}
+                <button class="icon-btn cc-more" data-action="client-card-menu" data-id="${c.id}" aria-label="More for ${esc(c.name)}" title="More">${ICON.dots}</button></div>
               <div class="cc-stats">
                 <div class="${h.review ? 'warn' : ''}"><span>${h.review}</span>to review</div>
                 <div class="${h.unrec.length ? 'warn' : ''}"><span>${h.unrec.length}</span>to reconcile</div>
@@ -68,7 +69,23 @@
         </div>`;
     }
   });
-  act({ 'open-client': el => App.switchClient(el.dataset.id, 'dashboard') });
+  act({
+    'open-client': el => App.switchClient(el.dataset.id, 'dashboard'),
+    'client-card-menu': el => {
+      const id = el.dataset.id;
+      const m = U.openMenu(el, `<div class="mi" data-do="open">${ICON.home}<span>Open</span></div>
+        <div class="mi" data-do="settings">${ICON.edit}<span>Client settings</span></div>
+        <div class="sep"></div>
+        <div class="mi danger" data-do="delete">${ICON.trash}<span>Delete client…</span></div>`, { align: 'right', width: 210 });
+      m.onclick = e => {
+        const it = e.target.closest('[data-do]'); if (!it) return;
+        U.closeMenus();
+        if (it.dataset.do === 'open') return App.switchClient(id, 'dashboard');
+        if (it.dataset.do === 'settings') return App.switchClient(id, 'settings');
+        App.actions['delete-client']({ dataset: { id } });
+      };
+    }
+  });
 
   // ------------------------------------------------------------------
   // Dashboard

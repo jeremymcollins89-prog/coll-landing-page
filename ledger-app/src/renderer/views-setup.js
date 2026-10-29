@@ -209,16 +209,32 @@
     },
     'open-data': () => window.desktop && window.desktop.openDataFolder(),
     'load-demo': () => { const demo = C.demoClients(); S.data.clients.push(...demo); S.data.activeClientId = demo[0].id; S.data.setupDone = true; save(); go('clients'); U.toast('Two sample clients added'); },
-    'delete-client': async () => {
-      const c = client();
-      const m = U.openModal(`${U.modalHead(`Delete ${c.name}?`)}<div class="modal-body"><p style="margin:0;line-height:1.6;color:var(--ink-2)">All of ${esc(c.name)}'s transactions, invoices and reports will be removed. Type the client's name to confirm.</p><input class="input" id="del-name" placeholder="${esc(c.name)}" autofocus></div><div class="modal-foot"><button class="btn" data-action="close-modal">Cancel</button><button class="btn danger-fill" id="del-go" disabled>Delete client</button></div>`);
-      $('#del-name', m).oninput = e => { $('#del-go', m).disabled = C.normName(e.target.value) !== C.normName(c.name); };
-      $('#del-go', m).onclick = () => {
-        const snapshotAll = JSON.stringify(S.data.clients);
+    'delete-client': el => {
+      const id = el && el.dataset && el.dataset.id;
+      const c = id ? S.data.clients.find(x => x.id === id) : client();
+      if (!c) return;
+      const n = (a, w) => plural((a || []).length, w);
+      const m = U.openModal(`${U.modalHead(`Delete ${c.name}?`, 'This removes the client and all of their books')}
+        <div class="modal-body">
+          <div class="del-warn">${ICON.trash}<div><b>This will permanently remove:</b>
+            <ul><li>${n(c.transactions, 'transaction')}</li><li>${n(c.invoices, 'invoice')} and ${n(c.bills, 'bill')}</li><li>${(c.contacts || []).length} customers &amp; vendors, ${n(c.rules, 'smart rule')}</li><li>Every reconciliation, closed month and report</li></ul></div></div>
+          <div class="field" style="margin-top:16px"><label for="del-name">To confirm, type <b style="color:var(--ink)">${esc(c.name)}</b> below</label>
+          <input class="input" id="del-name" autocomplete="off" spellcheck="false" placeholder="${esc(c.name)}"></div>
+          <label class="check" style="margin-top:12px"><input type="checkbox" id="del-sure"> I understand this client's books will be deleted</label>
+          <p class="muted" style="margin:10px 0 0;font-size:12.5px">Want a copy first? Use <b>Settings → Export backup</b> before deleting.</p>
+        </div>
+        <div class="modal-foot"><button class="btn" data-action="close-modal">Cancel</button><button class="btn danger-fill" id="del-go" disabled>${ICON.trash}Delete client</button></div>`);
+      const nameIn = $('#del-name', m), sure = $('#del-sure', m), btn = $('#del-go', m);
+      const check = () => { btn.disabled = !(C.normName(nameIn.value) === C.normName(c.name) && sure.checked); };
+      nameIn.oninput = check; sure.onchange = check;
+      setTimeout(() => nameIn.focus(), 50);
+      btn.onclick = () => {
+        if (btn.disabled) return;
+        const snapshotAll = JSON.stringify(S.data.clients), wasActive = S.data.activeClientId;
         S.data.clients = S.data.clients.filter(x => x.id !== c.id);
-        S.data.activeClientId = S.data.clients[0] ? S.data.clients[0].id : null;
+        if (S.data.activeClientId === c.id) S.data.activeClientId = S.data.clients[0] ? S.data.clients[0].id : null;
         U.closeModal(); commit(); go('clients');
-        U.toast(`${c.name} deleted`, () => { S.data.clients = JSON.parse(snapshotAll); S.data.activeClientId = c.id; commit(); go('dashboard'); });
+        U.toast(`${c.name} deleted`, () => { S.data.clients = JSON.parse(snapshotAll); S.data.activeClientId = wasActive; commit(); go('clients'); });
       };
     }
   });
