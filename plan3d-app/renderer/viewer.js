@@ -3295,9 +3295,12 @@ function buildScene(THREE, plan, A) {
       const FPw = footprint(A), CAw = wallCA || (wallCA = ceilAreas(plan, A)), side = (sd) => { for (const t of [0.5, 0.2, 0.8]) { const x = p.x1 + (p.x2 - p.x1) * t + nx * sd * (p.t / 2 + 0.4), z = p.z1 + (p.z2 - p.z1) * t + nz * sd * (p.t / 2 + 0.4); if (inCeiling(plan, FPw, x, z)) return ceilingAt(CAw, H, x, z); } return 0; };
       for (const sd of [1, -1]) { const hc = side(sd); if (!hc || p.h <= hc + 0.05) continue; const o = sd * (p.t / 2 + 0.016); segBox(p.x1 + nx * o, p.z1 + nz * o, p.x2 + nx * o, p.z2 + nz * o, hc - 0.17, hc, 0.024, M.track); }
     }
-    // panels come up to 12′ tall in one piece; a taller wall is a 12′ panel with a second one stacked on it,
-    // joined with a horizontal H-channel
-    { let y = 0; const st = panelStack(p.h, wallCeil(plan, A, p)); for (let k = 0; k + 1 < st.length; k++) { y += st[k]; segBox(p.x1, p.z1, p.x2, p.z2, y - 0.06, y + 0.06, p.t + 0.02, WP.trim); } }
+    // panels come up to 12′ tall in one piece; a taller wall is a panel with a second one stacked on it. The
+    // joint looks like the vertical ones: a 3″ batten flush with the face, a hairline either side (not a band)
+    { let y = 0; const st = panelStack(p.h, wallCeil(plan, A, p)); for (let k = 0; k + 1 < st.length; k++) { y += st[k];
+      segBox(p.x1, p.z1, p.x2, p.z2, y - 0.125, y + 0.125, p.t + 0.006, WP.trim);
+      for (const e of [-0.125, 0.125]) segBox(p.x1, p.z1, p.x2, p.z2, y + e - 0.006, y + e + 0.006, p.t + 0.008, M.seamLine || (M.seamLine = new THREE.MeshBasicMaterial({ color: 0xa3aaae, name: 'Wall panel joint' })));
+    } }
     // a section that stops short of (or runs past) the top of the cleanroom gets a cap along its top
     if (Math.abs(p.h - WH) > 0.02) segBox(p.x1, p.z1, p.x2, p.z2, p.h - 0.03, p.h + 0.04, p.t + 0.03, WP.trim);
     shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
