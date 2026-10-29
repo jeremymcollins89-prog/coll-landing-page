@@ -100,7 +100,7 @@ export function build(month, P) {
 }
 
 // Money as the app writes it in these documents: no cents when it's whole dollars.
-const m = v => (Math.round(v * 100) % 100 === 0 ? '$' + Math.round(v).toLocaleString('en-US') : fmtMoney(v));
+const m = v => fmtMoney(v).replace(/\.00$/, '');
 const pct = bp => `${bp / 100}%`;
 
 export function brief(key) {

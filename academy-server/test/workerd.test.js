@@ -65,7 +65,12 @@ test('in workerd: enroll → exams → certificate, signed and verifiable', { sk
   const st = (await call('POST', '/api/exam/start', { token: t, body: { exam: 'pro' } })).body;
   assert.equal(st.questions.length, 30);
   assert(st.questions.every(q => Object.keys(q).sort().join() === 'id,options,question,topic'), 'only question fields are sent');
-  const w = (await call('POST', '/api/exam/submit', { token: t, body: { attemptId: st.attemptId, answers: answerSheet('pro', st.questions, 1) } })).body;
+  // generated questions' answers exist only in D1 — read them the way an operator could
+  const out = execFileSync(process.execPath, [path.join(ROOT, 'node_modules/wrangler/bin/wrangler.js'), 'd1', 'execute', 'coll-academy', '--local', '--persist-to', dir, '--json',
+    '--command', `SELECT questions FROM written_attempts WHERE id = '${st.attemptId}'`], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, CI: '1', WRANGLER_SEND_METRICS: 'false' } });
+  const stored = JSON.parse(JSON.parse(out.slice(out.indexOf('[')))[0].results[0].questions);
+  assert.equal(stored.filter(q => q.g).length, 12);
+  const w = (await call('POST', '/api/exam/submit', { token: t, body: { attemptId: st.attemptId, answers: answerSheet('pro', st.questions, 1, stored) } })).body;
   assert.deepEqual([w.score, w.passed, w.review.length], [29, true, 1]);
 
   // practical exam: built by the app's engine inside workerd

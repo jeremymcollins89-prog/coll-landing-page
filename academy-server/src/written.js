@@ -1,16 +1,21 @@
-// Written exams, graded on the server. The answer key never leaves this file's
-// imports: the client gets questions and options in a shuffled order only.
+// Written exams, graded on the server. The answer key never leaves the server:
+// the client gets questions and options in a shuffled order only.
+// Each official exam is about 60% bank questions (the banks are public, so they can
+// be studied) and about 40% calculation questions generated for that attempt from
+// fresh random numbers (src/banks/generated.js), so answers can't be memorized.
 import PRO_BANK from './banks/pro.js';
 import ADV_BANK from './banks/adv.js';
+import { generateSet } from './banks/generated.js';
 import { fail } from './http.js';
 import { randomInt, isoTime } from './util.js';
 import { newId } from './students.js';
 import { assertNotLocked, recordTry } from './limits.js';
 
 // Same sizes and pass mark as the app (views-exam.js / views-advanced.js).
+// draw = fromBank + generated.
 export const EXAMS = {
-  pro: { bank: PRO_BANK, draw: 30, pass: 0.8, title: 'Professional written exam' },
-  adv: { bank: ADV_BANK, draw: 35, pass: 0.8, title: 'Advanced written exam' }
+  pro: { bank: PRO_BANK, draw: 30, fromBank: 18, generated: 12, pass: 0.8, title: 'Professional written exam' },
+  adv: { bank: ADV_BANK, draw: 35, fromBank: 21, generated: 14, pass: 0.8, title: 'Advanced written exam' }
 };
 export const ATTEMPT_MS = 3 * 60 * 60 * 1000; // an attempt must be submitted within 3 hours
 
@@ -30,14 +35,28 @@ export function drawQuestions(bank, draw) {
   return shuffle([...picked]).map(b => ({ b, o: shuffle([0, 1, 2]) }));
 }
 
-// What the student sees: no correct index, no explanation.
-const publicQuestions = (bank, qs) => qs.map((q, k) => ({ id: `q${k + 1}`, topic: bank[q.b][0], question: bank[q.b][1], options: q.o.map(i => bank[q.b][2][i]) }));
+// The full entry [topic, question, options, correct, why] for a stored question:
+// { b, o } is a bank question (b = bank index, o = option order shown);
+// { g, o } is a generated one, stored whole with the attempt (g.options already shuffled).
+export const entryOf = (exam, q) => (q.g ? [q.g.topic, q.g.question, q.g.options, q.g.correct, q.g.why] : EXAMS[exam].bank[q.b]);
+
+// A new attempt's questions: bank questions (every topic covered) plus generated
+// calculation questions, mixed together in a random order.
+export function buildAttempt(exam, seed = randomInt(0xFFFFFFFF) + 1) {
+  const E = EXAMS[exam];
+  const bank = drawQuestions(E.bank, E.fromBank);
+  const gen = generateSet(exam, E.generated, seed).map(g => ({ g, o: [0, 1, 2] }));
+  return shuffle([...bank, ...gen]);
+}
+
+// What the student sees: no correct index, no explanation, no inputs.
+const publicQuestions = (exam, qs) => qs.map((q, k) => { const [topic, question, options] = entryOf(exam, q); return { id: `q${k + 1}`, topic, question, options: q.o.map(i => options[i]) }; });
 
 const attemptView = (exam, row, qs, extra = {}) => ({
   attemptId: row.id, exam, title: EXAMS[exam].title,
   startedAt: isoTime(row.started_at), expiresAt: isoTime(row.expires_at),
   total: qs.length, passPercent: Math.round(EXAMS[exam].pass * 100), needed: Math.ceil(qs.length * EXAMS[exam].pass),
-  questions: publicQuestions(EXAMS[exam].bank, qs), ...extra
+  questions: publicQuestions(exam, qs), ...extra
 });
 
 export async function hasCredential(env, studentId, program) {
@@ -70,7 +89,7 @@ export async function startWritten(env, student, exam, now) {
   }
   const tries = await assertNotLocked(env, student, key, now, E.title);
 
-  const qs = drawQuestions(E.bank, E.draw);
+  const qs = buildAttempt(exam);
   const row = { id: newId('wa', 16), started_at: now, expires_at: now + ATTEMPT_MS };
   await env.DB.prepare("INSERT INTO written_attempts (id, student_id, exam, questions, status, started_at, expires_at) VALUES (?1, ?2, ?3, ?4, 'open', ?5, ?6)")
     .bind(row.id, student.id, exam, JSON.stringify(qs), row.started_at, row.expires_at).run();
@@ -107,7 +126,7 @@ export async function submitWritten(env, student, body, now) {
   const review = [];
   let score = 0;
   qs.forEach((q, k) => {
-    const [topic, question, options, correct, why] = E.bank[q.b];
+    const [topic, question, options, correct, why] = entryOf(exam, q);
     const shown = answers[`q${k + 1}`];
     const chosen = Number.isInteger(shown) ? q.o[shown] : null; // back to the bank's option index
     if (chosen === correct) score++;

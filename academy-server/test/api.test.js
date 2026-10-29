@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { makeApp, KEY, ADMIN_TOKEN, REPO, HOUR, DAY } from './helpers/harness.js';
+import { makeApp, KEY, ADMIN_TOKEN, REPO, HOUR, DAY, storedQuestions } from './helpers/harness.js';
+import { entryOf } from '../src/written.js';
 import { answerSheet, solvePro, solveAdv } from './helpers/solve.js';
 import { assertVerifies } from './helpers/verify.js';
 import worker from '../src/index.js';
@@ -24,7 +25,7 @@ async function enroll(app, opts = {}) {
 async function passWritten(app, token, exam, wrong = 0) {
   const s = await app.call('POST', '/api/exam/start', { token, body: { exam } });
   assert.equal(s.status, 200, JSON.stringify(s.body));
-  const r = await app.call('POST', '/api/exam/submit', { token, body: { attemptId: s.body.attemptId, answers: answerSheet(exam, s.body.questions, wrong) } });
+  const r = await app.call('POST', '/api/exam/submit', { token, body: { attemptId: s.body.attemptId, answers: answerSheet(exam, s.body.questions, wrong, storedQuestions(app, s.body.attemptId)) } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   return r.body;
 }
@@ -209,13 +210,17 @@ describe('written exams', () => {
     assert.deepEqual(new Set(b.questions.map(q => q.topic)), topics, 'every topic is drawn');
     assert.equal(new Set(b.questions.map(q => q.question)).size, 30, 'no repeats');
     const text = JSON.stringify(b);
-    for (const q of b.questions) {
+    const stored = storedQuestions(app, b.attemptId);
+    assert.equal(stored.filter(q => q.g).length, 12, '12 generated'); assert.equal(stored.filter(q => !q.g).length, 18, '18 from the bank');
+    b.questions.forEach((q, k) => {
       assert.deepEqual(Object.keys(q).sort(), ['id', 'options', 'question', 'topic']);
       assert.equal(q.options.length, 3);
-      const entry = PRO_BANK.find(x => x[1] === q.question);
+      const entry = entryOf('pro', stored[k]);
+      assert.equal(q.question, entry[1]);
       assert.deepEqual([...q.options].sort(), [...entry[2]].sort());
       assert(!text.includes(entry[4]), 'explanation leaked');
-    }
+      if (!stored[k].g) assert(PRO_BANK.some(x => x[1] === q.question));
+    });
     assert.deepEqual(Object.keys(b).sort(), ['attemptId', 'exam', 'expiresAt', 'needed', 'passPercent', 'questions', 'resumed', 'startedAt', 'title', 'total', 'triesLeft']);
     assert(!/"(correct\w*|why|answer\w*)"\s*:/i.test(text), 'answer fields leaked');
     // asking again resumes the same attempt
@@ -245,12 +250,13 @@ describe('written exams', () => {
     // 7 wrong → 23/30 = 76.7%: not a pass, and the review shows exactly the misses
     const s2 = await enroll(app);
     const st = (await app.call('POST', '/api/exam/start', { token: s2.token, body: { exam: 'pro' } })).body;
-    const sheet = answerSheet('pro', st.questions, 7);
+    const stored = storedQuestions(app, st.attemptId);
+    const sheet = answerSheet('pro', st.questions, 7, stored);
     delete sheet.q30; // unanswered counts as wrong
     const r = (await app.call('POST', '/api/exam/submit', { token: s2.token, body: { attemptId: st.attemptId, answers: sheet } })).body;
     assert.deepEqual([r.score, r.passed, r.review.length, r.percent], [22, false, 8, 73]);
     for (const m of r.review) {
-      const q = st.questions.find(x => x.id === m.id), entry = PRO_BANK.find(x => x[1] === q.question);
+      const entry = entryOf('pro', stored[+m.id.slice(1) - 1]);
       assert.equal(m.correctAnswer, entry[2][entry[3]]); assert.equal(m.why, entry[4]);
       assert.notEqual(m.yourAnswer, m.correctAnswer);
     }
@@ -298,7 +304,7 @@ describe('written exams', () => {
     const app = makeApp(); const s = await enroll(app);
     const st = (await app.call('POST', '/api/exam/start', { token: s.token, body: { exam: 'pro' } })).body;
     app.advance(3 * HOUR + 1000);
-    const late = await app.call('POST', '/api/exam/submit', { token: s.token, body: { attemptId: st.attemptId, answers: answerSheet('pro', st.questions) } });
+    const late = await app.call('POST', '/api/exam/submit', { token: s.token, body: { attemptId: st.attemptId, answers: answerSheet('pro', st.questions, 0, storedQuestions(app, st.attemptId)) } });
     assert.equal(late.status, 410); assert.equal(late.body.error, 'attempt_expired');
     assert.equal((await app.call('GET', '/api/me', { token: s.token })).body.exams.pro.written.tries.left, 2);
     // abandoning one (never submitting) also counts, once, when the next is started

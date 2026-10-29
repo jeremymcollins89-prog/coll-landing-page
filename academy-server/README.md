@@ -4,7 +4,9 @@ The Academy server is a small program that runs on Cloudflare's free plan. It ma
 Coll Ledger Academy certificates trustworthy:
 
 - students get an account (name + email) and their progress syncs between phone and desktop
-- written exams are graded **on the server** — the answer keys never go to the app
+- written exams are graded **on the server** — the answer keys never go to the app — and
+  about 40% of each exam is calculation questions with fresh numbers every attempt, so
+  answers can't be memorized
 - each student gets **their own numbers** on the practical exams, graded on the server
 - the "three tries, then a 24-hour break" rule is enforced on the server
 - certificates are issued and **digitally signed** right away, and the verify page
@@ -154,6 +156,7 @@ academy-server/
   src/progress.js         progress sync
   src/written.js          written exams (draw, grade)
   src/banks/pro.js, adv.js  the question banks with answers (copied from the app)
+  src/banks/generated.js  calculation questions generated per attempt (~40% of each exam)
   src/practical/          Juniper (pro) and Aspen Trail (adv): build, brief, grade
   src/credentials.js      certificates: same JSON and signature as scripts/credentials/sign.js
   src/limits.js           rate limits and the tries rule

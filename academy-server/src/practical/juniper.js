@@ -109,7 +109,7 @@ export function build(month, P) {
   return { client: c, key };
 }
 
-const whole = v => (Math.round(v * 100) % 100 === 0 ? '$' + Math.round(v).toLocaleString('en-US') : fmtMoney(v));
+const whole = v => fmtMoney(v).replace(/\.00$/, ''); // no cents when it's whole dollars
 
 // The brief: source documents and tasks, all with this student's numbers.
 export function brief(key) {

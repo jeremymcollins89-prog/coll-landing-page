@@ -52,9 +52,12 @@ export function seededRandom(seed) {
 // ---------------------------------------------------------------- money
 // All practical-exam math is done in whole cents, then turned into dollars.
 export const dollars = cents => Math.round(cents) / 100;
+// "$1,234.56" / "−$1,234.56". Plain string work, not toLocaleString: Intl is slow,
+// and a Worker on the free plan has 10 ms of CPU per request.
 export const fmtMoney = v => {
-  const neg = v < 0, n = Math.abs(Math.round(v * 100)) / 100;
-  return (neg ? '−' : '') + '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const cents = Math.abs(Math.round(v * 100));
+  const whole = String(Math.floor(cents / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (v < 0 && cents ? '−' : '') + '$' + whole + '.' + String(cents % 100).padStart(2, '0');
 };
 
 // ---------------------------------------------------------------- dates (UTC)

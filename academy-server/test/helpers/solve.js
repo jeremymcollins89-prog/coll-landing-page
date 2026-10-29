@@ -12,14 +12,21 @@ const grab = (text, re) => { const m = re.exec(text); if (!m) throw new Error(`N
 const doc = (brief, start) => { const d = brief.documents.find(x => x.title.startsWith(start)); if (!d) throw new Error('No document ' + start); return d.text; };
 
 // ---------------------------------------------------------------- written
-// Picks options by looking the question up in the bank. `wrong` = how many to miss on purpose.
-export function answerSheet(exam, questions, wrong = 0) {
+// Picks options for an attempt. Bank questions are looked up in the bank;
+// generated ones need the attempt as stored on the server (`stored`, the parsed
+// written_attempts.questions) — tests read it from the database. `wrong` = how many to miss on purpose.
+export function answerSheet(exam, questions, wrong = 0, stored = null) {
   const bank = exam === 'pro' ? PRO_BANK : ADV_BANK;
   const answers = {};
   questions.forEach((q, k) => {
-    const entry = bank.find(b => b[1] === q.question && b[0] === q.topic);
-    if (!entry) throw new Error('Question not in bank: ' + q.question);
-    const right = q.options.indexOf(entry[2][entry[3]]);
+    let right;
+    const s = stored && stored[k];
+    if (s && s.g) right = s.o.indexOf(s.g.correct);
+    else {
+      const entry = bank.find(b => b[1] === q.question && b[0] === q.topic);
+      if (!entry) throw new Error('Not a bank question (pass the stored attempt): ' + q.question);
+      right = q.options.indexOf(entry[2][entry[3]]);
+    }
     answers[q.id] = k < wrong ? (right + 1) % 3 : right;
   });
   return answers;

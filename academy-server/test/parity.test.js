@@ -39,10 +39,11 @@ const shape = c => ({
 });
 const items = r => r.items.map(x => [x.label, x.pts, x.ok, x.got]);
 
-test('the written banks are the app\'s banks, word for word', () => {
-  const bank = f => { const src = fs.readFileSync(path.join(R, f), 'utf8'); return Function('return [' + src.match(/const BANK = \[([\s\S]*?)\n  \];/)[1] + ']')(); };
-  assert.deepEqual(PRO_BANK, bank('views-exam.js'));
-  assert.deepEqual(ADV_BANK, bank('views-advanced.js'));
+// Once the banks are removed from the app (they live only here now), this has nothing to compare.
+const clientBank = f => { const m = fs.readFileSync(path.join(R, f), 'utf8').match(/const BANK = \[([\s\S]*?)\n  \];/); return m ? Function('return [' + m[1] + ']')() : null; };
+test('the written banks are the app\'s banks, word for word', { skip: !clientBank('views-exam.js') && 'the app no longer carries the banks' }, () => {
+  assert.deepEqual(PRO_BANK, clientBank('views-exam.js'));
+  if (clientBank('views-advanced.js')) assert.deepEqual(ADV_BANK, clientBank('views-advanced.js'));
 });
 
 test('Juniper Flower Co.: same client and same grading as the app', () => {

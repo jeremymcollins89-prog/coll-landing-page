@@ -192,17 +192,39 @@ then base64; reverse with `DecompressionStream('gzip')`. Both work in Electron a
 
 ## Written exams
 
-The question banks and answer keys are on the server only (`src/banks/`). The client
-gets questions with the three options in a shuffled order — never the correct option
-or the explanation.
+Each official exam mixes two kinds of question:
 
-| Exam | Questions | Bank | Pass | Time per attempt |
-|---|---|---|---|---|
-| `pro` — Professional | 30 | 67 | 80% (24 right) | 3 hours |
-| `adv` — Advanced | 35 | 60 | 80% (28 right) | 3 hours |
+- **From the bank** (about 60%): questions from `src/banks/pro.js` / `adv.js`. These banks are
+  in a public repository, so they can be studied but not trusted alone.
+- **Generated** (about 40%): calculation questions made for **that attempt** from fresh random
+  numbers (`src/banks/generated.js`), so the answers can't be memorized or shared. Each one is
+  worked exactly to the cent, and its two wrong options come from real mistakes (forgetting
+  salvage value, an annual figure instead of a monthly one, 6.2% instead of 7.65%, adding
+  instead of subtracting, taxing a tax-included total…). Its explanation shows the worked math.
 
-The draw is the app's: at least one question from every topic, then random questions up
-to the total; question order and option order are random per attempt.
+| Exam | Questions | From the bank | Generated | Pass | Time per attempt |
+|---|---|---|---|---|---|
+| `pro` — Professional | 30 | 18 of 67 (every topic at least once) | 12 of 15 templates | 80% (24 right) | 3 hours |
+| `adv` — Advanced | 35 | 21 of 60 (every topic at least once) | 14 of 17 templates | 80% (28 right) | 3 hours |
+
+The two kinds are mixed in a random order and look the same to the client (`id`, `topic`,
+`question`, `options`). Option order is random. The answers, explanations and generated
+inputs stay with the attempt on the server and are never sent before submitting. A resumed
+attempt shows exactly the same questions, numbers and option order.
+
+**Generated templates.**
+*Professional:* transposition error (difference ÷ 9), bank reconciliation adjusted balance,
+net pay (federal + Colorado 4.4% + employee FICA), employer payroll cost (7.65%), sales tax
+backed out of a tax-included total, invoice total with discount and tax, gross margin, net
+margin, prepaid insurance remaining, straight-line depreciation per month, owner's equity
+roll-forward, average days to get paid, estimated-tax set-aside, 2026 mileage deduction
+(72.5¢ Jan–Jun, 76¢ Jul–Dec), 1099-NEC needed? ($2,000 for 2026; card payments excluded).
+*Advanced:* unearned revenue remaining, accrued wages, loan principal vs. interest, cost of goods
+sold, inventory shrinkage entry, book value, gain or loss on sale, employer FICA, FUTA (0.6% of
+the first $7,000), Social Security at the 2026 $184,500 wage base, self-employment tax
+(92.35% × 15.3%), prior-year safe harbor (100% / 110% over $150,000 AGI), meals vs.
+entertainment, 24% backup withholding, cash from operations (indirect), retained earnings
+roll-forward, Sales Tax Payable balance.
 
 ### `POST /api/exam/start` 🔒
 
@@ -215,7 +237,9 @@ to the total; question order and option order are random per attempt.
   "startedAt": "2026-10-28T15:00:00Z", "expiresAt": "2026-10-28T18:00:00Z",
   "total": 30, "passPercent": 80, "needed": 24,
   "questions": [
-    { "id": "q1", "topic": "Basics", "question": "Assets − Liabilities = ?", "options": ["Cash", "Profit", "Equity"] }
+    { "id": "q1", "topic": "Basics", "question": "Assets − Liabilities = ?", "options": ["Cash", "Profit", "Equity"] },
+    { "id": "q2", "topic": "Payroll", "question": "Gross wages for this payroll total $3,636.46. Not counting unemployment taxes, what does the payroll cost the business, including the employer's share of FICA?",
+      "options": ["$3,636.46", "$3,861.92", "$3,914.65"] }
   ],
   "resumed": false, "triesLeft": 3
 }
@@ -243,6 +267,7 @@ to the total; question order and option order are random per attempt.
   "tries": { "left": 3, "lockedUntil": null }
 }
 ```
+- `review` works the same for generated questions: `correctAnswer` and a `why` with the worked math.
 - One submission per attempt (`409 already_submitted` after).
 - After `expiresAt`: `410 attempt_expired` (counts as a try).
 - `pct` is a fraction (0–1), like the app's saved `written[].pct`; `percent` is rounded.

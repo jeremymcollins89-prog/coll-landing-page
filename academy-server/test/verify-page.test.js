@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { makeApp, REPO, ADMIN_TOKEN, KEY } from './helpers/harness.js';
+import { makeApp, REPO, ADMIN_TOKEN, KEY, storedQuestions } from './helpers/harness.js';
 import { answerSheet, solvePro } from './helpers/solve.js';
 
 const html = fs.readFileSync(path.join(REPO, 'verify.html'), 'utf8');
@@ -42,7 +42,7 @@ test('verify.html checks server-issued certificates, with fallbacks', async () =
   const app = makeApp();
   const s = (await app.call('POST', '/api/enroll', { body: { name: 'Riley Park', email: 'riley@example.com' } })).body;
   const st = (await app.call('POST', '/api/exam/start', { token: s.token, body: { exam: 'pro' } })).body;
-  await app.call('POST', '/api/exam/submit', { token: s.token, body: { attemptId: st.attemptId, answers: answerSheet('pro', st.questions) } });
+  await app.call('POST', '/api/exam/submit', { token: s.token, body: { attemptId: st.attemptId, answers: answerSheet('pro', st.questions, 0, storedQuestions(app, st.attemptId)) } });
   const pr = (await app.call('POST', '/api/practical/start', { token: s.token, body: { exam: 'pro' } })).body;
   await app.call('POST', '/api/practical/submit', { token: s.token, body: { practicalId: pr.practicalId, client: solvePro(pr.client, pr.brief).client } });
   const e = (await app.call('POST', '/api/credential/claim', { token: s.token, body: { program: 'professional' } })).body;

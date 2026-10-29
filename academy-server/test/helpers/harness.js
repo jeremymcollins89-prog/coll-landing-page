@@ -36,3 +36,6 @@ export function makeApp(start = Date.UTC(2026, 9, 28, 15, 0, 0)) {
 }
 
 export const HOUR = 3600e3, DAY = 24 * HOUR;
+
+// The attempt's questions as stored on the server (test-only: the API never sends this).
+export const storedQuestions = (app, attemptId) => JSON.parse(app.env.DB.db.prepare('SELECT questions FROM written_attempts WHERE id = ?').get(attemptId).questions);
