@@ -366,26 +366,26 @@
   // The medallion. Same artwork as the website's badge image.
   function badgeSVG(o = {}) {
     const dist = !!o.distinction, year = o.year === '' ? '' : (o.year || today().slice(0, 4));
-    const dot = a => `<circle cx="${600 + 474 * Math.cos(a)}" cy="${600 + 474 * Math.sin(a)}" r="9" fill="#0F2A21"/>`;
+    const dot = a => `<circle cx="${600 + 474 * Math.cos(a)}" cy="${600 + 474 * Math.sin(a)}" r="9" fill="${o.adv ? '#0F1F3A' : '#0F2A21'}"/>`;
     return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
       <defs>
         <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F6DEA0"/><stop offset=".45" stop-color="#D9AE5C"/><stop offset="1" stop-color="#9A6E2B"/></linearGradient>
-        <radialGradient id="green" cx=".38" cy=".3" r=".85"><stop offset="0" stop-color="#2F8A6A"/><stop offset=".55" stop-color="#1E6B53"/><stop offset="1" stop-color="#0F3B2D"/></radialGradient>
+        <radialGradient id="green" cx=".38" cy=".3" r=".85">${o.adv ? '<stop offset="0" stop-color="#3B5F95"/><stop offset=".55" stop-color="#22406E"/><stop offset="1" stop-color="#0F1F3A"/>' : '<stop offset="0" stop-color="#2F8A6A"/><stop offset=".55" stop-color="#1E6B53"/><stop offset="1" stop-color="#0F3B2D"/>'}</radialGradient>
         <path id="top" d="M 600 600 m -458 0 a 458 458 0 1 1 916 0"/>
         <path id="bot" d="M 600 600 m -492 0 a 492 492 0 0 0 984 0"/>
       </defs>
       <circle cx="600" cy="600" r="560" fill="url(#gold)"/>
-      <circle cx="600" cy="600" r="520" fill="#0F2A21"/>
+      <circle cx="600" cy="600" r="520" fill="${o.adv ? '#0F1F3A' : '#0F2A21'}"/>
       <circle cx="600" cy="600" r="505" fill="url(#gold)"/>
       ${dot(0)}${dot(Math.PI)}
       <circle cx="600" cy="600" r="440" fill="url(#green)"/>
       <circle cx="600" cy="600" r="428" fill="none" stroke="#F1D79A" stroke-opacity=".55" stroke-width="3"/>
-      <text font-family="Georgia, 'Times New Roman', serif" font-size="44" letter-spacing="9" fill="#0F2A21" font-weight="700"><textPath href="#top" startOffset="50%" text-anchor="middle">COLL LEDGER ACADEMY</textPath></text>
-      <text font-family="Georgia, 'Times New Roman', serif" font-size="40" letter-spacing="7" fill="#0F2A21" font-weight="700"><textPath href="#bot" startOffset="50%" text-anchor="middle">PROFESSIONAL BOOKKEEPER</textPath></text>
+      <text font-family="Georgia, 'Times New Roman', serif" font-size="44" letter-spacing="9" fill="${o.adv ? '#0F1F3A' : '#0F2A21'}" font-weight="700"><textPath href="#top" startOffset="50%" text-anchor="middle">COLL LEDGER ACADEMY</textPath></text>
+      <text font-family="Georgia, 'Times New Roman', serif" font-size="40" letter-spacing="7" fill="${o.adv ? '#0F1F3A' : '#0F2A21'}" font-weight="700"><textPath href="#bot" startOffset="50%" text-anchor="middle">${o.adv ? 'ACCOUNTING &amp; TAX' : 'PROFESSIONAL BOOKKEEPER'}</textPath></text>
       <circle cx="600" cy="560" r="150" fill="none" stroke="url(#gold)" stroke-width="10"/>
       <text x="600" y="628" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="210" fill="url(#gold)">C</text>
       <path d="M330 760 h540 l-38 52 38 52 h-540 l38 -52z" fill="url(#gold)"/>
-      <text x="600" y="830" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="58" font-weight="700" fill="#16201C" letter-spacing="5">${dist ? 'DISTINCTION' : ('CERTIFIED ' + year).trim()}</text>
+      <text x="600" y="830" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="58" font-weight="700" fill="#16201C" letter-spacing="5">${dist ? 'DISTINCTION' : o.adv ? ('ADVANCED ' + year).trim() : ('CERTIFIED ' + year).trim()}</text>
       ${dist ? `<text x="600" y="925" text-anchor="middle" font-family="Georgia, serif" font-size="46" fill="#F1D79A" letter-spacing="8">${year}</text>` : ''}
       <g fill="#F1D79A">${[-1, 0, 1].map(k => `<path transform="translate(${600 + k * 70} ${k ? 300 : 286}) scale(${k ? 1.1 : 1.5})" d="M0-16 4.7-5.2 16.2-4.9 7.1 2.4 10.4 13.5 0 7 -10.4 13.5 -7.1 2.4 -16.2-4.9 -4.7-5.2z"/>`).join('')}</g>
     </svg>`;
@@ -485,5 +485,5 @@
     }
   });
 
-  App.academy = { proAdvisorCard, proAdvisorModal, credentialModal, badgeSVG, shareSVG, linkedInUrl, renderWritten, renderPractical, writtenPassed, practicalPassed: () => !!(T().practical && T().practical.passed), certificate, examClient, BANK, grade, buildExam };
+  App.academy = { svgToPngBase64, saveImage, verifyUrl, credId, openLink, T, proAdvisorCard, proAdvisorModal, credentialModal, badgeSVG, shareSVG, linkedInUrl, renderWritten, renderPractical, writtenPassed, practicalPassed: () => !!(T().practical && T().practical.passed), certificate, examClient, BANK, grade, buildExam };
 })();

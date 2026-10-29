@@ -89,7 +89,7 @@
       ['2. Separate your money', 'Open a business bank account and card from day one — practice what you\'ll preach to clients.'],
       ['3. Protect yourself', 'Get <b>errors & omissions (E&O) insurance</b>, have an attorney review your standard engagement letter once, and use it with every client.'],
       ['4. Set your prices', 'Decide your monthly packages and catch-up pricing. My studio → <b>Price a client</b> gives you a starting point.'],
-      ['5. Earn credentials', 'Your Coll Ledger certificate, then the free <b>QuickBooks Online certification</b> (it lists you in Intuit\'s Find-a-ProAdvisor directory). Later, consider the AIPB or NACPB bookkeeping certifications.'],
+      ['5. Earn credentials', 'Your Coll Ledger certificate, then the free <b>QuickBooks Online certification</b> (it lists you in Intuit\'s Find-a-ProAdvisor directory). Then the Academy\'s <b>Advanced Accounting &amp; Tax Certificate</b>, an accredited college certificate, and — if tax work calls to you — the IRS <b>Enrolled Agent</b> exam. <a href="#" data-action="adv-programs">See accredited programs</a>.'],
       ['6. Find your first clients', 'Local CPA firms often refer bookkeeping work they don\'t want. Also try your chamber of commerce, networking groups, local business Facebook groups, and people you already know who run businesses.'],
       ['7. Set up your tools', 'Coll Ledger with a password and cloud backup, a password manager, two-factor login on email, and a secure way to receive documents.'],
       ['8. Start small and keep learning', 'Two or three clients you serve well beat ten you rush. Keep a list of questions for a mentor or the client\'s CPA, and keep taking courses each year.']

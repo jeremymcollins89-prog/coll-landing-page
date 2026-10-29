@@ -20,7 +20,7 @@
     if (t.coachHidden == null) t.coachHidden = false;
     return t;
   };
-  const practice = () => S.data.clients.find(c => c.practice && !c.exam) || null;
+  const practice = () => S.data.clients.find(c => c.practice && !c.exam && !c.advExam) || null;
   const pad = n => String(n).padStart(2, '0');
   const lastMonthEnd = () => { const d = C.parseISO(today()); return C.isoOf(new Date(d.getFullYear(), d.getMonth(), 0)); };
 
@@ -188,6 +188,14 @@
     const opt = (sel) => `<option value="">Choose…</option>${DRILL_ACCTS.map(a => `<option ${sel === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}`;
     return `<div class="drill"><div class="cap-label">The drill — pick the debit and the credit</div>${DRILL.map((x, i) => { const a = d[i] || {}; const ok = a.dr === x[1] && a.cr === x[2]; return `<div class="drill-row ${shown ? (ok ? 'ok' : 'bad') : ''}"><div class="drill-q"><span class="n">${i + 1}</span>${esc(x[0])}</div><div class="drill-a"><label>Debit<select class="input sm" data-drill="${i}" data-side="dr">${opt(a.dr)}</select></label><label>Credit<select class="input sm" data-drill="${i}" data-side="cr">${opt(a.cr)}</select></label>${shown ? `<span class="drill-mark">${ok ? ICON.check : ICON.close}</span>` : ''}</div>${shown && !ok ? `<div class="drill-hint">Ask: what did the business get, and where did it come from?</div>` : ''}</div>`; }).join('')}
       <div class="drill-foot"><button class="btn primary" data-action="t-drill-check">Check my answers</button>${shown ? `<b class="${drillScore() === DRILL.length ? 'pos' : ''}">${drillScore()} of ${DRILL.length} right${drillScore() === DRILL.length ? ' — perfect!' : ''}</b>` : ''}</div></div>`;
+  }
+  function plantLoan() {
+    const c = ensurePractice(false); const t = T(); t.planted = t.planted || {};
+    if (t.planted.loan && c.transactions.some(x => x.id === t.planted.loan)) return;
+    const lp = C.acctByName(c, 'Loans Payable'); C.acctByName(c, 'Interest Expense') || C.ensureAccount(c, { name: 'Interest Expense', type: 'expense', sub: 'otherexpense' });
+    if (lp && !lp.opening) lp.opening = 24000;
+    const x = { id: C.uid(), date: plantDate(c), description: 'FIRSTBANK EQUIP LOAN PMT', payee: 'FirstBank', amount: -650, accountId: C.acctByName(c, 'Business Checking').id, categoryId: lp ? lp.id : '', memo: 'Equipment loan', status: 'posted', cleared: false, reconciled: false };
+    c.transactions.push(x); t.planted.loan = x.id; save();
   }
   function plantPayroll() {
     const c = ensurePractice(false); const t = T(); t.planted = t.planted || {};
@@ -682,7 +690,254 @@
       action: ['Import the practice QuickBooks file', () => { ensurePractice(true, 'import'); setTimeout(() => feed('bluebird-account-list.csv', qbFile()), 60); }],
       check: () => { const c = P(); return !!c && (c.imports || []).some(i => i.kind === 'qb-accounts' && !i.undone); },
       quiz: [{ q: 'Which QuickBooks file should you import first?', a: ['Transactions', 'Chart of accounts', 'Customers'], c: 1, why: 'With the chart of accounts in place, every transaction finds its matching category.' }]
+    },
+    // =====================================================================
+    // ADVANCED ACCOUNTING & TAX (second certificate)
+    // =====================================================================
+    // ---------- Module A · Accrual accounting and the close ----------
+    {
+      id: 'adv-accrual', track: 'adv', level: 5, title: 'Accrual accounting and deferred revenue', mins: 8,
+      learn: 'When income and expenses really belong — the idea behind every adjusting entry.',
+      body: [
+        `<p>On the <b>cash basis</b>, income counts when money arrives and expenses when they're paid. On the <b>accrual basis</b>, income counts when it's <b>earned</b> and expenses when they're <b>incurred</b> — whatever the bank says. Lenders, investors and larger businesses expect accrual; many small businesses file taxes on cash. A professional understands both.</p>`,
+        `<p>Two principles drive everything: <b>revenue recognition</b> (record income when the work is delivered) and <b>matching</b> (record an expense in the same period as the income it helped earn).</p>`,
+        `<p>A common case: a customer pays a <b>deposit</b> before the work is done. Until it's delivered, the business <i>owes</i> the work — so the deposit is a liability called <b>Unearned (deferred) Revenue</b>, not income. When the work is delivered, move it to income.</p>`,
+        `<p>Bluebird took a <b>$1,200 deposit</b> for a wedding cake delivered next month, and it was recorded as Sales. Fix it with a journal entry: <b>debit Sales $1,200, credit Unearned Revenue $1,200</b>. Next month, when the cake is delivered, the reverse entry recognizes the income.</p>`
+      ],
+      words: [['Accrual basis', 'Income when earned, expenses when incurred.'], ['Revenue recognition', 'Recording income when the goods or services are delivered.'], ['Unearned revenue', 'Money received for work not yet done — a liability.']],
+      task: 'Post the journal entry moving the $1,200 deposit from Sales to Unearned Revenue.',
+      action: ['Open Journal entries', () => { const c = ensurePractice(false); C.acctByName(c, 'Unearned Revenue') || C.ensureAccount(c, { name: 'Unearned Revenue', type: 'liability', sub: 'current' }); save(); ensurePractice(true, 'journal'); }],
+      check: () => jeHas(P(), 'Sales', 1200, 'Unearned Revenue', 1200),
+      quiz: [
+        { q: 'A customer prepays $6,000 in January for a year of monthly service. On the accrual basis, January income is…', a: ['$6,000', '$500 — the rest stays in Unearned Revenue', '$0'], c: 1, why: 'Only one month was earned. The other $5,500 is owed service until each month is delivered.' },
+        { q: 'Which principle says to record a sales commission in the same month as the sale it came from?', a: ['Matching', 'Conservatism', 'Going concern'], c: 0, why: 'Matching puts expenses in the period of the income they helped produce.' }
+      ]
+    },
+    {
+      id: 'adv-prepaid', track: 'adv', level: 5, title: 'Prepaids, accruals and reversing entries', mins: 7,
+      learn: 'Getting expenses into the right month when the bill and the benefit don\'t line up.',
+      body: [
+        `<p><b>Prepaid expenses</b> are paid before they're used — a year of insurance, a software subscription, rent paid in advance. Record the payment to <i>Prepaid Expenses</i> (an asset), then move one month's share to the expense each month.</p>`,
+        `<p><b>Accrued expenses</b> are the opposite: used before they're billed — wages employees earned at month end, utilities used before the bill arrives, interest building on a loan. Record the expense and an <i>Accrued Liability</i> at month end.</p>`,
+        `<p>To avoid counting an accrual twice when the real bill is paid, post a <b>reversing entry</b> on the first day of the next month. Coll Ledger does it for you when you tick <i>Reverse it automatically</i>.</p>`,
+        `<p>October's electric bill isn't in yet; the meter reading says about <b>$180</b>. Accrue it: <b>debit Utilities $180, credit Accrued Liabilities $180</b>, set to reverse automatically.</p>`
+      ],
+      words: [['Prepaid expense', 'Paid in advance — an asset used up over time.'], ['Accrued expense', 'Incurred but not yet billed or paid — a liability.'], ['Reversing entry', 'An automatic opposite entry next period that cancels an accrual.']],
+      task: 'Post the $180 utilities accrual with an automatic reversal.',
+      action: ['Open Journal entries', () => ensurePractice(true, 'journal')],
+      check: () => { const c = P(); if (!jeHas(c, 'Utilities', 180, 'Accrued Liabilities', 180)) return false; const u = C.acctByName(c, 'Utilities'); return (c.journals || []).some(j => j.reversalOf && !j.void && j.lines.some(l => l.accountId === u.id && Math.abs(+l.credit - 180) < 0.005)); },
+      quiz: [
+        { q: 'A $2,400 annual insurance policy is paid on March 1. What\'s March\'s insurance expense on the accrual basis?', a: ['$2,400', '$200', '$0'], c: 1, why: '$2,400 ÷ 12 months = $200 a month; the rest stays in Prepaid Expenses.' },
+        { q: 'Employees earned $1,250 in the last days of the month, paid on the 5th. At month end you…', a: ['Do nothing', 'Debit wages and credit Accrued Liabilities $1,250, reversing next month', 'Debit Accrued Liabilities and credit cash'], c: 1, why: 'The wages were earned this month, so the expense belongs this month.' }
+      ]
+    },
+    {
+      id: 'adv-assets', track: 'adv', level: 5, title: 'Fixed assets and depreciation', mins: 9,
+      learn: 'Capitalizing purchases, calculating depreciation, and why the books and the tax return can differ.',
+      body: [
+        `<p>A purchase that lasts more than a year and costs more than the business's <b>capitalization threshold</b> becomes a <b>fixed asset</b>. Many small businesses use the IRS <b>de minimis safe harbor</b> — items of <b>$2,500 or less</b> per item or invoice can be expensed right away (for businesses without audited financial statements). Keep a written capitalization policy.</p>`,
+        `<p><b>Straight-line depreciation</b> spreads cost evenly: <b>(cost − salvage value) ÷ useful life</b>. A $14,400 oven with a $2,400 salvage value and a 10-year life: $12,000 ÷ 10 = $1,200 a year, <b>$100 a month</b>.</p>`,
+        `<p>Tax depreciation follows different rules (MACRS classes, <b>Section 179</b> expensing — up to $2.56 million for 2026 — and <b>100% bonus depreciation</b> for qualifying property acquired and placed in service after January 19, 2025). So <b>book</b> and <b>tax</b> depreciation often differ; the CPA tracks the tax side. Your job: an accurate fixed-asset list (what, when, cost) and consistent book depreciation.</p>`,
+        `<p>When an asset is sold or scrapped, remove both its cost and its accumulated depreciation; any difference from the sale price is a <b>gain or loss</b>.</p>`
+      ],
+      words: [['Capitalize', 'Record a purchase as an asset instead of an expense.'], ['Salvage value', 'What an asset is expected to be worth at the end of its life.'], ['Book vs. tax', 'The financial statements and the tax return can use different depreciation.']],
+      task: 'Post Bluebird\'s monthly straight-line depreciation on the oven: $14,400 cost, $2,400 salvage, 10 years.',
+      action: ['Open Journal entries', () => ensurePractice(true, 'journal')],
+      check: () => jeHas(P(), 'Depreciation Expense', 100, 'Accumulated Depreciation', 100),
+      quiz: [
+        { q: 'A $30,000 delivery van, $6,000 salvage, 5-year life. Straight-line depreciation per year?', a: ['$6,000', '$4,800', '$4,000'], c: 1, why: '($30,000 − $6,000) ÷ 5 = $4,800 a year ($400 a month).' },
+        { q: 'A $1,800 laptop at a business using the de minimis safe harbor is usually…', a: ['Capitalized and depreciated over 5 years', 'Expensed when bought', 'Recorded as Owner\'s Draw'], c: 1, why: 'Under the $2,500 de minimis safe harbor it can be expensed immediately (with the election and a consistent policy).' },
+        { q: 'Why might book depreciation differ from tax depreciation?', a: ['It\'s a mistake', 'Tax law allows faster methods like Section 179 and bonus depreciation', 'Book depreciation is optional'], c: 1, why: 'The tax return uses tax rules; the books use a consistent accounting method. The CPA reconciles the two.' }
+      ]
+    },
+    {
+      id: 'adv-inventory', track: 'adv', level: 5, title: 'Inventory and cost of goods sold', mins: 8,
+      learn: 'How businesses that sell products calculate what they really sold — and catch shrinkage.',
+      body: [
+        `<p>Businesses that hold products must track <b>inventory</b> — goods on hand are an asset until sold. Many small businesses use the <b>periodic method</b>: record purchases, count what's left, and work out cost of goods sold:</p>
+         <div class="formula">Beginning inventory + Purchases − Ending inventory = <b>Cost of goods sold</b></div>`,
+        `<p>The <b>physical count</b> is the truth. If the books say $19,200 of inventory but the shelves hold $18,450, the $750 difference is <b>shrinkage</b> (loss, spoilage, theft or errors) and goes to cost of goods sold. Big or growing shrinkage is a control problem worth raising with the owner.</p>`,
+        `<p>Bluebird has been expensing all ingredients and packaging as they're bought. Starting this month, the owner counted <b>$3,200</b> of flour, butter, boxes and coffee on hand. Record it as an asset: <b>debit Inventory $3,200, credit Cost of Goods Sold $3,200</b>.</p>`
+      ],
+      words: [['Inventory', 'Goods held for sale — an asset until sold.'], ['Periodic method', 'Count inventory at period end and calculate cost of goods sold.'], ['Shrinkage', 'Inventory that disappears through loss, theft, spoilage or error.']],
+      task: 'Record Bluebird\'s $3,200 of inventory on hand.',
+      action: ['Open Journal entries', () => { const c = ensurePractice(false); C.acctByName(c, 'Inventory') || C.ensureAccount(c, { name: 'Inventory', type: 'asset', sub: 'current' }); save(); ensurePractice(true, 'journal'); }],
+      check: () => jeHas(P(), 'Inventory', 3200, 'Cost of Goods Sold', 3200),
+      quiz: [
+        { q: 'Beginning inventory $10,000, purchases $25,000, ending inventory $12,000. Cost of goods sold?', a: ['$23,000', '$27,000', '$47,000'], c: 0, why: '$10,000 + $25,000 − $12,000 = $23,000.' },
+        { q: 'The count shows $900 less inventory than the books. The adjustment is…', a: ['Debit Inventory, credit COGS $900', 'Debit COGS, credit Inventory $900', 'No entry'], c: 1, why: 'Lower actual inventory means more cost of goods sold: debit COGS, credit Inventory.' }
+      ]
+    },
+    {
+      id: 'adv-loans', track: 'adv', level: 5, title: 'Loans, interest and amortization', mins: 7,
+      learn: 'Splitting every loan payment correctly so the loan balance always matches the lender.',
+      body: [
+        `<p>Each loan payment has two parts: <b>interest</b> (an expense) and <b>principal</b> (pays down the loan). For a typical monthly loan, interest = <b>balance × annual rate ÷ 12</b>; the rest of the payment is principal. As the balance falls, interest shrinks and principal grows — that table is the <b>amortization schedule</b>.</p>`,
+        `<p>Always split payments from the lender's statement or schedule, and reconcile the Loans Payable balance to the lender's balance at least quarterly. A loan recorded as one expense overstates expenses and leaves the loan balance wrong forever.</p>`,
+        `<p>Bluebird's equipment loan has a <b>$24,000</b> balance at <b>7.5%</b>. This month's payment of <b>$650</b> just cleared. Interest: $24,000 × 7.5% ÷ 12 = <b>$150</b>; principal: <b>$500</b>. Find the payment and split it.</p>`
+      ],
+      words: [['Principal', 'The part of a payment that reduces the loan.'], ['Amortization schedule', 'A table splitting each payment into interest and principal.']],
+      task: 'Add the loan payment, then split it: $500 Loans Payable and $150 Interest Expense.',
+      action: ['Add the payment and find it', () => { plantLoan(); ensurePractice(true, 'transactions'); Object.assign(S.ui.txn, { q: 'loan pmt', account: 'all', category: '', type: 'all', period: 'last-12' }); render(); }],
+      check: () => { const c = P(), id = (T().planted || {}).loan; if (!c || !id) return false; const t = c.transactions.find(x => x.id === id); if (!t || !t.splits) return false; const lp = C.acctByName(c, 'Loans Payable'), ie = C.acctByName(c, 'Interest Expense'); return t.splits.some(sp => lp && sp.categoryId === lp.id && Math.abs(Math.abs(sp.amount) - 500) < 0.005) && t.splits.some(sp => ie && sp.categoryId === ie.id && Math.abs(Math.abs(sp.amount) - 150) < 0.005); },
+      quiz: [
+        { q: 'Balance $36,000 at 6% annual interest. Interest in this month\'s payment?', a: ['$2,160', '$180', '$360'], c: 1, why: '$36,000 × 6% ÷ 12 = $180.' },
+        { q: 'The lender\'s statement shows a $27,100 balance; your books show $26,400. Likely cause?', a: ['Payments recorded entirely as principal — interest was never split out', 'The lender is wrong', 'Sales tax'], c: 0, why: 'If interest was recorded as principal, the books\' loan balance falls too fast. Split the payments and reconcile.' }
+      ]
+    },
+    {
+      id: 'adv-close', track: 'adv', level: 5, title: 'Closing the year and the cash flow statement', mins: 7,
+      learn: 'What happens to profit at year end, and how to explain where the cash went.',
+      body: [
+        `<p>At year end, income and expense accounts start fresh and the year's profit moves into <b>Retained Earnings</b> (equity) — the <b>closing entries</b>. Coll Ledger does this automatically based on each client's business year, so the Balance Sheet always shows prior profits in Retained Earnings and this year's as Net Income.</p>`,
+        `<p>The <b>statement of cash flows</b> explains why cash changed when profit didn't match. It has three parts: <b>operating</b> (running the business), <b>investing</b> (buying or selling equipment) and <b>financing</b> (loans, owner contributions and draws). The usual <b>indirect method</b> starts with net income, adds back non-cash expenses like depreciation, and adjusts for changes in receivables, inventory and payables.</p>`,
+        `<p>The <b>Trial Balance</b> is your year-end checkpoint: every account, debits equal credits, ready for the CPA.</p>`
+      ],
+      words: [['Retained earnings', 'Profits kept in the business from past years.'], ['Closing entries', 'Year-end entries that zero income and expenses into retained earnings.'], ['Statement of cash flows', 'Explains the change in cash: operating, investing, financing.']],
+      task: 'Open Bluebird\'s Trial Balance.',
+      action: ['Open the Trial Balance', () => { S.ui.report.type = 'tb'; ensurePractice(true, 'reports'); }],
+      check: () => !!T().flags.rTB,
+      quiz: [
+        { q: 'Net income $40,000 and depreciation $8,000. Customers owe $5,000 more than last year. Cash from operations (simplified)?', a: ['$53,000', '$43,000', '$37,000'], c: 1, why: '$40,000 + $8,000 depreciation − $5,000 increase in receivables = $43,000.' },
+        { q: 'Buying a $20,000 delivery van with cash shows on the cash flow statement under…', a: ['Operating', 'Investing', 'Financing'], c: 1, why: 'Buying or selling long-term assets is investing activity.' }
+      ]
+    },
+    // ---------- Module B · Tax compliance ----------
+    {
+      id: 'adv-payroll', track: 'adv', level: 6, title: 'Payroll tax compliance', mins: 9,
+      learn: 'The taxes, forms and deadlines behind every paycheck — so you can check a payroll service\'s work.',
+      body: [
+        `<p><b>FICA</b>: employees and employers each pay <b>7.65%</b> — Social Security 6.2% (on wages up to <b>$184,500 for 2026</b>) and Medicare 1.45% (no cap; employees owe an extra 0.9% on wages over $200,000). <b>FUTA</b> (federal unemployment) is 6.0% on the first $7,000 of each employee's wages, usually <b>0.6%</b> after the credit for state unemployment taxes.</p>`,
+        `<p><b>Forms and deadlines:</b> Form <b>941</b> each quarter (due the last day of the month after the quarter); Form <b>940</b> yearly (January 31); <b>W-2s</b> to employees and the SSA with W-3 by <b>January 31</b>. Tax deposits are due <b>monthly or semiweekly</b> depending on the business's lookback-period liability. New hires complete a <b>W-4</b> and <b>I-9</b>.</p>`,
+        `<p><b>Colorado:</b> state income tax withholding, state unemployment insurance (through the Colorado Department of Labor and Employment), and FAMLI paid-leave premiums. Other states have their own versions.</p>`,
+        `<p>Even with a payroll service, check every quarter that the 941 wages match the books and that deposits went out. Penalties for late deposits are steep — and the owner can be personally liable for unpaid withheld taxes.</p>`
+      ],
+      words: [['FICA', 'Social Security and Medicare taxes.'], ['Form 941', 'The employer\'s quarterly federal payroll tax return.'], ['Trust fund taxes', 'Taxes withheld from employees — held in trust for the government.']],
+      task: null,
+      check: () => true,
+      quiz: [
+        { q: 'An employee earns $2,000 this period. The employer\'s share of FICA is…', a: ['$153.00', '$306.00', '$124.00'], c: 0, why: '$2,000 × 7.65% = $153. The employee pays another $153 through withholding.' },
+        { q: 'When is the third-quarter Form 941 due?', a: ['September 30', 'October 31', 'January 31'], c: 1, why: 'The last day of the month after the quarter ends: October 31.' },
+        { q: 'Why are unpaid withheld payroll taxes so serious?', a: ['They aren\'t', 'They\'re trust fund taxes — responsible owners can be held personally liable', 'Only the payroll company is liable'], c: 1, why: 'Withheld taxes belong to the government. The IRS can assess responsible people personally.' }
+      ]
+    },
+    {
+      id: 'adv-salestax', track: 'adv', level: 6, title: 'Sales tax in depth', mins: 8,
+      learn: 'Nexus, taxable sales, exemption certificates and Colorado\'s layered system.',
+      body: [
+        `<p>A business must collect sales tax where it has <b>nexus</b> — a physical presence (a store, employees, inventory) or <b>economic nexus</b> (sales into a state above its threshold; many states, including Colorado, use <b>$100,000</b> a year). Online sales through a <b>marketplace</b> like Amazon or Etsy are generally collected by the marketplace.</p>`,
+        `<p>Not everything is taxable: rules differ for services, food, clothing and wholesale sales. A business selling for resale should get a <b>resale or exemption certificate</b> from the buyer and keep it on file.</p>`,
+        `<p><b>Colorado</b> layers taxes: the state rate is <b>2.9%</b>, plus county, city and special-district rates. Some <b>home-rule cities</b> — Denver, Aurora and Boulder among them — run their own sales tax, with their own returns or through the state's SUTS portal. Get each client's exact locations and filing schedule at onboarding.</p>`,
+        `<p>Every month, check that <i>Sales Tax Payable</i> matches what the client owes on its returns. The <b>Sales Tax</b> report shows collected, paid and still owed.</p>`
+      ],
+      words: [['Nexus', 'A connection with a state that requires collecting its sales tax.'], ['Exemption certificate', 'A buyer\'s form showing a sale isn\'t taxable (for resale or exempt use).'], ['Home-rule city', 'A city that sets and may collect its own sales tax.']],
+      task: 'Open Bluebird\'s Sales Tax report.',
+      action: ['Open the Sales Tax report', () => { S.ui.report.type = 'tax'; ensurePractice(true, 'reports'); }],
+      check: () => !!T().flags.rSalesTax,
+      quiz: [
+        { q: 'A Colorado client starts selling online to Texas customers — $140,000 a year. What do you flag?', a: ['Nothing — they\'re in Colorado', 'Possible economic nexus in Texas — talk to the client and their CPA', 'Only federal tax applies'], c: 1, why: 'Sales above a state\'s economic nexus threshold can require registering and collecting there.' },
+        { q: 'A wholesale customer says "we\'re buying for resale." Before skipping sales tax, the business needs…', a: ['A handshake', 'A valid resale certificate on file', 'A W-9'], c: 1, why: 'Without the certificate, the seller can owe the tax in an audit.' }
+      ]
+    },
+    {
+      id: 'adv-biztax', track: 'adv', level: 6, title: 'Business tax returns and the CPA hand-off', mins: 8,
+      learn: 'Which return each business files, when it\'s due, and how to hand the CPA a package they love.',
+      body: [
+        `<p><b>Returns and due dates</b> (calendar-year businesses): sole proprietors and single-member LLCs — <b>Schedule C</b> with the owner's Form 1040, April 15. Partnerships — <b>Form 1065</b> and a <b>K-1</b> for each partner, March 15. S corporations — <b>Form 1120-S</b> and K-1s, March 15. C corporations — <b>Form 1120</b>, April 15. An extension gives more time to <i>file</i>, not to <i>pay</i>.</p>`,
+        `<p><b>Book-to-tax differences</b> the CPA will adjust: business meals are generally 50% deductible; entertainment isn't deductible; fines and penalties aren't deductible; depreciation often differs. Keep those in clear, separate accounts so they're easy to find.</p>`,
+        `<p><b>The year-end package:</b> Trial Balance, Profit & Loss, Balance Sheet, General Ledger, fixed-asset additions, loan statements, 1099 summary, payroll annual reports, and notes on anything unusual. Reports → <b>Year-end for the CPA</b> builds most of it.</p>`
+      ],
+      words: [['Schedule C', 'The sole proprietor\'s business profit form, filed with Form 1040.'], ['K-1', 'Each owner\'s share of partnership or S-corp income.'], ['Extension', 'More time to file the return — tax is still due on the original date.']],
+      task: 'Build Bluebird\'s Year-end package for the CPA.',
+      action: ['Open Reports', () => { S.ui.report.type = 'tb'; ensurePractice(true, 'reports'); }],
+      check: () => !!T().flags.yearEnd,
+      quiz: [
+        { q: 'An S corporation\'s calendar-year return (1120-S) is due…', a: ['January 31', 'March 15', 'April 15'], c: 1, why: 'Partnerships and S corporations: March 15. Schedule C and C corporations: April 15.' },
+        { q: 'A client got a $250 parking fine on a business trip. For taxes it\'s…', a: ['Fully deductible', 'Not deductible — keep it in its own account', '50% deductible'], c: 1, why: 'Fines and penalties paid to a government aren\'t deductible.' }
+      ]
+    },
+    {
+      id: 'adv-owners', track: 'adv', level: 6, title: 'Owner taxes: self-employment, QBI and estimates', mins: 8,
+      learn: 'What business owners actually owe on their profit — and how to help them avoid penalties.',
+      body: [
+        `<p><b>Self-employment tax</b> is Social Security and Medicare for the self-employed: <b>15.3%</b> of <b>92.35%</b> of net earnings (the Social Security part stops at the wage base). Half of it is deductible on the owner's return. It's why a $50,000 profit can mean about $7,065 of SE tax before any income tax.</p>`,
+        `<p>The <b>qualified business income (QBI) deduction</b> lets many owners of pass-through businesses deduct up to <b>20%</b> of qualified business income; it was made permanent in 2025. Higher incomes and some service businesses face limits — the CPA calculates it.</p>`,
+        `<p><b>Estimated taxes:</b> to avoid an underpayment penalty, owners generally pay at least <b>90% of this year's tax</b> or <b>100% of last year's</b> (<b>110%</b> if last year's adjusted gross income was over $150,000), in four installments. A quarterly set-aside habit — Planning → Owner pay & taxes — keeps clients out of trouble.</p>`,
+        `<p><b>S-corp owners</b> pay payroll taxes only on their salary, not their distributions — which is exactly why the IRS insists the salary be reasonable.</p>`
+      ],
+      words: [['Self-employment tax', '15.3% Social Security and Medicare on the self-employed.'], ['QBI deduction', 'Up to 20% of qualified business income for many pass-through owners.'], ['Safe harbor', 'A payment level that avoids the underpayment penalty.']],
+      task: null,
+      check: () => true,
+      quiz: [
+        { q: 'A sole proprietor has $40,000 of net profit. Self-employment tax is about…', a: ['$6,120', '$5,652', '$3,060'], c: 1, why: '$40,000 × 92.35% × 15.3% ≈ $5,652.' },
+        { q: 'Last year\'s tax was $12,000 and AGI was $90,000. To be safe from the underpayment penalty, estimates should total at least…', a: ['$10,800', '$12,000', '$13,200'], c: 1, why: '100% of last year\'s tax ($12,000), since AGI was under $150,000. Over $150,000 it would be 110%.' }
+      ]
+    },
+    {
+      id: 'adv-info', track: 'adv', level: 6, title: '1099s, W-9s and backup withholding', mins: 6,
+      learn: 'Information returns done right — the January deadline that trips up every small business.',
+      body: [
+        `<p><b>1099-NEC</b> reports nonemployee pay — $2,000 or more for payments made in 2026 ($600 before). The same law raised most <b>1099-MISC</b> thresholds (rent, prizes and similar) too — check the current IRS instructions each year. Both are due <b>January 31</b> for nonemployee pay.</p>`,
+        `<p>Payments to <b>corporations</b> are generally exempt — but <b>attorneys</b> get 1099s whether incorporated or not. Card and payment-app payments are reported by the processor on a 1099-K instead.</p>`,
+        `<p>Collect a <b>W-9</b> before the first payment. If a payee won't provide a correct taxpayer ID, the business must <b>backup withhold 24%</b> from payments. Businesses filing <b>10 or more</b> information returns in total generally must file them electronically (the IRS's free IRIS portal works).</p>`
+      ],
+      words: [['W-9', 'The payee\'s certified name and taxpayer ID.'], ['Backup withholding', '24% withheld when a payee doesn\'t provide a valid tax ID.'], ['Information return', 'A form reporting payments to the IRS — like a 1099.']],
+      task: null,
+      check: () => true,
+      quiz: [
+        { q: 'A client paid an incorporated law firm $4,500 in 2026. A 1099?', a: ['No — corporations are exempt', 'Yes — attorneys get 1099s even when incorporated', 'Only if paid in cash'], c: 1, why: 'Legal fees are the main exception to the corporation exemption.' },
+        { q: 'A new contractor refuses to give a tax ID. The business should…', a: ['Pay them anyway with no withholding', 'Backup withhold 24% from payments', 'Treat them as an employee'], c: 1, why: 'Without a valid TIN, backup withholding at 24% applies.' }
+      ]
+    },
+    // ---------- Module C · Professional standards ----------
+    {
+      id: 'adv-controls', track: 'adv', level: 7, title: 'Internal controls and fraud prevention', mins: 7,
+      learn: 'Designing simple controls small businesses can actually live with — and recognizing red flags.',
+      body: [
+        `<p>Most small-business fraud comes from trusted insiders with too much access. Good controls make it hard to commit and easy to catch. The core idea is <b>segregation of duties</b>: no one person should be able to <i>approve</i>, <i>pay</i> and <i>record</i> the same transaction.</p>`,
+        `<p>Controls that fit a small business: the owner gets bank statements directly and looks them over monthly; two approvals for payments above a set amount; new vendors and changes to vendor bank details are verified by phone using a number already on file; payroll changes are approved by the owner; and monthly reconciliations are reviewed by someone other than the preparer.</p>`,
+        `<p><b>Red flags:</b> an employee who never takes vacation, vendors with only a P.O. box or matching an employee's address, round-dollar payments, duplicate invoice numbers, rising refunds or voids, payroll for someone nobody knows. If you see these, document facts and tell the owner privately.</p>`,
+        `<p>Email payment scams are common: a "vendor" emails new bank details. Always verify by phone before changing any payment information.</p>`
+      ],
+      words: [['Segregation of duties', 'Splitting approve, pay and record between different people.'], ['Ghost employee', 'A fake person on payroll whose pay goes to a fraudster.'], ['Business email compromise', 'A scam using a fake or hacked email to redirect payments.']],
+      task: null,
+      check: () => true,
+      quiz: [
+        { q: 'A vendor emails: "We changed banks — please send payments to this new account." You…', a: ['Update it right away', 'Call the vendor at a number already on file to confirm before changing anything', 'Reply to the email to confirm'], c: 1, why: 'Replying confirms nothing if the email is fake. Verify by phone using known contact details.' },
+        { q: 'Which single setup is riskiest?', a: ['One employee enters bills, approves them and signs the checks', 'The owner approves payments the bookkeeper enters', 'Two signatures over $5,000'], c: 0, why: 'One person controlling the whole cycle can create and pay fake bills without anyone seeing.' }
+      ]
+    },
+    {
+      id: 'adv-ethics', track: 'adv', level: 7, title: 'Ethics, Circular 230 and data security', mins: 7,
+      learn: 'The rules that govern tax practice and the duty to protect client data.',
+      body: [
+        `<p>Anyone who prepares, or helps prepare, federal tax returns <b>for pay</b> needs a <b>PTIN</b> (Preparer Tax Identification Number) from the IRS. Unenrolled preparers can join the IRS's voluntary <b>Annual Filing Season Program</b>. <b>Circular 230</b> sets the rules for those who practice before the IRS — CPAs, attorneys and enrolled agents — covering due diligence, conflicts of interest and fees.</p>`,
+        `<p>Tax preparers must protect taxpayer information. Federal law restricts using or sharing tax return information without the taxpayer's consent, and the FTC's Safeguards Rule requires tax preparers to keep a <b>written information security plan</b> (IRS Publication 4557 explains how). Even as a bookkeeper, follow the same habits: strong passwords and two-factor login, encrypted storage and backups, secure document sharing, and a plan for what to do if data is exposed.</p>`,
+        `<p>Ethics in daily work: never backdate or hide entries to change what a lender or the IRS sees, disclose conflicts of interest, stay within your competence, and put it in writing when a client asks you to do something you won't.</p>`
+      ],
+      words: [['PTIN', 'The IRS number required to prepare federal returns for pay.'], ['Circular 230', 'IRS rules for practitioners who represent taxpayers.'], ['WISP', 'A written information security plan.']],
+      task: null,
+      check: () => true,
+      quiz: [
+        { q: 'You want to prepare simple Schedule C returns for clients for a fee. First you need…', a: ['Nothing', 'A PTIN from the IRS', 'A CPA license'], c: 1, why: 'Anyone preparing federal returns for pay must have a PTIN. Enrolled agent or CPA status allows representing clients before the IRS.' },
+        { q: 'A client asks you to date an invoice in last year so they get the deduction sooner. You…', a: ['Do it — it\'s their business', 'Decline, explain why, and note it in writing', 'Do it but don\'t tell anyone'], c: 1, why: 'Falsifying records isn\'t a gray area. Decline and document.' }
+      ]
+    },
+    {
+      id: 'adv-path', track: 'adv', level: 7, title: 'Your path: EA, CPA and accredited programs', mins: 6,
+      learn: 'Where to go next — the credentials that let you prepare returns, represent clients and grow.',
+      body: [
+        `<p><b>Enrolled Agent (EA)</b> — a federal credential from the IRS that lets you prepare returns <i>and</i> represent taxpayers before the IRS. No degree is required: get a PTIN, pass the three-part <b>Special Enrollment Examination</b> (Individuals; Businesses; Representation, Practices and Procedures), and pass a background check. It's the fastest route from bookkeeping into tax work.</p>`,
+        `<p><b>Certified Public Accountant (CPA)</b> — a state license. In Colorado, new pathways begin January 1, 2027: a bachelor's degree plus 30 more credit hours and one year of experience, a bachelor's plus two years of experience, or a master's plus one year — all with the CPA Exam, an ethics exam, and experience verified by a CPA. Community-college accounting credits can count toward the degree.</p>`,
+        `<p><b>Accredited programs</b> add college credit and an employer-recognized credential to what you've learned here. Open the recommendations to see programs near you and online, with live links.</p>`
+      ],
+      words: [['Enrolled Agent', 'A tax practitioner licensed by the IRS to represent taxpayers.'], ['Accreditation', 'Review by a recognized agency confirming a school meets quality standards.']],
+      task: 'Open the recommended programs.',
+      action: ['See recommended programs', () => App.advanced && App.advanced.programsModal()],
+      check: () => !!T().flags.programs,
+      quiz: [{ q: 'Which credential lets you represent clients before the IRS without a college degree?', a: ['CPA', 'Enrolled Agent', 'QuickBooks ProAdvisor'], c: 1, why: 'EAs earn the credential by passing the IRS\'s three-part exam; no degree is required.' }]
     }
+
   ];
   LESSONS.forEach(l => { l.level = l.level || 1; });
   const LEVELS = [
@@ -691,11 +946,22 @@
     { n: 3, title: 'Level 3 · Client advisor', blurb: 'Cash flow, budgets, owner pay, business types, reading the numbers, taxes and year-end.' },
     { n: 4, title: 'Level 4 · Running your practice', blurb: 'Onboarding, pricing, engagement letters, catch-up projects, industries, ethics and security.' }
   ];
-  const CORE = LESSONS.filter(l => !l.bonus);
+  const CORE = LESSONS.filter(l => !l.bonus && l.track !== 'adv');
+  const ADV = LESSONS.filter(l => l.track === 'adv');
+  const ADV_LEVELS = [
+    { n: 5, title: 'Module A · Accrual accounting and the close' },
+    { n: 6, title: 'Module B · Tax compliance' },
+    { n: 7, title: 'Module C · Professional standards' }
+  ];
+  const advLevels = () => ADV_LEVELS.map(L => ({ ...L, lessons: ADV.filter(l => l.level === L.n) }));
   const levelsWithLessons = () => LEVELS.map(L => ({ ...L, lessons: CORE.filter(l => l.level === L.n) }));
   const lessonDone = l => { const t = T(); return !!t.done[l.id]; };
   const quizDone = l => l.quiz.every((q, i) => T().quiz[l.id + ':' + i] === q.c);
-  const currentLesson = () => { const t = T(); return LESSONS.find(l => l.id === t.current) || CORE.find(l => !lessonDone(l)) || LESSONS[0]; };
+  const currentLesson = (track) => { const t = T(); track = track || t.track || 'pro';
+    if (track === 'adv') return ADV.find(l => l.id === t.currentAdv) || ADV.find(l => !lessonDone(l)) || ADV[0];
+    return LESSONS.find(l => l.id === t.current && l.track !== 'adv') || CORE.find(l => !lessonDone(l)) || LESSONS[0]; };
+  // Does a non-void journal entry debit one account and credit another for these amounts?
+  const jeHas = (c, drName, dr, crName, cr) => { if (!c) return false; const a = C.acctByName(c, drName), b = C.acctByName(c, crName); return !!a && !!b && (c.journals || []).some(j => !j.void && !j.reversalOf && j.lines.some(l => l.accountId === a.id && Math.abs(+l.debit - dr) < 0.005) && j.lines.some(l => l.accountId === b.id && Math.abs(+l.credit - cr) < 0.005)); };
 
   // Mark lessons complete when their task check and quiz both pass
   function sweep() {
@@ -706,7 +972,8 @@
       if (ok && quizDone(l)) { t.done[l.id] = C.todayISO(); newly = l; }
     }
     if (newly) {
-      if (!t.current || t.current === newly.id) { const next = CORE.find(l => !t.done[l.id]); t.current = next ? next.id : 'exam-written'; }
+      if (newly.track === 'adv') { if (!t.currentAdv || t.currentAdv === newly.id) { const next = ADV.find(l => !t.done[l.id]); t.currentAdv = next ? next.id : 'adv-exam-written'; } }
+      else if (!t.current || t.current === newly.id) { const next = CORE.find(l => !t.done[l.id]); t.current = next ? next.id : 'exam-written'; }
       save(); U.toast(`Lesson complete: ${newly.title}`);
     }
     return newly;
@@ -715,64 +982,102 @@
   // ------------------------------------------------------------------
   // Training screen
   // ------------------------------------------------------------------
+  const TIPS = window.ACADEMY_TIPS || {};
+  // One lesson's main panel (used by both programs)
+  function lessonMain(l, list, levels, finalId) {
+    const t = T();
+    const idx = list.indexOf(l);
+    let taskOk = false; try { taskOk = l.check(); } catch (e) { }
+    const L = levels.find(x => x.n === l.level) || { title: '' };
+    const nextId = l.bonus ? null : (idx < list.length - 1 ? list[idx + 1].id : finalId);
+    const tips = TIPS[l.id] || [];
+    return `
+      <div class="tm-head"><span class="tag ${l.bonus ? 'gold' : l.track === 'adv' ? 'navy' : 'blue'}">${l.bonus ? 'Bonus lesson' : `${esc(L.title)} · lesson ${idx + 1} of ${list.length}`} · about ${l.mins} minutes</span>${lessonDone(l) ? `<span class="tag green">${ICON.check}Complete</span>` : ''}</div>
+      <h2 class="tm-title">${esc(l.title)}</h2>
+      <p class="tm-learn"><b>You'll learn:</b> ${esc(l.learn)}</p>
+      <div class="tm-body">${l.body.join('')}</div>
+      ${tips.length ? `<div class="tm-tips"><div class="cap-label">${ICON.spark}Pro tips</div><ul>${tips.map(x => `<li>${x}</li>`).join('')}</ul></div>` : ''}
+      <div class="tm-words"><div class="cap-label">Words to know</div>${l.words.map(([w, d]) => `<div class="word"><b>${esc(w)}</b><span>${esc(d)}</span></div>`).join('')}</div>
+      ${l.drill ? drillHTML() : ''}
+      ${l.task ? `<div class="tm-task ${taskOk ? 'ok' : ''}">
+        <div class="tt-head"><span class="tick ${taskOk ? 'on' : ''}">${ICON.check}</span><div><div class="cap-label">Try it</div><b>${esc(l.task)}</b></div></div>
+        <div class="tt-foot">${taskOk ? '<span class="pos">Done — nicely handled.</span>' : l.action ? `<button class="btn primary" data-action="t-do" data-id="${l.id}">${esc(l.action[0])} ${ICON.right}</button><span class="muted">The coach in the corner keeps this task in view while you work.</span>` : '<span class="muted">Do it right here on this page.</span>'}</div>
+      </div>` : ''}
+      <div class="tm-quiz"><div class="cap-label">Quick check</div>${l.quiz.map((q, qi) => { const key = l.id + ':' + qi, ans = t.quiz[key]; return `<div class="qz"><div class="qz-q">${esc(q.q)}</div><div class="qz-a">${q.a.map((a, ai) => `<button class="qa ${ans === ai ? (ai === q.c ? 'right' : 'wrong') : ''} ${ans != null && ai === q.c ? 'answer' : ''}" data-action="t-quiz" data-k="${key}" data-a="${ai}">${esc(a)}</button>`).join('')}</div>${ans != null ? `<div class="qz-why ${ans === q.c ? 'right' : 'wrong'}">${ans === q.c ? ICON.check + '<b>Right.</b>' : '<b>Not quite —</b>'} ${esc(q.why)}${ans !== q.c ? ' Try again.' : ''}</div>` : ''}</div>`; }).join('')}</div>
+      <div class="tm-nav">${idx > 0 ? `<button class="btn ghost" data-action="t-go" data-id="${list[idx - 1].id}">${ICON.back}Previous</button>` : '<span></span>'}${nextId ? `<button class="btn ${lessonDone(l) ? 'primary' : ''}" data-action="t-go" data-id="${nextId}">${/exam/.test(nextId) ? 'On to the final exams' : 'Next lesson'} ${ICON.right}</button>` : ''}</div>`;
+  }
+
   view('training', {
     render() {
       const t = T();
       sweep();
-      const AC = App.academy;
-      const levels = levelsWithLessons();
-      const lessonsDone = CORE.filter(lessonDone).length;
-      const allLessons = lessonsDone === CORE.length;
-      const wOk = AC.writtenPassed(), pOk = AC.practicalPassed();
-      const req = CORE.length + 2, doneN = lessonsDone + (wOk ? 1 : 0) + (pOk ? 1 : 0);
-      const earned = allLessons && wOk && pOk;
-      const examView = t.current === 'exam-written' || t.current === 'exam-practical';
+      const AC = App.academy, AV = App.advanced;
+      const track = t.track === 'adv' && AV ? 'adv' : 'pro';
       const p = practice();
       const lvlDone = L => L.lessons.every(lessonDone);
-      const sideItem = (x, n) => `<button class="tl ${x.id === t.current || (!examView && x === currentLesson()) ? 'on' : ''} ${lessonDone(x) ? 'done' : ''}" data-action="t-go" data-id="${x.id}"><span class="step-n">${lessonDone(x) ? ICON.check : x.bonus ? '★' : n}</span><span><b>${esc(x.title)}</b><span class="muted">${x.mins} min${x.bonus ? ' · bonus' : ''}</span></span></button>`;
-      let n = 0;
-      const side = `
-        <div class="train-prog"><div class="tp-top"><b>${doneN} of ${req} steps</b><span class="muted">${Math.round(doneN / req * 100)}%</span></div><div class="progress"><div style="width:${doneN / req * 100}%"></div></div>
-          <div class="lvl-badges">${levels.map(L => `<span class="lvl-badge ${lvlDone(L) ? 'on' : ''}" title="${esc(L.title)}">${lvlDone(L) ? ICON.check : L.n}</span>`).join('')}<span class="lvl-badge exam ${wOk && pOk ? 'on' : ''}" title="Final exams">${wOk && pOk ? ICON.check : 'E'}</span></div></div>
-        <div class="train-list">
-          ${levels.map(L => `<div class="tl-group">${esc(L.title)}${lvlDone(L) ? ` <span class="tag green">${ICON.check}</span>` : ''}</div>${L.lessons.map(x => sideItem(x, ++n)).join('')}`).join('')}
-          <div class="tl-group">Final exams${allLessons ? '' : ` <span class="muted" style="text-transform:none;letter-spacing:0">· after all lessons</span>`}</div>
-          <button class="tl ${t.current === 'exam-written' ? 'on' : ''} ${wOk ? 'done' : ''} ${allLessons ? '' : 'locked'}" data-action="t-go" data-id="exam-written"><span class="step-n">${wOk ? ICON.check : allLessons ? 'W' : ICON.lock}</span><span><b>Written exam</b><span class="muted">30 questions · 80% to pass</span></span></button>
-          <button class="tl ${t.current === 'exam-practical' ? 'on' : ''} ${pOk ? 'done' : ''} ${allLessons ? '' : 'locked'}" data-action="t-go" data-id="exam-practical"><span class="step-n">${pOk ? ICON.check : allLessons ? 'P' : ICON.lock}</span><span><b>Practical exam</b><span class="muted">A graded month-end</span></span></button>
-          <div class="tl-group">Bonus</div>${LESSONS.filter(l => l.bonus).map(x => sideItem(x, 0)).join('')}
-        </div>
-        ${earned ? AC.proAdvisorCard() : ''}
-        ${earned ? `<div class="cert-cta">${ICON.spark}<div><b>${t.cert ? 'Certificate earned' : 'You earned it!'}</b><div class="muted">${t.cert ? esc(t.cert.id) : 'Professional Bookkeeping Certificate'}</div></div><button class="btn sm gold" data-action="t-cert">${t.cert ? 'Badge & LinkedIn' : 'Get it'}</button></div>` : `<div class="cert-req"><div class="cap-label">To earn the certificate</div><div class="${allLessons ? 'ok' : ''}">${allLessons ? ICON.check : '○'} All ${CORE.length} lessons <span class="muted">(${lessonsDone} done)</span></div><div class="${wOk ? 'ok' : ''}">${wOk ? ICON.check : '○'} Written exam, 80% or better</div><div class="${pOk ? 'ok' : ''}">${pOk ? ICON.check : '○'} Practical exam, 80+ and balanced</div></div>`}`;
-      let main;
-      if (examView) {
-        main = !allLessons ? `<div class="tm-head"><span class="tag gold">Final exams</span></div><h2 class="tm-title">Finish the lessons first</h2><p class="tm-learn">The exams cover all three levels. You have ${plural(CORE.length - lessonsDone, 'lesson')} to go — the exams unlock as soon as they're done.</p><div class="tm-nav"><span></span><button class="btn primary" data-action="t-go" data-id="${(CORE.find(l => !lessonDone(l)) || CORE[0]).id}">Go to the next lesson ${ICON.right}</button></div>`
-          : t.current === 'exam-written' ? AC.renderWritten() : AC.renderPractical();
+      const proEarned = CORE.every(lessonDone) && AC.writtenPassed() && AC.practicalPassed();
+      const advEarned = AV && ADV.every(lessonDone) && AV.writtenPassed() && AV.practicalPassed();
+      const tabs = `<div class="seg track-seg" role="tablist"><button class="${track === 'pro' ? 'on' : ''}" data-action="t-track" data-v="pro">${proEarned ? ICON.check : ''}Professional Bookkeeping</button><button class="${track === 'adv' ? 'on' : ''}" data-action="t-track" data-v="adv">${advEarned ? ICON.check : ''}Advanced Accounting &amp; Tax</button></div>`;
+      let side, main, sub;
+      if (track === 'pro') {
+        const levels = levelsWithLessons();
+        const lessonsDone = CORE.filter(lessonDone).length, allLessons = lessonsDone === CORE.length;
+        const wOk = AC.writtenPassed(), pOk = AC.practicalPassed();
+        const req = CORE.length + 2, doneN = lessonsDone + (wOk ? 1 : 0) + (pOk ? 1 : 0);
+        const examView = t.current === 'exam-written' || t.current === 'exam-practical';
+        const cur = currentLesson('pro');
+        const sideItem = (x, n) => `<button class="tl ${x.id === t.current || (!examView && x === cur) ? 'on' : ''} ${lessonDone(x) ? 'done' : ''}" data-action="t-go" data-id="${x.id}"><span class="step-n">${lessonDone(x) ? ICON.check : x.bonus ? '★' : n}</span><span><b>${esc(x.title)}</b><span class="muted">${x.mins} min${x.bonus ? ' · bonus' : ''}</span></span></button>`;
+        let n = 0;
+        sub = 'Four levels of hands-on lessons on a pretend bakery, then a written exam and a graded month-end. Pass both to earn the Professional Bookkeeping Certificate.';
+        side = `
+          <div class="train-prog"><div class="tp-top"><b>${doneN} of ${req} steps</b><span class="muted">${Math.round(doneN / req * 100)}%</span></div><div class="progress"><div style="width:${doneN / req * 100}%"></div></div>
+            <div class="lvl-badges">${levels.map(L => `<span class="lvl-badge ${lvlDone(L) ? 'on' : ''}" title="${esc(L.title)}">${lvlDone(L) ? ICON.check : L.n}</span>`).join('')}<span class="lvl-badge exam ${wOk && pOk ? 'on' : ''}" title="Final exams">${wOk && pOk ? ICON.check : 'E'}</span></div></div>
+          <div class="train-list">
+            ${levels.map(L => `<div class="tl-group">${esc(L.title)}${lvlDone(L) ? ` <span class="tag green">${ICON.check}</span>` : ''}</div>${L.lessons.map(x => sideItem(x, ++n)).join('')}`).join('')}
+            <div class="tl-group">Final exams${allLessons ? '' : ` <span class="muted" style="text-transform:none;letter-spacing:0">· after all lessons</span>`}</div>
+            <button class="tl ${t.current === 'exam-written' ? 'on' : ''} ${wOk ? 'done' : ''} ${allLessons ? '' : 'locked'}" data-action="t-go" data-id="exam-written"><span class="step-n">${wOk ? ICON.check : allLessons ? 'W' : ICON.lock}</span><span><b>Written exam</b><span class="muted">30 questions · 80% to pass</span></span></button>
+            <button class="tl ${t.current === 'exam-practical' ? 'on' : ''} ${pOk ? 'done' : ''} ${allLessons ? '' : 'locked'}" data-action="t-go" data-id="exam-practical"><span class="step-n">${pOk ? ICON.check : allLessons ? 'P' : ICON.lock}</span><span><b>Practical exam</b><span class="muted">A graded month-end</span></span></button>
+            <div class="tl-group">Bonus</div>${LESSONS.filter(l => l.bonus).map(x => sideItem(x, 0)).join('')}
+          </div>
+          ${proEarned ? AC.proAdvisorCard() : ''}
+          ${proEarned ? `<div class="cert-cta">${ICON.spark}<div><b>${t.cert ? 'Certificate earned' : 'You earned it!'}</b><div class="muted">${t.cert ? esc(t.cert.id) : 'Professional Bookkeeping Certificate'}</div></div><button class="btn sm gold" data-action="t-cert">${t.cert ? 'Badge & LinkedIn' : 'Get it'}</button></div>` : `<div class="cert-req"><div class="cap-label">To earn the certificate</div><div class="${allLessons ? 'ok' : ''}">${allLessons ? ICON.check : '○'} All ${CORE.length} lessons <span class="muted">(${lessonsDone} done)</span></div><div class="${wOk ? 'ok' : ''}">${wOk ? ICON.check : '○'} Written exam, 80% or better</div><div class="${pOk ? 'ok' : ''}">${pOk ? ICON.check : '○'} Practical exam, 80+ and balanced</div></div>`}`;
+        if (examView) {
+          main = !allLessons ? `<div class="tm-head"><span class="tag gold">Final exams</span></div><h2 class="tm-title">Finish the lessons first</h2><p class="tm-learn">The exams cover all four levels. You have ${plural(CORE.length - lessonsDone, 'lesson')} to go — the exams unlock as soon as they're done.</p><div class="tm-nav"><span></span><button class="btn primary" data-action="t-go" data-id="${(CORE.find(l => !lessonDone(l)) || CORE[0]).id}">Go to the next lesson ${ICON.right}</button></div>`
+            : t.current === 'exam-written' ? AC.renderWritten() : AC.renderPractical();
+        } else main = lessonMain(cur, CORE, LEVELS, 'exam-written');
       } else {
-        const l = currentLesson();
-        const idx = CORE.indexOf(l);
-        let taskOk = false; try { taskOk = l.check(); } catch (e) { }
-        const L = LEVELS.find(x => x.n === l.level);
-        const nextId = l.bonus ? null : (idx < CORE.length - 1 ? CORE[idx + 1].id : 'exam-written');
-        main = `
-            <div class="tm-head"><span class="tag ${l.bonus ? 'gold' : 'blue'}">${l.bonus ? 'Bonus lesson' : `${esc(L.title)} · lesson ${idx + 1} of ${CORE.length}`} · about ${l.mins} minutes</span>${lessonDone(l) ? `<span class="tag green">${ICON.check}Complete</span>` : ''}</div>
-            <h2 class="tm-title">${esc(l.title)}</h2>
-            <p class="tm-learn"><b>You'll learn:</b> ${esc(l.learn)}</p>
-            <div class="tm-body">${l.body.join('')}</div>
-            <div class="tm-words"><div class="cap-label">Words to know</div>${l.words.map(([w, d]) => `<div class="word"><b>${esc(w)}</b><span>${esc(d)}</span></div>`).join('')}</div>
-            ${l.drill ? drillHTML() : ''}
-            ${l.task ? `<div class="tm-task ${taskOk ? 'ok' : ''}">
-              <div class="tt-head"><span class="tick ${taskOk ? 'on' : ''}">${ICON.check}</span><div><div class="cap-label">Try it</div><b>${esc(l.task)}</b></div></div>
-              <div class="tt-foot">${taskOk ? '<span class="pos">Done — nicely handled.</span>' : l.action ? `<button class="btn primary" data-action="t-do" data-id="${l.id}">${esc(l.action[0])} ${ICON.right}</button><span class="muted">The coach in the corner keeps this task in view while you work.</span>` : '<span class="muted">Do it right here on this page.</span>'}</div>
-            </div>` : ''}
-            <div class="tm-quiz"><div class="cap-label">Quick check</div>${l.quiz.map((q, qi) => { const key = l.id + ':' + qi, ans = t.quiz[key]; return `<div class="qz"><div class="qz-q">${esc(q.q)}</div><div class="qz-a">${q.a.map((a, ai) => `<button class="qa ${ans === ai ? (ai === q.c ? 'right' : 'wrong') : ''} ${ans != null && ai === q.c ? 'answer' : ''}" data-action="t-quiz" data-k="${key}" data-a="${ai}">${esc(a)}</button>`).join('')}</div>${ans != null ? `<div class="qz-why ${ans === q.c ? 'right' : 'wrong'}">${ans === q.c ? ICON.check + '<b>Right.</b>' : '<b>Not quite —</b>'} ${esc(q.why)}${ans !== q.c ? ' Try again.' : ''}</div>` : ''}</div>`; }).join('')}</div>
-            <div class="tm-nav">${idx > 0 ? `<button class="btn ghost" data-action="t-go" data-id="${CORE[idx - 1].id}">${ICON.back}Previous</button>` : '<span></span>'}${nextId ? `<button class="btn ${lessonDone(l) ? 'primary' : ''}" data-action="t-go" data-id="${nextId}">${nextId === 'exam-written' ? 'On to the final exams' : 'Next lesson'} ${ICON.right}</button>` : ''}</div>`;
+        const levels = advLevels();
+        const lessonsDone = ADV.filter(lessonDone).length, allLessons = lessonsDone === ADV.length;
+        const wOk = AV.writtenPassed(), pOk = AV.practicalPassed();
+        const req = ADV.length + 2, doneN = lessonsDone + (wOk ? 1 : 0) + (pOk ? 1 : 0);
+        const examView = /^adv-exam/.test(t.currentAdv || '');
+        const cur = currentLesson('adv');
+        const unlocked = allLessons && !!t.cert;
+        let n = 0;
+        sub = 'For working bookkeepers ready to go further: accrual accounting, fixed assets, inventory, loans, payroll and sales tax compliance, business and owner taxes, internal controls and professional standards. Ends with a written exam and a graded month-end close.';
+        side = `
+          <div class="train-prog"><div class="tp-top"><b>${doneN} of ${req} steps</b><span class="muted">${Math.round(doneN / req * 100)}%</span></div><div class="progress navy"><div style="width:${doneN / req * 100}%"></div></div>
+            <div class="lvl-badges">${levels.map((L, i) => `<span class="lvl-badge navy ${lvlDone(L) ? 'on' : ''}" title="${esc(L.title)}">${lvlDone(L) ? ICON.check : 'ABC'[i]}</span>`).join('')}<span class="lvl-badge exam ${wOk && pOk ? 'on' : ''}" title="Final exams">${wOk && pOk ? ICON.check : 'E'}</span></div></div>
+          <div class="train-list">
+            ${levels.map(L => `<div class="tl-group">${esc(L.title)}${lvlDone(L) ? ` <span class="tag green">${ICON.check}</span>` : ''}</div>${L.lessons.map(x => `<button class="tl ${!examView && x === cur ? 'on' : ''} ${lessonDone(x) ? 'done' : ''}" data-action="t-go" data-id="${x.id}"><span class="step-n">${lessonDone(x) ? ICON.check : ++n}</span><span><b>${esc(x.title)}</b><span class="muted">${x.mins} min</span></span></button>`).join('')}`).join('')}
+            <div class="tl-group">Final exams${unlocked ? '' : ` <span class="muted" style="text-transform:none;letter-spacing:0">· locked</span>`}</div>
+            <button class="tl ${t.currentAdv === 'adv-exam-written' ? 'on' : ''} ${wOk ? 'done' : ''} ${unlocked ? '' : 'locked'}" data-action="t-go" data-id="adv-exam-written"><span class="step-n">${wOk ? ICON.check : unlocked ? 'W' : ICON.lock}</span><span><b>Advanced written exam</b><span class="muted">35 questions · 80% to pass</span></span></button>
+            <button class="tl ${t.currentAdv === 'adv-exam-practical' ? 'on' : ''} ${pOk ? 'done' : ''} ${unlocked ? '' : 'locked'}" data-action="t-go" data-id="adv-exam-practical"><span class="step-n">${pOk ? ICON.check : unlocked ? 'P' : ICON.lock}</span><span><b>Practical: month-end close</b><span class="muted">Adjusting entries, graded</span></span></button>
+          </div>
+          ${advEarned ? `<div class="cert-cta navy">${ICON.spark}<div><b>${t.certAdv ? 'Certificate earned' : 'You earned it!'}</b><div class="muted">${t.certAdv ? esc(t.certAdv.id) : 'Advanced Accounting & Tax'}</div></div><button class="btn sm gold" data-action="adv-cert">${t.certAdv ? 'Badge & LinkedIn' : 'Get it'}</button></div>` : `<div class="cert-req"><div class="cap-label">To earn this certificate</div><div class="${t.cert ? 'ok' : ''}">${t.cert ? ICON.check : '○'} Professional Bookkeeping Certificate</div><div class="${allLessons ? 'ok' : ''}">${allLessons ? ICON.check : '○'} All ${ADV.length} advanced lessons <span class="muted">(${lessonsDone} done)</span></div><div class="${wOk ? 'ok' : ''}">${wOk ? ICON.check : '○'} Written exam, 80% or better</div><div class="${pOk ? 'ok' : ''}">${pOk ? ICON.check : '○'} Practical close, 80+ and closed</div></div>`}
+          <div class="pa-card"><div class="pa-ic">${ICON.spark}</div><div class="grow"><b>Accredited programs</b><div class="muted">College credit, tax credentials and the CPA path.</div></div><button class="btn sm" data-action="adv-programs">See them</button></div>`;
+        if (examView) {
+          main = !unlocked ? `<div class="tm-head"><span class="tag navy">Final exams</span></div><h2 class="tm-title">Almost there</h2><p class="tm-learn">The advanced exams open once you've earned the Professional Bookkeeping Certificate and finished all ${ADV.length} advanced lessons${allLessons ? '' : ` (${plural(ADV.length - lessonsDone, 'lesson')} to go)`}.</p><div class="tm-nav"><span></span>${allLessons ? `<button class="btn primary" data-action="t-track" data-v="pro">Go to the Professional program ${ICON.right}</button>` : `<button class="btn primary" data-action="t-go" data-id="${(ADV.find(l => !lessonDone(l)) || ADV[0]).id}">Go to the next lesson ${ICON.right}</button>`}</div>`
+            : t.currentAdv === 'adv-exam-written' ? AV.renderWritten() : AV.renderPractical();
+        } else main = lessonMain(cur, ADV, ADV_LEVELS, 'adv-exam-written');
       }
       return `
         <div class="page-head">
-          <div><h1>Coll Ledger Academy</h1><div class="sub">Four levels of hands-on lessons on a pretend bakery, then a written exam and a graded month-end. Pass both to earn the Professional Bookkeeping Certificate.</div></div>
+          <div><h1>Coll Ledger Academy</h1><div class="sub">${sub}</div></div>
           <div class="actions">${p ? `<button class="btn" data-action="t-reset">${ICON.refresh}Reset practice account</button><button class="btn primary" data-action="t-open">${ICON.right}Open Bluebird Bakery</button>` : `<button class="btn primary" data-action="t-open">${ICON.spark}Create the practice account</button>`}</div>
         </div>
-        <div class="train">
+        ${tabs}
+        <div class="train ${track === 'adv' ? 'adv' : ''}">
           <aside class="card train-side">${side}</aside>
           <article class="card train-main">${main}</article>
         </div>`;
@@ -785,9 +1090,12 @@
   });
 
   act({
-    't-go': el => { T().current = el.dataset.id; if (!/^exam/.test(el.dataset.id)) S.ui.exam = null; save(); if (S.route.page !== 'training') go('training'); else render(); $('#view').scrollTop = 0; },
+    't-go': el => { const t = T(), id = el.dataset.id; const l = LESSONS.find(x => x.id === id);
+      if (/^adv-exam/.test(id) || (l && l.track === 'adv')) { t.track = 'adv'; t.currentAdv = id; } else { t.track = 'pro'; t.current = id; }
+      if (!/exam/.test(id)) S.ui.exam = null; save(); if (S.route.page !== 'training') go('training'); else render(); $('#view').scrollTop = 0; },
+    't-track': el => { T().track = el.dataset.v; S.ui.exam = null; save(); if (S.route.page !== 'training') go('training'); else render(); $('#view').scrollTop = 0; },
     't-open': () => { const fresh = !practice(); ensurePractice(true, fresh ? 'dashboard' : 'dashboard'); if (fresh) U.toast('Bluebird Bakery is ready — the coach in the corner will guide you'); },
-    't-do': el => { const l = LESSONS.find(x => x.id === el.dataset.id); T().current = l.id; T().coachHidden = false; save(); l.action[1](); },
+    't-do': el => { const l = LESSONS.find(x => x.id === el.dataset.id); if (l.track === 'adv') { T().currentAdv = l.id; T().track = 'adv'; } else T().current = l.id; T().coachHidden = false; save(); l.action[1](); },
     't-drill-check': () => { const t = T(); t.drill = t.drill || {}; $$('[data-drill]').forEach(s => { const i = s.dataset.drill; t.drill[i] = t.drill[i] || {}; t.drill[i][s.dataset.side] = s.value; }); t.drillChecked = true; save(); sweep(); render(); },
     't-quiz': el => { T().quiz[el.dataset.k] = +el.dataset.a; save(); sweep(); render(); },
     't-reset': async () => {
@@ -814,6 +1122,7 @@
     const c = client();
     if (!c || !c.practice || S.route.page === 'training' || !S.data.setupDone) { if (el) el.remove(); return; }
     if (!el) { el = document.createElement('div'); el.id = 'coach'; document.body.appendChild(el); }
+    if (c.advExam) { el.className = 'coach'; el.innerHTML = `<div class="coach-head">${ICON.spark}<b>Advanced practical</b><span class="muted">${U.fmtMonth(c.advKey.month.from)}</span></div><div class="coach-task"><span>Post the adjusting entries from the documents, fix the miscoded items, then close the month.</span></div><div class="coach-foot"><button class="btn sm primary" data-action="t-go" data-id="adv-exam-practical">Grade my work</button></div>`; return; }
     if (c.exam) { el.className = 'coach'; el.innerHTML = `<div class="coach-head">${ICON.spark}<b>Practical exam</b><span class="muted">${U.fmtMonth(c.examKey.month.from)}</span></div><div class="coach-task"><span>Categorize, apply the invoice payment, clean up, reconcile to ${money(c.examKey.statement)}, then close the month.</span></div><div class="coach-foot"><button class="btn sm primary" data-action="t-go" data-id="exam-practical">Grade my work</button></div>`; return; }
     const t = T();
     const l = currentLesson();
@@ -821,7 +1130,7 @@
     if (t.coachHidden) { el.className = 'coach mini'; el.innerHTML = `<button data-action="t-coach-show">${ICON.spark}Coach · ${esc(l.title)}</button>`; return; }
     const needQuiz = ok && !quizDone(l);
     el.className = 'coach' + (ok ? ' ok' : '');
-    el.innerHTML = `<div class="coach-head">${ICON.spark}<b>Training coach</b><span class="muted">${l.bonus ? 'Bonus' : `Lesson ${LESSONS.indexOf(l) + 1}`}</span><button class="icon-btn" data-action="t-coach-hide" aria-label="Hide coach">${ICON.close}</button></div>
+    el.innerHTML = `<div class="coach-head">${ICON.spark}<b>Training coach</b><span class="muted">${l.bonus ? 'Bonus' : l.track === 'adv' ? `Advanced ${ADV.indexOf(l) + 1}` : `Lesson ${CORE.indexOf(l) + 1}`}</span><button class="icon-btn" data-action="t-coach-hide" aria-label="Hide coach">${ICON.close}</button></div>
       <div class="coach-title">${esc(l.title)}</div>
       <div class="coach-task"><span class="tick ${ok ? 'on' : ''}">${ICON.check}</span><span>${esc(l.task || 'Read the lesson and answer the questions.')}</span></div>
       ${needQuiz ? '<div class="coach-note">Task done! Answer the quick check to finish the lesson.</div>' : ok ? '<div class="coach-note">Lesson complete — on to the next one.</div>' : ''}
@@ -832,7 +1141,7 @@
     const inner = $('#view .view-inner'); if (!inner) return;
     const b = document.createElement('div');
     b.className = 'practice-banner';
-    b.innerHTML = c.exam ? `${ICON.spark}<span><b>Practical exam</b> — Juniper Flower Co. is pretend. Do the month-end, then grade your work in the Academy.</span><button class="btn sm" data-action="t-go" data-id="exam-practical">Exam page</button>` : `${ICON.spark}<span><b>Practice account</b> — Bluebird Bakery is pretend. Try anything; nothing here touches a real client.</span><button class="btn sm" data-nav="training">Academy</button>`;
+    b.innerHTML = c.advExam ? `${ICON.spark}<span><b>Advanced practical</b> — Aspen Trail Outfitters is pretend. Post the month-end adjustments, then grade your work in the Academy.</span><button class="btn sm" data-action="t-go" data-id="adv-exam-practical">Exam page</button>` : c.exam ? `${ICON.spark}<span><b>Practical exam</b> — Juniper Flower Co. is pretend. Do the month-end, then grade your work in the Academy.</span><button class="btn sm" data-action="t-go" data-id="exam-practical">Exam page</button>` : `${ICON.spark}<span><b>Practice account</b> — Bluebird Bakery is pretend. Try anything; nothing here touches a real client.</span><button class="btn sm" data-nav="training">Academy</button>`;
     inner.prepend(b);
   }
   App.hooks.push((c, page) => {
@@ -842,6 +1151,8 @@
       if (page === 'reports' && S.ui.report.type === 'pl') t.flags.pl = true;
       if (page === 'reports' && S.ui.report.type === '1099') t.flags.r1099 = true;
       if (page === 'reports' && S.ui.report.type === 'health') t.flags.rHealth = true;
+      if (page === 'reports' && S.ui.report.type === 'tb') t.flags.rTB = true;
+      if (page === 'reports' && S.ui.report.type === 'tax') t.flags.rSalesTax = true;
       if (page === 'cleanup' && S.ui.clean && S.ui.clean.scope === 'all') t.flags.cleanAll = true;
       if (page === 'planning' && S.ui.plan && S.ui.plan.tab === 'owner') t.flags.ownerTab = true;
       sweep();
@@ -851,8 +1162,9 @@
     coach();
   });
   document.addEventListener('change', e => { const el = e.target; if (!el.dataset || el.dataset.drill == null) return; const t = T(); t.drill = t.drill || {}; t.drill[el.dataset.drill] = t.drill[el.dataset.drill] || {}; t.drill[el.dataset.drill][el.dataset.side] = el.value; save(); });
+  document.addEventListener('click', e => { if (e.target.closest('[data-action="year-end"]') && inPractice()) { T().flags.yearEnd = true; save(); setTimeout(sweep, 50); } }, true);
   document.addEventListener('click', e => { if (e.target.closest('[data-action="month-email"]') && inPractice()) { T().flags.monthEmail = true; save(); setTimeout(sweep, 50); } }, true);
   // keep the coach fresh after quick actions that don't re-render a screen
   document.addEventListener('click', () => setTimeout(() => { if (inPractice()) coach(); }, 400));
-  App.practice = { ensurePractice, LESSONS, CORE };
+  App.practice = { ensurePractice, LESSONS, CORE, ADV, advLevels, levelsWithLessons, T, sweep };
 })();

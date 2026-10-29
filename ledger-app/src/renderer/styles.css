@@ -1147,3 +1147,33 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.55; resize: ve
   .tm-head { flex-wrap: wrap; }
   .tm-head .tag { white-space: normal; height: auto; line-height: 1.4; }
 }
+
+/* ---------- Advanced Accounting & Tax track ---------- */
+.tag.navy { background: rgba(34, 64, 110, .12); color: #22406E; }
+:root[data-theme="dark"] .tag.navy { background: rgba(120, 160, 220, .16); color: #A9C3EA; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tag.navy { background: rgba(120, 160, 220, .16); color: #A9C3EA; } }
+.progress.navy div { background: linear-gradient(90deg, #22406E, var(--gold)); }
+.lvl-badge.navy.on { background: #22406E; border-color: #22406E; color: #fff; }
+.cert-cta.navy { background: rgba(34, 64, 110, .10); }
+.cert-cta.navy svg { color: #22406E; }
+.track-seg { display: flex; width: 100%; margin-bottom: 16px; }
+.track-seg button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 12px; font-size: 13px; }
+.track-seg button svg { width: 14px; height: 14px; color: var(--accent); }
+.tm-tips { margin: 18px 0; padding: 14px 16px 6px; border-radius: 12px; background: var(--gold-soft); border: 1px solid rgba(184, 137, 59, .28); }
+.tm-tips .cap-label { display: flex; align-items: center; gap: 6px; color: var(--warn); }
+.tm-tips .cap-label svg { width: 14px; height: 14px; }
+.tm-tips ul { margin: 8px 0 8px; padding-left: 20px; }
+.tm-tips li { margin: 0 0 8px; line-height: 1.55; font-size: 13.5px; }
+.formula { margin: 10px 0 14px; padding: 10px 14px; border-left: 3px solid var(--gold); background: var(--surface-2); border-radius: 8px; font-size: 14px; }
+.adv-docs { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin: 14px 0; }
+.adv-doc { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); font-size: 13px; line-height: 1.5; display: flex; flex-direction: column; gap: 4px; }
+.adv-doc b:first-child { color: #22406E; font-size: 12.5px; }
+:root[data-theme="dark"] .adv-doc b:first-child { color: #A9C3EA; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .adv-doc b:first-child { color: #A9C3EA; } }
+.prog-list { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.prog { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--surface); }
+.prog-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.prog-head .muted { font-size: 12.5px; }
+.prog ul { margin: 8px 0; padding-left: 20px; font-size: 13px; line-height: 1.55; }
+.prog-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
+@media (max-width: 640px) { .prog-foot .btn { width: 100%; justify-content: center; } .track-seg button { font-size: 12px; padding: 8px 6px; } }

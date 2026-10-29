@@ -4,12 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Verify a credential · Coll Business Solutions LLC</title>
-<meta name="description" content="Check a Coll Ledger Academy Professional Bookkeeping Certificate issued by Coll Business Solutions LLC.">
+<meta name="description" content="Check a Coll Ledger Academy certificate — Professional Bookkeeping or Advanced Accounting &amp; Tax — issued by Coll Business Solutions LLC.">
 <link rel="icon" href="/brand/coll-icon.svg" type="image/svg+xml">
 <link rel="icon" href="/brand/coll-favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="/brand/coll-apple-touch-icon.png">
 <meta property="og:title" content="Coll Ledger Academy credential">
-<meta property="og:description" content="Professional Bookkeeping Certificate issued by Coll Business Solutions LLC.">
+<meta property="og:description" content="Coll Ledger Academy certificates issued by Coll Business Solutions LLC.">
 <meta property="og:image" content="https://collbusinesssolutions.com/img/coll-ledger-academy-badge.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -73,12 +73,13 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
 <main class="wrap">
   <div class="box">
     <h1>Verify a credential</h1>
-    <p class="lede">Check a Coll Ledger Academy Professional Bookkeeping Certificate issued by Coll Business Solutions LLC. Enter the credential ID printed on the certificate, like <span class="mono">CL-2026-XXXX-XXXX</span>.</p>
+    <p class="lede">Check a Coll Ledger Academy certificate issued by Coll Business Solutions LLC. Enter the credential ID printed on the certificate, like <span class="mono">CL-2026-XXXX-XXXX</span> (Professional Bookkeeping) or <span class="mono">CA-2026-XXXX-XXXX</span> (Advanced Accounting &amp; Tax).</p>
     <form id="f"><input id="q" placeholder="Credential ID" aria-label="Credential ID" autocomplete="off" spellcheck="false"><button>Check</button></form>
     <div id="out" aria-live="polite"></div>
     <div class="about">
-      <div><h3>What this certificate means</h3><p>The holder completed all four levels of the Coll Ledger Academy — 29 hands-on lessons covering bookkeeping fundamentals, debits and credits, payroll, journal entries, month-end close and error-finding, cash flow, business types and estimated taxes, and running a professional practice — and passed a written exam (80% or better on 30 questions) and an auto-graded practical month-end close.</p></div>
-      <div><h3>What it isn't</h3><p>It is a training certificate from Coll Business Solutions LLC. It is not a state license or a credential from a professional accounting body. Questions? Write to <a href="mailto:collbusinesssolutions@gmail.com">collbusinesssolutions@gmail.com</a>.</p></div>
+      <div><h3>Professional Bookkeeping Certificate</h3><p>The holder completed all four levels of the Coll Ledger Academy — 29 hands-on lessons covering bookkeeping fundamentals, debits and credits, payroll, journal entries, month-end close and error-finding, cash flow, business types and estimated taxes, and running a professional practice — and passed a written exam (80% or better on 30 questions) and an auto-graded practical month-end close.</p></div>
+      <div><h3>Advanced Accounting &amp; Tax Certificate</h3><p>Open only to holders of the Professional certificate. The holder completed 14 advanced lessons in three modules — accrual accounting and the close (deferrals, accruals, depreciation, inventory, loans, cash flow), tax compliance (payroll, sales tax, business and owner taxes, 1099s) and professional standards (internal controls, ethics, data security) — and passed an advanced written exam (80% or better on 35 questions) and a graded month-end close with adjusting entries.</p></div>
+      <div><h3>What it isn't</h3><p>It is a training certificate from Coll Business Solutions LLC. Neither certificate is a CPA license, an IRS credential, a state license, or a credential from a professional accounting body. Questions? Write to <a href="mailto:collbusinesssolutions@gmail.com">collbusinesssolutions@gmail.com</a>.</p></div>
     </div>
   </div>
 </main>
@@ -100,6 +101,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
     out.innerHTML = '<p class="lede">Checking…</p>';
     fetch('/credentials.json?ts=' + Date.now()).then(function (r) { return r.json(); }).then(function (list) {
       var c = (list || []).find(function (x) { return String(x.id).toUpperCase() === id; });
+      var adv = c && (c.program === 'advanced' || /^CA-/i.test(c.id));
       if (!c) {
         out.innerHTML = '<div class="card miss"><h2>No credential found for ' + esc(id) + '</h2><p>Check the ID for typos. A newly earned certificate shows here once Coll Business Solutions LLC has registered it — that usually takes a day or two.</p></div>';
         return;
@@ -108,7 +110,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
       out.innerHTML = '<div class="card ok"><div class="art"><img src="/img/coll-ledger-academy-badge.png" alt="Coll Ledger Academy badge" width="600" height="600"></div><div class="info">' +
         '<span class="status">' + check + 'Verified</span>' +
         '<h2>' + esc(c.name) + '</h2>' +
-        '<div class="what">Professional Bookkeeping Certificate' + (c.distinction ? '<span class="dist">with distinction</span>' : '') + '</div>' +
+        '<div class="what">' + (adv ? 'Advanced Accounting &amp; Tax Certificate' : 'Professional Bookkeeping Certificate') + (c.distinction ? '<span class="dist">with distinction</span>' : '') + '</div>' +
         '<div class="rows"><span>Issued by</span><b>Coll Business Solutions LLC</b><span>Program</span><b>Coll Ledger Academy</b><span>Awarded</span><b>' + esc(fmt(c.awarded)) + '</b>' +
         (c.written != null ? '<span>Written exam</span><b>' + esc(c.written) + '%</b>' : '') +
         (c.practical != null ? '<span>Practical exam</span><b>' + esc(c.practical) + ' / 100</b>' : '') +
