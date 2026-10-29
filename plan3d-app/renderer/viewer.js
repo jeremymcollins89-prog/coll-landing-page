@@ -3279,11 +3279,11 @@ function buildScene(THREE, plan, A) {
     outline(m); pick.push(m);
     segBox(p.x1, p.z1, p.x2, p.z2, 0, 0.333, p.t + 0.022, M.base);
     // the ceiling track: on the side with the ceiling (the room side), not across the outside face, which is one
-    // smooth panel up to the top
-    if (p.h > H + 0.05) {
+    // smooth panel up to the top. Only drawn on a wall taller than one 12′ panel; a single panel shows no band.
+    if (p.h > H + 0.05 && p.h > 12 + 1 / 96) {
       const L0 = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, nx = -(p.z2 - p.z1) / L0, nz = (p.x2 - p.x1) / L0, mx = (p.x1 + p.x2) / 2, mz = (p.z1 + p.z2) / 2;
       const FPw = footprint(A), side = (sd) => { for (const t of [0.5, 0.2, 0.8]) { const x = p.x1 + (p.x2 - p.x1) * t + nx * sd * (p.t / 2 + 0.4), z = p.z1 + (p.z2 - p.z1) * t + nz * sd * (p.t / 2 + 0.4); if (inCeiling(plan, FPw, x, z)) return true; } return false; };
-      for (const sd of [1, -1]) if (side(sd)) { const o = sd * (p.t / 2 + 0.012); segBox(p.x1 + nx * o, p.z1 + nz * o, p.x2 + nx * o, p.z2 + nz * o, H - 0.17, H, 0.024, M.track); }
+      for (const sd of [1, -1]) if (side(sd)) { const o = sd * (p.t / 2 + 0.016); segBox(p.x1 + nx * o, p.z1 + nz * o, p.x2 + nx * o, p.z2 + nz * o, H - 0.17, H, 0.024, M.track); }
     }
     // panels come up to 12′ tall in one piece; a taller wall is a 12′ panel with a second one stacked on it,
     // joined with a horizontal H-channel
