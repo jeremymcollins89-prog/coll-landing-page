@@ -1487,6 +1487,18 @@ class Editor {
     }
     for (const c of P.columns || []) { const r = (c.size || 0.67) / 2, X0 = this.sx(c.x - r), Y0 = this.sy(c.y - r), W = 2 * r * this.view.s; g.save(); g.fillStyle = c.kind === 'concrete' ? '#8d8a84' : '#6f777c'; g.strokeStyle = '#e8edef'; g.lineWidth = 1.2; g.fillRect(X0, Y0, W, W); g.strokeRect(X0, Y0, W, W); g.beginPath(); g.moveTo(X0, Y0); g.lineTo(X0 + W, Y0 + W); g.moveTo(X0 + W, Y0); g.lineTo(X0, Y0 + W); g.stroke(); g.restore(); }
     if (V2 && V2.DEVICES) for (const dv of P.devices || []) this.drawDevice(dv, false);
+    // fixture whips: box to box, square to the grid, dashed; a dot at each 12′ extension's joint
+    if (V2 && V2.whipPorts && Array.isArray(P.whips) && P.whips.length) {
+      try {
+        const key = P.whips, PT = this._whipPT && this._whipPT.key === key && this._whipPT.fx === P.fixtures ? this._whipPT.map : new Map(V2.whipPorts(P).map(q => [q.id, q]));
+        this._whipPT = { key, fx: P.fixtures, map: PT };
+        g.save(); g.strokeStyle = '#c9a227'; g.lineWidth = 1.4; g.setLineDash([5, 3]);
+        for (const w of P.whips) { const a = PT.get(w.a), b = PT.get(w.b); if (!a || !b) continue; g.beginPath(); g.moveTo(this.sx(a.x), this.sy(a.z)); g.lineTo(this.sx(b.x), this.sy(a.z)); g.lineTo(this.sx(b.x), this.sy(b.z)); g.stroke(); }
+        g.setLineDash([]); g.fillStyle = '#c9a227';
+        for (const w of P.whips) { const a = PT.get(w.a); if (a) { g.beginPath(); g.arc(this.sx(a.x), this.sy(a.z), 2.5, 0, Math.PI * 2); g.fill(); } }
+        g.restore();
+      } catch (e) { /* drawn without them */ }
+    }
     // customer comments: numbered pins where they were left
     (P.comments || []).forEach((c, i) => { const X = this.sx(c.x), Y = this.sy(c.y); g.save(); g.fillStyle = c.done ? '#6fd08c' : '#f2c84b'; g.strokeStyle = '#1a1f22'; g.lineWidth = 2; g.beginPath(); g.arc(X, Y - 12, 9, 0, Math.PI * 2); g.moveTo(X - 4, Y - 5); g.lineTo(X, Y); g.lineTo(X + 4, Y - 5); g.fill(); g.stroke(); g.fillStyle = '#1a1f22'; g.font = 'bold 10px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i + 1), X, Y - 11.5); g.restore(); });
     // people and material flow: arrows room to room through the doors
