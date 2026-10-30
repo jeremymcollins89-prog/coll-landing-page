@@ -1245,25 +1245,29 @@ function beamSeat(plan, A, b) {
   for (let s = 0; s <= L + 1e-9; s += 0.25) if (fp.has(b.x1 + ux * s, b.y1 + uy * s)) { if (sa == null) sa = s; sb = s; }
   if (sa == null) return up();
   // where the beam's line crosses cleanroom walls (distance along the beam from its first end)
-  const hits = [];
+  const hits = [], half = new Map();
   for (const w of A.walls) {
     if (!isHard(w)) continue;
     const wl = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (wl < 0.1) continue;
     const wx = (w.x2 - w.x1) / wl, wy = (w.y2 - w.y1) / wl, den = ux * wy - uy * wx; if (Math.abs(den) < 0.05) continue;
     const ex = w.x1 - b.x1, ey = w.y1 - b.y1, s = (ex * wy - ey * wx) / den, t = (ex * uy - ey * ux) / den, e = (w.t || 0.25) / 2;
-    if (t >= -e && t <= wl + e) hits.push(s);
+    if (t >= -e && t <= wl + e) { hits.push(s); half.set(s, e); }
   }
   const tol = 0.75, before = hits.filter(s => s <= sa + tol), after = hits.filter(s => s >= sb - tol);
   if (!before.length && !after.length) return up();
   const s0 = before.length ? Math.max(...before) : sa, s1 = after.length ? Math.min(...after) : sb;
+  // the beam runs on over each wall it bears on to the wall's outside face (flush with it)
+  const e0 = before.length ? half.get(s0) || 0 : 0, e1 = after.length ? half.get(s1) || 0 : 0;
   if (s1 - s0 < 1) return up();
   // it sits on the walls it spans, at their top there: a taller room's walls (raised with a ceiling area, or
   // given their own height) carry it higher
   const ex = (s) => [b.x1 + ux * s, b.y1 + uy * s];
   const wallTop = (s) => { const [x, z] = ex(s); let best = null, bd = 1e9; for (const p of A.pieces) { if (!p.hard) continue; const dd = segDist(x, z, p.x1, p.z1, p.x2, p.z2); if (dd < (p.t || 0.25) / 2 + 0.75 && dd < bd) { bd = dd; best = p.h; } } return best; };
   const WH0 = A.WH || A.H, t0 = wallTop(s0), t1 = wallTop(s1), WH = t0 != null && t1 != null ? Math.min(t0, t1) : t0 != null ? t0 : t1 != null ? t1 : WH0, top = WH - 0.02;
-  const ceilUnder = A.PL > 0 ? WH - A.PL : A.H;
-  return { x1: b.x1 + ux * s0, y1: b.y1 + uy * s0, x2: b.x1 + ux * s1, y2: b.y1 + uy * s1, bot: A.PL > 0 ? Math.max(ceilUnder + 0.05, top - d) : WH + 0.01, onWalls: true };
+  // it hangs in the plenum between the walls; its top flange runs on over each wall's top to the outside face and
+  // rests on the panels there, under the wall cap (the web and bottom flange stop at the walls' inside faces)
+  const tf = Math.max(0.025, (beamSize(b).tf || 0.4) / 12), btm = WH + tf - d, ceilUnder = A.PL > 0 ? WH - A.PL : A.H;
+  return { x1: b.x1 + ux * (s0 - e0), y1: b.y1 + uy * (s0 - e0), x2: b.x1 + ux * (s1 + e1), y2: b.y1 + uy * (s1 + e1), in0: 2 * e0, in1: 2 * e1, bot: A.PL > 0 ? Math.max(ceilUnder + 0.05, btm) : WH + WALL_CAP.up, onWalls: true };
 }
 /* Where a beam can sit on a cleanroom wall: the studs. A wall drawn as a long run has an H-stud every 48″ from
    its start (where its panels join) and a post at each end; a snap-together panel has one at each end. */
@@ -1277,6 +1281,9 @@ function studPoints(plan) {
   }
   return out;
 }
+/* The white cap over the top of every cleanroom wall: it fits over both faces and runs down 1″ on each; its top
+   stands `up` above the panels (beams and the lid rest on it). */
+const WALL_CAP = { up: 0.03, down: 1 / 12, over: 0.015 };
 function beamBottom(plan, A, b) { return beamSeat(plan, A, b).bot; }
 /* Zoom for the orbit views: the wheel zooms toward whatever is under the mouse (not the middle of the
    screen), in steps that scale with distance, so a far corner comes up in a few turns and a close-up
@@ -3565,6 +3572,9 @@ function buildScene(THREE, plan, A) {
     parent.add(m); return m;
   }
   let curRef = null;
+  // the beams hung between cleanroom walls (their top flanges run over the walls, through the wall caps)
+  let capB = null;
+  const capBeams = () => capB || (capB = A.PL > 0 ? (plan.beams || []).map(b => ({ q: beamSeat(plan, A, b), bf: beamSize(b).bf / 12 })).filter(o => o.q.onWalls) : []);
 
   for (const p of A.pieces) {
     curRef = p.id ? { kind: 'wall', id: p.id } : null;
@@ -3608,7 +3618,30 @@ function buildScene(THREE, plan, A) {
     // panels come up to 12′ tall in one piece; a taller wall has a second one stacked on it. The joint is not drawn:
     // the wall reads as one smooth face (no band at the stack line)
     // a section that stops short of (or runs past) the top of the cleanroom gets a cap along its top
-    if (Math.abs(p.h - WH) > 0.02) segBox(p.x1, p.z1, p.x2, p.z2, p.h - 0.03, p.h + 0.04, p.t + 0.03, WP.trim);
+    // the white wall cap over the top of every wall: down 1″ over both faces
+    // (12′ lengths; its top cut round the top flange of each beam that crosses the wall, the flange showing in the
+    // gap; the leg on the outside face carries on under the flange, so each length is still one piece)
+    {
+      const cm = M.wallCap || (M.wallCap = new THREE.MeshLambertMaterial({ color: 0xf6f7f7, emissive: 0x2a2a2a, name: 'Wall cap, white' }));
+      const L0 = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, ux = (p.x2 - p.x1) / L0, uz = (p.z2 - p.z1) / L0, nx = -uz, nz = ux, cuts = [];
+      for (const bs of capBeams()) {
+        const bx = bs.q.x2 - bs.q.x1, bz = bs.q.y2 - bs.q.y1, bl = Math.hypot(bx, bz) || 1, den = ux * bz / bl - uz * bx / bl; if (Math.abs(den) < 0.2) continue;
+        const ex = bs.q.x1 - p.x1, ez = bs.q.y1 - p.z1, sw = (ex * bz / bl - ez * bx / bl) / den, sb = (ex * uz - ez * ux) / den;
+        if (sw < -0.05 || sw > L0 + 0.05 || sb < -0.05 || sb > bl + 0.05) continue;
+        if (Math.min(sb, bl - sb) > (p.t || 0.25) + 0.1) continue; // the beam only bears on its end walls
+        // the side of the wall the beam hangs on (its inside face)
+        const mx = (bs.q.x1 + bs.q.x2) / 2 - p.x1, mz = (bs.q.y1 + bs.q.y2) / 2 - p.z1, side = mx * nx + mz * nz > 0 ? 1 : -1;
+        const hw = bs.bf / 2 / Math.abs(den) + 0.01; cuts.push({ a: sw - hw, b: sw + hw, side });
+      }
+      const minus = (a, b, C) => { const out = []; let s0 = a; for (const c of C.slice().sort((x, y) => x.a - y.a)) { if (c.b <= s0 || c.a >= b) continue; if (c.a - s0 > 0.01) out.push([s0, c.a]); s0 = Math.max(s0, c.b); } if (b - s0 > 0.01) out.push([s0, b]); return out; };
+      const seg = (a, b, o, y0, y1, th) => outline(segBox(p.x1 + ux * a + nx * o, p.z1 + uz * a + nz * o, p.x1 + ux * b + nx * o, p.z1 + uz * b + nz * o, y0, y1, th, cm));
+      const T2 = (p.t || 0.25) / 2, lg = WALL_CAP.over + 0.006;
+      for (let a = 0; a < L0 - 0.01; a += 12) {
+        const b = Math.min(L0, a + 12);
+        for (const [u, v] of minus(a, b, cuts)) seg(u, v, 0, p.h, p.h + WALL_CAP.up, p.t + 2 * WALL_CAP.over);
+        for (const sd of [1, -1]) for (const [u, v] of minus(a, b, cuts.filter(c => c.side === sd))) seg(u, v, sd * (T2 + lg / 2), p.h - WALL_CAP.down, p.h + (cuts.length ? 0 : WALL_CAP.up), lg);
+      }
+    }
     shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
   }
   curRef = null;
@@ -4136,12 +4169,12 @@ function buildScene(THREE, plan, A) {
   // plenum lid: the top of the cleanroom, over the plenum (hidden in Dollhouse and Plenum views)
   const lid = new THREE.Group(); root.add(lid);
   const DK = deckShapes(plan);
+  // steel roof deck: galvanized, ribbed every 6″
+  const dc = cachedCanvas('deck', () => makeCanvas(64, 64, (g, w, h) => { g.fillStyle = '#a9afb3'; g.fillRect(0, 0, w, h); for (let x = 0; x < w; x += 16) { g.fillStyle = 'rgba(255,255,255,.28)'; g.fillRect(x, 0, 5, h); g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x + 9, 0, 3, h); } }));
+  const dtx = new THREE.CanvasTexture(dc); dtx.wrapS = dtx.wrapT = THREE.RepeatWrapping; dtx.repeat.set(0.5, 0.5); dtx.anisotropy = ANISO;
+  const dm = new THREE.MeshPhongMaterial({ map: dtx, color: 0xd5dadd, specular: 0x555555, shininess: 40, side: THREE.DoubleSide, name: 'Lid deck, galvanized' });
   if (DK.length) {
     // a roof deck / lid drawn and placed over the cleanroom: its outline, 2″ thick, on top of the plenum and beams
-    // steel roof deck: galvanized, ribbed every 6″
-    const dc = cachedCanvas('deck', () => makeCanvas(64, 64, (g, w, h) => { g.fillStyle = '#a9afb3'; g.fillRect(0, 0, w, h); for (let x = 0; x < w; x += 16) { g.fillStyle = 'rgba(255,255,255,.28)'; g.fillRect(x, 0, 5, h); g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x + 9, 0, 3, h); } }));
-    const dtx = new THREE.CanvasTexture(dc); dtx.wrapS = dtx.wrapT = THREE.RepeatWrapping; dtx.repeat.set(0.5, 0.5); dtx.anisotropy = ANISO;
-    const dm = new THREE.MeshPhongMaterial({ map: dtx, color: 0xd5dadd, specular: 0x555555, shininess: 40, side: THREE.DoubleSide, name: 'Lid deck, galvanized' });
     const sarea = (R) => { let a = 0; for (let i = 0; i < R.length; i++) { const [x1, y1] = R[i], [x2, y2] = R[(i + 1) % R.length]; a += x1 * y2 - x2 * y1; } return a / 2; };
     for (const d of DK) {
       const parts = deckParts(plan, A, d, WH);
@@ -4166,10 +4199,15 @@ function buildScene(THREE, plan, A) {
       curRef = null;
     }
   } else if (A.PL > 0 && FP) {
-    const lm = new THREE.MeshLambertMaterial({ color: 0xeef0f0, side: THREE.DoubleSide }), LR = ceilingRects(plan, FP, A);
+    // the cleanroom's own lid: the same galvanized steel deck as a drawn lid (its uv runs 4′ to a repeat here)
+    const ltx = dtx.clone(); ltx.repeat.set(2, 2); ltx.needsUpdate = true;
+    const lm = dm.clone(); lm.map = ltx; lm.name = 'Lid deck, galvanized';
+    const LR = ceilingRects(plan, FP, A);
     // a taller section (a ceiling area set to raise the walls): its own top, and panels closing the step
     const up = ceilAreas(plan, A).filter(a => a.raise && a.h + A.PL > WH + 0.05);
-    lid.add(new THREE.Mesh(rectsGeometry(THREE, up.length ? subtractRects(LR, up) : LR, WH, true, 4, 4, 0, 0), lm));
+    // it rests on the wall caps, or on the beams where beams sit on the walls
+    const lidY = Math.max(WH + WALL_CAP.up, ...(plan.beams || []).map(b => { const q = beamSeat(plan, A, b); return q.onWalls ? q.bot + beamSize(b).d / 12 : 0; }));
+    lid.add(new THREE.Mesh(rectsGeometry(THREE, up.length ? subtractRects(LR, up) : LR, lidY, true, 4, 4, 0, 0), lm));
     for (const a of up) {
       const T = a.h + A.PL;
       lid.add(new THREE.Mesh(rectsGeometry(THREE, clipRects(LR, a), T, true, 4, 4, 0, 0), lm));
@@ -4227,8 +4265,12 @@ function buildScene(THREE, plan, A) {
     const q = beamSeat(plan, A, b), L = Math.hypot(q.x2 - q.x1, q.y2 - q.y1); if (L < 0.2) continue;
     const S = beamSize(b), d = S.d / 12, bf = S.bf / 12, tf = Math.max(0.025, S.tf / 12), tw = Math.max(0.02, S.tw / 12), y0 = q.bot;
     const stl = new THREE.MeshPhongMaterial({ color: 0x7d868b, specular: 0x444444, shininess: 30, name: 'Steel beam' }), g = new THREE.Group();
-    for (const y of [tf / 2, d - tf / 2]) { const f = new THREE.Mesh(new THREE.BoxGeometry(L, tf, bf), stl); f.position.y = y; g.add(f); }
-    const wb = new THREE.Mesh(new THREE.BoxGeometry(L, d - 2 * tf, tw), stl); wb.position.y = d / 2; g.add(wb);
+    // hung between the walls, the web and bottom flange stop at the walls' inside faces; the top flange runs on
+    // over the wall tops to the outside faces, under the wall caps
+    const i0 = A.PL > 0 ? q.in0 || 0 : 0, i1 = A.PL > 0 ? q.in1 || 0 : 0, Li = Math.max(0.1, L - i0 - i1), mi = (i0 - i1) / 2;
+    { const f = new THREE.Mesh(new THREE.BoxGeometry(L, tf, bf), stl); f.position.y = d - tf / 2; g.add(f); }
+    { const f = new THREE.Mesh(new THREE.BoxGeometry(Li, tf, bf), stl); f.position.set(mi, tf / 2, 0); g.add(f); }
+    const wb = new THREE.Mesh(new THREE.BoxGeometry(Li, d - 2 * tf, tw), stl); wb.position.set(mi, d / 2, 0); g.add(wb);
     g.position.set((q.x1 + q.x2) / 2, y0, (q.y1 + q.y2) / 2); g.rotation.y = -Math.atan2(q.y2 - q.y1, q.x2 - q.x1);
     g.traverse(o => { if (o.isMesh) { outline(o); pick.push(o); if (b.id) o.userData.ref = { kind: 'beam', id: b.id }; } });
     root.add(g);
