@@ -3751,15 +3751,14 @@ function buildScene(THREE, plan, A) {
     const IP = i.hard ? wallPM(i.host && i.host.id) : null, top = i.wallH || H, hm = i.hard ? IP.trim : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head, undefined, head).mats : shellMat(i.kind, i.len, top - head, 0);
     if (top - head > 0.01 && o.type !== 'removable') {
       if (i.hard) {
-        // header panels over a door or glass in a cleanroom wall: the same panels as the wall (its colour), up to 45″
-        // wide, with an H-stud and its insert between them (a pair of doors gets one, 45″ from the start)
+        // header panels over a door or glass in a cleanroom wall: the same panels as the wall (its colour), equal
+        // widths of up to 45″, with an H-stud and its insert between them (centred over a pair of doors)
         const PWd = 45 / 12, SWd = 3 / 12, F = panelFace(IP), SC = studMat(IP), E4 = [IP.edge, IP.edge, IP.edge, IP.edge], at = (q) => [o.x1 + i.ux * q, o.y1 + i.uz * q];
-        let q0 = 0;
-        while (q0 < i.len - 1e-6) {
-          const last = i.len - q0 <= PWd + 1e-6, q1 = last ? i.len : q0 + PWd, [ax2, az2] = at(q0), [bx2, bz2] = at(q1);
+        const np = Math.max(1, Math.ceil((i.len + SWd - 1e-6) / (PWd + SWd))), pw = (i.len - (np - 1) * SWd) / np;
+        for (let k = 0; k < np; k++) {
+          const q0 = k * (pw + SWd), q1 = q0 + pw, [ax2, az2] = at(q0), [bx2, bz2] = at(q1);
           const hp = segBox(ax2, az2, bx2, bz2, head, top, t, E4.concat([F, F])); outline(hp); pick.push(hp);
-          if (last) break;
-          const q2 = Math.min(i.len, q1 + SWd), [cx2, cz2] = at(q2); pick.push(segBox(bx2, bz2, cx2, cz2, head, top, t + 0.006, E4.concat([SC, SC]))); q0 = q2;
+          if (k < np - 1) { const [cx2, cz2] = at(q1 + SWd); pick.push(segBox(bx2, bz2, cx2, cz2, head, top, t + 0.006, E4.concat([SC, SC]))); }
         }
       } else { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); } if (i.hard && ceilHere - head > 0.2 && trackOK(top)) { if (top > ceilHere + 0.05) trackFaces(o.x1, o.y1, o.x2, o.y2, t, H, top); else segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); } }
     const ax = o.x1, az = o.y1, bx = o.x2, bz = o.y2;
