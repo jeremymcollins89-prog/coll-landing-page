@@ -56,6 +56,13 @@ const CSS = `
 .p3v-cform{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:8;display:flex;flex-direction:column;gap:8px;padding:14px;width:min(340px,calc(100% - 40px));color:#e8edef;font:13px system-ui,sans-serif;pointer-events:auto}
 .p3v-cform textarea,.p3v-cform input{font:13px system-ui,sans-serif;padding:7px 8px;border-radius:7px;border:1px solid #3d4a50;background:#1b2226;color:#e8edef}
 .p3v-clist button.p3v-abtn{display:block;width:100%;margin:2px 0 8px;padding:9px 10px;font-size:13px;background:#3fb36b;color:#fff}.p3v-clist button.p3v-abtn.done{background:#28343a;color:#8fd9a8}
+.p3v-clist .p3v-chead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.p3v-clist .p3v-chead button.x{font-size:20px;line-height:1;padding:2px 6px}
+.p3v-clist button.p3v-cadd{display:block;width:100%;margin:0 0 8px;padding:9px 10px;font-size:13px;background:#2b3439;color:#f2c84b;border:1px solid rgba(242,200,75,.45)}
+.p3v-touch .p3v-clist{left:auto;right:10px;top:58px;bottom:auto;width:min(330px,calc(100% - 170px));max-width:none;max-height:calc(100% - 76px);z-index:9;box-shadow:0 14px 40px rgba(0,0,0,.45)}
+.p3v-touch .p3v-cbtn .p3v-cn{display:inline-block;min-width:18px;margin-left:5px;padding:2px 5px;border-radius:999px;background:#f2c84b;color:#1a1f22;font-size:11px;text-align:center}
+.p3v-touch .p3v-cbtn .p3v-cn:empty{display:none}
+.p3v-touch .p3v-cbtn[aria-pressed=true] .p3v-cn{background:#1a1f22;color:#f2c84b}
 .p3v-adec button{flex:1;margin:0!important;background:#28343a!important;color:#e8edef!important}.p3v-adec button[aria-pressed=true]{background:#3fb36b!important;color:#fff!important}.p3v-adec button[data-dec=changes][aria-pressed=true]{background:#f2c84b!important;color:#1a1f22!important}
 .p3v-cform button{font:600 13px inherit;padding:7px 12px;border-radius:7px;border:0;margin-right:6px;cursor:pointer;background:#f2c84b;color:#1a1f22}.p3v-cform .p3v-ccancel{background:#3d4a50;color:#e8edef}
 .p3v-empty{position:absolute;inset:0;display:grid;place-items:center;color:#5b676d;font-size:16px;pointer-events:none;z-index:2}
@@ -5307,6 +5314,7 @@ function mount(container, plan, opts) {
   // touch screens: a joystick to walk with (push to move, further is faster; drag anywhere else to look)
   const joyEl = $('.p3v-joy'), joyKnob = joyEl.querySelector('i'), joy = { f: 0, s: 0, id: null };
   const touchy = !!opts.joystick || (global.matchMedia && global.matchMedia('(pointer: coarse)').matches);
+  if (touchy) container.classList.add('p3v-touch');
   const joySet = (dx, dy) => { const R = 44, d = Math.hypot(dx, dy), k = d > R ? R / d : 1; dx *= k; dy *= k; joyKnob.style.transform = `translate(${dx}px,${dy}px)`; joy.s = dx / R; joy.f = -dy / R; };
   joyEl.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); joy.id = e.pointerId; joyEl.setPointerCapture(e.pointerId); const r = joyEl.getBoundingClientRect(); joy.cx = r.left + r.width / 2; joy.cy = r.top + r.height / 2; joySet(e.clientX - joy.cx, e.clientY - joy.cy); target = null; });
   joyEl.addEventListener('pointermove', (e) => { if (e.pointerId !== joy.id) return; e.preventDefault(); e.stopPropagation(); joySet(e.clientX - joy.cx, e.clientY - joy.cy); });
@@ -5791,7 +5799,7 @@ function mount(container, plan, opts) {
   setTimeout(dismissHint, 7000);
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('pointerdown', e => {
-    dismissHint(); canvas.focus(); stopTour();
+    dismissHint(); canvas.focus(); stopTour(); if (sheetOpen) setSheet(false);
     if (isLocked()) { down = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0, multi: false }; return; }
     down = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0, multi: pts.size > 0 };
     if ((mode !== 'walk' && mode !== 'fly') || tween) return;
@@ -5876,7 +5884,7 @@ function mount(container, plan, opts) {
   srBtn.onclick = (e) => { e.stopPropagation(); superRender(); };
   const cBtn = $('.p3v-cbtn:not(.p3v-abtn)'), cList = $('.p3v-clist'), cForm = $('.p3v-cform:not(.p3v-aform)');
   const pins = new THREE.Group(); scene.add(pins);
-  let commentMode = false, pendingAt = null, myComments = [];
+  let commentMode = false, pendingAt = null, myComments = [], sheetOpen = false;
   const storeKey = () => 'p3v-comments:' + ((plan && (plan.name || '')) + ':' + ((plan && plan.walls) ? plan.walls.length : 0));
   const loadMine = () => { if (!opts.comments) { myComments = []; return; } try { myComments = JSON.parse(localStorage.getItem(storeKey()) || '[]') || []; } catch (e) { myComments = []; } };
   const saveMine = () => { try { localStorage.setItem(storeKey(), JSON.stringify(myComments)); } catch (e) { /* private window: kept for this visit only */ } };
@@ -5893,14 +5901,17 @@ function mount(container, plan, opts) {
     while (pins.children.length) pins.remove(pins.children[0]);
     allComments().forEach((c, i) => { const sp = pinSprite(i + 1, c.done); sp.position.set(c.x, (c.h || 0) + 0.6, c.y); pins.add(sp); });
     const L = allComments();
+    if (touchy) { const n = cBtn.querySelector('.p3v-cn'); if (n) n.textContent = L.length ? String(L.length) : ''; }
     if (!opts.comments && !L.length) { cList.hidden = true; return; }
-    cList.hidden = !opts.comments && !L.length;
+    cList.hidden = (!opts.comments && !L.length) || (touchy && !sheetOpen);
     const esc2 = (t) => String(t || '').replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
-    cList.innerHTML = (aOk() ? '<button class="p3v-abtn" title="Tell your designer this design is approved, or what should change">✓ Approve or request changes</button>' : '') + `<b>Comments${L.length ? ' (' + L.length + ')' : ''}</b>` + (L.length ? '<ol>' + L.map((c, i) => `<li>${esc2(c.text)}<br><small>${esc2(c.by || '')}${c.by ? ' · ' : ''}${esc2((c.at || '').slice(0, 10))}${c.done ? ' · done' : ''}</small>${!c.theirs && opts.comments ? ` <button class="x" data-del="${esc2(c.id)}" title="Delete">✕</button>` : ''}</li>`).join('') + '</ol>' : '<br><small>Turn on 💬 Comment, then click anything in the model.</small>')
+    cList.innerHTML = (touchy ? '<div class="p3v-chead"><b>Review</b><button class="x p3v-cclose" aria-label="Close">×</button></div>' : '') + (aOk() ? '<button class="p3v-abtn" title="Tell your designer this design is approved, or what should change">✓ Approve or request changes</button>' : '') + (touchy && opts.comments ? '<button class="p3v-cadd">💬 Add a comment</button>' : '') + `<b>Comments${L.length ? ' (' + L.length + ')' : ''}</b>` + (L.length ? '<ol>' + L.map((c, i) => `<li>${esc2(c.text)}<br><small>${esc2(c.by || '')}${c.by ? ' · ' : ''}${esc2((c.at || '').slice(0, 10))}${c.done ? ' · done' : ''}</small>${!c.theirs && opts.comments ? ` <button class="x" data-del="${esc2(c.id)}" title="Delete">✕</button>` : ''}</li>`).join('') + '</ol>' : '<br><small>Turn on 💬 Comment, then click anything in the model.</small>')
       + (opts.comments && myComments.some(c => !c.sent) ? '<button class="p3v-csend">Send comments</button>' : opts.comments && myComments.length ? '<p><small>All sent to your designer ✓</small></p>' : '');
     cList.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { myComments = myComments.filter(c => c.id !== b.dataset.del); saveMine(); drawPins(); });
     const sb = cList.querySelector('.p3v-csend'); if (sb) sb.onclick = () => sendComments(false);
     const ab = cList.querySelector('.p3v-abtn'); if (ab) { ab.onclick = (e) => { e.stopPropagation(); openApprove(); }; aState(); }
+    const cc = cList.querySelector('.p3v-cclose'); if (cc) cc.onclick = (e) => { e.stopPropagation(); setSheet(false); };
+    const ca = cList.querySelector('.p3v-cadd'); if (ca) ca.onclick = (e) => { e.stopPropagation(); setSheet(false); setCommentMode(true); };
   }
   // with a share id (set by the app), comments go straight to the designer's app through the server;
   // without one, or with no connection, they're saved as a file to email back
@@ -5958,7 +5969,7 @@ function mount(container, plan, opts) {
     const text = cForm.querySelector('textarea').value.trim(), by = cForm.querySelector('input').value.trim(); if (!text) return;
     try { if (by) localStorage.setItem('p3v-name', by); } catch (err) { /* ok */ }
     myComments.push({ id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...pendingAt, text, by, at: new Date().toISOString() });
-    saveMine(); pendingAt = null; cForm.hidden = true; drawPins();
+    saveMine(); pendingAt = null; cForm.hidden = true; if (touchy) setCommentMode(false); drawPins();
   });
   cForm.querySelector('.p3v-ccancel').onclick = () => { pendingAt = null; cForm.hidden = true; };
   // ---- Approve or request changes (a walkthrough link only: a plan with a share id and no private key, i.e.
@@ -6001,7 +6012,13 @@ function mount(container, plan, opts) {
     aForm.hidden = true; drawPins();
     hint.textContent = decision === 'approve' ? 'Sent ✓ Your designer has your approval.' : 'Sent ✓ Your designer has your requested changes.'; hint.classList.remove('gone'); setTimeout(() => hint.classList.add('gone'), 4500);
   });
-  if (opts.comments) { cBtn.hidden = false; cBtn.onclick = (e) => { e.stopPropagation(); commentMode = !commentMode; cBtn.setAttribute('aria-pressed', commentMode); hint.textContent = commentMode ? 'Click anything to comment on it' : ''; hint.classList.toggle('gone', !commentMode); }; }
+  function setCommentMode(on) { commentMode = on; cBtn.setAttribute('aria-pressed', commentMode); hint.textContent = commentMode ? (touchy ? 'Tap anything to comment on it' : 'Click anything to comment on it') : ''; hint.classList.toggle('gone', !commentMode); }
+  function setSheet(on) { sheetOpen = on; drawPins(); }
+  if (opts.comments) {
+    cBtn.hidden = false;
+    if (touchy) { cBtn.innerHTML = '💬<span class="p3v-cn"></span>'; cBtn.setAttribute('aria-label', 'Comments and approval'); cBtn.title = 'Comments and approval'; drawPins(); }
+    cBtn.onclick = (e) => { e.stopPropagation(); if (touchy && !commentMode) setSheet(!sheetOpen); else setCommentMode(!commentMode); };
+  }
   canvas.addEventListener('pointerup', endPointer);
   canvas.addEventListener('pointercancel', endPointer);
   canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') ring.visible = false; });
