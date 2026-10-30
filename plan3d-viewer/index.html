@@ -239,7 +239,7 @@ body.touch #v .p3v-right > .p3v-look:not(.p3v-lidb):not(.p3v-air){display:none}
     if (P.levels && P.levels.length > 1) { const g = P.levels.findIndex(l => !l.below); if (g >= 0) useLevel(P, g); }
     if (viewer) viewer.dispose();
     $('#v').innerHTML = '';
-    viewer = Plan3DViewer.mount($('#v'), P, { joystick: TOUCH, comments: true, startOutside: true, startMode: 'plenum', views: ['plenum', 'walk'], airflow: false, measure: false, superSrc: '/plan3d-app/renderer/vendor/superrender.js' });
+    viewer = Plan3DViewer.mount($('#v'), P, { joystick: TOUCH, comments: true, startOutside: true, startMode: 'doll', views: ['doll', 'plenum', 'walk'], airflow: false, measure: false, superSrc: '/plan3d-app/renderer/vendor/superrender.js' });
     floorPicker();
     // installed on Android, the viewer can turn itself sideways; elsewhere this quietly does nothing
     try { if (TOUCH && matchMedia('(display-mode: standalone)').matches && screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); } catch (e) {}
