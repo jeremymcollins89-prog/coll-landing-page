@@ -4420,26 +4420,42 @@ function buildScene(THREE, plan, A) {
   if (Array.isArray(plan.whips) && plan.whips.length) {
     try {
       const PT = new Map(whipPorts(plan, A).map(p => [p.id, p]));
-      const flex = M.whip || (M.whip = new THREE.MeshPhongMaterial({ color: 0xbfc4c7, specular: 0xffffff, shininess: 60, name: 'Fixture whip, flexible steel (OnePass)' }));
-      const plug = M.whipPlug || (M.whipPlug = new THREE.MeshPhongMaterial({ color: 0xa9afb3, specular: 0x999999, shininess: 50, name: 'Whip connector' }));
-      const tag = M.whipTag || (M.whipTag = new THREE.MeshLambertMaterial({ color: 0xf1d43a, name: 'Whip connector label' }));
+      // the armour: a spiral-wound steel strip, its ridges in a striped texture (bump too), shiny
+      const armour = cachedCanvas('whipArmour', () => makeCanvas(64, 32, (g, W, Hh) => {
+        const gr = g.createLinearGradient(0, 0, 0, Hh); gr.addColorStop(0, '#8e959a'); gr.addColorStop(0.5, '#e9edef'); gr.addColorStop(1, '#8e959a');
+        g.fillStyle = gr; g.fillRect(0, 0, W, Hh);
+        for (let k = -2; k < 6; k++) { g.save(); g.translate(k * 16, 0); g.fillStyle = 'rgba(40,46,50,.55)'; g.beginPath(); g.moveTo(0, 0); g.lineTo(5, 0); g.lineTo(5 + 16, Hh); g.lineTo(16, Hh); g.closePath(); g.fill(); g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.moveTo(6, 0); g.lineTo(8, 0); g.lineTo(24, Hh); g.lineTo(22, Hh); g.closePath(); g.fill(); g.restore(); }
+      }));
+      const plug = M.whipPlug || (M.whipPlug = new THREE.MeshPhongMaterial({ color: 0xb7bcc0, specular: 0xbbbbbb, shininess: 70, name: 'OnePass connector, die-cast' }));
+      const tag = M.whipTag || (M.whipTag = new THREE.MeshLambertMaterial({ color: 0xf1d43a, name: 'OnePass connector label' }));
+      const blk = M.whipBlk || (M.whipBlk = new THREE.MeshLambertMaterial({ color: 0x2b2e31, name: 'OnePass connector face' }));
+      let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      // a OnePass connector: a flat die-cast body on the cable end, the contact face out front (yellow label on the
+      // fixture end), seated on its box
+      const connector = (p, dir, yellow) => {
+        const g = new THREE.Group(); g.position.copy(p); g.lookAt(p.clone().add(dir));
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.17), yellow ? tag : plug); body.position.z = -0.085; g.add(body);
+        const neck = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.07), plug); neck.position.z = -0.2; g.add(neck);
+        const face = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.012), blk); face.position.z = 0.002; g.add(face);
+        fixtures.add(g);
+      };
       for (const w of plan.whips) {
         const a = PT.get(w.a), b = PT.get(w.b); if (!a || !b) continue;
-        const top = Math.max(a.y, b.y) + 0.22, mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
-        // up out of each box, along then across (square to the grid), down into the next
-        const pts = [[a.x, a.y, a.z], [a.x, top, a.z], [b.x, top, a.z], [b.x, top, b.z], [b.x, b.y, b.z]].map(q => new THREE.Vector3(...q));
-        const clean = pts.filter((q, i) => i === 0 || q.distanceTo(pts[i - 1]) > 0.05);
-        const path = new THREE.CurvePath(); for (let i = 1; i < clean.length; i++) path.add(new THREE.LineCurve3(clean[i - 1], clean[i]));
-        const curve = new THREE.CatmullRomCurve3(path.getSpacedPoints(Math.max(8, Math.round(path.getLength() * 3))), false, 'catmullrom', 0.2);
-        const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(16, Math.round(path.getLength() * 6)), 0.028, 8, false), flex); fixtures.add(tube);
-        // the joints: the 9′ whip, then each 12′ extension, spread over the run as the cable lies (with its slack)
-        const R = WHIP.len + WHIP.ext * (w.ext || 0), joints = [0, 1];
-        for (let k = 0, d = WHIP.len; k < (w.ext || 0); k++, d += WHIP.ext) joints.push(d / R);
-        for (const t of joints) {
-          const p = curve.getPointAt(Math.max(0, Math.min(1, t))), tg = curve.getTangentAt(Math.max(0.001, Math.min(0.999, t)));
-          const c = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.07, 0.2), plug); c.position.copy(p); c.lookAt(p.clone().add(tg)); fixtures.add(c);
-          if (t === 1 || (t > 0 && t < 1)) { const lb = new THREE.Mesh(new THREE.BoxGeometry(0.112, 0.072, 0.06), tag); lb.position.copy(p).addScaledVector(tg, 0.07); lb.lookAt(p.clone().add(tg)); fixtures.add(lb); }
-        }
+        const A3 = new THREE.Vector3(a.x, a.y, a.z), B3 = new THREE.Vector3(b.x, b.y, b.z), dx = b.x - a.x, dz = b.z - a.z, D = Math.hypot(dx, dz) || 1;
+        const ux = dx / D, uz = dz / D, nx = -uz, nz = ux, rest = Math.max(a.y, b.y) + 0.06;
+        // a loose coil of flexible cable: out of the box, a lazy bow to one side and back, lying over the units
+        const R = WHIP.len + WHIP.ext * (w.ext || 0), spare = Math.max(0, R - D), bow = Math.min(1.6, 0.25 + spare * 0.12) * (rnd() < 0.5 ? -1 : 1);
+        const pts = [A3.clone(), new THREE.Vector3(a.x + ux * 0.35, rest + 0.12, a.z + uz * 0.35)];
+        const n = Math.max(2, Math.round(D / 2.5));
+        for (let k = 1; k < n; k++) { const t = k / n, side = Math.sin(t * Math.PI) * bow + (rnd() - 0.5) * 0.35; pts.push(new THREE.Vector3(a.x + dx * t + nx * side, rest + 0.04 + rnd() * 0.08, a.z + dz * t + nz * side)); }
+        pts.push(new THREE.Vector3(b.x - ux * 0.35, rest + 0.12, b.z - uz * 0.35), B3.clone());
+        const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.5), L = curve.getLength();
+        const tx = new THREE.CanvasTexture(armour); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.repeat.set(L * 22, 1); tx.anisotropy = ANISO;
+        const mat = new THREE.MeshPhongMaterial({ map: tx, bumpMap: tx, bumpScale: 0.02, color: 0xffffff, specular: 0xffffff, shininess: 80, name: 'Fixture whip, flexible steel armour (OnePass)' });
+        fixtures.add(new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(24, Math.round(L * 10)), 0.036, 10, false), mat));
+        // connectors at the two boxes (the fixture end yellow-labelled) and at each 12′ extension's joint
+        connector(A3, curve.getTangentAt(0.001).negate(), false); connector(B3, curve.getTangentAt(0.999), true);
+        for (let k = 0, d = WHIP.len; k < (w.ext || 0); k++, d += WHIP.ext) { const t = d / R, p = curve.getPointAt(t), tg = curve.getTangentAt(t); connector(p.clone().addScaledVector(tg, 0.13), tg, true); connector(p.clone().addScaledVector(tg, 0.13), tg.clone().negate(), false); }
       }
     } catch (e) { console.error(e); }
   }
