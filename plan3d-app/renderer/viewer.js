@@ -187,6 +187,7 @@ const ITEMS = {
   crchair: { label: 'Cleanroom chair', group: 'Cleanroom furniture', w: 1.83, d: 1.83, h: 3.5, cr: true, free: true },
   sstrash: { label: 'Waste can, stainless, foot pedal', group: 'Cleanroom furniture', w: 1.25, d: 1.25, h: 2.33, cr: true },
   tackymat: { label: 'Tacky mat', group: 'Cleanroom furniture', w: 3, d: 2, h: 0.02, cr: true, sz: true, free: true },
+  cubicle: { label: 'Cubicle workstation, grey panels', group: 'Cleanroom furniture', w: 6.5, d: 3, h: 4.5, cr: true, sz: true },
   // more cleanroom furniture, sized like the usual catalog pieces (Terra Universal and the like)
   crstool: { label: 'Cleanroom stool, adjustable (ESD)', group: 'Cleanroom furniture', w: 1.33, d: 1.33, h: 2.6, cr: true, free: true },
   wallshelf: { label: 'Wall shelf, stainless, perforated', group: 'Cleanroom furniture', w: 4, d: 1.17, h: 0.6, z: 5, cr: true, wv: true },
@@ -3173,7 +3174,7 @@ function itemMesh(THREE, it, M, opt) {
     // ---- cleanroom furniture and equipment: brushed 304 stainless, white powder coat, dark casters
     case 'sstable': case 'sscart': case 'shelving': case 'sscabinet': case 'gownbench': case 'gownrack': case 'crchair': case 'sstrash': case 'tackymat':
     case 'ivpole': case 'ivrack': case 'ivbar': case 'lafw': case 'bsc': case 'isolator': case 'medfridge': case 'handsink': case 'scrubsink': case 'dispenser': case 'shoecover': case 'airshower': case 'teardrop': case 'sprinkler': case 'smokedet':
-    case 'crstool': case 'wallshelf': case 'wallcab': case 'locker': case 'mirror': case 'bootrack': case 'esdbench': case 'lfbench': case 'desiccator': case 'desicbench': case 'glovebox': case 'fumehood': case 'gowncab': case 'partcart': case 'shoecleaner': case 'wipestation': case 'eyewash': {
+    case 'crstool': case 'wallshelf': case 'wallcab': case 'locker': case 'mirror': case 'bootrack': case 'esdbench': case 'lfbench': case 'desiccator': case 'desicbench': case 'glovebox': case 'fumehood': case 'gowncab': case 'partcart': case 'shoecleaner': case 'wipestation': case 'eyewash': case 'cubicle': {
       const brushed = cachedCanvas('brushed-ss', () => makeCanvas(256, 64, (c, W2, H2) => { c.fillStyle = '#c9ced1'; c.fillRect(0, 0, W2, H2); for (let k = 0; k < 900; k++) { const v = 180 + Math.random() * 60 | 0; c.fillStyle = `rgba(${v},${v + 4},${v + 6},.35)`; c.fillRect(Math.random() * W2, Math.random() * H2, 20 + Math.random() * 90, 1); } }));
       const sst = new THREE.CanvasTexture(brushed); sst.wrapS = sst.wrapT = THREE.RepeatWrapping; sst.repeat.set(2, 1);
       const ss = new THREE.MeshPhongMaterial({ color: 0xe4e8ea, map: sst, specular: 0xffffff, shininess: 90 });
@@ -3302,6 +3303,17 @@ function itemMesh(THREE, it, M, opt) {
           legs(w / 2 - 0.05, d / 2 - 0.05, 0, h, 0.07, ssD);
           for (let k = 0; k < 3; k++) { const y = 0.45 + k * (h - 0.6) / 2, sh = box(0, y, 0, w - 0.1, 0.04, d - 0.1, ss); sh.rotation.x = 0.2; box(0, y - 0.05, d / 2 - 0.08, w - 0.1, 0.1, 0.03, ss);
             for (let q = 0; q < Math.floor(w / 0.6); q++) box(-w / 2 + 0.35 + q * 0.6, y + 0.25, 0, 0.35, 0.45, d * 0.75, q % 2 ? mat(0xe8eef2) : blue); }
+          break;
+        }
+        case 'cubicle': {
+          // grey fabric panels along the back and both ends with light caps, a grey work surface at 29″ and a
+          // pedestal file under one end; the open side (+d/2) is where the chair goes
+          const fab = mat(0x8b9095, 0x222222), cap = mat(0xc9cdd0, 0x666666), top = mat(0xb3b7ba, 0x444444), pt = 0.12, ws = 29 / 12;
+          box(0, h / 2, -d / 2 + pt / 2, w, h, pt, fab); box(0, h + 0.02, -d / 2 + pt / 2, w, 0.04, pt + 0.02, cap);
+          for (const sx of [-1, 1]) { box(sx * (w / 2 - pt / 2), h / 2, pt / 2, pt, h, d - pt, fab); box(sx * (w / 2 - pt / 2), h + 0.02, pt / 2, pt + 0.02, 0.04, d - pt, cap); }
+          box(0, ws - 0.05, pt / 2, w - 2 * pt, 0.1, d - pt, top); box(0, ws - 0.05, d / 2 - 0.02, w - 2 * pt, 0.1, 0.04, mat(0x5d6368));
+          const pw = Math.min(1.33, w / 3); box(w / 2 - pt - pw / 2, (ws - 0.1) / 2, -0.1, pw, ws - 0.1, d - 0.5, mat(0x767c82, 0x333333));
+          for (let k = 0; k < 3; k++) box(w / 2 - pt - pw / 2, 0.35 + k * 0.62, d / 2 - 0.34, 0.35, 0.05, 0.03, cap); // drawer pulls
           break;
         }
         case 'esdbench': {
