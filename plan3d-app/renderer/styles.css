@@ -245,12 +245,12 @@ body[data-mode="house"] .modechip { background: rgba(127,211,227,.16); color: #9
 .wback { margin-top: 14px !important; font-size: 13px; }
 .wback a { color: var(--muted); }
 #itemPal { max-height: calc(100% - 20px); overflow-y: auto; }
-#itemPal, #elecPal, #gridPal, #grillePal { position: absolute; left: 70px; top: 10px; z-index: 6; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; max-width: min(560px, calc(100% - 90px)); display: flex; flex-wrap: wrap; gap: 6px 14px; }
-#itemPal .grp, #elecPal .grp, #gridPal .grp, #grillePal .grp { display: flex; flex-direction: column; gap: 4px; }
+#itemPal, #elecPal, #gridPal, #grillePal, #draftPal { position: absolute; left: 70px; top: 10px; z-index: 6; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; max-width: min(560px, calc(100% - 90px)); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+#itemPal .grp, #elecPal .grp, #gridPal .grp, #grillePal .grp, #draftPal .grp { display: flex; flex-direction: column; gap: 4px; }
 #itemPal h5, #elecPal h5, #gridPal h5 { margin: 0 0 2px; font: 600 11px var(--display, sans-serif); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
-#itemPal .row, #elecPal .row, #gridPal .row { display: flex; flex-wrap: wrap; gap: 4px; }
-#itemPal button, #elecPal button, #gridPal button, #grillePal button { font: 12px inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
-#itemPal button.on, #elecPal button.on, #gridPal button.on, #grillePal button.on { border-color: #f2c84b; color: #f2c84b; }
+#itemPal .row, #elecPal .row, #gridPal .row, #draftPal .row { display: flex; flex-wrap: wrap; gap: 4px; }
+#itemPal button, #elecPal button, #gridPal button, #grillePal button, #draftPal button { font: 12px inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+#itemPal button.on, #elecPal button.on, #gridPal button.on, #grillePal button.on, #draftPal button.on { border-color: #f2c84b; color: #f2c84b; }
 
 /* update button in the top bar */
 .updbtn { margin-left: auto; white-space: nowrap; }
@@ -347,3 +347,14 @@ dialog.snapsdlg { width: min(980px, calc(100vw - 40px)) !important; }
 .sg-info small { color: var(--muted); }
 #sgNote { width: 100%; resize: vertical; }
 .sg-one .row { flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* general drafting */
+#draftPal .grp + .grp { margin-top: 6px; }
+#draftPal .dpl { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+#draftPal select { font-size: 12px; padding: 2px 4px; }
+.lyt { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.lyt th { text-align: left; font-weight: 600; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.lyt td { padding: 3px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.lyt .lyN { width: 150px; }
+.lysw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: middle; border: 1px solid rgba(255,255,255,.3); }
+.dcmds { flex-wrap: wrap; gap: 4px; }

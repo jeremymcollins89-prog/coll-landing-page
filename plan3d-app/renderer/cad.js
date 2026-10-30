@@ -227,6 +227,9 @@ function toDxf(plan, opts) {
     if (r.dims) text('A-ANNO-ROOM', r.x, r.y + ROOM_H * 0.75, r.dims, ROOM_H * 0.6, 0);
   }
 
+  // ---- general drafting, on its own layers (layers that are off go out turned off)
+  { const DP = full.draft ? full : plan; if (DP.draft && global.Plan3DDraft) global.Plan3DDraft.dxf(DP, put, X, Y, dxfStr); }
+
   // ---- the Coll Plan3D project, on a frozen layer
   const json = JSON.stringify(full);
   const data = b64(json), CH = 200, n = Math.ceil(data.length / CH);
@@ -261,9 +264,11 @@ function toDxf(plan, opts) {
   w(0, 'LTYPE', 2, 'CONTINUOUS', 70, 0, 3, 'Solid line', 72, 65, 73, 0, 40, 0);
   w(0, 'LTYPE', 2, 'DASHED', 70, 0, 3, '__ __ __ __', 72, 65, 73, 2, 40, 0.75, 49, 0.5, 49, -0.25);
   w(0, 'ENDTAB');
-  w(0, 'TABLE', 2, 'LAYER', 70, LAYERS.length + 1);
+  const DL = (full.draft || plan.draft) && global.Plan3DDraft ? global.Plan3DDraft.dxfLayers(full.draft ? full : plan).filter(l => l[0] !== '0' && !LAYERS.some(q => q[0] === l[0])) : [];
+  w(0, 'TABLE', 2, 'LAYER', 70, LAYERS.length + 1 + DL.length);
   w(0, 'LAYER', 2, '0', 70, 0, 62, 7, 6, 'CONTINUOUS');
   for (const [name, color, lt, frozen] of LAYERS) w(0, 'LAYER', 2, name, 70, frozen ? 1 : 0, 62, frozen ? -color : color, 6, lt);
+  for (const [name, color, off] of DL) w(0, 'LAYER', 2, name, 70, 0, 62, off ? -color : color, 6, 'CONTINUOUS');
   w(0, 'ENDTAB');
   w(0, 'TABLE', 2, 'STYLE', 70, 1);
   w(0, 'STYLE', 2, 'STANDARD', 70, 0, 40, 0, 41, 1, 50, 0, 71, 0, 42, 4.5, 3, 'txt', 4, '');

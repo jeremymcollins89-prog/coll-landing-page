@@ -16,10 +16,11 @@ const ed = new Editor($('#plan'), {
   onLive: () => queue3D(),
   onSelect: (d) => { renderProps(d); if (builder && view === 'build') builder.drawSel(); },
   onTilesize: () => { if (ed.tool === 'grid') gridPalette(); },
-  onTool: (t) => { $$('.tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; $('#itemPal').hidden = t !== 'item'; if (t === 'item') itemPalette(); $('#elecPal').hidden = t !== 'elec'; $('#grillePal').hidden = t !== 'grille'; if (t === 'grille') grillePalette(); if (t === 'elec') elecPalette(); $('#gridPal').hidden = t !== 'grid'; if (t === 'grid') gridPalette(); if (t === 'piece') hideBanner(); toolHint(t); },
+  onTool: (t) => { $$('.tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; $('#itemPal').hidden = t !== 'item'; if (t === 'item') itemPalette(); $('#draftPal').hidden = t !== 'draft'; if (t === 'draft') { draftPalette(); $('#welcome').hidden = true; } $('#elecPal').hidden = t !== 'elec'; $('#grillePal').hidden = t !== 'grille'; if (t === 'grille') grillePalette(); if (t === 'elec') elecPalette(); $('#gridPal').hidden = t !== 'grid'; if (t === 'grid') gridPalette(); if (t === 'piece') hideBanner(); toolHint(t); },
   onStatus: (m) => msg(m || toolHintText(ed.tool)),
   onCursor: (p) => { $('#sXY').textContent = fmt(p.x) + ', ' + fmt(p.y); $('#sZoom').textContent = Math.round(ed.view.s) + ' px/ft'; },
   onCalibrate: (cal) => calibrateDialog(cal),
+  onDrafttext: (pt) => draftTextDialog(pt),
   onBgload: () => updateChrome()
 });
 $('.pane2d').dataset.tool = 'select';
@@ -31,8 +32,8 @@ const pal2d = new Plan3DBuilder.Palette($('#pal2d'), pieces2d, { layout: 'row', 
 
 function welcomeText() {
   const house = ed.plan.mode === 'house';
-  $('#wTitle').textContent = house ? 'Design a house in 3D' : 'Turn a floor plan into a 3D walkthrough';
-  $('#wText').textContent = house ? 'Draw the walls (wood or steel studs), add doors and windows, pick a roof, place the kitchen, bath and laundry, then walk through it. The parts list counts the framing, drywall, siding, roof and more.' : 'Bring in an AutoCAD drawing or a photo of the plan sheet, check the walls, add doors, glass and air chases, then walk through it.';
+  $('#wTitle').textContent = house ? 'Design a project in 3D' : 'Turn a floor plan into a 3D walkthrough';
+  $('#wText').textContent = house ? 'Draw the walls (wood or steel studs), add doors and windows, pick a roof, place the kitchen, bath and laundry, then walk through it. The parts list counts the framing, drywall, siding, roof and more. For any other drawing (a detail, a bracket, a site plan) pick Draft (L) on the left: lines, circles, arcs, text, dimensions, layers and blocks.' : 'Bring in an AutoCAD drawing or a photo of the plan sheet, check the walls, add doors, glass and air chases, then walk through it.';
   $('#wSampleText').textContent = house ? 'A two-story house with a basement and an attached 2-car garage' : 'A fill-and-finish suite: ISO 5 core, two ISO 7 rooms, gowning, airlock and packaging';
 }
 function pickMode(m) {
@@ -44,6 +45,7 @@ function msg(t) { $('#sMsg').textContent = t || 'Ready'; }
 const HINTS = {
   grille: 'Pick a size in the bar above (20×20, 36×36 or your own) and whether it has a damper, then click on a wall panel: the return grille goes in the panel, facing the side you clicked (air flows into it from that side). Drag it to slide it along the wall.',
   header: 'Header panels close the plenum over an open passage between walls. The orange dashes are open gaps: click one to fill it, or press F to fill them all. Or click one end and then the other (ends catch on wall ends and faces). They run from the ceiling up to the top of the walls, with H-studs at 48″ on center.',
+  draft: 'Drafting: pick Line, Polyline, Rectangle, Circle, Arc, Text or Dimension in the bar. It snaps to endpoints, midpoints, centers and crossings; type lengths, @x,y or length<angle and Enter. Select a drawn piece to edit it exactly, move, copy, rotate, mirror, scale, offset or array it.',
   removable: 'Click on a wall to put a removable wall section there (8′-6″ wide, 8′ header): wall panels in a 3″ × 3″ steel tube frame that come out to bring equipment in. Change its width and header in its properties; in 3D, Show removed takes the panels out.',
   overhead: 'Click on a wall to put an overhead sectional door there (12′ wide, head 2′ below the top of the wall). Change its size in its properties.',
   column: 'Click to place a building column. Its size and steel or concrete are in its properties; it runs up to the roof structure.',
@@ -197,11 +199,11 @@ let modePicked = false;
 function updateChrome() {
   const P = ed.plan, house = P.mode === 'house';
   document.body.dataset.mode = house ? 'house' : 'cleanroom';
-  $('#modeChip').textContent = house ? 'House' : 'Cleanroom';
+  $('#modeChip').textContent = house ? 'Project' : 'Cleanroom';
   $('#docName').textContent = (P.name || 'Untitled plan') + (ed.dirty ? ' •' : '');
   document.title = (P.name || 'Untitled plan') + ' — Coll Plan3D';
   const cb = $('#bCeilingLbl'); if (cb) cb.textContent = (P.ceilingSource || (P.ceilingMode === 'manual' && (P.fixtures || []).length)) ? 'Edit ceiling' : 'Add ceiling';
-  const empty = !P.walls.length && !P.chases.length && !P.background && !(P.inserts || []).length && !(P.beams || []).length && !(P.columns || []).length && !(P.ceilTiles || []).length && !(P.ceilingGrid || []).length && !(P.ceilingMode === 'manual' && (P.fixtures || []).length);
+  const empty = !P.walls.length && !(P.draft && P.draft.ents.length) && !P.chases.length && !P.background && !(P.inserts || []).length && !(P.beams || []).length && !(P.columns || []).length && !(P.ceilTiles || []).length && !(P.ceilingGrid || []).length && !(P.ceilingMode === 'manual' && (P.fixtures || []).length);
   $('#welcome').hidden = !empty;
   if (empty) { $('#wPick').hidden = modePicked; $('#wNext').hidden = !modePicked; welcomeText(); }
 }
@@ -248,8 +250,8 @@ $('#optOrtho').addEventListener('change', e => { ed.ortho = e.target.checked; })
 $('#optDims').addEventListener('change', e => { ed.showDims = e.target.checked; ed.render(); });
 $('#optPosts').addEventListener('change', e => { ed.showPosts = e.target.checked; ed.render(); });
 
-const TOOL_KEYS = { q: 'grille', j: 'header', v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', b: 'beam', i: 'item', e: 'elec', h: 'overhead', u: 'column', a: 'carea', t: 'grid' };
-const HOUSE_ONLY = new Set([]), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase', 'column', 'carea', 'grid']);
+const TOOL_KEYS = { l: 'draft', q: 'grille', j: 'header', v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', b: 'beam', i: 'item', e: 'elec', h: 'overhead', u: 'column', a: 'carea', t: 'grid' };
+const HOUSE_ONLY = new Set(['draft']), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase', 'column', 'carea', 'grid']);
 function inField(e) { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA'); }
 window.addEventListener('keydown', e => {
   if ($('#dlg').open || inField(e)) return;
@@ -347,8 +349,11 @@ function panelColorSelect(id, cur, planDefault) {
 function renderProps(opt) {
   const box = $('#props'), P = ed.plan, s = ed.sel, o = ed.selected();
   let h = '';
+  // general drafting: its own panel (exact sizes, layer, the edit commands)
+  if (ed.multi && ed.multi.length > 1 && ed.multi.every(r => r.kind === 'dent')) { draftProps(box, null); return; }
+  if (s && o && s.kind === 'dent' && !(ed.multi && ed.multi.length > 1)) { draftProps(box, o); return; }
   if (ed.multi && ed.multi.length > 1) {
-    const M = ed.multi, cnt = {}, NAMES = { grille: 'return grille', header: 'header panel run', lstep: 'lid step panel run', deck: 'lid piece', tile: 'ceiling tile', wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', gzone: 'grid section', fixture: 'FFUs and lights' };
+    const M = ed.multi, cnt = {}, NAMES = { grille: 'return grille', header: 'header panel run', lstep: 'lid step panel run', deck: 'lid piece', tile: 'ceiling tile', dent: 'drawing piece', wall: 'wall', opening: 'doors and windows', chase: 'chase', room: 'room label', device: 'device', item: 'item', column: 'column', insert: 'building', beam: 'beam', carea: 'ceiling area', gzone: 'grid section', fixture: 'FFUs and lights' };
     M.forEach(r => { cnt[r.kind] = (cnt[r.kind] || 0) + 1; });
     const grouped = M.every(r => { const x = ed.find(r); return x && x.gid && x.gid === ed.find(M[0]).gid; });
     box.innerHTML = `<div class="hd"><span class="kind">${M.length} pieces selected${grouped ? ' (a group)' : ''}</span><button class="btn small danger" id="mDel">Delete</button></div>
@@ -741,7 +746,7 @@ function renderProps(opt) {
   const ext = ed.extents(), hasGeo = P.walls.length > 0, house = P.mode === 'house', R = P.roof || {};
   const kindList = Object.entries(Plan3DViewer.WALL_KINDS).sort((a, b) => house ? (!!b[1].frame - !!a[1].frame) : 0);
   const shellNew = P.newKind && P.newKind !== 'hardwall' && !(Plan3DViewer.WALL_KINDS[P.newKind] || {}).frame;
-  h = `<div class="hd"><span class="kind">${house ? 'House' : 'Plan'}</span></div>
+  h = `<div class="hd"><span class="kind">${house ? 'Project' : 'Plan'}</span></div>
     ${fld('Name', txt('pPName', P.name))}
     ${fld(house ? 'Wall height' : 'Ceiling', txt('pCeil', fmt(P.ceiling)))}
     ${house ? '' : fld('Plenum above', txt('pPlen', fmt(P.plenum || 0))) + `<p class="note" style="margin-top:-4px">Plenum: the space between the grid ceiling and the top of the cleanroom. Walls are ${esc(fmt((P.ceiling || 8) + (P.plenum || 0)))} tall.</p>${ownHeightWalls(P).length ? `<p class="note" style="color:var(--warn)">${ownHeightWalls(P).length} walls have their own height set, so they don't follow this. <button class="btn small" id="pWallsFollow">Make them follow</button></p>` : ''}`}
@@ -796,7 +801,7 @@ function renderProps(opt) {
     ${house ? '' : checkGroupHtml(P) + flowGroupHtml(P) + loadsGroupHtml(P)}
     ${snapsGroupHtml(P)}
     ${commentsGroupHtml(P)}
-    ${fld('Project type', `<select id="pMode"><option value="cleanroom" ${house ? '' : 'selected'}>Cleanroom</option><option value="house" ${house ? 'selected' : ''}>House</option></select>`)}`;
+    ${fld('Project type', `<select id="pMode"><option value="cleanroom" ${house ? '' : 'selected'}>Cleanroom</option><option value="house" ${house ? 'selected' : ''}>Project (house, building, drafting)</option></select>`)}`;
   if (view === 'build') h = `<div class="hd"><span class="kind">Build</span></div>
     <p class="note">Pick a piece on the left and click to place it. Pieces snap to open ends, turn corners toward the mouse, and start T-joints off the middle of a wall.</p>` + partsHtml + h.replace('<div class="hd"><span class="kind">Plan</span></div>', '<div class="grp"><h3>Plan</h3>') + '</div>';
   else h += partsHtml;
@@ -1130,6 +1135,123 @@ document.addEventListener('click', (e) => { const P2 = $('#bellPanel'); if (P2 &
 setTimeout(() => { const b = $('#bBell'); if (!b) return; b.onclick = (e) => { e.stopPropagation(); const P2 = $('#bellPanel'), open = P2.hidden; P2.hidden = !open; b.setAttribute('aria-expanded', String(open)); if (open) { refreshBell(); pollJobs(); } }; refreshBell(); }, 0);
 window.addEventListener('focus', () => checkComments(false));
 /* ---------- Customer comments (from the walkthrough page) ---------- */
+/* ---------- General drafting (the Build a project side): the tool bar, layers, text, exact edits ---------- */
+const DTOOLS = [['line', 'Line'], ['pline', 'Polyline'], ['rect', 'Rectangle'], ['circle', 'Circle'], ['arc', 'Arc'], ['text', 'Text'], ['dim', 'Dimension'], ['insert', 'Block'], ['trim', 'Trim'], ['extend', 'Extend']];
+// a length that may be negative (-3'6")
+const lenS = (v) => { v = String(v || '').trim(); const neg = v.startsWith('-'); const L = parseLen(neg ? v.slice(1) : v, 'ft'); return neg ? -L : L; };
+const ccw = (rad) => +((((-rad * 180 / Math.PI) % 360) + 360) % 360).toFixed(2);
+function draftPalette() {
+  const DR = Plan3DDraft, D = DR.data(ed.plan, false), L = D ? D.layers : [{ id: '0', name: '0' }], cur = D ? D.cur : '0', blocks = D ? Object.keys(D.blocks) : [];
+  if (!ed.dtool) ed.dtool = 'line';
+  if (ed.dtool === 'insert' && (!ed.dblock || !blocks.includes(ed.dblock))) ed.dblock = blocks[0] || null;
+  $('#draftPal').innerHTML = `<div class="grp"><div class="row">${DTOOLS.map(([k, l]) => `<button data-dt="${k}" class="${ed.dtool === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+    <div class="grp"><div class="row" style="align-items:center">
+      <label class="dpl">Layer <select id="dpLay">${L.map(l => `<option value="${esc(l.id)}" ${l.id === cur ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>
+      <button data-da="layers">Layers…</button>
+      <label class="dpl">Text scale <select id="dpSc">${DR.SCALES.map(([v, l]) => `<option value="${v}" ${+(D ? D.ascale : 48) === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+      ${ed.dtool === 'insert' ? `<label class="dpl">Block <select id="dpBlk">${blocks.length ? blocks.map(b => `<option ${ed.dblock === b ? 'selected' : ''}>${esc(b)}</option>`).join('') : '<option value="">No blocks yet: select drawing, Make block</option>'}</select></label>` : ''}
+      <button data-da="attach" title="Bring in a DWG or DXF as a reference (an xref): its lines on a locked layer of its own, to draw over">Attach drawing…</button>
+    </div></div>`;
+  $$('#draftPal [data-dt]').forEach(b => b.onclick = () => { ed.dtool = b.dataset.dt; ed.dd = null; if (ed.tool !== 'draft') ed.setTool('draft'); else { ed.render(); } draftPalette(); Plan3DDraft.status(ed); $('#plan').focus(); });
+  $('#dpLay').onchange = (e) => { const v = e.target.value; ed.edit(P => { Plan3DDraft.data(P, true).cur = v; }); $('#plan').focus(); };
+  $('#dpSc').onchange = (e) => { const v = +e.target.value; ed.edit(P => { Plan3DDraft.data(P, true).ascale = v; }); toast('Text and dimensions now sized for ' + Plan3DDraft.SCALES.find(q => q[0] === v)[1] + '.'); $('#plan').focus(); };
+  if ($('#dpBlk')) $('#dpBlk').onchange = (e) => { ed.dblock = e.target.value || null; $('#plan').focus(); };
+  $$('#draftPal [data-da]').forEach(b => b.onclick = () => { if (b.dataset.da === 'layers') layersDialog(); else attachDrawing(); });
+}
+function layersDialog() {
+  const DR = Plan3DDraft;
+  const body = () => { const D = DR.data(ed.plan, true), cnt = {}; for (const e of D.ents) cnt[e.layer] = (cnt[e.layer] || 0) + 1;
+    return `<table class="lyt"><thead><tr><th>Current</th><th>Name</th><th>Color</th><th>On</th><th>Locked</th><th>Pieces</th><th></th></tr></thead><tbody>${D.layers.map(l => `<tr data-l="${esc(l.id)}">
+      <td><input type="radio" name="lyCur" ${D.cur === l.id ? 'checked' : ''}></td><td><input type="text" class="lyN" value="${esc(l.name)}" ${l.id === '0' ? 'disabled' : ''}></td>
+      <td><select class="lyC">${DR.COLORS.map(c => `<option value="${c[0]}" ${l.color === c[0] ? 'selected' : ''}>${c[2]}</option>`).join('')}</select> <i class="lysw" style="background:${esc(l.color)}"></i></td>
+      <td><input type="checkbox" class="lyO" ${l.on !== false ? 'checked' : ''}></td><td><input type="checkbox" class="lyL" ${l.lock ? 'checked' : ''}></td><td>${cnt[l.id] || 0}${l.xref ? ' (xref)' : ''}</td>
+      <td>${l.id !== '0' ? `<button class="btn small danger lyD" title="${cnt[l.id] ? 'Delete the layer and its ' + cnt[l.id] + ' pieces' : 'Delete the layer'}">✕</button>` : ''}</td></tr>`).join('')}</tbody></table>
+      <div class="row" style="margin-top:8px"><button class="btn small" id="lyAdd">Add a layer</button></div>
+      <p class="note">New drawing goes on the current layer. A layer that's off doesn't show, print or export; a locked one shows but can't be picked or changed (an attached drawing comes in locked). They go out to AutoCAD as layers with these names and colors.</p>`; };
+  const bind = () => {
+    const set = (tr, fn) => ed.edit(P => { const l = DR.data(P, true).layers.find(q => q.id === tr.dataset.l); if (l) fn(l, P); });
+    $$('.lyt tr[data-l]').forEach(tr => {
+      tr.querySelector('[name=lyCur]').onchange = () => { ed.edit(P => { DR.data(P, true).cur = tr.dataset.l; }); };
+      const n = tr.querySelector('.lyN'); if (n) n.onchange = () => set(tr, l => { l.name = n.value.trim() || l.name; });
+      tr.querySelector('.lyC').onchange = (e) => { set(tr, l => { l.color = e.target.value; }); tr.querySelector('.lysw').style.background = e.target.value; };
+      tr.querySelector('.lyO').onchange = (e) => set(tr, l => { l.on = e.target.checked; });
+      tr.querySelector('.lyL').onchange = (e) => set(tr, l => { l.lock = e.target.checked; });
+      const d = tr.querySelector('.lyD'); if (d) d.onclick = () => { ed.edit(P => { const D = DR.data(P, true), id = tr.dataset.l; D.layers = D.layers.filter(q => q.id !== id); D.ents = D.ents.filter(e => e.layer !== id); if (D.cur === id) D.cur = D.layers[0].id; }); ed.sel = null; ed.multi = null; ed.emit('select'); redraw(); };
+    });
+    $('#lyAdd').onclick = () => { ed.edit(P => { const D = DR.data(P, true), id = Plan3DEditor.uid(); D.layers.push({ id, name: 'Layer ' + D.layers.length, color: DR.COLORS[D.layers.length % DR.COLORS.length][0], on: true, lock: false }); D.cur = id; }); redraw(); };
+  };
+  const redraw = () => { $('#dlgBody').innerHTML = body(); bind(); if (ed.tool === 'draft') draftPalette(); };
+  dialogOpen({ title: 'Layers', wide: true, body: body(), buttons: [{ label: 'Done', primary: true, ret: null }], onOpen: () => bind() }).then(() => { if (ed.tool === 'draft') draftPalette(); renderProps(); });
+}
+const TEXT_H = [[3 / 32, '3/32″'], [1 / 8, '1/8″'], [3 / 16, '3/16″'], [1 / 4, '1/4″'], [3 / 8, '3/8″'], [1 / 2, '1/2″'], [3 / 4, '3/4″'], [1, '1″']];
+async function draftTextDialog(pt) {
+  const last = ed.lastTextH || 1 / 8;
+  const v = await dialogOpen({ title: 'Text', body: fld('Text', '<input type="text" id="dtS" style="width:100%" spellcheck="true">') + fld('Height when printed', `<select id="dtH">${TEXT_H.map(([h, l]) => `<option value="${h}" ${Math.abs(h - last) < 1e-6 ? 'selected' : ''}>${l}</option>`).join('')}</select>`) + fld('Angle', txt('dtA', '0', 'degrees, counterclockwise')) + '<p class="note">Its size on the drawing follows the text scale in the bar, so it prints at this height.</p>',
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Place it', primary: true, value: () => ({ s: $('#dtS').value, h: +$('#dtH').value, a: +$('#dtA').value || 0 }) }], onOpen: () => { const i = $('#dtS'); i.focus(); i.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#dlgBtns .primary').click(); } }; } });
+  if (!v || !v.s.trim()) return;
+  ed.lastTextH = v.h; Plan3DDraft.add(ed, { t: 'text', x: pt.x, y: pt.y, str: v.s, ph: v.h, rot: -v.a * Math.PI / 180 });
+}
+const DNAME = { line: 'Line', pline: 'Polyline', circle: 'Circle', arc: 'Arc', text: 'Text', dim: 'Dimension', insert: 'Block' };
+function draftProps(box, o) {
+  const DR = Plan3DDraft, P = ed.plan, D = DR.data(P, true), sel = DR.selEnts(ed), n = sel.length;
+  const layerSel = (cur) => `<select id="dlLay">${D.layers.map(l => `<option value="${esc(l.id)}" ${l.id === cur ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select>`;
+  let f = '';
+  if (o && o.t === 'line') { const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1); f = fld('Start X', txt('dX1', fmt(o.x1))) + fld('Start Y', txt('dY1', fmt(o.y1))) + fld('End X', txt('dX2', fmt(o.x2))) + fld('End Y', txt('dY2', fmt(o.y2))) + fld('Length', txt('dLen', fmt(L))) + fld('Angle', txt('dAng', String(ccw(Math.atan2(o.y2 - o.y1, o.x2 - o.x1))), '°')); }
+  else if (o && o.t === 'circle') f = fld('Center X', txt('dCX', fmt(o.cx))) + fld('Center Y', txt('dCY', fmt(o.cy))) + fld('Radius', txt('dR', fmt(o.r))) + fld('Diameter', txt('dDia', fmt(o.r * 2)));
+  else if (o && o.t === 'arc') f = fld('Center X', txt('dCX', fmt(o.cx))) + fld('Center Y', txt('dCY', fmt(o.cy))) + fld('Radius', txt('dR', fmt(o.r))) + fld('Starts at', txt('dA1', String(ccw(o.a1)), '°')) + fld('Ends at', txt('dA0', String(ccw(o.a0)), '°'));
+  else if (o && o.t === 'pline') { let per = 0; for (const q of DR.pieces(P, o)) per += Math.hypot(q[2] - q[0], q[3] - q[1]); f = `<div class="stats"><span>Corners</span><span>${o.pts.length}</span><span>${o.closed ? 'Perimeter' : 'Length'}</span><span>${esc(fmt(per))}</span></div>` + fld('Closed', `<label class="chk"><input type="checkbox" id="dClosed" ${o.closed ? 'checked' : ''}> Closed shape</label>`); }
+  else if (o && o.t === 'text') f = fld('Text', txt('dStr', o.str || '')) + fld('Height when printed', `<select id="dPH">${TEXT_H.map(([h, l]) => `<option value="${h}" ${Math.abs(h - (o.ph || 0.125)) < 1e-6 ? 'selected' : ''}>${l}</option>`).join('')}</select>`) + fld('Angle', txt('dAng', String(ccw(o.rot || 0)), '°')) + fld('X', txt('dX', fmt(o.x))) + fld('Y', txt('dY', fmt(o.y)));
+  else if (o && o.t === 'dim') f = `<div class="stats"><span>Measures</span><span>${esc(fmt(Math.hypot(o.x2 - o.x1, o.y2 - o.y1)))}</span></div>` + fld('Text', txt('dDT', o.text || '', 'the measured length')) + fld('Line offset', txt('dOff', fmt(o.off || 0))) + fld('Text height', `<select id="dPH">${TEXT_H.map(([h, l]) => `<option value="${h}" ${Math.abs(h - (o.ph || 3 / 32)) < 1e-6 ? 'selected' : ''}>${l}</option>`).join('')}</select>`);
+  else if (o && o.t === 'insert') f = `<div class="stats"><span>Block</span><span>${esc(o.block)}</span></div>` + fld('X', txt('dX', fmt(o.x))) + fld('Y', txt('dY', fmt(o.y))) + fld('Rotation', txt('dAng', String(ccw(o.rot || 0)), '°')) + fld('Scale', txt('dSc', String(+(o.sc || 1).toFixed(4))));
+  const hasEx = sel.some(e => e.t === 'insert' || e.t === 'pline');
+  box.innerHTML = `<div class="hd"><span class="kind">${o ? DNAME[o.t] || 'Drawing' : n + ' drawing pieces'}</span><button class="btn small danger" id="dDel">Delete</button></div>
+    ${fld('Layer', layerSel(o ? o.layer : (sel[0] && sel[0].layer)))}
+    ${f}
+    <div class="grp"><h3>Edit</h3><div class="row dcmds"><button class="btn small" data-dc="move">Move…</button><button class="btn small" data-dc="copy">Copy…</button><button class="btn small" data-dc="rotate">Rotate…</button><button class="btn small" data-dc="mirror">Mirror…</button><button class="btn small" data-dc="scale">Scale…</button><button class="btn small" data-dc="offset">Offset…</button><button class="btn small" data-dc="array">Array…</button><button class="btn small" data-dc="block">Make block…</button>${hasEx ? '<button class="btn small" data-dc="explode">Explode</button>' : ''}</div></div>
+    <p class="note">Drag it to move it: it catches on endpoints, midpoints, centers and crossings (Alt: freely). Arrow keys nudge 1″ (Shift 6″). Shift+click or Shift-drag a box to pick more.</p>`;
+  $('#dDel').onclick = () => ed.deleteSel();
+  $('#dlLay').onchange = (e) => DR.cmd.layer(ed, e.target.value);
+  const upd = (fn) => ed.edit(() => { const x = ed.selected(); if (x) fn(x); });
+  const num = (id, fn) => { const el = $('#' + id); if (!el) return; el.addEventListener('change', () => { const v = lenS(el.value); if (isFinite(v)) upd(x => fn(x, v)); }); el.addEventListener('keydown', e => { if (e.key === 'Enter') el.blur(); }); };
+  const deg = (id, fn) => { const el = $('#' + id); if (!el) return; el.addEventListener('change', () => { const v = +el.value; if (isFinite(v)) upd(x => fn(x, -v * Math.PI / 180)); }); el.addEventListener('keydown', e => { if (e.key === 'Enter') el.blur(); }); };
+  if (o) {
+    num('dX1', (x, v) => { x.x1 = v; }); num('dY1', (x, v) => { x.y1 = v; }); num('dX2', (x, v) => { x.x2 = v; }); num('dY2', (x, v) => { x.y2 = v; });
+    num('dLen', (x, v) => { const a = Math.atan2(x.y2 - x.y1, x.x2 - x.x1); x.x2 = x.x1 + Math.cos(a) * v; x.y2 = x.y1 + Math.sin(a) * v; });
+    if (o.t === 'line') deg('dAng', (x, a) => { const L = Math.hypot(x.x2 - x.x1, x.y2 - x.y1); x.x2 = x.x1 + Math.cos(a) * L; x.y2 = x.y1 + Math.sin(a) * L; });
+    else deg('dAng', (x, a) => { x.rot = a; });
+    num('dCX', (x, v) => { x.cx = v; }); num('dCY', (x, v) => { x.cy = v; }); num('dR', (x, v) => { if (v > 0) x.r = v; }); num('dDia', (x, v) => { if (v > 0) x.r = v / 2; });
+    deg('dA0', (x, a) => { x.a0 = ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); }); deg('dA1', (x, a) => { x.a1 = ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); });
+    num('dX', (x, v) => { x.x = v; }); num('dY', (x, v) => { x.y = v; }); num('dOff', (x, v) => { x.off = v; });
+    if ($('#dSc')) $('#dSc').onchange = (e) => { const v = +e.target.value; if (v > 0) upd(x => { x.sc = v; }); };
+    if ($('#dClosed')) $('#dClosed').onchange = (e) => upd(x => { x.closed = e.target.checked; });
+    if ($('#dStr')) $('#dStr').onchange = (e) => upd(x => { x.str = e.target.value; });
+    if ($('#dDT')) $('#dDT').onchange = (e) => upd(x => { if (e.target.value.trim()) x.text = e.target.value; else delete x.text; });
+    if ($('#dPH')) $('#dPH').onchange = (e) => upd(x => { x.ph = +e.target.value; });
+  }
+  $$('[data-dc]').forEach(b => b.onclick = () => draftCommand(b.dataset.dc));
+}
+async function draftCommand(c) {
+  const DR = Plan3DDraft, ask = (title, body, val) => dialogOpen({ title, body, buttons: [{ label: 'Cancel', ret: null }, { label: 'OK', primary: true, value: val }], onOpen: () => { const i = $('#dlgBody input'); if (i) { i.focus(); i.select && i.select(); } } });
+  const xy = (dx, dy) => fld('Across (+ right)', txt('cdX', dx)) + fld('Up/down (+ down)', txt('cdY', dy));
+  const rd = () => [lenS($('#cdX').value), lenS($('#cdY').value)];
+  if (c === 'move') { const v = await ask('Move', xy("0'", "0'"), rd); if (v && isFinite(v[0]) && isFinite(v[1])) DR.cmd.move(ed, v[0], v[1]); }
+  else if (c === 'copy') { const v = await ask('Copy', xy("4'", "0'") + fld('How many copies', txt('cdN', '1')), () => [...rd(), Math.max(1, Math.min(500, Math.round(+$('#cdN').value || 1)))]); if (v && isFinite(v[0]) && isFinite(v[1])) DR.cmd.copy(ed, v[0], v[1], v[2]); }
+  else if (c === 'rotate') { const v = await ask('Rotate', fld('Angle', txt('cdA', '90', 'degrees, counterclockwise')) + '<label class="chk"><input type="checkbox" id="cdK"> Keep the original (rotate a copy)</label><p class="note">Turns about the middle of what\'s selected.</p>', () => [+$('#cdA').value, $('#cdK').checked]); if (v && isFinite(v[0])) DR.cmd.rotate(ed, v[0], v[1]); }
+  else if (c === 'mirror') { const v = await ask('Mirror', fld('Flip', '<select id="cdM"><option value="v">Left ↔ right</option><option value="h">Top ↕ bottom</option></select>') + '<label class="chk"><input type="checkbox" id="cdK" checked> Keep the original</label>', () => [$('#cdM').value, $('#cdK').checked]); if (v) DR.cmd.mirror(ed, v[0], v[1]); }
+  else if (c === 'scale') { const v = await ask('Scale', fld('Scale by', txt('cdS', '2', 'e.g. 2, 0.5')) + '<p class="note">From the middle of what\'s selected.</p>', () => +$('#cdS').value); if (v > 0) DR.cmd.scale(ed, v); }
+  else if (c === 'offset') { const v = await ask('Offset', fld('Distance', txt('cdD', fmt(ed.doffset || 0.5))) + '<p class="note">Then click on the side to put the copy on.</p>', () => lenS($('#cdD').value)); if (v > 0) { ed.doffset = v; ed.dtool = 'offset'; ed.setTool('draft'); msg('Offset ' + fmt(v) + ': click the side to put the copy on. Esc when done.'); } }
+  else if (c === 'array') { const v = await ask('Array', fld('Rows', txt('cdR', '1')) + fld('Columns', txt('cdC', '3')) + fld('Row spacing (+ down)', txt('cdRY', "4'")) + fld('Column spacing (+ right)', txt('cdCX', "4'")), () => [Math.round(+$('#cdR').value || 1), Math.round(+$('#cdC').value || 1), lenS($('#cdRY').value), lenS($('#cdCX').value)]); if (v && v[0] * v[1] <= 2500 && isFinite(v[2]) && isFinite(v[3])) { const k = DR.cmd.array(ed, Math.max(1, v[0]), Math.max(1, v[1]), v[3], v[2]); toast(k + ' pieces added.'); } }
+  else if (c === 'block') { const D = DR.data(ed.plan, true), v = await ask('Make block', fld('Block name', txt('cdB', 'Block ' + (Object.keys(D.blocks).length + 1))) + '<p class="note">The selection becomes one block you can insert again from Drafting → Block. It goes to AutoCAD as its pieces.</p>', () => $('#cdB').value.trim()); if (v) { if (D.blocks[v] && !(await confirmDlg('Replace the block?', 'There is a block called ' + v + ' already. Replace it?', 'Replace'))) return; DR.cmd.block(ed, v); toast('Block “' + v + '” made. Insert more from Drafting → Block.'); } }
+  else if (c === 'explode') { const k = DR.cmd.explode(ed); toast(k ? 'Exploded into its pieces.' : 'Nothing to explode.'); }
+  renderProps();
+}
+async function attachDrawing() {
+  const r = await api.openFile('ceiling'); if (!r) return;
+  if (r.kind !== 'dxf') { toast('Pick a DWG or DXF drawing to attach.'); return; }
+  const n = Plan3DDraft.attach(ed, r, (r.name || 'drawing').replace(/\.(dwg|dxf)$/i, ''));
+  if (ed.tool === 'draft') draftPalette();
+  toast(n ? `Attached ${n} pieces on a locked layer “XREF ${r.name || ''}”. Turn it off or unlock it in Layers.` : 'Nothing to attach in that drawing.');
+}
 /* Every cleanroom door and pair on the plan becomes the standard door (o.style 'cr': its frame fills the
    opening, 84″ leaves with the vision lite and lever, 86″ head), keeping the opening it has: the leaves are
    sized to leave a 2″ frame jamb each side (a pair's leaves meet in the middle). Returns how many changed. */
@@ -2650,11 +2772,14 @@ function collectPieces(refs) {
   const R2 = ed.withOpenings(refs), out = {}, LIST = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', device: 'devices', item: 'items', column: 'columns', beam: 'beams', fixture: 'fixtures' };
   PIECE_LISTS.forEach(k => { out[k] = []; });
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-  for (const r of R2) { const L = LIST[r.kind], o = ed.find(r); if (!L || !o) continue; out[L].push(JSON.parse(JSON.stringify(o))); for (const [x, y] of ed.refPts(r)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } }
+  out.dents = [];
+  for (const r of R2) { if (r.kind === 'dent') { const o = ed.find(r); if (o) { out.dents.push(JSON.parse(JSON.stringify(o))); for (const [x, y] of ed.refPts(r)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } } continue; }
+    const L = LIST[r.kind], o = ed.find(r); if (!L || !o) continue; out[L].push(JSON.parse(JSON.stringify(o))); for (const [x, y] of ed.refPts(r)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } }
   if (!(x0 <= x1)) return null;
   const cx = Math.round((x0 + x1) / 2 * 12) / 12, cy = Math.round((y0 + y1) / 2 * 12) / 12;
   const mv = (o) => { if ('x1' in o && 'x0' in o) { o.x0 -= cx; o.x1 -= cx; o.y0 -= cy; o.y1 -= cy; } else if ('x1' in o) { o.x1 -= cx; o.x2 -= cx; o.y1 -= cy; o.y2 -= cy; } else { o.x -= cx; o.y -= cy; } delete o.gid; };
   PIECE_LISTS.forEach(k => out[k].forEach(mv));
+  out.dents = out.dents.map(e => { const z = Plan3DDraft.xform(e, Plan3DDraft.MOVE(-cx, -cy)); delete z.gid; return z; });
   out.w = x1 - x0; out.h = y1 - y0;
   return out;
 }
@@ -2673,6 +2798,8 @@ function pastePieces(data, x, y, group) {
       (P[k] = P[k] || []).push(o); refs.push({ kind: KIND[k], id: nid });
     }
     for (const o of P.openings) if (o.unit && ids.has(o.unit)) o.unit = ids.get(o.unit);
+    // drafting comes along on its own layers (a layer it was on that isn't here any more: the current layer)
+    if ((data.dents || []).length) { const D = Plan3DDraft.data(P, true); for (const src of data.dents) { const e = Plan3DDraft.xform(JSON.parse(JSON.stringify(src)), Plan3DDraft.MOVE(x, y)); e.id = Plan3DEditor.uid(); if (!D.layers.some(l => l.id === e.layer)) e.layer = D.cur; if (gid) e.gid = gid; else delete e.gid; D.ents.push(e); refs.push({ kind: 'dent', id: e.id }); } }
   });
   ed.setTool('select'); ed.setMulti(refs);
   return refs.length;
@@ -3125,7 +3252,7 @@ function helpDialog() {
       <h4>Revit</h4><ul><li>In Revit: File → Export → IFC, then Import plan here and pick the .ifc. Walls, doors, windows, rooms, lights and FFUs become an editable plan.</li><li>Save DWG / IFC → Revit 3D model saves the whole room in 3D. In Revit: File → Open → IFC, then Save As → Project for an .rvt.</li></ul>
       <h4>Back to AutoCAD</h4><ul><li>Save DWG / IFC (Ctrl+D) saves the plan 1:1 in inches on standard layers, with dimensions. DWG is built in (AutoCAD 2000 format, which every AutoCAD opens); with the free ODA File Converter installed you can also pick newer DWG versions.</li><li>Open that file in Coll Plan3D again and the doors, glass, chases and rooms come back exactly.</li></ul>
       <h4>Library</h4><ul><li>Library → Save this building keeps the whole plan (walls, doors, chases, ceiling, FFUs) on this computer.</li><li>Library → Insert from the library places a copy in the current plan, a cleanroom inside a warehouse for example. Drag it, R turns it; its panel can mirror it, set its ceiling, update it to a newer library version, swap it for another, or ungroup it into plain walls.</li><li>Placed copies never change on their own. Each building gets its own section of the parts list.</li><li>Groups: Shift-drag a box around pieces (or Shift+click them) on the plan, then Library → Save selected pieces as a group. Placing a group from the library drops it in the middle of the view; drag it into place. Ctrl+G groups pieces in the plan, Ctrl+Shift+G ungroups, Ctrl+C / Ctrl+V copy and paste, Ctrl+A selects everything.</li><li>Ceilings: Library → Save this ceiling keeps the grid, FFUs and lights; using one on another plan lays it from the building's corner, then Move or turn lines it up.</li><li>Pick a wall and set its Wall type: hardwall cleanroom panel, concrete, block, metal panel or stud/drywall. Set New wall type in the Plan panel to draw building walls with the Wall tool.</li></ul>
-      <h4>Houses</h4><ul><li>Start with Build a house (or set Project type to House in the Plan panel). New walls are wood studs; pick a wall to switch it to steel, set 2×4 / 2×6, or mark it exterior / interior.</li><li>Window (G) places 3′ windows; doors are 2′-8″ panel doors with 6′-8″ heads. Items (I) places kitchen, bath and laundry items that back up against the nearest wall; R turns them.</li><li>Roof: gable, hip or flat, with pitch and overhang, in the Plan panel. The Exterior view in 3D shows it.</li><li>Floors: one finish for the house, and per room from a room label. The parts list counts framing, sheathing, wrap, siding, insulation, drywall, roof, floors, doors, windows, trim, cabinets, counters and fixtures.</li></ul>
+      <h4>Projects (houses, buildings, drafting)</h4><ul><li>Start with Build a project (or set Project type to Project in the Plan panel). Drafting (L) draws lines, polylines, rectangles, circles, arcs, text and dimensions on layers, with blocks, snaps and exact input.</li><li> New walls are wood studs; pick a wall to switch it to steel, set 2×4 / 2×6, or mark it exterior / interior.</li><li>Window (G) places 3′ windows; doors are 2′-8″ panel doors with 6′-8″ heads. Items (I) places kitchen, bath and laundry items that back up against the nearest wall; R turns them.</li><li>Roof: gable, hip or flat, with pitch and overhang, in the Plan panel. The Exterior view in 3D shows it.</li><li>Floors: one finish for the house, and per room from a room label. The parts list counts framing, sheathing, wrap, siding, insulation, drywall, roof, floors, doors, windows, trim, cabinets, counters and fixtures.</li></ul>
       <h4>Cleanroom check</h4><ul><li>Pick a room label and set its ISO class and pressure (Pa). The room shows its air changes per hour and filter coverage from the FFUs over it, green when it meets the class, red with how many FFUs it's short.</li><li>On the plan, arrows at doors show which way air flows; red means it flows from the less clean side or the difference is under 5 Pa. The same arrows show on the floor in 3D. The Plan panel lists every room and door that needs a look.</li></ul>
       <h4>Electrical</h4><ul><li>Electrical (E): pick a receptacle, switch, data jack, FFU controller, pressure monitor or panel, and click on a wall. It goes on that face at the usual mounting height.</li><li>Devices show in 3D and in the Revit export, and the parts list counts them with an estimate of branch circuits for FFUs, lights and receptacles.</li></ul>
       <h4>Warehouses</h4><ul><li>Overhead (H) puts an overhead sectional door in a wall; Column (U) places a steel or concrete column. Over building walls the roof gets open-web steel joists 5′ on center under the deck. All of it goes on the parts list and into Revit.</li></ul>

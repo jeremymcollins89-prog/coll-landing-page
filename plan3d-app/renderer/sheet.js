@@ -39,6 +39,7 @@ function rotatePlan(plan) {
   p.chases.forEach(k => { const x0 = Math.min(k.y0, k.y1), x1 = Math.max(k.y0, k.y1), y0 = -Math.max(k.x0, k.x1), y1 = -Math.min(k.x0, k.x1); Object.assign(k, { x0, x1, y0, y1, grille: G[k.grille || ''] }); });
   (p.rooms || []).forEach(r => { [r.x, r.y] = R(r.x, r.y); });
   (p.fixtures || []).forEach(f => { [f.x, f.y] = R(f.x, f.y); });
+  if (p.draft && global.Plan3DDraft) global.Plan3DDraft.xformPlan(p, R);
   return p;
 }
 /* Dimension strings for a plan (feet, plan coordinates): panel chains along every wall line, air chase
@@ -137,7 +138,7 @@ function dimChains(plan, A) {
 }
 
 function makeSheet(plan, opts) {
-  if (V.flatten && plan.inserts && plan.inserts.length) plan = V.flatten(plan);
+  if (V.flatten && plan.inserts && plan.inserts.length) { const dr = plan.draft; plan = V.flatten(plan); if (dr && !plan.draft) plan.draft = dr; }
   opts = opts || {};
   if (opts.rotate === 'auto' || opts.rotate == null) {
     const a = makeSheet(plan, { ...opts, rotate: 0 }), b = makeSheet(plan, { ...opts, rotate: 90 });
@@ -146,7 +147,10 @@ function makeSheet(plan, opts) {
   }
   if (opts.rotate === 90) plan = rotatePlan(plan);
   const page = PAGES[opts.page] || PAGES.tabloid;
-  const A = V.analyze(plan), B = A.bounds, H = A.H;
+  const A = V.analyze(plan), H = A.H;
+  // the sheet takes in general drafting too (a drawing with no walls at all fits the page by its drafting)
+  let B = A.bounds; { const DR = global.Plan3DDraft, DB = DR && plan.draft ? DR.bounds(plan) : null;
+    if (DB) { const a = A.empty ? DB.x0 : Math.min(B.minX, DB.x0), b = A.empty ? DB.y0 : Math.min(B.minZ, DB.y0), c = A.empty ? DB.x1 : Math.max(B.maxX, DB.x1), d = A.empty ? DB.y1 : Math.max(B.maxZ, DB.y1); B = { minX: a, minZ: b, maxX: c, maxZ: d, cx: (a + c) / 2, cz: (b + d) / 2, w: c - a, d: d - b }; } }
   const PW = page.w, PH = page.h, M = 0.4, TB = Math.min(1.05, PH * 0.12);
   const area = { x0: M, y0: M, x1: PW - M, y1: PH - M - TB - 0.1 };
   const pad = 5.5; // feet around the plan for dimension strings
@@ -253,6 +257,8 @@ function makeSheet(plan, opts) {
     }
   }
   out.push(`</g>`);
+  // ---- general drafting (layers that are on), at true size
+  if (plan.draft && global.Plan3DDraft) out.push(global.Plan3DDraft.svg(plan, X, Y, k));
 
   // ---- S.P. labels
   for (const p of A.pieces) {
