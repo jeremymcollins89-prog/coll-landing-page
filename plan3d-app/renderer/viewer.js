@@ -4077,13 +4077,13 @@ function buildScene(THREE, plan, A) {
   // (main and cross tees standing up 1½″), so the Plenum view shows the grid instead of a white sheet.
   if (ceil && !A.house && FP) {
     const CG = ceilingGrid(plan, A), sw = CG.swap && !ownGrid;
-    const topCanvas = cachedCanvas(ownGrid ? 'ceilTopPlain' : 'ceilTop', () => makeCanvas(128, ownGrid ? 128 : 256, (g, w, h) => {
-      g.fillStyle = '#9d9a91'; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 1800; i++) { const v = Math.random() < .5 ? '0,0,0' : '255,255,255'; g.fillStyle = `rgba(${v},${Math.random() * .08})`; g.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1); }
+    // the tile backs: solid kraft-paper brown (the gypsum board's paper back), as seen from the plenum
+    const topCanvas = cachedCanvas(ownGrid ? 'ceilTopPlainK' : 'ceilTopK', () => makeCanvas(128, ownGrid ? 128 : 256, (g, w, h) => {
+      g.fillStyle = '#a8825a'; g.fillRect(0, 0, w, h);
       if (!ownGrid) { g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, 0, w, 4); g.fillRect(0, 0, 4, h); g.fillStyle = '#f1f3f4'; g.fillRect(0, 0, w, 2.5); g.fillRect(0, 0, 2.5, h); }
     }));
     const tt = new THREE.CanvasTexture(topCanvas); tt.wrapS = tt.wrapT = THREE.RepeatWrapping; tt.anisotropy = ANISO;
-    const topMat = new THREE.MeshLambertMaterial({ map: tt, color: 0xd8d8d8, name: 'Ceiling tile, back' });
+    const topMat = new THREE.MeshLambertMaterial({ map: tt, color: 0xffffff, name: 'Ceiling tile, back (kraft paper)' });
     const CR = ceilingRects(plan, FP, A);
     for (const gp of gridPieces(plan, CR, CG)) {
       const G = gp.G, gsw = G.swap && !ownGrid;
