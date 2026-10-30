@@ -49,6 +49,7 @@ const CSS = `
 .p3v-rl{position:absolute;left:0;top:0;background:rgba(18,23,25,.86);border:1px solid rgba(255,255,255,.13);border-radius:6px;padding:3px 8px;text-align:center;white-space:nowrap}
 .p3v-rl b{display:block;font-size:12.5px;font-weight:600}
 .p3v-rl span{font:10.5px Consolas,ui-monospace,monospace;color:#f2c84b}
+.p3v-touch .p3v-rl{padding:2px 6px;border-radius:5px;opacity:.88}.p3v-touch .p3v-rl b{font-size:10.5px}.p3v-touch .p3v-rl span{display:none}
 .p3v button:focus-visible{outline:2px solid #f2c84b;outline-offset:2px}
 .p3v-cbtn{pointer-events:auto;cursor:pointer;font:600 13px/1 inherit;color:#e8edef;padding:9px 12px;border:0}.p3v-cbtn[aria-pressed=true]{background:#f2c84b;color:#1a1f22}
 .p3v-clist{position:absolute;left:12px;bottom:12px;z-index:6;max-width:min(360px,calc(100% - 24px));max-height:40%;overflow:auto;padding:10px 12px;color:#e8edef;font:13px/1.4 system-ui,sans-serif;pointer-events:auto}
@@ -798,7 +799,7 @@ function analyze(plan) {
   for (const c of plan.columns || []) { const r = (c.size || 0.67) / 2; obs.push({ x1: c.x - r, z1: c.y, x2: c.x + r, z2: c.y, r }); }
   // house items block walking
   const items = (plan.items || []).filter(it => ITEMS[it.type]).map(it => ({ it, c: itemCorners(it) }));
-  for (const q of items) for (let k = 0; k < 4; k++) { const a = q.c[k], b = q.c[(k + 1) % 4]; obs.push({ x1: a[0], z1: a[1], x2: b[0], z2: b[1], r: 0.05 }); }
+  for (const q of items) for (let k = 0; k < 4; k++) { const a = q.c[k], b = q.c[(k + 1) % 4]; obs.push({ x1: a[0], z1: a[1], x2: b[0], z2: b[1], r: 0.05, item: true }); }
   // Transition panels: where this building's hardwall run has a gap that a lower building carries on through
   // (both gap ends meet its walls), the step between the lower building's top and this one's top is filled
   // with hardwall panels so the taller plenum stays closed.
@@ -1325,6 +1326,23 @@ function smartZoom(THREE, camera, controls, canvas, opts) {
     controls.target.sub(P).multiplyScalar(f).add(P);
     controls.update();
   }, { passive: false });
+  // two fingers on a touch screen: pinch to zoom in and out, toward the point between the fingers (the orbit
+  // controls' own zoom is off, so it would only pan)
+  const tp = new Map(); let pz = null;
+  canvas.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'touch') return; tp.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (tp.size === 2) { const [a, b] = [...tp.values()]; pz = { d: Math.hypot(a.x - b.x, a.y - b.y) }; } });
+  canvas.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'touch' || !tp.has(e.pointerId)) return; tp.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (tp.size !== 2 || !pz || !active()) return;
+    const [a, b] = [...tp.values()], d = Math.hypot(a.x - b.x, a.y - b.y); if (d < 10) return;
+    let f = pz.d / d; pz.d = d; f = Math.max(0.8, Math.min(1.25, f));
+    const P = pointAt({ clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 }), dP = camera.position.distanceTo(P), td = camera.position.distanceTo(controls.target);
+    if (f < 1 && dP * f < minD) f = Math.min(1, minD / Math.max(dP, 1e-6));
+    if (f > 1 && td * f > maxD) f = Math.max(1, maxD / td);
+    if (Math.abs(f - 1) < 1e-4) return;
+    camera.position.sub(P).multiplyScalar(f).add(P); controls.target.sub(P).multiplyScalar(f).add(P); controls.update();
+  });
+  const tpEnd = (e) => { tp.delete(e.pointerId); if (tp.size < 2) pz = null; };
+  canvas.addEventListener('pointerup', tpEnd); canvas.addEventListener('pointercancel', tpEnd);
   let fly = null;
   const step = () => {
     if (!fly) return;
@@ -5247,8 +5265,9 @@ function mount(container, plan, opts) {
   function collides(x, z) {
     const b = A.bounds;
     if (x < b.minX - 30 || x > b.maxX + 30 || z < b.minZ - 30 || z > b.maxZ + 30) return true;
-    for (const o of A.obs) if (segDist(x, z, o.x1, o.z1, o.x2, o.z2) < o.r + R) return true;
-    if (built && built.doorObs) {
+    // on a phone or tablet the walk goes straight through doors and furniture (only walls and glass stop it)
+    for (const o of A.obs) if (!(touchy && o.item) && segDist(x, z, o.x1, o.z1, o.x2, o.z2) < o.r + R) return true;
+    if (built && built.doorObs && !touchy) {
       for (const d of built.doorObs) {
         if (d.doorGroup && d.doorGroup.userData.isOpen) continue;
         if (segDist(x, z, d.x1, d.z1, d.x2, d.z2) < d.r + R) return true;
@@ -5279,8 +5298,20 @@ function mount(container, plan, opts) {
   function walkLook() { const cp = Math.cos(st.pitch); return new THREE.Vector3(st.x - Math.sin(st.yaw) * cp * 6, EYE + Math.sin(st.pitch) * 6, st.z - Math.cos(st.yaw) * cp * 6); }
   function orbitPose(kind) {
     const b = A.bounds, vh = Math.tan(THREE.MathUtils.degToRad(45 / 2)), asp = (container.clientWidth || 1) / (container.clientHeight || 1);
-    const d = Math.max(b.d * 0.62 / vh, b.w * 0.62 / (vh * asp), 30);
+    let d = Math.max(b.d * 0.62 / vh, b.w * 0.62 / (vh * asp), 30);
     const t = new THREE.Vector3(b.cx, 0, b.cz);
+    // a phone: fit the whole building between the buttons along the top and the room names along the bottom
+    if (touchy) {
+      const dir = kind === 'plan' ? new THREE.Vector3(0, 1.05, 0.0001) : new THREE.Vector3(-0.3, 0.95, 0.5), cam = new THREE.PerspectiveCamera(45, asp, 0.1, 5000), top = Math.max(A.WH || A.H || 9, 9);
+      const C = []; for (const x of [b.minX, b.maxX]) for (const z of [b.minZ, b.maxZ]) for (const y of [0, top]) C.push(new THREE.Vector3(x, y, z));
+      const fits = (dd) => { cam.position.copy(t).addScaledVector(dir, dd); cam.lookAt(t); cam.updateMatrixWorld(); return C.every(p => { const q = p.clone().project(cam); return q.z < 1 && Math.abs(q.x) < 0.93 && q.y > -0.72 && q.y < 0.7; }); };
+      let lo = 5, hi = d * 3; for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2; if (fits(m)) hi = m; else lo = m; } d = hi;
+      // shift the aim down a little so the building sits in the middle of the clear band
+      t.y = 0; const off = new THREE.Vector3(0, 0, 0); cam.position.copy(t).addScaledVector(dir, d); cam.lookAt(t); cam.updateMatrixWorld();
+      const mid = new THREE.Vector3(0, -0.03, 0.5).unproject(cam).sub(cam.position).setLength(cam.position.distanceTo(t)).add(cam.position); off.subVectors(t, mid); t.add(off);
+      if (kind === 'plan') return { pos: t.clone().add(new THREE.Vector3(0, d * 1.05, 0.01)), look: t, fov: 45 };
+      return { pos: t.clone().addScaledVector(dir, d), look: t, fov: 45 };
+    }
     if (kind === 'plan') return { pos: new THREE.Vector3(b.cx, d * 1.05, b.cz + 0.01), look: t, fov: 45 };
     return { pos: new THREE.Vector3(b.cx - d * 0.42, d * 0.72, b.cz + d * 0.62), look: t, fov: 45 };
   }
@@ -5314,13 +5345,13 @@ function mount(container, plan, opts) {
   // touch screens: a joystick to walk with (push to move, further is faster; drag anywhere else to look)
   const joyEl = $('.p3v-joy'), joyKnob = joyEl.querySelector('i'), joy = { f: 0, s: 0, id: null };
   const touchy = !!opts.joystick || (global.matchMedia && global.matchMedia('(pointer: coarse)').matches);
-  if (touchy) container.classList.add('p3v-touch');
+  if (touchy) { container.classList.add('p3v-touch'); modeBtns.forEach(b => { if (b.dataset.m === 'plan') b.remove(); }); }
   const joySet = (dx, dy) => { const R = 44, d = Math.hypot(dx, dy), k = d > R ? R / d : 1; dx *= k; dy *= k; joyKnob.style.transform = `translate(${dx}px,${dy}px)`; joy.s = dx / R; joy.f = -dy / R; };
   joyEl.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); joy.id = e.pointerId; joyEl.setPointerCapture(e.pointerId); const r = joyEl.getBoundingClientRect(); joy.cx = r.left + r.width / 2; joy.cy = r.top + r.height / 2; joySet(e.clientX - joy.cx, e.clientY - joy.cy); target = null; });
   joyEl.addEventListener('pointermove', (e) => { if (e.pointerId !== joy.id) return; e.preventDefault(); e.stopPropagation(); joySet(e.clientX - joy.cx, e.clientY - joy.cy); });
   const joyEnd = (e) => { if (e.pointerId !== joy.id) return; joy.id = null; joySet(0, 0); };
   joyEl.addEventListener('pointerup', joyEnd); joyEl.addEventListener('pointercancel', joyEnd);
-  function setModeUI() { modeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === mode))); joyEl.hidden = !(touchy && (mode === 'walk' || mode === 'fly')); if (mode !== 'fly') drone.visible = false; if (udEl) udEl.hidden = !(touchy && mode === 'fly'); if (joyEl.hidden && joy.id == null) joySet(0, 0); }
+  function setModeUI() { modeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === mode))); if (touchy) { mini.hidden = !(mode === 'walk' || mode === 'fly'); container.classList.toggle('p3v-orbit', !(mode === 'walk' || mode === 'fly')); } joyEl.hidden = !(touchy && (mode === 'walk' || mode === 'fly')); if (mode !== 'fly') drone.visible = false; if (udEl) udEl.hidden = !(touchy && mode === 'fly'); if (joyEl.hidden && joy.id == null) joySet(0, 0); }
   function goWalk(x, z, yaw, dur) {
     const p = freeSpot(x, z); target = null;
     const to = { pos: new THREE.Vector3(p.x, EYE, p.z), look: new THREE.Vector3(p.x - Math.sin(yaw) * 6, EYE, p.z - Math.cos(yaw) * 6), fov };
