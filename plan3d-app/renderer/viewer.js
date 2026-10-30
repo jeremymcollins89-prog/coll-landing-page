@@ -3636,10 +3636,12 @@ function buildScene(THREE, plan, A) {
       const minus = (a, b, C) => { const out = []; let s0 = a; for (const c of C.slice().sort((x, y) => x.a - y.a)) { if (c.b <= s0 || c.a >= b) continue; if (c.a - s0 > 0.01) out.push([s0, c.a]); s0 = Math.max(s0, c.b); } if (b - s0 > 0.01) out.push([s0, b]); return out; };
       const seg = (a, b, o, y0, y1, th) => outline(segBox(p.x1 + ux * a + nx * o, p.z1 + uz * a + nz * o, p.x1 + ux * b + nx * o, p.z1 + uz * b + nz * o, y0, y1, th, cm));
       const T2 = (p.t || 0.25) / 2, lg = WALL_CAP.over + 0.006;
+      // one bent piece: the top and both legs drawn as one solid (no seam along it); under a flange, only the leg on
+      // the far side from the beam carries on
       for (let a = 0; a < L0 - 0.01; a += 12) {
         const b = Math.min(L0, a + 12);
-        for (const [u, v] of minus(a, b, cuts)) seg(u, v, 0, p.h, p.h + WALL_CAP.up, p.t + 2 * WALL_CAP.over);
-        for (const sd of [1, -1]) for (const [u, v] of minus(a, b, cuts.filter(c => c.side === sd))) seg(u, v, sd * (T2 + lg / 2), p.h - WALL_CAP.down, p.h + (cuts.length ? 0 : WALL_CAP.up), lg);
+        for (const [u, v] of minus(a, b, cuts)) seg(u, v, 0, p.h - WALL_CAP.down, p.h + WALL_CAP.up, p.t + 2 * WALL_CAP.over);
+        for (const c of cuts) { const u = Math.max(a, c.a), v = Math.min(b, c.b); if (v - u > 0.01) seg(u, v, -c.side * (T2 + lg / 2), p.h - WALL_CAP.down, p.h, lg); }
       }
     }
     shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
