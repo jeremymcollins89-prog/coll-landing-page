@@ -350,6 +350,7 @@ class Editor {
   emit(ev, d) { const f = this.o['on' + ev[0].toUpperCase() + ev.slice(1)]; if (f) f(d); }
   find(sel) {
     if (!sel) return null;
+    if (sel.kind === 'dent') return (this.plan.draft && this.plan.draft.ents || []).find(x => x.id === sel.id) || null;
     const list = LISTS[sel.kind];
     return list ? (this.plan[list] || []).find(x => x.id === sel.id) : (sel.kind === 'bg' ? this.plan.background : null);
   }
@@ -361,11 +362,14 @@ class Editor {
     const out = [];
     for (const [kind, list] of Object.entries(LISTS)) if (kind !== 'insert' && (kind !== 'fixture' || this.plan.ceilingMode === 'manual')) for (const o of this.plan[list] || []) if (o.id) out.push({ kind, id: o.id });
     for (const o of this.plan.inserts || []) out.push({ kind: 'insert', id: o.id });
+    // general drafting (lines, circles, text …) on layers that are on and not locked
+    const DR = global.Plan3DDraft; if (DR && this.plan.draft) for (const e of this.plan.draft.ents) if (DR.editable(this.plan, e)) out.push({ kind: 'dent', id: e.id });
     return out;
   }
   // the points that place a piece (for box select and moving)
   refPts(r) {
     const o = this.find(r); if (!o) return [];
+    if (r.kind === 'dent') return global.Plan3DDraft.pts(this.plan, o);
     if (r.kind === 'wall' || r.kind === 'opening' || r.kind === 'beam' || r.kind === 'lstep' || r.kind === 'header') return [[o.x1, o.y1], [o.x2, o.y2]];
     if (r.kind === 'chase' || r.kind === 'carea' || r.kind === 'gzone') return [[o.x0, o.y0], [o.x1, o.y1]];
     if (r.kind === 'insert') { const b = this.insBox(o); return [[b.x0, b.y0], [b.x1, b.y1]]; }
@@ -374,6 +378,7 @@ class Editor {
   }
   // a piece moved by (dx, dy) from its original copy O
   shiftRef(kind, o, O, dx, dy) {
+    if (kind === 'dent') { const DR = global.Plan3DDraft, z = DR.xform(JSON.parse(JSON.stringify(O)), DR.MOVE(dx, dy)); Object.assign(o, z); return; }
     if (kind === 'deck') { o.outer = O.outer.map(q => [q[0] + dx, q[1] + dy]); o.holes = (O.holes || []).map(h => h.map(q => [q[0] + dx, q[1] + dy])); return; }
     if (kind === 'wall' || kind === 'opening' || kind === 'beam' || kind === 'lstep' || kind === 'header') { o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; o.x2 = O.x2 + dx; o.y2 = O.y2 + dy; }
     else if (kind === 'chase' || kind === 'carea' || kind === 'gzone') { o.x0 = O.x0 + dx; o.y0 = O.y0 + dy; o.x1 = O.x1 + dx; o.y1 = O.y1 + dy; if (kind === 'gzone') { if (isFinite(O.ox)) o.ox = O.ox + dx; if (isFinite(O.oy)) o.oy = O.oy + dy; } }
@@ -434,6 +439,7 @@ class Editor {
       const B = P.background, w = this.bgImg.naturalWidth * B.scale / 2, h = this.bgImg.naturalHeight * B.scale / 2, r = Math.hypot(w, h);
       if (!P.walls.length) { e(B.cx - r, B.cy - r); e(B.cx + r, B.cy + r); }
     }
+    const DB = global.Plan3DDraft && P.draft ? global.Plan3DDraft.bounds(P) : null; if (DB) { e(DB.x0, DB.y0); e(DB.x1, DB.y1); }
     if (a > c) return { x0: 0, y0: 0, x1: 40, y1: 30 };
     return { x0: a, y0: b, x1: c, y1: d };
   }
@@ -454,7 +460,8 @@ class Editor {
   /* ---------- tools ---------- */
   setTool(t) {
     this.tool = t; this.draft = null; this.cal = null; this.stepA = null; this.hdrA = null; if (t === 'header') this.refreshHeaderGaps(); if (t === 'lstep') this.refreshSteps(); this.meas = null; this.beamA = null; this.typed = ''; this.drag = null;
-    if (t !== 'select') { this.sel = null; this.multi = null; }
+    if (t !== 'select' && !(t === 'draft' && (this.dtool === 'offset'))) { this.sel = null; this.multi = null; }
+    this.dd = null;
     this.emit('select'); this.emit('tool', t); this.render();
   }
   status(msg) { this.emit('status', msg); }
@@ -582,6 +589,8 @@ class Editor {
   }
   hitTest(x, y) {
     const P = this.plan, tol = 7 / this.view.s;
+    // general drafting first (it is drawn on top)
+    if (P.draft && global.Plan3DDraft) { const h = global.Plan3DDraft.hit(this, x, y); if (h) return h; }
     for (let i = (P.grilles || []).length - 1; i >= 0; i--) { if (inPoly(x, y, this.grilleCorners(P.grilles[i]))) return { kind: 'grille', id: P.grilles[i].id }; }
     for (let i = (P.headers || []).length - 1; i >= 0; i--) { const q = P.headers[i]; if (segProj(x, y, q.x1, q.y1, q.x2, q.y2).d < 0.25 + tol) return { kind: 'header', id: q.id }; }
     for (let i = (P.lidSteps || []).length - 1; i >= 0; i--) { const q = P.lidSteps[i]; if (segProj(x, y, q.x1, q.y1, q.x2, q.y2).d < 0.2 + tol) return { kind: 'lstep', id: q.id }; }
@@ -626,7 +635,7 @@ class Editor {
     c.addEventListener('pointerdown', e => this.down(e));
     c.addEventListener('pointermove', e => this.move(e));
     c.addEventListener('pointerup', e => this.up(e));
-    c.addEventListener('dblclick', () => { if (this.tool === 'wall') this.endChain(); });
+    c.addEventListener('dblclick', () => { if (this.tool === 'wall') this.endChain(); if (this.tool === 'draft' && this.dtool === 'pline' && global.Plan3DDraft) global.Plan3DDraft.finishPline(this, false); });
     c.addEventListener('pointerleave', () => { this.cursor = null; this.render(); });
   }
   pt(e) { const r = this.c.getBoundingClientRect(); return { px: e.clientX - r.left, py: e.clientY - r.top, x: this.wx(e.clientX - r.left), y: this.wy(e.clientY - r.top) }; }
@@ -696,6 +705,7 @@ class Editor {
       } else this.drag = { kind: 'pan', px: p.px, py: p.py, ox: this.view.ox, oy: this.view.oy };
       this.c.setPointerCapture(e.pointerId); this.render(); return;
     }
+    if (T === 'draft' && global.Plan3DDraft) { global.Plan3DDraft.down(this, p, e); return; }
     if (T === 'wall') {
       const from = this.draft ? this.draft.pts[this.draft.pts.length - 1] : null;
       const s = this.snap(p.x, p.y, from, { free: e.altKey });
@@ -908,6 +918,12 @@ class Editor {
       else if (D.sel.kind === 'fixture' && e.altKey) { o.x = O.x + (p.x - D.sx); o.y = O.y + (p.y - D.sy); this.status('Moving freely (Alt): ' + fmt(Math.hypot(o.x - O.x, o.y - O.y))); }
       else if (D.sel.kind === 'fixture') { const V = global.Plan3DViewer, q = V.placeFixture(this.plan, { x: O.x + (p.x - D.sx), y: O.y + (p.y - D.sy), w: O.w || 2, h: O.h || 4 }); o.x = q.x; o.y = q.y; if (q.inHole) this.status('In the opening · Alt moves it freely, arrow keys nudge 1″'); }
       else if (D.sel.kind === 'gzone') { this.shiftRef('gzone', o, O, dx, dy); }
+      else if (D.sel.kind === 'dent') {
+        // drafting moves by its grip nearest where it was picked up, onto snap points (Alt: freely)
+        const DR = global.Plan3DDraft, G = DR.pts(this.plan, O); let gp = G[0] || [D.sx, D.sy], gd = 1e18; for (const q of G) { const d0 = Math.hypot(q[0] - D.sx, q[1] - D.sy); if (d0 < gd) { gd = d0; gp = q; } }
+        const tgt = DR.snap(this, gp[0] + (p.x - D.sx), gp[1] + (p.y - D.sy), null, e.altKey); dx = tgt.x - gp[0]; dy = tgt.y - gp[1];
+        this.shiftRef('dent', o, O, dx, dy); this.status('Moving ' + fmt(Math.hypot(dx, dy)) + ' (it catches on endpoints, midpoints, centers; Alt: freely)');
+      }
       else if (D.sel.kind === 'deck') {
         // its corners catch on wall ends (within 12 px), so a lid drops onto the walls it covers
         const rx = p.x - D.sx, ry = p.y - D.sy, tol = 12 / this.view.s; let best = null, bd = tol;
@@ -1074,6 +1090,7 @@ class Editor {
     const k = e.key;
     if (k === ' ') { this.spaceDown = e.type === 'keydown'; return true; }
     if (e.type !== 'keydown') return false;
+    if (global.Plan3DDraft && global.Plan3DDraft.key(this, e)) return true;
     // arrow keys nudge what's selected: 1″, Shift 6″, Alt ⅛″ (no snapping, so FFUs and lights can go exactly where you want)
     const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[k];
     if (dir && !e.ctrlKey && !e.metaKey && (this.multi || (this.sel && this.sel.kind !== 'bg'))) {
@@ -1127,11 +1144,12 @@ class Editor {
   deleteSel() {
     if (this.multi) {
       const M = this.withOpenings(this.multi);
-      this.edit(P => { for (const r of M) { const L = LISTS[r.kind]; if (L) P[L] = (P[L] || []).filter(x => x.id !== r.id); } const gone = new Set(M.filter(r => r.kind === 'wall').map(r => r.id)); P.openings = P.openings.filter(o => !gone.has(o.unit)); });
+      this.edit(P => { const dg = new Set(M.filter(r => r.kind === 'dent').map(r => r.id)); if (dg.size && P.draft) P.draft.ents = P.draft.ents.filter(x => !dg.has(x.id)); for (const r of M) { const L = LISTS[r.kind]; if (L) P[L] = (P[L] || []).filter(x => x.id !== r.id); } const gone = new Set(M.filter(r => r.kind === 'wall').map(r => r.id)); P.openings = P.openings.filter(o => !gone.has(o.unit)); });
       this.multi = null; this.emit('select'); this.render(); return;
     }
     const s = this.sel; if (!s) return;
     if (s.kind === 'bg') { this.edit(P => { P.background = null; }); this.bgImg = null; }
+    else if (s.kind === 'dent') { this.edit(P => { if (P.draft) P.draft.ents = P.draft.ents.filter(x => x.id !== s.id); }); }
     else { const list = LISTS[s.kind]; this.edit(P => { P[list] = (P[list] || []).filter(x => x.id !== s.id); if (s.kind === 'wall') P.openings = P.openings.filter(o => o.unit !== s.id); }); }
     this.sel = null; this.emit('select'); this.render();
   }
@@ -1606,6 +1624,7 @@ class Editor {
       }
     }
     this.drawContent(P);
+    if (P.draft && global.Plan3DDraft) global.Plan3DDraft.drawAll(this, g);
     // walls (outline helper used below)
     const quad = (x1, y1, x2, y2, t) => {
       const len = Math.hypot(x2 - x1, y2 - y1) || 1, nx = -(y2 - y1) / len * t / 2, ny = (x2 - x1) / len * t / 2;
@@ -1626,6 +1645,7 @@ class Editor {
     // hover / selection
     const outlineSel = (sel, color, width) => {
       const o = this.find(sel); if (!o) return;
+      if (sel.kind === 'dent') { global.Plan3DDraft.outline(this, g, o, color, width); return; }
       g.strokeStyle = color; g.lineWidth = width;
       if (sel.kind === 'wall') { quad(o.x1, o.y1, o.x2, o.y2, Math.max(o.t || 0.25, 1.5 / s) + 4 / s); g.stroke(); }
       else if (sel.kind === 'opening') { quad(o.x1, o.y1, o.x2, o.y2, (o.t || 0.25) + 6 / s); g.stroke(); }
@@ -1670,6 +1690,7 @@ class Editor {
       const pv = this.openingPreview(C.x, C.y, this.tool);
       if (pv) { quad(pv.x1, pv.y1, pv.x2, pv.y2, (pv.t || 0.25) + 6 / s); g.fillStyle = 'rgba(242,200,75,.35)'; g.fill(); g.strokeStyle = COL.draft; g.lineWidth = 1.5; g.stroke(); dimFor(pv.x1, pv.y1, pv.x2, pv.y2, (pv.t || 0.25) + 0.6, COL.draft, true); }
     }
+    if (this.tool === 'draft' && global.Plan3DDraft) global.Plan3DDraft.preview(this, g);
     if (C && this.tool === 'elec' && global.Plan3DViewer) { const q = this.devicePlace(C.x, C.y, this.deviceType || 'outlet'); if (q) this.drawDevice(q, true); }
     if (C && this.tool === 'item' && global.Plan3DViewer) { const q = this.itemPlace(C.x, C.y, this.itemType); if (q) this.drawItem(q, true); }
     if (this.drag && (this.drag.kind === 'chase' || this.drag.kind === 'carea' || this.drag.kind === 'gzone')) {
