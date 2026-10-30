@@ -47,8 +47,8 @@ function segProj(px, py, x1, y1, x2, y2) {
   return { d: Math.hypot(px - x, py - y), t, tc, x, y, len: Math.sqrt(l2) };
 }
 
-// cleanroom doors: a single is the framed door in a 3′ opening; a pair is the standard pair, two 3′ leaves in 6′-4″
-const DEFAULT_W = { door: 3, door2: 6 + 4 / 12, glass: 4, open: 3, pass: 2, window: 3, overhead: 12, removable: 8 + 6 / 12 };
+// cleanroom doors go in as the standard door: a 3′ leaf in a 3′-4″ frame opening, a pair of 3′ leaves in 6′-4″
+const DEFAULT_W = { door: 3 + 4 / 12, door2: 6 + 4 / 12, glass: 4, open: 3, pass: 2, window: 3, overhead: 12, removable: 8 + 6 / 12 };
 // houses: 2′-8″ doors, 5′ pairs, 3′ windows, 6′-8″ heads
 const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2, overhead: 16, removable: 8 + 6 / 12 };
 const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass', 'overhead', 'removable']);
@@ -723,9 +723,7 @@ class Editor {
       else if (T === 'pass') { o.sill = 3; o.head = 5; o.depth = 2; }
       else if (T === 'removable') { delete o.swing; o.head = Math.min(8, this.plan.ceiling || 8); }
       else if (T === 'overhead') { const W = pv.wall, V = global.Plan3DViewer, wh = W && V ? (V.isHard(W) ? (this.plan.ceiling || 8) : V.isFrame(W) ? (W.h || this.plan.ceiling || 8) : V.shellHeight(this.plan, W)) : 16; o.head = Math.max(7, Math.min(14, wh - 2)); }
-      // a cleanroom pair goes in as the standard pair; a single door is the framed door (frame round the opening,
-      // large vision lite), our standard single
-      else if (T === 'door2' && (!pv.wall || !global.Plan3DViewer || global.Plan3DViewer.isHard(pv.wall))) { o.style = 'cr'; o.leafW = 3; o.head = 86 / 12; }
+      else if ((T === 'door' || T === 'door2') && (!pv.wall || !global.Plan3DViewer || global.Plan3DViewer.isHard(pv.wall))) { o.style = 'cr'; o.leafW = 3; o.head = 86 / 12; }
       else o.head = 7;
       this.edit(P => P.openings.push(o)); return;
     }
