@@ -4915,7 +4915,7 @@ function mount(container, plan, opts) {
   const modeBtns = [...container.querySelectorAll('.p3v-modes button')];
   const lookBtn = container.querySelector('.p3v-look');
   // Airflow arrows: shown until turned off; the button only shows when there are arrows to show
-  const airBtn = container.querySelector('.p3v-air'); let airOn = true;
+  const airBtn = container.querySelector('.p3v-air'); let airOn = opts.airflow !== false; // a customer link starts with it off
   function refreshAir() {
     const G = []; if (built) built.root.traverse(o => { if (o.userData && o.userData.airflow) G.push(o); });
     G.forEach(o => { o.visible = airOn; });
@@ -5351,7 +5351,7 @@ function mount(container, plan, opts) {
   joyEl.addEventListener('pointermove', (e) => { if (e.pointerId !== joy.id) return; e.preventDefault(); e.stopPropagation(); joySet(e.clientX - joy.cx, e.clientY - joy.cy); });
   const joyEnd = (e) => { if (e.pointerId !== joy.id) return; joy.id = null; joySet(0, 0); };
   joyEl.addEventListener('pointerup', joyEnd); joyEl.addEventListener('pointercancel', joyEnd);
-  function setModeUI() { modeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === mode))); if (touchy) { mini.hidden = !(mode === 'walk' || mode === 'fly'); container.classList.toggle('p3v-orbit', !(mode === 'walk' || mode === 'fly')); } joyEl.hidden = !(touchy && (mode === 'walk' || mode === 'fly')); if (mode !== 'fly') drone.visible = false; if (udEl) udEl.hidden = !(touchy && mode === 'fly'); if (joyEl.hidden && joy.id == null) joySet(0, 0); }
+  function setModeUI() { modeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === mode))); if (touchy) { const was = mini.hidden; mini.hidden = !(mode === 'walk' || mode === 'fly'); container.classList.toggle('p3v-orbit', !(mode === 'walk' || mode === 'fly')); if (was && !mini.hidden && A) sizeMini(); } joyEl.hidden = !(touchy && (mode === 'walk' || mode === 'fly')); if (mode !== 'fly') drone.visible = false; if (udEl) udEl.hidden = !(touchy && mode === 'fly'); if (joyEl.hidden && joy.id == null) joySet(0, 0); }
   function goWalk(x, z, yaw, dur) {
     const p = freeSpot(x, z); target = null;
     const to = { pos: new THREE.Vector3(p.x, EYE, p.z), look: new THREE.Vector3(p.x - Math.sin(yaw) * 6, EYE, p.z - Math.cos(yaw) * 6), fov };
@@ -6209,6 +6209,7 @@ function mount(container, plan, opts) {
     const f = freeSpot(at.x, at.z);
     return { x: f.x, z: f.z, yaw: Math.atan2(-(at.lx - f.x), -(at.lz - f.z)) || 0 };
   }
+  let startedOnce = false;
   function setPlan(p, keep) {
     plan = p;
     A = analyzeAll(p);
@@ -6225,9 +6226,13 @@ function mount(container, plan, opts) {
     emptyEl.hidden = !A.empty;
     // the Plenum view only when there is a plenum
     const pb = modeBtns.find(b => b.dataset.m === 'plenum'); if (pb) pb.hidden = !(A.PL > 0);
+    // a customer link opens in its own view (the Plenum) and offers only its own views (opts.views); with no plenum
+    // in the plan, the Dollhouse stands in for it
+    if (!keep && opts.startMode && !startedOnce) { startedOnce = true; mode = opts.startMode; }
     if (mode === 'plenum' && !(A.PL > 0)) mode = 'doll';
     let hasRoof = false; if (built.roof) built.roof.traverse(o => { if (o.isMesh) hasRoof = true; });
     const eb = modeBtns.find(b => b.dataset.m === 'exterior'); if (eb) eb.hidden = !hasRoof;
+    if (opts.views) { const V = opts.views.concat(opts.views.includes('plenum') && !(A.PL > 0) ? ['doll'] : []); modeBtns.forEach(b => { if (!V.includes(b.dataset.m)) b.hidden = true; }); }
     if (mode === 'exterior' && !hasRoof) mode = 'doll';
     buildHud(p);
     sizeMini();
