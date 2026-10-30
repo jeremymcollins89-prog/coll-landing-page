@@ -443,7 +443,7 @@ function renderProps(opt) {
       ${o.type === 'glass' || o.type === 'window' ? fld('Sill height', txt('pSill', fmt(sill))) : ''}
       ${o.type === 'overhead' ? `<div class="row"><button class="btn small" id="pSwing">Flip inside face</button></div>` : ''}
       ${o.type === 'door' || o.type === 'door2' ? `${fld('Build', `<label class="chk"><input type="checkbox" id="pStd" ${o.style === 'cr' ? 'checked' : ''}> Standard door (frame, 84″ leaves, vision lite, lever)</label>`)}${o.style === 'cr' ? fld('Leaf width', txt('pLeafW', fmtIn(o.leafW || 3))) : ''}` : ''}
-      ${(o.type === 'door' || o.type === 'door2') && P.mode !== 'house' && P.openings.some(q => (q.type === 'door' || q.type === 'door2') && doorOff(q)) ? `<div class="row"><button class="btn small" id="pStdAll" title="Every single door becomes the framed door and every pair the standard pair, each keeping its opening width">Make all doors our standard</button></div>` : ''}
+      ${(o.type === 'door' || o.type === 'door2') && P.mode !== 'house' && P.openings.some(q => (q.type === 'door' || q.type === 'door2') && q.style !== 'cr') ? `<div class="row"><button class="btn small" id="pStdAll" title="Every door and pair on the plan becomes the standard door (frame, 84″ leaves, vision lite, lever), the same opening width it has now">Make all doors standard</button></div>` : ''}
       ${o.type === 'door' || o.type === 'door2' ? `<div class="row"><button class="btn small" id="pSwing">Flip swing side</button>${o.type === 'door' ? '<button class="btn small" id="pHinge">Swap hinge side</button>' : ''}</div>` : ''}
       ${o.type === 'removable' ? (() => { const RL = Plan3DViewer.removableLayout(len, o.head || 8, 99); return `<div class="stats"><span>Panels</span><span>${RL.n} × ${fmtIn(RL.panelW)} wide × ${fmt(RL.panelH)}</span><span>Frame</span><span>3″ × 3″ steel tube posts to the lid, painted to match the room, header tube, 1″ white wall start</span><span>Joints</span><span>${RL.n - 1 ? (RL.n - 1) + ' H-stud' + (RL.n > 2 ? 's' : '') + ' with insert, and in the header panel above' : 'none (one panel)'}</span></div>`; })() : ''}
       <p class="note">${isPass ? 'Stainless box with a door on each face. Depth is front to back through the wall. ' : ''}${o.type === 'removable' ? 'The wall panels in it come out to bring equipment through; the parts list, fabrication sheets and PO list them as removable. ' : ''}Drag along the wall to slide it. Drag it onto another wall to move it there.</p>`;
@@ -459,7 +459,7 @@ function renderProps(opt) {
     if ($('#pSwing')) $('#pSwing').onclick = () => ed.edit(() => { o.swing = o.swing === -1 ? 1 : -1; });
     if ($('#pStd')) $('#pStd').onchange = (e) => ed.edit(() => { if (e.target.checked) { o.style = 'cr'; o.head = 86 / 12; } else { delete o.style; delete o.leafW; o.head = 7; } });
     bindLen('pLeafW', 'in', v => ed.edit(() => { o.leafW = Math.max(1.5, Math.min(5, v)); }));
-    if ($('#pStdAll')) $('#pStdAll').onclick = () => { let n = 0; ed.edit(Pl => { n = standardDoors(Pl); }); toast(n ? `${n} door${n === 1 ? '' : 's'} changed to our standard style, same openings.` : 'Every door is our standard style already.'); };
+    if ($('#pStdAll')) $('#pStdAll').onclick = () => { let n = 0; ed.edit(Pl => { n = standardDoors(Pl); }); toast(n ? `${n} door${n === 1 ? '' : 's'} made standard, same openings.` : 'Every door is standard already.'); };
     if ($('#pHinge')) $('#pHinge').onclick = () => ed.edit(() => { [o.x1, o.y1, o.x2, o.y2] = [o.x2, o.y2, o.x1, o.y1]; o.swing = o.swing === -1 ? 1 : -1; });
     $('#pDel').onclick = () => ed.deleteSel();
     return;
@@ -1252,19 +1252,17 @@ async function attachDrawing() {
   if (ed.tool === 'draft') draftPalette();
   toast(n ? `Attached ${n} pieces on a locked layer “XREF ${r.name || ''}”. Turn it off or unlock it in Layers.` : 'Nothing to attach in that drawing.');
 }
-/* The house door styles for the cleanroom (Coll Business Solutions LLC): a single door is the framed door (its frame
-   round the outside of the opening, the leaf with the large vision lite, closer and lever; o.style unset, 7′ head),
-   a pair is the standard pair (o.style 'cr': frame filling the opening, 84″ leaves meeting in the middle). Every
-   door and pair in the cleanroom's walls takes its style, keeping the opening it has. Returns how many changed. */
-const doorOff = (o) => (o.type === 'door' && o.style === 'cr') || (o.type === 'door2' && o.style !== 'cr');
+/* Every cleanroom door and pair on the plan becomes the standard door (o.style 'cr': its frame fills the
+   opening, 84″ leaves with the vision lite and lever, 86″ head), keeping the opening it has: the leaves are
+   sized to leave a 2″ frame jamb each side (a pair's leaves meet in the middle). Returns how many changed. */
 function standardDoors(Pl) {
   let n = 0;
   for (const o of Pl.openings || []) {
-    if ((o.type !== 'door' && o.type !== 'door2') || !doorOff(o)) continue;
+    if ((o.type !== 'door' && o.type !== 'door2') || o.style === 'cr') continue;
     // only doors in the cleanroom's walls: a door in the building (metal, concrete, stud) stays as it is
     { const V = Plan3DViewer, mx = (o.x1 + o.x2) / 2, my = (o.y1 + o.y2) / 2; let host = null, bd = 1e9; for (const w of Pl.walls || []) { const d = V.segDist(mx, my, w.x1, w.y1, w.x2, w.y2); if (d < bd) { bd = d; host = w; } } if (host && !V.isHard(host)) continue; }
-    if (o.type === 'door') { delete o.style; delete o.leafW; o.head = 7; n++; continue; }
-    const len = Math.hypot(o.x2 - o.x1, o.y2 - o.y1), gap = 7.5 / 12, leaf = Math.round(((len - 4 / 12 - gap) / 2) * 96) / 96;
+    const len = Math.hypot(o.x2 - o.x1, o.y2 - o.y1), k = o.type === 'door2' ? 2 : 1, gap = k === 2 ? 7.5 / 12 : 0;
+    const leaf = Math.round(((len - 4 / 12 - gap) / k) * 96) / 96;
     if (leaf < 1.5) continue;
     o.style = 'cr'; o.leafW = Math.min(5, leaf); o.head = 86 / 12; n++;
   }
