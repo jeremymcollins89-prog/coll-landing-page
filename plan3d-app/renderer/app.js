@@ -3216,14 +3216,31 @@ async function exportHtml() {
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(plan.name)} — 3D Walkthrough</title>
-<style>html,body{margin:0;height:100%;background:#121719}#v{position:fixed;inset:0}</style></head>
+<style>html,body{margin:0;height:100%;background:#121719}#v{position:fixed;inset:0}
+:root{--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px)}
+/* a phone or tablet: the same layout as the online phone viewer */
+#v.p3v-touch .p3v-right > .p3v-look:not(.p3v-lidb):not(.p3v-air){display:none}
+@media (max-width:640px){#v .p3v-card{max-width:58vw}#v .p3v-mini{width:96px;height:110px}#v .p3v-hint{font-size:13px;white-space:normal;text-align:center;border-radius:14px}}
+@media (orientation:landscape) and (max-height:540px){
+#v .p3v-top{top:calc(8px + var(--st));left:calc(8px + var(--sl));right:calc(8px + var(--sr))}
+#v .p3v-card{display:none}
+#v .p3v-right{margin-left:auto;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:6px;max-width:calc(100vw - 28px - var(--sr))}
+#v .p3v-modes{display:flex;overflow-x:auto;scrollbar-width:none;flex:0 1 auto;min-width:0}#v .p3v-modes::-webkit-scrollbar{display:none}
+#v .p3v-modes button{flex:0 0 auto;padding:6px 11px;font-size:12.5px}#v .p3v-right > *{flex:0 0 auto}#v .p3v-right > .p3v-modes{flex:0 1 auto}
+#v .p3v-cbtn{padding:6px 11px;font-size:13px;border-radius:999px}
+#v.p3v-touch .p3v-clist{top:calc(50px + var(--st));right:calc(10px + var(--sr));max-height:calc(100% - 64px - var(--st) - var(--sb))}
+#v .p3v-look{padding:6px 10px;font-size:12px}
+#v .p3v-bottom{left:calc(10px + var(--sl));right:calc(10px + var(--sr));bottom:calc(8px + var(--sb));gap:6px}
+#v .p3v-mini{width:104px;height:84px}#v .p3v-chips button{padding:6px 11px;font-size:12.5px}
+#v .p3v-joy{left:calc(14px + var(--sl));bottom:calc(52px + var(--sb));width:112px;height:112px}#v .p3v-joy b{display:none}#v .p3v-hint{font-size:13px}}
+</style></head>
 <body><div id="v"></div>
 <script>${safe(a.three)}</script>
 <script>${safe(a.orbit)}</script>
 <script>${safe(a.post || '')}</script>
 <script>${safe(a.exporter || '')}</script>
 <script>${safe(a.viewer)}</script>
-<script>Plan3DViewer.mount(document.getElementById('v'), ${safe(JSON.stringify(plan))}, { comments: true, startOutside: true, startMode: 'plenum', views: ['plenum', 'walk'], airflow: false, measure: false });</script>
+<script>Plan3DViewer.mount(document.getElementById('v'), ${safe(JSON.stringify(plan))}, { joystick: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches), comments: true, startOutside: true, startMode: 'plenum', views: ['plenum', 'walk'], airflow: false, measure: false });</script>
 <!-- Made with Coll Plan3D · Coll Business Solutions LLC -->
 </body></html>`;
   const p = await api.exportFile(html, plan.name + ' walkthrough', 'html');
