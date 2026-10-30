@@ -748,7 +748,11 @@ function toIfc(plan, opts) {
         const inr = [[f.x - hw + band, f.y - hh + band], [f.x + hw - band, f.y - hh + band], [f.x + hw - band, f.y + hh - band], [f.x - hw + band, f.y + hh - band]], fst = LM && LM.finish === 'sst' ? S.steel || S.frame : S.frame;
         const lensZ = LM && (LM.style === 'troffer' || LM.style === 'rss') ? [H - 0.005, H + 0.005] : [H - 0.04, H - 0.03];
         const LZ = LM && global.Plan3DEquipment ? global.Plan3DEquipment.lightSize(LM, f) : null;
-        put('IFCLIGHTFIXTURE', f.em ? 'Emergency light, battery backup' : LM ? (LM.maker && LM.name.indexOf(LM.maker) !== 0 ? LM.maker + ' ' : '') + LM.name + (LZ ? ' ' + LZ.model : '') : 'LED light', f.em ? 'LED flat panel with 90-minute battery backup' : LM ? (LM.model || LM.name) + ', ' + (LM.finishLabel || '') : 'LED flat panel', shape([solid(pts, H - dep, H, fst), solid(pts, H + 0.052, H + (LM ? Math.max(0.1, LM.hh) : 0.33), S.housing), solid(inr, lensZ[0], lensZ[1], S.led)]), ',.DIRECTIONSOURCE.', S.led);
+        // the housing above the grid (1.38″ for our panels) and the driver box on its back near one short end, as the 3D view draws them
+        const lhh = LM ? Math.max(0.1, LM.hh) : V.LIGHT_HH || 1.38 / 12, LB = LM ? LM.box : V.LIGHT_BOX;
+        let lbx = null;
+        if (LB) { const fw = Math.max(0.3, 2 * hw - 0.08), fd = Math.max(0.3, 2 * hh - 0.08), ax = 2 * hw >= 2 * hh, cx = f.x + (ax ? fw / 2 - LB.w / 2 - 0.08 : 0), cy = f.y + (ax ? 0 : fd / 2 - LB.w / 2 - 0.08), bw = (ax ? LB.w : LB.l) / 2, bd = (ax ? LB.l : LB.w) / 2; lbx = [[cx - bw, cy - bd], [cx + bw, cy - bd], [cx + bw, cy + bd], [cx - bw, cy + bd]]; }
+        put('IFCLIGHTFIXTURE', f.em ? 'Emergency light, battery backup' : LM ? (LM.maker && LM.name.indexOf(LM.maker) !== 0 ? LM.maker + ' ' : '') + LM.name + (LZ ? ' ' + LZ.model : '') : 'LED light', f.em ? 'LED flat panel with 90-minute battery backup' : LM ? (LM.model || LM.name) + ', ' + (LM.finishLabel || '') : 'LED flat panel', shape([solid(pts, H - dep, H, fst), solid(pts, H + 0.005, H + 0.005 + lhh, LM ? S.housing : S.galv), solid(inr, lensZ[0], lensZ[1], S.led)].concat(lbx ? [solid(lbx, H + 0.005 + lhh, H + 0.005 + lhh + LB.h, LM ? S.housing : S.galv)] : [])), ',.DIRECTIONSOURCE.', S.led);
       }
     }
   }
