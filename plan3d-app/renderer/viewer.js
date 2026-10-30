@@ -3726,24 +3726,12 @@ function buildScene(THREE, plan, A) {
     else { const pt = new THREE.Mesh(new THREE.BoxGeometry(e.t + 0.03, 0.17, e.t + 0.03), M.track); pt.position.set(e.x, H - 0.085, e.z); pt.rotation.y = e.ang; root.add(pt); }
   }
 
-  for (const i of A.opInfo) {
-    const o = i.o, t = i.t, nx = -i.uz, nz = i.ux;
-    curRef = o.id ? { kind: 'opening', id: o.id } : null;
-    const ceilHere = i.hard ? wallCeil(plan, A, { x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t }) : H;
-    const head = Math.min(i.hard ? Math.min(ceilHere, i.wallH || ceilHere) : (i.wallH || H), o.head || 7);
-    const IP = i.hard ? wallPM(i.host && i.host.id) : null, top = i.wallH || H, hm = i.hard ? IP.trim : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head, undefined, head).mats : shellMat(i.kind, i.len, top - head, 0);
-    if (top - head > 0.01 && o.type !== 'removable') { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); if (i.hard && ceilHere - head > 0.2 && trackOK(top)) { if (top > ceilHere + 0.05) trackFaces(o.x1, o.y1, o.x2, o.y2, t, H, top); else segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); } }
-    const ax = o.x1, az = o.y1, bx = o.x2, bz = o.y2;
-    const along = (s) => [ax + i.ux * s, az + i.uz * s];
-    if (o.type === 'removable') {
-      // removable wall section (equipment access): see removableLayout. Show removed (3D) hides the panels and
-      // the studs between them, so you can see the opening a machine comes through.
-      const RL = removableOf(plan, A, i), WP = i.hard ? IP : wallPM(null), tb = t + 0.004, EE = [WP.edge, WP.edge, WP.edge, WP.edge];
-      // the steel tube is painted to match the room (the wall panels' colour), a little glossier than the panels
-      const metal = M['remSteel' + WP.label] || (M['remSteel' + WP.label] = (() => { const m = new THREE.MeshPhongMaterial({ color: new THREE.Color(WP.face).multiplyScalar(0.97), emissive: WP.emissive, specular: 0x3a3d3f, shininess: 45 }); m.name = 'Removable section frame, 3x3 steel tube, painted ' + WP.label.toLowerCase(); return m; })());
-      const box = (q, th, mat, line) => { const [p0x, p0z] = along(q.s0), [p1x, p1z] = along(q.s1); const m = segBox(p0x, p0z, p1x, p1z, q.y0, q.y1, th, mat); if (line) outline(m); pick.push(m); return m; };
-      const face = M['remFace' + WP.label] || (M['remFace' + WP.label] = (() => { const m = new THREE.MeshPhongMaterial({ color: new THREE.Color(WP.face).multiplyScalar(0.955), emissive: WP.emissive, specular: 0x1c1c1c, shininess: 16 }); m.name = 'Wall panel, removable, ' + WP.label.toLowerCase(); return m; })());
-      const stud = M.studIns || (M.studIns = (() => { const tx = new THREE.CanvasTexture(cachedCanvas('studIns', () => makeCanvas(32, 64, (g, w, h) => {
+  // a wall panel's face (its colour, plain: for header panels and removable panels) and an H-stud with its insert
+  const panelFace = (WP) => {
+    return M['remFace' + WP.label] || (M['remFace' + WP.label] = (() => { const m = new THREE.MeshPhongMaterial({ color: new THREE.Color(WP.face).multiplyScalar(0.955), emissive: WP.emissive, specular: 0x1c1c1c, shininess: 16 }); m.name = 'Wall panel, removable, ' + WP.label.toLowerCase(); return m; })());
+  };
+  const studMat = (WP) => {
+    const stud = M.studIns || (M.studIns = (() => { const tx = new THREE.CanvasTexture(cachedCanvas('studIns', () => makeCanvas(32, 64, (g, w, h) => {
         const ins = 0.6 * w / 3, cx = w / 2;
         g.fillStyle = '#fbfbfb'; g.fillRect(0, 0, w, h);
         g.fillStyle = '#a3aaae'; g.fillRect(0, 0, 1.4, h); g.fillRect(w - 1.4, 0, 1.4, h);
@@ -3753,7 +3741,37 @@ function buildScene(THREE, plan, A) {
         g.fillStyle = '#b3babd'; g.fillRect(cx - ins - 1, 0, 1, h); g.fillRect(cx + ins, 0, 1, h);
         g.fillStyle = '#ffffff'; g.fillRect(cx - ins, 0, 0.8, h);
       }))); tx.anisotropy = ANISO; const m = new THREE.MeshPhongMaterial({ map: tx, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 }); m.name = 'H-stud with insert'; return m; })());
-      const sc = WP.face === 0xffffff ? stud : (() => { const m = stud.clone(); m.color.set(WP.face); m.emissive.set(WP.emissive); return m; })();
+    return WP.face === 0xffffff ? stud : (M['studIns' + WP.label] || (M['studIns' + WP.label] = (() => { const m = stud.clone(); m.color.set(WP.face); m.emissive.set(WP.emissive); return m; })()));
+  };
+  for (const i of A.opInfo) {
+    const o = i.o, t = i.t, nx = -i.uz, nz = i.ux;
+    curRef = o.id ? { kind: 'opening', id: o.id } : null;
+    const ceilHere = i.hard ? wallCeil(plan, A, { x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t }) : H;
+    const head = Math.min(i.hard ? Math.min(ceilHere, i.wallH || ceilHere) : (i.wallH || H), o.head || 7);
+    const IP = i.hard ? wallPM(i.host && i.host.id) : null, top = i.wallH || H, hm = i.hard ? IP.trim : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head, undefined, head).mats : shellMat(i.kind, i.len, top - head, 0);
+    if (top - head > 0.01 && o.type !== 'removable') {
+      if (i.hard) {
+        // header panels over a door or glass in a cleanroom wall: the same panels as the wall (its colour), up to 45″
+        // wide, with an H-stud and its insert between them (a pair of doors gets one, 45″ from the start)
+        const PWd = 45 / 12, SWd = 3 / 12, F = panelFace(IP), SC = studMat(IP), E4 = [IP.edge, IP.edge, IP.edge, IP.edge], at = (q) => [o.x1 + i.ux * q, o.y1 + i.uz * q];
+        let q0 = 0;
+        while (q0 < i.len - 1e-6) {
+          const last = i.len - q0 <= PWd + 1e-6, q1 = last ? i.len : q0 + PWd, [ax2, az2] = at(q0), [bx2, bz2] = at(q1);
+          const hp = segBox(ax2, az2, bx2, bz2, head, top, t, E4.concat([F, F])); outline(hp); pick.push(hp);
+          if (last) break;
+          const q2 = Math.min(i.len, q1 + SWd), [cx2, cz2] = at(q2); pick.push(segBox(bx2, bz2, cx2, cz2, head, top, t + 0.006, E4.concat([SC, SC]))); q0 = q2;
+        }
+      } else { const h = segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, hm); outline(h); pick.push(h); } if (i.hard && ceilHere - head > 0.2 && trackOK(top)) { if (top > ceilHere + 0.05) trackFaces(o.x1, o.y1, o.x2, o.y2, t, H, top); else segBox(o.x1, o.y1, o.x2, o.y2, H - 0.17, H, t + 0.03, M.track); } }
+    const ax = o.x1, az = o.y1, bx = o.x2, bz = o.y2;
+    const along = (s) => [ax + i.ux * s, az + i.uz * s];
+    if (o.type === 'removable') {
+      // removable wall section (equipment access): see removableLayout. Show removed (3D) hides the panels and
+      // the studs between them, so you can see the opening a machine comes through.
+      const RL = removableOf(plan, A, i), WP = i.hard ? IP : wallPM(null), tb = t + 0.004, EE = [WP.edge, WP.edge, WP.edge, WP.edge];
+      // the steel tube is painted to match the room (the wall panels' colour), a little glossier than the panels
+      const metal = M['remSteel' + WP.label] || (M['remSteel' + WP.label] = (() => { const m = new THREE.MeshPhongMaterial({ color: new THREE.Color(WP.face).multiplyScalar(0.97), emissive: WP.emissive, specular: 0x3a3d3f, shininess: 45 }); m.name = 'Removable section frame, 3x3 steel tube, painted ' + WP.label.toLowerCase(); return m; })());
+      const box = (q, th, mat, line) => { const [p0x, p0z] = along(q.s0), [p1x, p1z] = along(q.s1); const m = segBox(p0x, p0z, p1x, p1z, q.y0, q.y1, th, mat); if (line) outline(m); pick.push(m); return m; };
+      const face = panelFace(WP), sc = studMat(WP);
       for (const q of RL.posts) box(q, tb, metal, true);
       box(RL.headerTube, tb, metal, true);
       for (const q of RL.starts) box(q, tb, WP.trim, true);
