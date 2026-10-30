@@ -5685,6 +5685,8 @@ function mount(container, plan, opts) {
   function cancelPending() { if (!mPending) return; mGroup.remove(mPending.dot); if (mRubber) { mGroup.remove(mRubber.line); mRubber.el.remove(); mRubber = null; } mPending = null; }
   function refreshClear() { mClearBtn.hidden = !meas.length; }
   measBtn.addEventListener('click', (e) => { e.stopPropagation(); setMeasure(!measureOn); });
+  // a customer viewer (shared link, phone, exported file) has no measuring tool
+  if (opts.measure === false) { measBtn.hidden = true; measBtn.remove(); mClearBtn.hidden = true; }
   mClearBtn.addEventListener('click', (e) => { e.stopPropagation(); cancelPending(); for (const m of meas) { mGroup.remove(m.line, m.da, m.db); m.el.remove(); } meas.length = 0; refreshClear(); });
   const mRay = new THREE.Raycaster();
   function surfaceAt(cx, cy) {
@@ -5896,7 +5898,7 @@ function mount(container, plan, opts) {
   // browser and "Send comments" sends them straight to the designer's app (a file only if asked for).
   // ---- Super render: the visible model goes to the path tracer (loaded on first use) with this exact view
   const srBtn = $('.p3v-srb'), srSrc = opts.superSrc === undefined ? 'https://collbusinesssolutions.com/plan3d-app/renderer/vendor/superrender.js' : opts.superSrc;
-  srBtn.hidden = !(THREE.GLTFExporter && (global.P3Super || srSrc));
+  srBtn.hidden = true; // Super render taken out (1.9.16)
   const loadScript = (src) => new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = src; sc.onload = ok; sc.onerror = () => no(new Error('Couldn’t load the renderer. Check your internet connection.')); document.head.appendChild(sc); });
   async function superRender() {
     if (!built || srBtn.disabled) return;
@@ -6068,7 +6070,7 @@ function mount(container, plan, opts) {
     if (k === 'g' && !e.repeat && mode === 'fly' && !tween && global.P3Game && A) { startGame(); e.preventDefault(); return; }
     if (tour && /^(w|a|s|d|q|e|arrow\w+|escape)$/.test(k)) stopTour();
     if (k === 'l' && !e.repeat) { toggleLook(); e.preventDefault(); return; }
-    if (k === 'm' && !e.repeat && (container.contains(e.target) || container.clientWidth > global.innerWidth * 0.6)) { setMeasure(!measureOn); e.preventDefault(); return; }
+    if (k === 'm' && opts.measure !== false && !e.repeat && (container.contains(e.target) || container.clientWidth > global.innerWidth * 0.6)) { setMeasure(!measureOn); e.preventDefault(); return; }
     if (k === 'p' && !e.shiftKey && !e.repeat && (container.contains(e.target) || container.clientWidth > global.innerWidth * 0.6)) { takeSnapshot(); e.preventDefault(); return; }
     if (k === 'escape' && mPending) { cancelPending(); }
     if (k === 'v' && !e.repeat && mode === 'fly') { pilot = !pilot; applyFlyCam(); e.preventDefault(); return; }
