@@ -334,7 +334,7 @@ function partsList(plan) {
     // the header panels over a door, glass or pass-thru in a cleanroom wall: panels up to 45″ wide, an H-stud between
     if (i.hard && o.type !== 'removable') {
       const ceilHere = V.wallCeil ? V.wallCeil(plan, A, { x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t }) : H, top = i.wallH || WH, head = Math.min(Math.min(ceilHere, i.wallH || ceilHere), o.head || 7);
-      if (top - head > 0.01) { let q0 = 0, ns = 0; while (q0 < W - 1e-6) { const last = W - q0 <= 45 / 12 + 1e-6, q1 = last ? W : q0 + 45 / 12; add('Wall panels', 'Header panel over door / glass', inch(q1 - q0) + ' × ' + ftin(top - head), 1, 'ea', 10.7); if (last) break; ns++; q0 = q1 + 3 / 12; } if (ns) add('Studs & posts', 'H-stud, 3″ with insert (header panel over door / glass)', '3″ × ' + ftin(top - head), ns, 'ea', 20.7); }
+      if (top - head > 0.01) { const np = Math.max(1, Math.ceil((W + 3 / 12 - 1e-6) / (48 / 12))), pw = (W - (np - 1) * 3 / 12) / np, ns = np - 1; add('Wall panels', 'Header panel over door / glass', inch(pw) + ' × ' + ftin(top - head), np, 'ea', 10.7); if (ns) add('Studs & posts', 'H-stud, 3″ with insert (header panel over door / glass)', '3″ × ' + ftin(top - head), ns, 'ea', 20.7); }
     }
     if (o.type === 'removable' && V.removableOf) {
       // removable wall section: the same wall panels in a frame of 3″ × 3″ steel tube (posts to the lid, a header
