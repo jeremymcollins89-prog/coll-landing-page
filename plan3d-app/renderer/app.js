@@ -3223,7 +3223,7 @@ async function exportHtml() {
 <script>${safe(a.post || '')}</script>
 <script>${safe(a.exporter || '')}</script>
 <script>${safe(a.viewer)}</script>
-<script>Plan3DViewer.mount(document.getElementById('v'), ${safe(JSON.stringify(plan))}, { comments: true });</script>
+<script>Plan3DViewer.mount(document.getElementById('v'), ${safe(JSON.stringify(plan))}, { comments: true, startOutside: true });</script>
 <!-- Made with Coll Plan3D · Coll Business Solutions LLC -->
 </body></html>`;
   const p = await api.exportFile(html, plan.name + ' walkthrough', 'html');

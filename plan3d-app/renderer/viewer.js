@@ -6191,6 +6191,24 @@ function mount(container, plan, opts) {
     try { setPlan(plan, true); } catch (e) { console.error(e); }
     hint.classList.add('gone');
   }, false);
+  // where a walkthrough starts outside: 11′ out from an outside door (double doors first), facing in; with no outside
+  // door, in front of the building's long side
+  function outsideStart() {
+    const FP = footprint(A) || footprint(A, true); if (!FP) return null;
+    const b = A.bounds, cand = [];
+    for (const i of A.opInfo || []) {
+      const t = i.o.type; if (!(t === 'door' || t === 'door2' || t === 'open' || t === 'overhead')) continue;
+      const mx = (i.o.x1 + i.o.x2) / 2, mz = (i.o.y1 + i.o.y2) / 2, L = Math.hypot(i.o.x2 - i.o.x1, i.o.y2 - i.o.y1) || 1, nx = -(i.o.y2 - i.o.y1) / L, nz = (i.o.x2 - i.o.x1) / L;
+      const a = FP.has(mx + nx * 2, mz + nz * 2), c = FP.has(mx - nx * 2, mz - nz * 2); if (a === c) continue;
+      const sd = a ? -1 : 1, rank = t === 'door2' ? 0 : t === 'door' ? 1 : 2;
+      cand.push({ mx, mz, ox: nx * sd, oz: nz * sd, rank, d: Math.hypot(mx - b.cx, mz - b.cz) });
+    }
+    cand.sort((p, q) => p.rank - q.rank || p.d - q.d);
+    const c = cand[0];
+    const at = c ? { x: c.mx + c.ox * 11, z: c.mz + c.oz * 11, lx: c.mx, lz: c.mz } : { x: b.cx, z: b.maxZ + 8, lx: b.cx, lz: b.cz };
+    const f = freeSpot(at.x, at.z);
+    return { x: f.x, z: f.z, yaw: Math.atan2(-(at.lx - f.x), -(at.lz - f.z)) || 0 };
+  }
   function setPlan(p, keep) {
     plan = p;
     A = analyzeAll(p);
@@ -6217,6 +6235,8 @@ function mount(container, plan, opts) {
       const b = A.bounds, r0 = allRooms(p)[0];
       const sx = r0 ? r0.x : b.cx, sz = r0 ? r0.y : b.cz;
       const f = freeSpot(sx, sz); st.x = f.x; st.z = f.z; st.yaw = r0 ? Math.atan2(-(b.cx - sx), -(b.cz - sz)) || 0 : 0; st.pitch = -0.04;
+      // a customer walkthrough (shared link, phone, exported file) starts outside, at the way in, facing the room
+      if (opts.startOutside && !A.empty) { try { const o = outsideStart(); if (o) { st.x = o.x; st.z = o.z; st.yaw = o.yaw; if (mode !== 'walk' && mode !== 'doll' && mode !== 'plenum') mode = 'walk'; } } catch (e) { console.error(e); } }
       if (A.empty) { mode = 'doll'; }
       if (mode === 'fly') mode = 'doll';
       if (mode === 'walk') { labelsEl.hidden = true; applyWalkCam(); }
