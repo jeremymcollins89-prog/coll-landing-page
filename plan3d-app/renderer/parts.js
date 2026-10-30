@@ -197,7 +197,7 @@ function partsList(plan) {
     const w = it.w || D.w, d = it.d || D.d, h = D.sz && it.h > 0 ? it.h : D.h, inch = (v) => Math.round(v * 12 * 4) / 4 + '″';
     const opts = it.type === 'sstable' ? [it.shelf !== false ? 'undershelf' : '', it.splash ? 'backsplash' : '', it.casters ? 'casters' : ''].filter(Boolean) : [];
     const size = it.type === 'tackymat' ? inch(d) + ' × ' + inch(w) : D.sz ? inch(d) + ' × ' + inch(w) + ' × ' + inch(h) + (it.type === 'sstable' ? ' high' : ' tall') : D.wv ? inch(w) + ' wide' : '';
-    add(D.group, D.label + (opts.length ? ', ' + opts.join(', ') : ''), size, 1, 'ea', ({ 'Cleanroom furniture': 186, 'IV and compounding': 187, 'Sinks and gowning': 188, 'Air showers and ceiling': 188.5 })[D.group] || 189);
+    add(D.group, D.label + (opts.length ? ', ' + opts.join(', ') : ''), size, 1, 'ea', ({ 'Cleanroom furniture': 186, 'Workstations and storage': 186.5, 'IV and compounding': 187, 'Sinks and gowning': 188, 'Air showers and ceiling': 188.5 })[D.group] || 189);
   }
   // hardwall (cleanroom) walls get panels, studs, posts, track and base; building walls get their own lines
   const walls = A.walls.filter(w => V.isHard(w)), built = new Set(walls.filter(w => w.piece).map(w => w.id));

@@ -187,6 +187,24 @@ const ITEMS = {
   crchair: { label: 'Cleanroom chair', group: 'Cleanroom furniture', w: 1.83, d: 1.83, h: 3.5, cr: true, free: true },
   sstrash: { label: 'Waste can, stainless, foot pedal', group: 'Cleanroom furniture', w: 1.25, d: 1.25, h: 2.33, cr: true },
   tackymat: { label: 'Tacky mat', group: 'Cleanroom furniture', w: 3, d: 2, h: 0.02, cr: true, sz: true, free: true },
+  // more cleanroom furniture, sized like the usual catalog pieces (Terra Universal and the like)
+  crstool: { label: 'Cleanroom stool, adjustable (ESD)', group: 'Cleanroom furniture', w: 1.33, d: 1.33, h: 2.6, cr: true, free: true },
+  wallshelf: { label: 'Wall shelf, stainless, perforated', group: 'Cleanroom furniture', w: 4, d: 1.17, h: 0.6, z: 5, cr: true, wv: true },
+  wallcab: { label: 'Wall cabinet, stainless, glass doors', group: 'Cleanroom furniture', w: 3, d: 1.17, h: 2.5, z: 5, cr: true, wv: true },
+  locker: { label: 'Gowning locker, stainless, 3 tiers', group: 'Cleanroom furniture', w: 1.25, d: 1.5, h: 6, cr: true },
+  mirror: { label: 'Gowning mirror, full length', group: 'Cleanroom furniture', w: 2, d: 0.17, h: 5, z: 1, cr: true },
+  bootrack: { label: 'Boot and shoe rack, stainless', group: 'Cleanroom furniture', w: 4, d: 1.17, h: 3, cr: true, sz: true },
+  esdbench: { label: 'Cleanroom workstation, ESD top, upper shelf and light', group: 'Workstations and storage', w: 6, d: 2.5, h: 6.5, cr: true, sz: true },
+  lfbench: { label: 'Laminar flow workstation, horizontal', group: 'Workstations and storage', w: 4, d: 2.5, h: 6.5, cr: true, wv: true },
+  desiccator: { label: 'Desiccator cabinet, nitrogen purge, 4 doors', group: 'Workstations and storage', w: 2.83, d: 1.83, h: 6, cr: true, sz: true },
+  desicbench: { label: 'Desiccator cabinet, benchtop, 2 doors', group: 'Workstations and storage', w: 2, d: 1.67, h: 1.67, z: 3, cr: true },
+  glovebox: { label: 'Glove box, acrylic, nitrogen', group: 'Workstations and storage', w: 4, d: 2.33, h: 2.5, z: 3, cr: true, wv: true },
+  fumehood: { label: 'Fume hood, with base cabinets', group: 'Workstations and storage', w: 6, d: 2.67, h: 8, cr: true, wv: true },
+  gowncab: { label: 'Garment cabinet, HEPA-filtered', group: 'Workstations and storage', w: 4, d: 2, h: 7, cr: true, wv: true },
+  partcart: { label: 'Particle counter on a cart', group: 'Workstations and storage', w: 1.5, d: 1.5, h: 3.5, cr: true, free: true },
+  shoecleaner: { label: 'Shoe sole cleaner, stainless (brushes)', group: 'Sinks and gowning', w: 1.83, d: 2.33, h: 3.5, cr: true },
+  wipestation: { label: 'Wipes and IPA station, wall', group: 'Sinks and gowning', w: 1.5, d: 0.5, h: 1.5, z: 3.5, cr: true },
+  eyewash: { label: 'Eyewash station, wall', group: 'Sinks and gowning', w: 1.25, d: 0.83, h: 1, z: 3, cr: true },
   ivpole: { label: 'IV pole, mobile', group: 'IV and compounding', w: 2, d: 2, h: 6.5, cr: true, free: true },
   ivrack: { label: 'IV rack, mobile (12 hooks)', group: 'IV and compounding', w: 3, d: 2, h: 6, cr: true, free: true, wv: true },
   ivbar: { label: 'IV bar, wall-mounted', group: 'IV and compounding', w: 4, d: 0.42, h: 0.5, z: 5.5, cr: true, wv: true },
@@ -3154,7 +3172,8 @@ function itemMesh(THREE, it, M, opt) {
     case 'condenser': box(0, h / 2, 0, w, h, d, mat(0xd8dbd6)); cyl(0, h + 0.02, 0, w * 0.4, 0.05, black, 24); break;
     // ---- cleanroom furniture and equipment: brushed 304 stainless, white powder coat, dark casters
     case 'sstable': case 'sscart': case 'shelving': case 'sscabinet': case 'gownbench': case 'gownrack': case 'crchair': case 'sstrash': case 'tackymat':
-    case 'ivpole': case 'ivrack': case 'ivbar': case 'lafw': case 'bsc': case 'isolator': case 'medfridge': case 'handsink': case 'scrubsink': case 'dispenser': case 'shoecover': case 'airshower': case 'teardrop': case 'sprinkler': case 'smokedet': {
+    case 'ivpole': case 'ivrack': case 'ivbar': case 'lafw': case 'bsc': case 'isolator': case 'medfridge': case 'handsink': case 'scrubsink': case 'dispenser': case 'shoecover': case 'airshower': case 'teardrop': case 'sprinkler': case 'smokedet':
+    case 'crstool': case 'wallshelf': case 'wallcab': case 'locker': case 'mirror': case 'bootrack': case 'esdbench': case 'lfbench': case 'desiccator': case 'desicbench': case 'glovebox': case 'fumehood': case 'gowncab': case 'partcart': case 'shoecleaner': case 'wipestation': case 'eyewash': {
       const brushed = cachedCanvas('brushed-ss', () => makeCanvas(256, 64, (c, W2, H2) => { c.fillStyle = '#c9ced1'; c.fillRect(0, 0, W2, H2); for (let k = 0; k < 900; k++) { const v = 180 + Math.random() * 60 | 0; c.fillStyle = `rgba(${v},${v + 4},${v + 6},.35)`; c.fillRect(Math.random() * W2, Math.random() * H2, 20 + Math.random() * 90, 1); } }));
       const sst = new THREE.CanvasTexture(brushed); sst.wrapS = sst.wrapT = THREE.RepeatWrapping; sst.repeat.set(2, 1);
       const ss = new THREE.MeshPhongMaterial({ color: 0xe4e8ea, map: sst, specular: 0xffffff, shininess: 90 });
@@ -3256,6 +3275,113 @@ function itemMesh(THREE, it, M, opt) {
         case 'teardrop': { box(0, h - 0.03, 0, w, 0.06, d * 0.7, coat); const l = cyl(0, h - 0.1, 0, d / 2, w - 0.05, lightP, 16); l.rotation.z = Math.PI / 2; l.scale.set(1, 1, 0.85); break; }
         case 'sprinkler': { cyl(0, h - 0.01, 0, 0.13, 0.02, coat, 18); cyl(0, h - 0.07, 0, 0.035, 0.1, ssD, 10); cyl(0, h - 0.16, 0, 0.012, 0.06, mat(0xd04a3a), 8); cyl(0, h - 0.2, 0, 0.07, 0.01, ssD, 14); break; }
         case 'smokedet': { cyl(0, h - 0.06, 0, 0.24, 0.12, coat, 24); cyl(0, h - 0.125, 0, 0.17, 0.01, mat(0xe8eaea), 20); cyl(0.12, h - 0.13, 0, 0.012, 0.012, mat(0x2fbf4f), 8); break; }
+        case 'crstool': {
+          for (let k = 0; k < 5; k++) { const a2 = k * Math.PI * 2 / 5; const leg = box(Math.cos(a2) * 0.3, 0.2, Math.sin(a2) * 0.3, 0.6, 0.07, 0.09, ssD); leg.rotation.y = -a2; caster(Math.cos(a2) * 0.58, Math.sin(a2) * 0.58); }
+          cyl(0, 1.2, 0, 0.06, 1.8, ss, 12); const ring = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.025, 6, 24), ss); ring.rotation.x = Math.PI / 2; ring.position.set(0, 1.1, 0); g.add(ring);
+          cyl(0, h - 0.1, 0, 0.62, 0.2, mat(0x2f3a45), 24); break;
+        }
+        case 'wallshelf': {
+          box(0, h - 0.05, 0, w, 0.06, d, ss); box(0, h - 0.05, d / 2 - 0.02, w, 0.14, 0.04, ss);
+          for (let q = -w / 2 + 0.2; q < w / 2 - 0.1; q += 0.2) box(q, h - 0.015, 0, 0.06, 0.005, d - 0.15, ssD); // perforations
+          for (const x of [-w / 2 + 0.2, w / 2 - 0.2]) { box(x, h / 2 - 0.05, -d / 2 + 0.05, 0.06, h - 0.1, 0.06, ssD); const br = box(x, h / 2 - 0.05, -d / 4, 0.05, 0.05, d * 0.7, ssD); br.rotation.x = -0.6; }
+          break;
+        }
+        case 'wallcab': {
+          box(0, h / 2, 0, w, h, d, ss); const n = w > 2.5 ? 2 : 1;
+          for (let k = 0; k < n; k++) { const x = -w / 2 + (k + 0.5) * w / n; box(x, h / 2, d / 2 + 0.01, w / n - 0.12, h - 0.2, 0.02, glass); box(x + (k ? -1 : 1) * (w / n / 2 - 0.15), h / 2, d / 2 + 0.05, 0.04, 0.5, 0.05, ssD); }
+          box(0, h / 2, 0, w - 0.1, 0.03, d - 0.1, ssD); break;
+        }
+        case 'locker': {
+          box(0, h / 2 + 0.17, 0, w, h - 0.33, d, ss); legs(w / 2 - 0.08, d / 2 - 0.08, 0, 0.34, 0.07, ssD);
+          for (let k = 1; k < 3; k++) box(0, 0.33 + k * (h - 0.33) / 3, d / 2 + 0.005, w - 0.05, 0.02, 0.01, ssD);
+          for (let k = 0; k < 3; k++) { const y = 0.33 + (k + 0.5) * (h - 0.33) / 3; box(w / 2 - 0.15, y, d / 2 + 0.03, 0.05, 0.25, 0.04, ssD); for (let v = 0; v < 4; v++) box(0, y + 0.45 + v * 0.06, d / 2 + 0.006, w * 0.5, 0.02, 0.01, ssD); }
+          break;
+        }
+        case 'mirror': { box(0, h / 2, 0, w, h, d * 0.5, ss); box(0, h / 2, d * 0.26, w - 0.15, h - 0.15, 0.01, new THREE.MeshPhongMaterial({ color: 0xcfe1e8, specular: 0xffffff, shininess: 120 })); break; }
+        case 'bootrack': {
+          legs(w / 2 - 0.05, d / 2 - 0.05, 0, h, 0.07, ssD);
+          for (let k = 0; k < 3; k++) { const y = 0.45 + k * (h - 0.6) / 2, sh = box(0, y, 0, w - 0.1, 0.04, d - 0.1, ss); sh.rotation.x = 0.2; box(0, y - 0.05, d / 2 - 0.08, w - 0.1, 0.1, 0.03, ss);
+            for (let q = 0; q < Math.floor(w / 0.6); q++) box(-w / 2 + 0.35 + q * 0.6, y + 0.25, 0, 0.35, 0.45, d * 0.75, q % 2 ? mat(0xe8eef2) : blue); }
+          break;
+        }
+        case 'esdbench': {
+          // a 30″–36″ work surface (grey ESD laminate), tube legs, uprights at the back with a shelf and a light under it
+          const ws = 3, ix = w / 2 - 0.12, iz = d / 2 - 0.12; legs(ix, iz, 0.03, ws - 0.08, 0.13); box(0, 0.6, 0, w - 0.2, 0.05, d - 0.2, ss);
+          box(0, ws - 0.04, 0, w, 0.1, d, mat(0x6f7c84, 0x333333)); box(0, ws - 0.04, d / 2, w, 0.1, 0.03, ssD);
+          for (const x of [-ix, ix]) box(x, (ws + h) / 2, -d / 2 + 0.1, 0.12, h - ws, 0.12, ss);
+          box(0, h - 0.6, -d / 2 + 0.55, w - 0.1, 0.05, 1.0, ss); box(0, h - 0.7, -d / 2 + 0.55, w - 0.5, 0.1, 0.35, coat); box(0, h - 0.76, -d / 2 + 0.55, w - 0.6, 0.02, 0.28, lightP);
+          box(0, ws + 0.9, -d / 2 + 0.08, w - 0.4, 0.3, 0.12, coat); for (let k = 0; k < 6; k++) box(-w / 2 + 0.6 + k * (w - 1.2) / 5, ws + 0.9, -d / 2 + 0.15, 0.12, 0.12, 0.02, mat(0x30353a)); // outlet strip
+          box(0, ws + 0.02, d / 2 - 0.4, 0.35, 0.02, 0.35, mat(0x1e5ea8)); // ESD wrist-strap ground point
+          break;
+        }
+        case 'lfbench': {
+          // horizontal flow: the HEPA filter fills the back, air blows across the work surface toward you
+          const ws = 2.5; legs(w / 2 - 0.15, d / 2 - 0.15, 0, ws - 0.1, 0.12, ssD); box(0, ws, 0, w, 0.12, d, ss);
+          box(0, (ws + h) / 2, -d / 2 + 0.35, w, h - ws, 0.7, coat); box(0, (ws + h - 0.8) / 2 + 0.05, -d / 2 + 0.71, w - 0.3, h - ws - 1.0, 0.02, mat(0xdfe5e8)); // filter face
+          for (const sx of [-1, 1]) box(sx * (w / 2 - 0.03), (ws + h) / 2, 0.1, 0.06, h - ws, d - 0.7, glass);
+          box(0, h - 0.3, 0.1, w, 0.6, d - 0.7, coat); box(0, h - 0.62, 0.1, w - 0.3, 0.03, d - 0.9, lightP); box(0, h - 0.3, d / 2 - 0.24, w - 0.4, 0.35, 0.01, mat(0x5b6670));
+          break;
+        }
+        case 'desiccator': case 'desicbench': {
+          // acrylic doors over shelves in a stainless frame, a nitrogen flowmeter on the side
+          const rows = it.type === 'desiccator' ? 2 : 1, cols = 2, y0 = it.type === 'desiccator' ? 0.33 : 0, hh = h - y0;
+          if (y0) legs(w / 2 - 0.08, d / 2 - 0.08, 0, y0 + 0.02, 0.08, ssD);
+          box(0, y0 + hh / 2, -0.02, w, hh, d - 0.04, ss); box(0, y0 + hh / 2, d / 2 - 0.05, w - 0.12, hh - 0.12, 0.04, mat(0xeef3f5));
+          for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+            const x = -w / 2 + (c + 0.5) * w / cols, y = y0 + (r + 0.5) * hh / rows; box(x, y, d / 2 + 0.005, w / cols - 0.12, hh / rows - 0.12, 0.03, glass);
+            box(x + (c ? -1 : 1) * (w / cols / 2 - 0.12), y, d / 2 + 0.05, 0.04, Math.min(0.5, hh / rows / 3), 0.05, ssD);
+            for (let k = 1; k < 3; k++) box(x, y - hh / rows / 2 + k * hh / rows / 3, 0, w / cols - 0.15, 0.02, d - 0.3, ssD);
+          }
+          box(w / 2 + 0.06, y0 + hh * 0.75, d / 2 - 0.3, 0.1, 0.45, 0.2, coat); cyl(w / 2 + 0.12, y0 + hh * 0.75, d / 2 - 0.3, 0.03, 0.35, glass, 10);
+          break;
+        }
+        case 'glovebox': {
+          box(0, 0.05, 0, w, 0.1, d, ss); box(0, h / 2 + 0.05, 0, w - 0.05, h - 0.1, d - 0.05, glass);
+          for (const [x, y, z, sx, sy, sz] of [[0, h - 0.02, 0, w, 0.04, d], [-w / 2, h / 2, 0, 0.05, h, d], [w / 2, h / 2, 0, 0.05, h, d], [0, h / 2, d / 2, w, 0.05, 0.05], [0, h / 2, -d / 2, w, 0.05, 0.05]]) box(x, y, z, sx, sy, sz, ss);
+          for (const x of [-w / 5, w / 5]) { const pt = cyl(x, h * 0.45, d / 2 + 0.02, 0.32, 0.08, mat(0x30353a), 22); pt.rotation.x = Math.PI / 2; cyl(x, h * 0.45, d / 2 - 0.4, 0.22, 0.7, mat(0x1d2124), 14).rotation.x = Math.PI / 2; }
+          const al = cyl(w / 2 + 0.45, h * 0.4, 0, 0.42, 0.9, ss, 24); al.rotation.z = Math.PI / 2; // side airlock
+          break;
+        }
+        case 'fumehood': {
+          const ws = 3; box(0, 1.45, 0, w, 2.7, d - 0.15, coat); box(0, 0.15, 0.05, w, 0.3, d - 0.3, rubber);
+          const nd = Math.max(2, Math.round(w / 1.5)); for (let k = 0; k < nd; k++) { const x = -w / 2 + (k + 0.5) * w / nd; box(x, 1.5, d / 2 - 0.06, w / nd - 0.08, 2.2, 0.03, mat(0xe6e9ea)); box(x + 0.3, 2.3, d / 2 - 0.02, 0.2, 0.04, 0.04, ssD); }
+          box(0, ws - 0.15, 0, w + 0.05, 0.12, d, mat(0x2b2e31, 0x555555)); // epoxy work top
+          for (const sx of [-1, 1]) box(sx * (w / 2 - 0.12), (ws + h) / 2, 0, 0.24, h - ws, d, coat);
+          box(0, (ws + h) / 2, -d / 2 + 0.1, w, h - ws, 0.2, coat); box(0, h - 0.6, 0, w, 1.2, d, coat);
+          box(0, ws + 1.55, d / 2 - 0.12, w - 0.5, 2.4, 0.04, glass); box(0, ws + 0.35, d / 2 - 0.1, w - 0.5, 0.12, 0.08, ssD);
+          cyl(0, h + 0.5, -0.2, 0.42, 1.0, ssD, 24); box(-w / 2 + 0.5, h - 0.6, d / 2 + 0.01, 0.6, 0.35, 0.02, mat(0x30353a));
+          break;
+        }
+        case 'gowncab': {
+          box(0, h / 2, 0, w, h, d, coat); box(0, h - 0.4, 0.02, w - 0.1, 0.6, d - 0.1, coat); box(0, h - 0.4, d / 2 + 0.01, w - 0.6, 0.25, 0.02, mat(0x5b6670));
+          box(0, (h - 0.8) / 2 + 0.2, d / 2 + 0.01, w - 0.2, h - 1.1, 0.03, glass); box(w / 2 - 0.25, h / 2, d / 2 + 0.06, 0.04, 0.6, 0.05, ssD);
+          cyl(0, h - 1.05, 0, 0.03, w - 0.2, ss, 10).rotation.z = Math.PI / 2;
+          const n = Math.max(2, Math.floor(w / 0.45)); for (let k = 0; k < n; k++) box(-w / 2 + 0.35 + k * (w - 0.7) / Math.max(1, n - 1), h - 2.9, 0, 0.3, 3.6, d * 0.7, k % 3 === 1 ? mat(0xb9d4ee) : mat(0xf6f7f6));
+          break;
+        }
+        case 'partcart': {
+          legs(w / 2 - 0.08, d / 2 - 0.08, 0.33, 2.6, 0.07); for (const y of [0.6, 2.6]) box(0, y, 0, w, 0.05, d, ss); for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) caster(x * (w / 2 - 0.08), z * (d / 2 - 0.08));
+          box(0, 2.95, 0, w * 0.7, 0.65, d * 0.75, mat(0xeceff0)); box(0, 3.05, d * 0.38, w * 0.5, 0.35, 0.02, mat(0x223a52));
+          cyl(-w * 0.2, 3.35, 0, 0.06, 0.2, ssD, 12); box(-w * 0.2, 3.48, 0, 0.16, 0.06, 0.16, ssD); // the sample probe
+          break;
+        }
+        case 'shoecleaner': {
+          box(0, 0.3, 0.1, w, 0.6, d - 0.2, ss); box(0, 0.62, 0.1, w - 0.3, 0.04, d - 0.5, mat(0x1d2124)); for (let k = 0; k < 4; k++) box(0, 0.68, -d / 2 + 0.6 + k * 0.35, w - 0.4, 0.08, 0.12, blue); // brushes
+          for (const sx of [-1, 1]) { box(sx * (w / 2 - 0.05), h / 2, -d / 2 + 0.15, 0.08, h, 0.08, ss); box(sx * (w / 2 - 0.05), h - 0.05, 0, 0.06, 0.06, d - 0.3, ss); }
+          box(0, h * 0.62, -d / 2 + 0.12, w - 0.2, 0.5, 0.1, coat);
+          break;
+        }
+        case 'wipestation': {
+          box(0, h / 2, 0, w, h, d, ss); box(0, h / 2 + 0.1, d / 2 + 0.005, w - 0.15, h - 0.4, 0.01, mat(0xdfe5e8));
+          cyl(-w / 4, 0.25, d / 2 - 0.05, 0.2, 0.3, mat(0xf8f8f8), 18); const b2 = cyl(w / 4, 0.3, d / 2 + 0.05, 0.1, 0.45, new THREE.MeshPhongMaterial({ color: 0xdfeff8, transparent: true, opacity: 0.75 }), 14); b2.position.y = 0.3;
+          box(w / 4, 0.58, d / 2 + 0.05, 0.05, 0.12, 0.05, blue); break;
+        }
+        case 'eyewash': {
+          box(0, h / 2, -d / 2 + 0.05, 0.6, h, 0.1, ss); cyl(0, h * 0.3, 0, 0.06, h * 0.5, ss, 10);
+          for (const x of [-0.25, 0.25]) cyl(x, h * 0.65, 0.05, 0.16, 0.1, mat(0x3fb35a), 18);
+          box(0, h * 0.4, d / 2 - 0.05, 0.5, 0.25, 0.04, mat(0x3fb35a)); box(0, h + 0.45, -d / 2 + 0.03, 0.9, 0.6, 0.02, mat(0x2f9e4c)); // pull plate and the green sign
+          break;
+        }
         case 'shoecover': { box(0, 0.5, 0, w, 1.0, d, coat); box(0, 1.6, 0, w * 0.8, 1.2, d * 0.8, ss); box(0, 1.02, d / 2 - 0.25, w * 0.6, 0.04, 0.4, blue); break; }
       }
       break;
