@@ -4415,6 +4415,34 @@ function buildScene(THREE, plan, A) {
     // the driver box on its back, along one short end (a picked light model's own, else our panels' driver)
     if (f.type !== 'ffu' && (!LMo || LMo.box)) { const B = LMo ? LMo.box : LIGHT_BOX, alongX = (nw || 2) >= (nh || 4), bx = new THREE.Mesh(new THREE.BoxGeometry(alongX ? B.w : B.l, B.h, alongX ? B.l : B.w), LMo ? housingMat : lightBack); bx.position.set(f.x + (alongX ? fw / 2 - B.w / 2 - 0.08 : 0), fh + 0.005 + hh + B.h / 2, f.y + (alongX ? 0 : fd / 2 - B.w / 2 - 0.08)); outline(bx); fixtures.add(bx); }
   }
+  // the fixture whips: flexible steel-armoured cable from box to box over the ceiling, a connector at each end and at
+  // each joint where a 12′ extension carries the run on
+  if (Array.isArray(plan.whips) && plan.whips.length) {
+    try {
+      const PT = new Map(whipPorts(plan, A).map(p => [p.id, p]));
+      const flex = M.whip || (M.whip = new THREE.MeshPhongMaterial({ color: 0xbfc4c7, specular: 0xffffff, shininess: 60, name: 'Fixture whip, flexible steel (OnePass)' }));
+      const plug = M.whipPlug || (M.whipPlug = new THREE.MeshPhongMaterial({ color: 0xa9afb3, specular: 0x999999, shininess: 50, name: 'Whip connector' }));
+      const tag = M.whipTag || (M.whipTag = new THREE.MeshLambertMaterial({ color: 0xf1d43a, name: 'Whip connector label' }));
+      for (const w of plan.whips) {
+        const a = PT.get(w.a), b = PT.get(w.b); if (!a || !b) continue;
+        const top = Math.max(a.y, b.y) + 0.22, mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+        // up out of each box, along then across (square to the grid), down into the next
+        const pts = [[a.x, a.y, a.z], [a.x, top, a.z], [b.x, top, a.z], [b.x, top, b.z], [b.x, b.y, b.z]].map(q => new THREE.Vector3(...q));
+        const clean = pts.filter((q, i) => i === 0 || q.distanceTo(pts[i - 1]) > 0.05);
+        const path = new THREE.CurvePath(); for (let i = 1; i < clean.length; i++) path.add(new THREE.LineCurve3(clean[i - 1], clean[i]));
+        const curve = new THREE.CatmullRomCurve3(path.getSpacedPoints(Math.max(8, Math.round(path.getLength() * 3))), false, 'catmullrom', 0.2);
+        const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(16, Math.round(path.getLength() * 6)), 0.028, 8, false), flex); fixtures.add(tube);
+        // the joints: the 9′ whip, then each 12′ extension, spread over the run as the cable lies (with its slack)
+        const R = WHIP.len + WHIP.ext * (w.ext || 0), joints = [0, 1];
+        for (let k = 0, d = WHIP.len; k < (w.ext || 0); k++, d += WHIP.ext) joints.push(d / R);
+        for (const t of joints) {
+          const p = curve.getPointAt(Math.max(0, Math.min(1, t))), tg = curve.getTangentAt(Math.max(0.001, Math.min(0.999, t)));
+          const c = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.07, 0.2), plug); c.position.copy(p); c.lookAt(p.clone().add(tg)); fixtures.add(c);
+          if (t === 1 || (t > 0 && t < 1)) { const lb = new THREE.Mesh(new THREE.BoxGeometry(0.112, 0.072, 0.06), tag); lb.position.copy(p).addScaledVector(tg, 0.07); lb.lookAt(p.clone().add(tg)); fixtures.add(lb); }
+        }
+      }
+    } catch (e) { console.error(e); }
+  }
   // the extras never stop the model from showing
   try { root.add(airflowArrows(THREE, plan, A)); } catch (e) { console.error(e); }
   return { root, pick, floor, floors: [floor], ground, ceiling, lid, roof, ceilPlane: ceil || new THREE.Object3D(), fixtures, doors, doorObs, removable };
@@ -4423,6 +4451,65 @@ function buildScene(THREE, plan, A) {
 /* Our LED flat panels (2×2 and 2×4) when no light model is picked: 1.38″ thick, with the driver box on the back
    near one end (about 5½″ × 4½″ × 1½″). */
 const LIGHT_HH = 1.38 / 12, LIGHT_BOX = { l: 5.54 / 12, w: 4.5 / 12, h: 1.5 / 12 };
+
+/* Fixture whips: the lights and fan filter units are wired in a daisy chain, box to box, with modular wiring
+   whips (Acuity RELOC OnePass OC1, 1-port, flexible steel armour): a 9′ whip from each fixture's power / driver box
+   to the next one's, plus 12′ extension whips where the run is longer than 9′. plan.whips = [{ id, a, b, ext }]
+   (a, b: fixture ids; ext: 12′ extensions in the run). */
+const WHIP = { len: 9, ext: 12, slack: 1 };
+// each fixture's wiring port: the end face of an FFU's power box, the top of a light's driver box (feet, world)
+function whipPorts(plan, A) {
+  A = A || analyze(plan);
+  const FX = ceilingFixtures(plan, A), CA = ceilAreas(plan, A), H = A.H, FM = plan.ffuModel && plan.ffuModel.sizes && plan.ffuModel.sizes.length ? plan.ffuModel : null, out = [];
+  FX.forEach((f, i) => {
+    const base = ceilingAt(CA, H, f.x, f.y), id = f.id || 'fx' + i;
+    if (f.type === 'ffu') {
+      if (!FM) { out.push({ id, f, x: f.x, z: f.y, y: base + 0.95 }); return; }
+      const long = Math.max(f.w || 2, f.h || 4), nominal = '2x' + Math.max(2, Math.min(4, Math.round(long)));
+      const sz = FM.sizes.find(q => q.nominal === nominal) || FM.sizes.slice().sort((a, b) => Math.abs(a.w - long) - Math.abs(b.w - long))[0];
+      const hh = Math.max(0.05, sz.overall - sz.h), HW = Math.min(sz.hw, sz.w - 0.1), EL = Math.min(Math.max(sz.ebox || 0, 4 / 12), Math.max(0.2, sz.w - HW - 0.3)), EH = hh * 0.65;
+      const hz = (HW + EL) / 2 - HW / 2, ez = hz - HW / 2 - EL / 2, pz = ez - EL / 2, turned = (f.w || 2) > (f.h || 4);
+      out.push({ id, f, x: f.x + (turned ? pz : 0), z: f.y + (turned ? 0 : pz), y: base + sz.h + EH * 0.5 });
+      return;
+    }
+    const LMo = plan.lightModel || null, B = LMo ? LMo.box : LIGHT_BOX, nomv = (v) => (Math.abs(v - Math.round(v)) < 0.2 ? Math.round(v) : v);
+    const nw = f.w > 0 ? nomv(f.w) : 2, nh = f.h > 0 ? nomv(f.h) : 4, fw = Math.max(0.3, nw - 0.08), fd = Math.max(0.3, nh - 0.08), lh = LMo ? Math.max(0.1, LMo.hh) : LIGHT_HH;
+    if (!B) { out.push({ id, f, x: f.x, z: f.y, y: base + lh }); return; }
+    const alongX = nw >= nh;
+    out.push({ id, f, x: f.x + (alongX ? fw / 2 - B.w / 2 - 0.08 : 0), z: f.y + (alongX ? 0 : fd / 2 - B.w / 2 - 0.08), y: base + 0.005 + lh + B.h / 2 });
+  });
+  return out;
+}
+// the run between two ports: along and across the grid (cables run square to it), plus slack at the ends
+const whipRun = (p, q) => Math.abs(p.x - q.x) + Math.abs(p.z - q.z) + Math.abs(p.y - q.y) + WHIP.slack;
+const whipExt = (L) => (L <= WHIP.len ? 0 : Math.ceil((L - WHIP.len) / WHIP.ext - 1e-9));
+/* Wire them: in each room (walls up to the lid split the plenum), a chain from the fixture nearest the room's corner
+   to the nearest one not yet wired, and on, never through a wall. Returns the whips. */
+function wireFixtures(plan, A) {
+  A = A || analyze(plan);
+  // the walls and the doorways in them (the panels over a door close the plenum there too)
+  const P = whipPorts(plan, A), walls = (A.pieces || []).filter(p => p.hard).concat((A.opInfo || []).map(i => ({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2 })));
+  const cross = (a, b) => walls.some(w => {
+    const d1x = b.x - a.x, d1z = b.z - a.z, d2x = w.x2 - w.x1, d2z = w.z2 - w.z1, den = d1x * d2z - d1z * d2x; if (Math.abs(den) < 1e-9) return false;
+    const s1 = ((w.x1 - a.x) * d2z - (w.z1 - a.z) * d2x) / den, s2 = ((w.x1 - a.x) * d1z - (w.z1 - a.z) * d1x) / den;
+    return s1 > 0 && s1 < 1 && s2 > -0.02 && s2 < 1.02;
+  });
+  // rooms: fixtures that can reach each other without crossing a wall (straight or with one bend)
+  const reach = (a, b) => !cross(a, b) || !cross(a, { x: b.x, z: a.z }) && !cross({ x: b.x, z: a.z }, b) || !cross(a, { x: a.x, z: b.z }) && !cross({ x: a.x, z: b.z }, b);
+  const room = new Array(P.length).fill(-1); let nr = 0;
+  for (let i = 0; i < P.length; i++) { if (room[i] >= 0) continue; room[i] = nr; const st = [i]; while (st.length) { const k = st.pop(); for (let j = 0; j < P.length; j++) if (room[j] < 0 && Math.hypot(P[j].x - P[k].x, P[j].z - P[k].z) < 30 && reach(P[k], P[j])) { room[j] = nr; st.push(j); } } nr++; }
+  const out = [];
+  for (let r = 0; r < nr; r++) {
+    const idx = P.map((p, i) => i).filter(i => room[i] === r); if (idx.length < 2) continue;
+    let cur = idx.reduce((m, i) => (P[i].x + P[i].z < P[m].x + P[m].z ? i : m), idx[0]); const left = new Set(idx); left.delete(cur);
+    while (left.size) {
+      let best = null, bd = 1e9; for (const j of left) { const d = whipRun(P[cur], P[j]) + (reach(P[cur], P[j]) ? 0 : 1e4); if (d < bd) { bd = d; best = j; } }
+      const L = whipRun(P[cur], P[best]); out.push({ id: 'wh' + out.length.toString(36) + Math.random().toString(36).slice(2, 6), a: P[cur].id, b: P[best].id, ext: whipExt(L) });
+      left.delete(best); cur = best;
+    }
+  }
+  return out;
+}
 
 /* Analysis of a plan with every placed building in it, merged (for walking, collisions and the mini map). */
 function analyzeAll(plan) {
@@ -6236,5 +6323,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
