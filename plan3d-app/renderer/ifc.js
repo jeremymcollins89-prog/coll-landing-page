@@ -724,17 +724,19 @@ function toIfc(plan, opts) {
         const at = (u, v) => alongZ ? [f.x + u, f.y + v] : [f.x + v, f.y - u];
         const box = (u0, u1, v0, v1) => [at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)];
         const e = 1.25 / 12, hd = Math.min(z.hd, z.d - 0.1) / 2, hwl = Math.min(z.hw, z.w - 0.1) / 2, r = Math.min(z.hw, z.hd) * 0.36;
+        const hh = Math.max(0.05, z.overall - z.h), EL = Math.min(Math.max(z.ebox || 0, 4 / 12), Math.max(0.2, z.w - 2 * hwl - 0.3)), EW = Math.min(z.d * 0.6, 2 * hd), EH = hh * 0.65;
+        const hz = (2 * hwl + EL) / 2 - hwl, ez = hz - hwl - EL / 2, sh = FM.finish === 'sst' ? fs : S.galv;
         const solids = [
           // knife-edge frame in the grid and the filter face inside it
           solid(box(-z.d / 2, z.d / 2, -z.w / 2, -z.w / 2 + e), H - 0.04, H + 0.01, fs), solid(box(-z.d / 2, z.d / 2, z.w / 2 - e, z.w / 2), H - 0.04, H + 0.01, fs),
           solid(box(-z.d / 2, -z.d / 2 + e, -z.w / 2 + e, z.w / 2 - e), H - 0.04, H + 0.01, fs), solid(box(z.d / 2 - e, z.d / 2, -z.w / 2 + e, z.w / 2 - e), H - 0.04, H + 0.01, fs),
           solid(box(-z.d / 2 + e, z.d / 2 - e, -z.w / 2 + e, z.w / 2 - e), H - 0.035, H + 0.01, S.face),
-          // cabinet above the grid, blower housing centred on it, inlet ring on top
-          solid(box(-z.d / 2 + 0.015, z.d / 2 - 0.015, -z.w / 2 + 0.015, z.w / 2 - 0.015), H + 0.01, H + z.h, fs),
-          solid(box(-hd, hd, -hwl, hwl), H + z.h, H + z.overall, fs),
-          disc(...at(0, 0), r, H + z.overall, H + z.overall + 0.06, S.galv), disc(...at(0, 0), r * 0.86, H + z.overall + 0.06, H + z.overall + 0.065, S.prefilter),
-          // electrical box on the cabinet top, toward one end
-          solid(box(-z.d / 2 + 0.12, -z.d / 2 + 0.12 + z.ebox, z.w / 2 - 0.45 - 2.25 / 12, z.w / 2 - 0.45 + 2.25 / 12), H + z.h, H + z.h + 3.5 / 12, fs)
+          // cabinet above the grid (silver metal), blower housing toward one end with the round inlet and pre-filter,
+          // the power box against its side toward the other end
+          solid(box(-z.d / 2 + 0.015, z.d / 2 - 0.015, -z.w / 2 + 0.015, z.w / 2 - 0.015), H + 0.01, H + z.h, sh),
+          solid(box(-hd, hd, hz - hwl, hz + hwl), H + z.h, H + z.overall, sh),
+          disc(...at(0, hz), r, H + z.overall, H + z.overall + 0.06, S.galv), disc(...at(0, hz), r * 0.86, H + z.overall + 0.06, H + z.overall + 0.065, S.prefilter),
+          solid(box(-EW / 2, EW / 2, ez - EL / 2, ez + EL / 2), H + z.h, H + z.h + EH, sh)
         ];
         put('IFCAIRTERMINAL', 'Fan filter unit, ' + (FM.maker ? FM.maker + ' ' : '') + (FM.model || FM.name), (FM.name || 'FFU') + ' ' + nominal + ', ' + (FM.finishLabel || ''),
           shape(solids), ',.DIFFUSER.', fs);

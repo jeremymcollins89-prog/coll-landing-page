@@ -4271,6 +4271,8 @@ function buildScene(THREE, plan, A) {
   const dark = FM ? new THREE.MeshPhongMaterial({ color: 0x3a3f42, specular: 0x222222, shininess: 10, name: 'FFU fan and electrical box' }) : null;
   if (fin && !fin.name) fin.name = 'FFU housing';
   const galv = FM ? new THREE.MeshPhongMaterial({ color: 0xaeb4b8, specular: 0x777777, shininess: 45, name: 'FFU galvanized steel' }) : null;
+  // the cabinet, blower housing and power box above the grid: silver metal (the room side keeps the chosen finish)
+  const shell = FM ? (FM.finish === 'sst' ? M.steel : new THREE.MeshPhongMaterial({ color: 0xc4c9cd, emissive: 0x0c0d0e, specular: 0xb8bec4, shininess: 70, name: 'FFU housing, silver metal' })) : null;
   function ffuUnit(sz) {
     const key = [sz.w, sz.d, sz.h, sz.overall, sz.hw, sz.hd, sz.ebox].map(v => v.toFixed(3)).join(',');
     if (ffuParts[key]) return ffuParts[key].clone();
@@ -4280,15 +4282,22 @@ function buildScene(THREE, plan, A) {
     add(new THREE.BoxGeometry(sz.d, 0.05, e), fin, 0, -0.02, sz.w / 2 - e / 2); add(new THREE.BoxGeometry(sz.d, 0.05, e), fin, 0, -0.02, -sz.w / 2 + e / 2);
     add(new THREE.BoxGeometry(e, 0.05, sz.w - 2 * e), fin, sz.d / 2 - e / 2, -0.02, 0); add(new THREE.BoxGeometry(e, 0.05, sz.w - 2 * e), fin, -sz.d / 2 + e / 2, -0.02, 0);
     // cabinet above the grid
-    const cab = add(new THREE.BoxGeometry(sz.d - 0.03, sz.h, sz.w - 0.03), fin, 0, sz.h / 2, 0); outline(cab);
-    // blower housing on top, centred
-    const hh = Math.max(0.05, sz.overall - sz.h), hs = add(new THREE.BoxGeometry(Math.min(sz.hd, sz.d - 0.1), hh, Math.min(sz.hw, sz.w - 0.1)), fin, 0, sz.h + hh / 2, 0); outline(hs);
-    // inlet ring and pre-filter on the housing
+    const cab = add(new THREE.BoxGeometry(sz.d - 0.03, sz.h, sz.w - 0.03), shell, 0, sz.h / 2, 0); outline(cab);
+    // blower housing toward one end of the cabinet, with the electrical box against its side toward the other end
+    // (as the maker's drawing shows it); the two together sit centred along the unit
+    const hh = Math.max(0.05, sz.overall - sz.h), HD = Math.min(sz.hd, sz.d - 0.1), HW = Math.min(sz.hw, sz.w - 0.1);
+    const EL = Math.min(Math.max(sz.ebox || 0, 4 / 12), Math.max(0.2, sz.w - HW - 0.3)), EW = Math.min(sz.d * 0.6, HD), EH = hh * 0.65;
+    const hz = (HW + EL) / 2 - HW / 2, ez = hz - HW / 2 - EL / 2;
+    const hs = add(new THREE.BoxGeometry(HD, hh, HW), shell, 0, sz.h + hh / 2, hz); outline(hs);
+    // inlet ring and round pre-filter on the housing
     const r = Math.min(sz.hw, sz.hd) * 0.36;
-    add(new THREE.CylinderGeometry(r, r, 0.06, 32), galv, 0, sz.overall + 0.03, 0);
-    add(new THREE.CylinderGeometry(r * 0.86, r * 0.86, 0.065, 32), dark, 0, sz.overall + 0.035, 0);
-    // electrical box on the cabinet top, toward one end
-    const eb = add(new THREE.BoxGeometry(sz.ebox, 3.5 / 12, 4.5 / 12), fin, -sz.d / 2 + sz.ebox / 2 + 0.12, sz.h + 3.5 / 24, sz.w / 2 - 0.45); outline(eb);
+    add(new THREE.CylinderGeometry(r, r, 0.06, 32), galv, 0, sz.overall + 0.03, hz);
+    add(new THREE.CylinderGeometry(r * 0.86, r * 0.86, 0.065, 32), dark, 0, sz.overall + 0.035, hz);
+    // electrical box: lower and narrower than the housing, its end face with the on/off switch and speed control
+    const eb = add(new THREE.BoxGeometry(EW, EH, EL), shell, 0, sz.h + EH / 2, ez); outline(eb);
+    const fz = ez - EL / 2 - 0.006;
+    add(new THREE.BoxGeometry(0.07, 0.1, 0.014), dark, -EW * 0.2, sz.h + EH * 0.5, fz);                   // rocker switch
+    const kn = add(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 16), galv, EW * 0.2, sz.h + EH * 0.5, fz - 0.004); kn.rotation.x = Math.PI / 2; // speed control
     ffuParts[key] = g;
     return g.clone();
   }
