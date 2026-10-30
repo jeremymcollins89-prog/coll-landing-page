@@ -5300,9 +5300,10 @@ function mount(container, plan, opts) {
     const b = A.bounds, vh = Math.tan(THREE.MathUtils.degToRad(45 / 2)), asp = (container.clientWidth || 1) / (container.clientHeight || 1);
     let d = Math.max(b.d * 0.62 / vh, b.w * 0.62 / (vh * asp), 30);
     const t = new THREE.Vector3(b.cx, 0, b.cz);
-    // a phone: fit the whole building between the buttons along the top and the room names along the bottom
-    if (touchy) {
-      const dir = kind === 'plan' ? new THREE.Vector3(0, 1.05, 0.0001) : new THREE.Vector3(-0.3, 0.95, 0.5), cam = new THREE.PerspectiveCamera(45, asp, 0.1, 5000), top = Math.max(A.WH || A.H || 9, 9);
+    // a phone or a customer viewer: fit the whole building between the buttons along the top and the room names
+    // along the bottom
+    if (touchy || opts.views) {
+      const dir = kind === 'plan' ? new THREE.Vector3(0, 1.05, 0.0001) : new THREE.Vector3(-0.42, 0.72, 0.62), cam = new THREE.PerspectiveCamera(45, asp, 0.1, 5000), top = Math.max(A.WH || A.H || 9, 9);
       const C = []; for (const x of [b.minX, b.maxX]) for (const z of [b.minZ, b.maxZ]) for (const y of [0, top]) C.push(new THREE.Vector3(x, y, z));
       const fits = (dd) => { cam.position.copy(t).addScaledVector(dir, dd); cam.lookAt(t); cam.updateMatrixWorld(); return C.every(p => { const q = p.clone().project(cam); return q.z < 1 && Math.abs(q.x) < 0.93 && q.y > -0.72 && q.y < 0.7; }); };
       let lo = 5, hi = d * 3; for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2; if (fits(m)) hi = m; else lo = m; } d = hi;
