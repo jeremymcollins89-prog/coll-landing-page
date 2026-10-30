@@ -4247,6 +4247,8 @@ function buildScene(THREE, plan, A) {
   const fg = new THREE.BoxGeometry(1.9, 0.08, 3.9), fgs = {};
   const fixtures = new THREE.Group(); root.add(fixtures);
   const housingMat = new THREE.MeshPhongMaterial({ color: 0xc9ced1, specular: 0x666666, shininess: 40 });
+  // the back of our LED panels and their driver boxes: silver metal (as the fan filter units' tops)
+  const lightBack = new THREE.MeshPhongMaterial({ color: 0xc4c9cd, emissive: 0x0c0d0e, specular: 0xb8bec4, shininess: 70, name: 'LED panel back, silver metal' });
   // house items: cabinets, appliances, plumbing fixtures
   for (const q of A.items || []) { const g = itemMesh(THREE, q.it, M, { H: A.H, plan }); fixtures.add(g); g.traverse(o => { if (o.isMesh) { pick.push(o); if (q.it.id) o.userData.ref = { kind: 'item', id: q.it.id }; } }); }
   // electrical devices: cover plates on the wall faces (panels and monitors as boxes)
@@ -4352,15 +4354,19 @@ function buildScene(THREE, plan, A) {
       if (LMo.style === 'troffer' || LMo.style === 'rss') m.position.y = fh + 0.02;
     }
     // its housing above the grid (seen in the Plenum view)
-    const fw = Math.max(0.3, (nw || 2) - 0.08), fd = Math.max(0.3, (nh || 4) - 0.08), hh = f.type === 'ffu' ? 0.9 : LMo ? Math.max(0.1, LMo.hh) : 0.28;
-    const hs = new THREE.Mesh(new THREE.BoxGeometry(fw, hh, fd), f.type === 'ffu' ? M.fx : LMo && LMo.finish === 'sst' ? M.steel : housingMat); hs.position.set(f.x, fh + 0.005 + hh / 2, f.y); outline(hs); fixtures.add(hs);
-    // a back-lit panel's driver / sensor base on its back, along one short end
-    if (LMo && LMo.box) { const B = LMo.box, alongX = (nw || 2) >= (nh || 4), bx = new THREE.Mesh(new THREE.BoxGeometry(alongX ? B.w : B.l, B.h, alongX ? B.l : B.w), housingMat); bx.position.set(f.x + (alongX ? fw / 2 - B.w / 2 - 0.08 : 0), fh + 0.005 + hh + B.h / 2, f.y + (alongX ? 0 : fd / 2 - B.w / 2 - 0.08)); outline(bx); fixtures.add(bx); }
+    const fw = Math.max(0.3, (nw || 2) - 0.08), fd = Math.max(0.3, (nh || 4) - 0.08), hh = f.type === 'ffu' ? 0.9 : LMo ? Math.max(0.1, LMo.hh) : LIGHT_HH;
+    const hs = new THREE.Mesh(new THREE.BoxGeometry(fw, hh, fd), f.type === 'ffu' ? M.fx : LMo && LMo.finish === 'sst' ? M.steel : LMo ? housingMat : lightBack); hs.position.set(f.x, fh + 0.005 + hh / 2, f.y); outline(hs); fixtures.add(hs);
+    // the driver box on its back, along one short end (a picked light model's own, else our panels' driver)
+    if (f.type !== 'ffu' && (!LMo || LMo.box)) { const B = LMo ? LMo.box : LIGHT_BOX, alongX = (nw || 2) >= (nh || 4), bx = new THREE.Mesh(new THREE.BoxGeometry(alongX ? B.w : B.l, B.h, alongX ? B.l : B.w), LMo ? housingMat : lightBack); bx.position.set(f.x + (alongX ? fw / 2 - B.w / 2 - 0.08 : 0), fh + 0.005 + hh + B.h / 2, f.y + (alongX ? 0 : fd / 2 - B.w / 2 - 0.08)); outline(bx); fixtures.add(bx); }
   }
   // the extras never stop the model from showing
   try { root.add(airflowArrows(THREE, plan, A)); } catch (e) { console.error(e); }
   return { root, pick, floor, floors: [floor], ground, ceiling, lid, roof, ceilPlane: ceil || new THREE.Object3D(), fixtures, doors, doorObs, removable };
 }
+
+/* Our LED flat panels (2×2 and 2×4) when no light model is picked: 1.38″ thick, with the driver box on the back
+   near one end (about 5½″ × 4½″ × 1½″). */
+const LIGHT_HH = 1.38 / 12, LIGHT_BOX = { l: 5.54 / 12, w: 4.5 / 12, h: 1.5 / 12 };
 
 /* Analysis of a plan with every placed building in it, merged (for walking, collisions and the mini map). */
 function analyzeAll(plan) {
@@ -6174,5 +6180,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
