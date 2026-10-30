@@ -142,7 +142,7 @@ function elecPalette() {
     return;
   }
   P.innerHTML = Object.entries(groups).map(([g, list]) => `<div class="grp"><h5>${esc(g)}</h5><div class="row">${list.map(([k, v]) => `<button data-dv="${k}" class="${ed.deviceType === k ? 'on' : ''}">${esc(v.label)}</button>`).join('')}</div></div>`).join('')
-    + `<div class="grp"><h5>Fixture whips</h5><div class="row"><button class="whipgo" title="Daisy-chain the lights and fan filter units room by room with 9′ OnePass whips from box to box, adding 12′ extensions where a run is longer">Wire HEPAs and lights</button>${(ed.plan.whips || []).length ? '<button class="whipoff" title="Take all the fixture whips off">Remove whips</button>' : ''}</div></div>`
+    + `<div class="grp"><h5>Fixture whips</h5><div class="row"><button class="whipgo" title="Daisy-chain the lights and fan filter units room by room with 9′ OnePass whips from box to box, adding 12′ extensions where a run is longer">Wire HEPAs and lights</button><select class="whipv" title="Whip voltage (on the parts list)"><option value="120" ${(ed.plan.whipVolt || 120) == 120 ? 'selected' : ''}>120V</option><option value="277" ${ed.plan.whipVolt == 277 ? 'selected' : ''}>277V</option></select>${(ed.plan.whips || []).length ? '<button class="whipoff" title="Take all the fixture whips off">Remove whips</button>' : ''}</div></div>`
     + `<button class="palfold" title="Fold the list away">▴ Hide list</button>`;
   $$('#elecPal button[data-dv]').forEach(b => b.onclick = () => { ed.deviceType = b.dataset.dv; elecOpen = false; elecPalette(); msg(toolHintText('elec')); $('#plan').focus(); });
   P.querySelector('.palfold').onclick = () => { elecOpen = false; elecPalette(); $('#plan').focus(); };
@@ -154,6 +154,7 @@ function elecPalette() {
     toast(`Wired: ${W.length} whip${W.length === 1 ? '' : 's'} (9′)${nx ? ' and ' + nx + ' extension' + (nx === 1 ? '' : 's') + ' (12′)' : ''}, ${chains} chain${chains === 1 ? '' : 's'}. See them in the Plenum view; they're on the parts list.`);
     elecPalette(); queue3D();
   };
+  P.querySelector('.whipv').onchange = (e) => { const v = +e.target.value; ed.edit(Q => { if (v === 277) Q.whipVolt = 277; else delete Q.whipVolt; }); toast('Fixture whips: ' + v + 'V.'); };
   const wo = P.querySelector('.whipoff'); if (wo) wo.onclick = () => { ed.edit(Q => { delete Q.whips; }); toast('Fixture whips taken off.'); elecPalette(); queue3D(); };
 }
 /* The Grid tool's bar: what a click or drag does, and nudges for the main grid */

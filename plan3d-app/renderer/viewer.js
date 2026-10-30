@@ -4419,7 +4419,9 @@ function buildScene(THREE, plan, A) {
   // each joint where a 12′ extension carries the run on
   if (Array.isArray(plan.whips) && plan.whips.length) {
     try {
-      const PT = new Map(whipPorts(plan, A).map(p => [p.id, p]));
+      const OB = [], PT = new Map(whipPorts(plan, A, OB).map(p => [p.id, p])), RAD = 0.036;
+      // the highest box under a point (within the cable's radius), so the cable rides over everything
+      const floorAt = (x, z) => { let h = -1e9; for (const o of OB) if (x > o[0] - RAD && x < o[2] + RAD && z > o[1] - RAD && z < o[3] + RAD && o[4] > h) h = o[4]; return h; };
       // the armour: a spiral-wound steel strip, its ridges in a striped texture (bump too), shiny
       const armour = cachedCanvas('whipArmour', () => makeCanvas(64, 32, (g, W, Hh) => {
         const gr = g.createLinearGradient(0, 0, 0, Hh); gr.addColorStop(0, '#8e959a'); gr.addColorStop(0.5, '#e9edef'); gr.addColorStop(1, '#8e959a');
@@ -4433,7 +4435,7 @@ function buildScene(THREE, plan, A) {
       // a OnePass connector: a flat die-cast body on the cable end, the contact face out front (yellow label on the
       // fixture end), seated on its box
       const connector = (p, dir, yellow) => {
-        const g = new THREE.Group(); g.position.copy(p); g.lookAt(p.clone().add(dir));
+        const g = new THREE.Group(); g.position.copy(p); if (Math.abs(dir.y) > 0.99) g.rotation.set(dir.y < 0 ? Math.PI / 2 : -Math.PI / 2, 0, 0); else g.lookAt(p.clone().add(dir));
         const body = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.17), yellow ? tag : plug); body.position.z = -0.085; g.add(body);
         const neck = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.07), plug); neck.position.z = -0.2; g.add(neck);
         const face = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.012), blk); face.position.z = 0.002; g.add(face);
@@ -4445,16 +4447,27 @@ function buildScene(THREE, plan, A) {
         const ux = dx / D, uz = dz / D, nx = -uz, nz = ux, rest = Math.max(a.y, b.y) + 0.06;
         // a loose coil of flexible cable: out of the box, a lazy bow to one side and back, lying over the units
         const R = WHIP.len + WHIP.ext * (w.ext || 0), spare = Math.max(0, R - D), bow = Math.min(1.6, 0.25 + spare * 0.12) * (rnd() < 0.5 ? -1 : 1);
-        const pts = [A3.clone(), new THREE.Vector3(a.x + ux * 0.35, rest + 0.12, a.z + uz * 0.35)];
+        // straight up off the top of each box, then a lazy bow over to the next
+        const pts = [A3.clone(), new THREE.Vector3(a.x, a.y + 0.22, a.z), new THREE.Vector3(a.x + ux * 0.3, a.y + 0.32, a.z + uz * 0.3)];
         const n = Math.max(2, Math.round(D / 2.5));
-        for (let k = 1; k < n; k++) { const t = k / n, side = Math.sin(t * Math.PI) * bow + (rnd() - 0.5) * 0.35; pts.push(new THREE.Vector3(a.x + dx * t + nx * side, rest + 0.04 + rnd() * 0.08, a.z + dz * t + nz * side)); }
-        pts.push(new THREE.Vector3(b.x - ux * 0.35, rest + 0.12, b.z - uz * 0.35), B3.clone());
-        const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.5), L = curve.getLength();
+        for (let k = 1; k < n; k++) { const t = k / n, side = Math.sin(t * Math.PI) * bow + (rnd() - 0.5) * 0.35; pts.push(new THREE.Vector3(a.x + dx * t + nx * side, 0, a.z + dz * t + nz * side)); }
+        pts.push(new THREE.Vector3(b.x - ux * 0.3, b.y + 0.32, b.z - uz * 0.3), new THREE.Vector3(b.x, b.y + 0.22, b.z), B3.clone());
+        // it lies on whatever is under it: dense points along the bow, each set on the boxes below (never into them)
+        const rough = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.5), Lr = rough.getLength(), m = Math.max(12, Math.round(Lr / 0.25)), dense = [];
+        for (let k = 0; k <= m; k++) {
+          const p = rough.getPointAt(k / m), end = Math.min(k, m - k) * Lr / m;
+          if (end < 0.3) { dense.push(p); continue; }   // the rise off each box stays as drawn
+          let y = Math.max(rest, floorAt(p.x, p.z)) + RAD + 0.03;
+          for (const dd of [-0.25, 0.25]) { const q = rough.getPointAt(Math.max(0, Math.min(1, k / m + dd / Lr))); y = Math.max(y, floorAt(q.x, q.z) + RAD + 0.03 - 0.12); }
+          dense.push(new THREE.Vector3(p.x, y, p.z));
+        }
+        const curve = new THREE.CatmullRomCurve3(dense, false, 'centripetal', 0.5), L = curve.getLength();
         const tx = new THREE.CanvasTexture(armour); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.repeat.set(L * 22, 1); tx.anisotropy = ANISO;
         const mat = new THREE.MeshPhongMaterial({ map: tx, bumpMap: tx, bumpScale: 0.02, color: 0xffffff, specular: 0xffffff, shininess: 80, name: 'Fixture whip, flexible steel armour (OnePass)' });
         fixtures.add(new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(24, Math.round(L * 10)), 0.036, 10, false), mat));
         // connectors at the two boxes (the fixture end yellow-labelled) and at each 12′ extension's joint
-        connector(A3, curve.getTangentAt(0.001).negate(), false); connector(B3, curve.getTangentAt(0.999), true);
+        // the plugs seated on top of the boxes, cable up out of them
+        connector(A3, new THREE.Vector3(0, -1, 0), false); connector(B3, new THREE.Vector3(0, -1, 0), true);
         for (let k = 0, d = WHIP.len; k < (w.ext || 0); k++, d += WHIP.ext) { const t = d / R, p = curve.getPointAt(t), tg = curve.getTangentAt(t); connector(p.clone().addScaledVector(tg, 0.13), tg, true); connector(p.clone().addScaledVector(tg, 0.13), tg.clone().negate(), false); }
       }
     } catch (e) { console.error(e); }
@@ -4473,26 +4486,33 @@ const LIGHT_HH = 1.38 / 12, LIGHT_BOX = { l: 5.54 / 12, w: 4.5 / 12, h: 1.5 / 12
    to the next one's, plus 12′ extension whips where the run is longer than 9′. plan.whips = [{ id, a, b, ext }]
    (a, b: fixture ids; ext: 12′ extensions in the run). */
 const WHIP = { len: 9, ext: 12, slack: 1 };
-// each fixture's wiring port: the end face of an FFU's power box, the top of a light's driver box (feet, world)
-function whipPorts(plan, A) {
+// each fixture's wiring port, on top of its box (an FFU's power box, a light's driver box), feet, world; and the
+// boxes the cables have to ride over (obs: [x0, z0, x1, z1, top])
+function whipPorts(plan, A, obs) {
   A = A || analyze(plan);
   const FX = ceilingFixtures(plan, A), CA = ceilAreas(plan, A), H = A.H, FM = plan.ffuModel && plan.ffuModel.sizes && plan.ffuModel.sizes.length ? plan.ffuModel : null, out = [];
+  const box = (cx, cz, sx, sz, top) => { if (obs) obs.push([cx - sx / 2, cz - sz / 2, cx + sx / 2, cz + sz / 2, top]); };
   FX.forEach((f, i) => {
     const base = ceilingAt(CA, H, f.x, f.y), id = f.id || 'fx' + i;
     if (f.type === 'ffu') {
-      if (!FM) { out.push({ id, f, x: f.x, z: f.y, y: base + 0.95 }); return; }
+      if (!FM) { box(f.x, f.y, f.w || 2, f.h || 4, base + 0.95); out.push({ id, f, x: f.x, z: f.y, y: base + 0.9 }); return; }
       const long = Math.max(f.w || 2, f.h || 4), nominal = '2x' + Math.max(2, Math.min(4, Math.round(long)));
       const sz = FM.sizes.find(q => q.nominal === nominal) || FM.sizes.slice().sort((a, b) => Math.abs(a.w - long) - Math.abs(b.w - long))[0];
-      const hh = Math.max(0.05, sz.overall - sz.h), HW = Math.min(sz.hw, sz.w - 0.1), EL = Math.min(Math.max(sz.ebox || 0, 4 / 12), Math.max(0.2, sz.w - HW - 0.3)), EH = hh * 0.65;
-      const hz = (HW + EL) / 2 - HW / 2, ez = hz - HW / 2 - EL / 2, pz = ez - EL / 2, turned = (f.w || 2) > (f.h || 4);
-      out.push({ id, f, x: f.x + (turned ? pz : 0), z: f.y + (turned ? 0 : pz), y: base + sz.h + EH * 0.5 });
+      const hh = Math.max(0.05, sz.overall - sz.h), HD = Math.min(sz.hd, sz.d - 0.1), HW = Math.min(sz.hw, sz.w - 0.1), EL = Math.min(Math.max(sz.ebox || 0, 4 / 12), Math.max(0.2, sz.w - HW - 0.3)), EW = Math.min(sz.d * 0.6, HD), EH = hh * 0.65;
+      const hz = (HW + EL) / 2 - HW / 2, ez = hz - HW / 2 - EL / 2, turned = (f.w || 2) > (f.h || 4);
+      // local (x across, z along) → world
+      const W = (lx, lz, sx, szz, top) => box(f.x + (turned ? lz : lx), f.y + (turned ? -lx : lz), turned ? szz : sx, turned ? sx : szz, top);
+      W(0, 0, sz.d, sz.w, base + sz.h); W(0, hz, HD, HW, base + sz.overall + 0.07); W(0, ez, EW, EL, base + sz.h + EH);
+      out.push({ id, f, x: f.x + (turned ? ez : 0), z: f.y + (turned ? 0 : ez), y: base + sz.h + EH });
       return;
     }
     const LMo = plan.lightModel || null, B = LMo ? LMo.box : LIGHT_BOX, nomv = (v) => (Math.abs(v - Math.round(v)) < 0.2 ? Math.round(v) : v);
     const nw = f.w > 0 ? nomv(f.w) : 2, nh = f.h > 0 ? nomv(f.h) : 4, fw = Math.max(0.3, nw - 0.08), fd = Math.max(0.3, nh - 0.08), lh = LMo ? Math.max(0.1, LMo.hh) : LIGHT_HH;
-    if (!B) { out.push({ id, f, x: f.x, z: f.y, y: base + lh }); return; }
-    const alongX = nw >= nh;
-    out.push({ id, f, x: f.x + (alongX ? fw / 2 - B.w / 2 - 0.08 : 0), z: f.y + (alongX ? 0 : fd / 2 - B.w / 2 - 0.08), y: base + 0.005 + lh + B.h / 2 });
+    box(f.x, f.y, fw, fd, base + 0.005 + lh);
+    if (!B) { out.push({ id, f, x: f.x, z: f.y, y: base + 0.005 + lh }); return; }
+    const alongX = nw >= nh, bx = f.x + (alongX ? fw / 2 - B.w / 2 - 0.08 : 0), bz = f.y + (alongX ? 0 : fd / 2 - B.w / 2 - 0.08);
+    box(bx, bz, alongX ? B.w : B.l, alongX ? B.l : B.w, base + 0.005 + lh + B.h);
+    out.push({ id, f, x: bx, z: bz, y: base + 0.005 + lh + B.h });
   });
   return out;
 }

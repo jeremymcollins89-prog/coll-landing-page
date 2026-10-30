@@ -490,8 +490,8 @@ function partsList(plan) {
   // fixture whips (daisy chain box to box): 9′ whips and the 12′ extensions on the longer runs
   if (Array.isArray(plan.whips) && plan.whips.length) {
     const nx = plan.whips.reduce((n, w) => n + (w.ext || 0), 0);
-    add('Electrical', 'Fixture whip, Acuity RELOC OnePass OC1, 1-port, 12 AWG, flexible steel', '9′', plan.whips.length, 'ea', 91);
-    if (nx) add('Electrical', 'Extension whip, Acuity RELOC OnePass OC1, 1-port, 12 AWG, flexible steel', '12′', nx, 'ea', 91.5);
+    add('Electrical', 'Fixture whip, Acuity RELOC OnePass OC1, 1-port, ' + (plan.whipVolt == 277 ? 277 : 120) + 'V, 12 AWG, flexible steel', '9′', plan.whips.length, 'ea', 91);
+    if (nx) add('Electrical', 'Extension whip, Acuity RELOC OnePass OC1, 1-port, ' + (plan.whipVolt == 277 ? 277 : 120) + 'V, 12 AWG, flexible steel', '12′', nx, 'ea', 91.5);
   }
   if (devs.length || nFfu || nLed) {
     const recs = devs.filter(d => d.type === 'outlet' || d.type === 'gfci').length;
