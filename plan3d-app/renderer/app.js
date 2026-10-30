@@ -1440,7 +1440,7 @@ function quoteDialog() {
   const cust = { name: '', company: '', address: '', project: P.name || '', scope: '', ...pq.cust };
   const now = new Date(), pad = (v) => String(v).padStart(2, '0');
   const number = pq.number || 'Q' + String(now.getFullYear()).slice(2) + pad(now.getMonth() + 1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes());
-  const sr = window.__p3sr && window.__p3sr.canvas, picOpts = [...(sr ? [['sr', 'Last Super render']] : []), ['view', 'The 3D view as it is now'], ['file', 'A picture file…'], ['none', 'No picture']];
+  const sr = null, picOpts = [...(sr ? [['sr', 'Last Super render']] : []), ['view', 'The 3D view as it is now'], ['file', 'A picture file…'], ['none', 'No picture']];
   let picFile = null;
   let cat = '';
   const rowsHtml = L.map((r, i) => { const h = (r.cat !== cat ? `<tr class="qc"><td colspan="4">${esc(cat = r.cat)}</td></tr>` : ''); return h + `<tr><td>${esc(r.item)}${r.size ? `<small>${esc(r.size)}</small>` : ''}</td><td class="n">${r.qty.toLocaleString()} ${r.unit === 'ea' ? '' : esc(r.unit)}</td><td class="n"><input type="text" inputmode="decimal" data-i="${i}" value="${prices[r.key] ? (+prices[r.key]).toFixed(2) : ''}" placeholder="0.00"></td><td class="n" id="qL${i}"></td></tr>`; }).join('');
@@ -3223,7 +3223,7 @@ async function exportHtml() {
 <script>${safe(a.post || '')}</script>
 <script>${safe(a.exporter || '')}</script>
 <script>${safe(a.viewer)}</script>
-<script>Plan3DViewer.mount(document.getElementById('v'), ${safe(JSON.stringify(plan))}, { comments: true, startOutside: true, startMode: 'plenum', views: ['plenum', 'walk'], airflow: false });</script>
+<script>Plan3DViewer.mount(document.getElementById('v'), ${safe(JSON.stringify(plan))}, { comments: true, startOutside: true, startMode: 'plenum', views: ['plenum', 'walk'], airflow: false, measure: false });</script>
 <!-- Made with Coll Plan3D · Coll Business Solutions LLC -->
 </body></html>`;
   const p = await api.exportFile(html, plan.name + ' walkthrough', 'html');
