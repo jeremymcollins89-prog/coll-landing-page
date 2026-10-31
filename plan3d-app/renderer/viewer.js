@@ -1363,7 +1363,10 @@ function beamSeat(plan, A, b) {
   // it sits on the walls it spans, at their top there: a taller room's walls (raised with a ceiling area, or
   // given their own height) carry it higher
   const ex = (s) => [b.x1 + ux * s, b.y1 + uy * s];
-  const wallTop = (s) => { const [x, z] = ex(s); let best = null, bd = 1e9; for (const p of A.pieces) { if (!p.hard) continue; const dd = segDist(x, z, p.x1, p.z1, p.x2, p.z2); if (dd < (p.t || 0.25) / 2 + 0.75 && dd < bd) { bd = dd; best = p.h; } } return best; };
+  const wallTop = (s) => { const [x, z] = ex(s); let best = null, bd = 1e9; for (const p of A.pieces) { if (!p.hard) continue; const dd = segDist(x, z, p.x1, p.z1, p.x2, p.z2); if (dd < (p.t || 0.25) / 2 + 0.75 && dd < bd) { bd = dd; best = p.h; } }
+    // over a door or a removable section: the wall's height there (its header)
+    for (const i of A.opInfo || []) { if (!i.hard || !i.wallH) continue; const dd = segDist(x, z, i.o.x1, i.o.y1, i.o.x2, i.o.y2); if (dd < (i.t || 0.25) / 2 + 0.75 && dd < bd) { bd = dd; best = i.wallH; } }
+    return best; };
   const WH0 = A.WH || A.H, t0 = wallTop(s0), t1 = wallTop(s1), WH = t0 != null && t1 != null ? Math.min(t0, t1) : t0 != null ? t0 : t1 != null ? t1 : WH0, top = WH - 0.02;
   // it hangs in the plenum between the walls; its top flange runs on over each wall's top to the outside face and
   // rests on the panels there, under the wall cap (the web and bottom flange stop at the walls' inside faces)
