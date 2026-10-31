@@ -4062,14 +4062,13 @@ function buildScene(THREE, plan, A) {
     if (trackOK(WH)) segBox(q.x1, q.z1, q.x2, q.z2, q.y0 - 0.17, q.y0, q.t + 0.03, M.track);
     curRef = null;
   }
-  // return grilles set into wall panels (plan.grilles): a louvred face on both sides of the panel, the damper
-  // behind it shown as a dark frame
+  // return grilles set into wall panels (plan.grilles): a louvred face on both sides of the panel
   for (const gr of plan.grilles || []) {
     const w = Math.max(0.25, +gr.w || 20 / 12), h = Math.max(0.25, +gr.h || 20 / 12), sill = Math.max(0, gr.sill == null ? 0.5 : +gr.sill), a = gr.a || 0, c = Math.cos(a), sn = Math.sin(a), t = (gr.t || 0.25) + 0.03;
     curRef = gr.id ? { kind: 'grille', id: gr.id } : null;
     const m = segBox(gr.x - c * w / 2, gr.y - sn * w / 2, gr.x + c * w / 2, gr.y + sn * w / 2, sill, sill + h, t, [M.edge, M.edge, M.edge, M.edge, M.grille, M.grille]); outline(m); pick.push(m);
     const grMs = [m]; grilleMeshes.push({ gr, ms: grMs });
-    if (gr.damper) { const dm = M.damper || (M.damper = new THREE.MeshPhongMaterial({ color: 0x3c4348, specular: 0x666666, shininess: 40, name: 'Damper' })), e = 0.06; for (const [y0, y1, s0, s1] of [[sill - e, sill, -w / 2 - e, w / 2 + e], [sill + h, sill + h + e, -w / 2 - e, w / 2 + e], [sill, sill + h, -w / 2 - e, -w / 2], [sill, sill + h, w / 2, w / 2 + e]]) { const f = segBox(gr.x + c * s0, gr.y + sn * s0, gr.x + c * s1, gr.y + sn * s1, y0, y1, t + 0.01, dm); pick.push(f); grMs.push(f); } }
+    // the damper sits behind the grille inside the wall: not drawn (it shows in the grille's settings and the materials list)
     curRef = null;
   }
   // end caps where a wall steps up or down
