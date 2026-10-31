@@ -408,9 +408,8 @@ function toIfc(plan, opts) {
     if (!p.hard) { put('IFCWALL', KIND_NAME(p.kind), 'Building wall', shape([seg(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, S[p.kind] || S.concrete)]), ',.STANDARD.', S[p.kind] || S.concrete); continue; }
     const WS = panelStyle(V.panelColorOf(plan, (plan.walls || []).find(w => w.id === p.id)));
     const ux = (p.x2 - p.x1) / (p.len || 1), uz = (p.z2 - p.z1) / (p.len || 1), parts = [seg(p.x1, p.z1, p.x2, p.z2, 0, p.h || WH, p.t, p.sp ? S.sp : WS), ...trim(p.x1, p.z1, p.x2, p.z2, p.t, true)];
-    const pw = (plan.walls || []).find(w => w.id === p.id);
-    for (const m of pw && V.wallModule ? V.wallModule(pw, plan) : []) {
-      if (m - p.s0 < 0.2 || m >= p.s0 + p.len - 0.2) continue;
+    for (let m = Math.floor(p.s0 / 4 + 1e-6) * 4 + 4; m < p.s0 + p.len - 0.2; m += 4) {
+      if (m - p.s0 < 0.2) continue;
       const k = m - p.s0, a = [p.x1 + ux * (k - 0.125), p.z1 + uz * (k - 0.125)], b = [p.x1 + ux * (k + 0.125), p.z1 + uz * (k + 0.125)];
       parts.push(seg(a[0], a[1], b[0], b[1], 0.333, (p.h || WH) > H ? (p.h || WH) : (p.h || WH) - 0.17, p.t + 0.012, S.batten));
     }

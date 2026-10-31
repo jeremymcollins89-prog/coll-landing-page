@@ -220,8 +220,8 @@ function partsList(plan) {
   // a door or glass cut leaves a cut panel on each side. Slivers under 1″ are trim, not panels.
   for (const p of A.pieces) {
     if (built.has(p.id) || p.hard === false) continue;
-    const a = p.s0, b = p.s0 + p.len, cuts = [a], pw = (plan.walls || []).find(q => q.id === p.id);
-    for (const m of V.wallModule && pw ? V.wallModule(pw, plan) : []) if (m > a + 1e-6 && m < b - 1e-6) cuts.push(m);
+    const a = p.s0, b = p.s0 + p.len, cuts = [a];
+    for (let m = Math.floor(a / 4 + 1e-6) * 4 + 4; m < b - 1e-6; m += 4) cuts.push(m);
     cuts.push(b);
     let n = 0;
     for (let i = 0; i + 1 < cuts.length; i++) {

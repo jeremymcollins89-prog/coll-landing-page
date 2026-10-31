@@ -1285,101 +1285,13 @@ function studPoints(plan) {
     if (!isHard(w)) continue;
     const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 0.1) continue;
     put(w.x1, w.y1, w); put(w.x2, w.y2, w);
-    if (!w.piece) { const ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L; for (const m of wallModule(w, plan)) put(w.x1 + ux * m, w.y1 + uy * m, w); }
+    if (!w.piece) { const ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L; for (let m = 4; m < L - 1e-6; m += 4) put(w.x1 + ux * m, w.y1 + uy * m, w); }
   }
   return out;
 }
 /* The white cap over the top of every cleanroom wall: it fits over both faces and runs down 1″ on each; its top
    stands `up` above the panels (beams and the lid rest on it). */
 const WALL_CAP = { up: 0.03, down: 1 / 12, over: 0.015 };
-/* Where a cleanroom wall's panels join (H-studs), as distances from the wall's start: the 48″ module (a 45″ panel
-   plus a 3″ stud) from the wall's start; or, in a plan with beams (plan.studsUnderBeams, on unless turned off),
-   laid out wall by wall: a stud right under each beam that rests on it, then the fewest panels and fewest cut
-   panels between the studs (no panel under 24″ where it can be helped). Grilles are then centred in the panels
-   (fitGrilles), so no stud runs through one. */
-const WMOD = new WeakMap();
-function wallModule(w, plan) {
-  const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), def = () => { const o = []; for (let m = 4; m < L - 1e-6; m += 4) o.push(m); return o; };
-  if (!plan || plan.studsUnderBeams === false || !(plan.beams || []).length || w.piece) return def();
-  const sig = JSON.stringify([plan.beams, (plan.walls || []).map(q => [q.id, q.x1, q.y1, q.x2, q.y2, q.t, q.type]), plan.ceiling, plan.plenum]);
-  let C = WMOD.get(plan); if (!C || C.sig !== sig) { C = { sig, fixed: beamStuds(plan) }; WMOD.set(plan, C); }
-  const F = (C.fixed.get(w.id) || []).filter(s => s > 0.35 && s < L - 0.35).sort((a, b) => a - b);
-  // the grilles in this wall: as many panels wide enough for one as there are grille spots along it
-  const gx = (w.x2 - w.x1) / (L || 1), gy = (w.y2 - w.y1) / (L || 1), cols = [];
-  for (const g of plan.grilles || []) { if (g.wall !== w.id) continue; const c = (g.x - w.x1) * gx + (g.y - w.y1) * gy, gw = Math.max(0.25, +g.w || 20 / 12); const k = cols.find(q => Math.abs(q.c - c) < 0.3); if (k) k.w = Math.max(k.w, gw); else cols.push({ c, w: gw }); }
-  const need = cols.length ? Math.max(...cols.map(q => q.w)) + 3.25 / 12 : 0;
-  return layStuds(L, F, cols.length, need);
-}
-/* The studs along a wall of length L (feet): every fixed stud F, every panel at most a full 48″ module (45″ panel
-   + 3″ stud), the fewest panels and fewest cut ones, cut panels under 24″ avoided hard, and at least K panels at
-   least `need` wide where it can (one for each grille spot). Searched on a ¼″ step. */
-function layStuds(L, F, K, need) {
-  const P = [0]; for (let k = 1; k < Math.round(L * 48); k++) P.push(k / 48);
-  const fixed = new Set(); for (const f of F) { let i = P.findIndex(x => Math.abs(x - f) < 0.125 / 12); if (i < 0) { P.push(f); P.sort((a, b) => a - b); i = P.indexOf(f); } else P[i] = f; fixed.add(P[i]); }
-  P.push(L); const N = P.length - 1, KK = Math.max(0, K), INF = 1e18;
-  const cost = (wd) => 10 + (Math.abs(wd - 4) < 0.02 ? 0 : 3) + (wd < 2 ? 25 : 0) + (wd < 1 ? 200 : 0);
-  const dp = Array.from({ length: N + 1 }, () => new Float64Array(KK + 1).fill(INF)), from = Array.from({ length: N + 1 }, () => new Int32Array(KK + 1).fill(-1)), fromC = Array.from({ length: N + 1 }, () => new Int8Array(KK + 1));
-  dp[0][0] = 0;
-  for (let k = 1; k <= N; k++) {
-    for (let j = k - 1; j >= 0; j--) {
-      const wd = P[k] - P[j]; if (wd > 4 + (k === N ? 1.1 : 0.1) / 12) break; // (1″ of drafting slop at the wall's end)
-      for (let c = 0; c <= KK; c++) { if (dp[j][c] >= INF) continue; const c2 = Math.min(KK, c + (need && wd >= need - 1e-6 ? 1 : 0)), v = dp[j][c] + cost(wd); if (v < dp[k][c2] - 1e-9) { dp[k][c2] = v; from[k][c2] = j; fromC[k][c2] = c; } }
-      if (fixed.has(P[j]) && j > 0) break; // a fixed stud can't be skipped
-    }
-  }
-  // a grille spot with no panel to go in costs more than a cut panel, less than a sliver
-  let c = 0, bv = INF; for (let q = 0; q <= KK; q++) { const v = dp[N][q] + 60 * (KK - q); if (v < bv) { bv = v; c = q; } }
-  if (dp[N][c] >= INF) { const o = []; for (let m = 4; m < L - 1e-6; m += 4) o.push(m); return o; }
-  const J = []; for (let k = N; k > 0;) { const j = from[k][c], cc = fromC[k][c]; if (j > 0) J.push(P[j]); k = j; c = cc; }
-  return J.reverse();
-}
-/* Centre each wall's return grilles in its panels after the studs move: the grilles at one spot along a wall (a
-   low return and the plenum grille over it) move together into the nearest free panel wide enough for them, not
-   across a door or other opening. Changes plan.grilles in place; returns how many grilles moved. */
-function fitGrilles(plan) {
-  const A = analyze(plan); let moved = 0;
-  for (const w of (plan.walls || []).filter(q => isHard(q) && !q.piece)) {
-    const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 1) continue;
-    const gx = (w.x2 - w.x1) / L, gy = (w.y2 - w.y1) / L, G = (plan.grilles || []).filter(g => g.wall === w.id); if (!G.length) continue;
-    const at = (g) => (g.x - w.x1) * gx + (g.y - w.y1) * gy, cols = [];
-    for (const g of G) { const c = at(g), k = cols.find(q => Math.abs(q.c - c) < 0.3); if (k) k.g.push(g); else cols.push({ c, g: [g] }); }
-    cols.sort((a, b) => a.c - b.c);
-    const pcs = (A.pieces || []).filter(p => p.id === w.id).map(p => [p.s0, p.s0 + p.len]), J = [0, ...wallModule(w, plan), L], panels = [];
-    for (let i = 0; i + 1 < J.length; i++) { const a = J[i], b = J[i + 1]; if (pcs.some(r => a >= r[0] - 0.02 && b <= r[1] + 0.02)) panels.push({ a, b, clear: b - a - 3 / 12, used: false }); }
-    // grilles already clear of the studs stay put; the rest go to the free panels nearest them, closest pairs first
-    const needOf = (col) => Math.max(...col.g.map(g => Math.max(0.25, +g.w || 20 / 12))) + 0.25 / 12, todo = [];
-    for (const col of cols) {
-      const nd = needOf(col), here = panels.find(q => !q.used && col.c - nd / 2 > q.a + 1.5 / 12 - 1e-6 && col.c + nd / 2 < q.b - 1.5 / 12 + 1e-6);
-      if (here) here.used = true; else todo.push(col);
-    }
-    const pairs = []; for (const col of todo) for (const q of panels) if (!q.used && q.clear >= needOf(col)) pairs.push([Math.abs((q.a + q.b) / 2 - col.c), col, q]);
-    pairs.sort((x, y) => x[0] - y[0]); const done = new Set();
-    for (const [, col, q] of pairs) {
-      if (done.has(col) || q.used) continue; q.used = true; done.add(col); const c = (q.a + q.b) / 2;
-      for (const g of col.g) { g.x = w.x1 + gx * c; g.y = w.y1 + gy * c; moved++; }
-    }
-  }
-  return moved;
-}
-// the points where beams bear on cleanroom walls: Map(wall id → [distance along the wall])
-function beamStuds(plan) {
-  const out = new Map(); let A = null;
-  try { A = analyze(plan); } catch (e) { return out; }
-  const walls = (plan.walls || []).filter(w => isHard(w) && !w.piece);
-  for (const b of plan.beams || []) {
-    const q = beamSeat(plan, A, b); if (!q.onWalls) continue;
-    const L = Math.hypot(q.x2 - q.x1, q.y2 - q.y1); if (L < 1) continue;
-    const ux = (q.x2 - q.x1) / L, uy = (q.y2 - q.y1) / L;
-    for (const [px, py] of [[q.x1 + ux * (q.in0 || 0) / 2, q.y1 + uy * (q.in0 || 0) / 2], [q.x2 - ux * (q.in1 || 0) / 2, q.y2 - uy * (q.in1 || 0) / 2]]) {
-      let best = null, bd = 1e9;
-      for (const w of walls) { const d = segDist(px, py, w.x1, w.y1, w.x2, w.y2); if (d < (w.t || 0.25) / 2 + 0.15 && d < bd) { bd = d; best = w; } }
-      if (!best) continue;
-      const wl = Math.hypot(best.x2 - best.x1, best.y2 - best.y1) || 1, s2 = ((px - best.x1) * (best.x2 - best.x1) + (py - best.y1) * (best.y2 - best.y1)) / wl;
-      (out.get(best.id) || out.set(best.id, []).get(best.id)).push(s2);
-    }
-  }
-  return out;
-}
 /* The wall cap on one wall piece: 12′ lengths along it, its top cut round each beam flange that crosses the wall.
    beams: [{ q (beamSeat), bf (feet) }]. Returns { p, L, ux, uz, nx, nz, cuts: [{ a, b, side }] }. */
 function capPiece(p, beams) {
@@ -2880,7 +2792,7 @@ function wallJoints(plan, A) {
     if (!p.hard || p.len < 0.1) continue;
     const w = (plan.walls || []).find(q => q.id === p.id); if (!w || w.piece) continue;
     const ux = (p.x2 - p.x1) / p.len, uz = (p.z2 - p.z1) / p.len, a = Math.atan2(uz, ux);
-    for (const m of wallModule(w, plan)) { if (m <= p.s0 + 1e-6 || m >= p.s0 + p.len - 1e-6) continue; const t = m - p.s0; out.push({ x: p.x1 + ux * t, y: p.z1 + uz * t, kind: 'hstud', a, mod: true }); }
+    for (let m = Math.floor(p.s0 / 4 + 1e-6) * 4 + 4; m < p.s0 + p.len - 1e-6; m += 4) { const t = m - p.s0; out.push({ x: p.x1 + ux * t, y: p.z1 + uz * t, kind: 'hstud', a, mod: true }); }
   }
   return out;
 }
@@ -3591,12 +3503,6 @@ function buildScene(THREE, plan, A) {
     };
     batten(0); batten(w);
   }));
-  // the same panel face without the battens (a wall whose studs are re-spaced gets its battens as strips)
-  const seamPlain = cachedCanvas('seamPlain', () => makeCanvas(512, 256, (g, w, h) => {
-    g.fillStyle = '#f7f8f8'; g.fillRect(0, 0, w, h);
-    const vg = g.createLinearGradient(0, 0, 0, h); vg.addColorStop(0, 'rgba(255,255,255,.25)'); vg.addColorStop(1, 'rgba(0,0,0,.015)'); g.fillStyle = vg; g.fillRect(0, 0, w, h);
-    for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(${Math.random() < .5 ? '0,0,0' : '255,255,255'},${Math.random() * .025})`; g.fillRect(Math.random() * w, Math.random() * h, 1, 2 + Math.random() * 6); }
-  }));
   const floorCanvas = cachedCanvas('floorCanvas', () => makeCanvas(512, 512, (g, w, h) => {
     g.fillStyle = '#c3c7c8'; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 70; i++) { const x = Math.random() * w, y = Math.random() * h, r = 20 + Math.random() * 70; const gr = g.createRadialGradient(x, y, 0, x, y, r); const d = Math.random() < .5; gr.addColorStop(0, d ? 'rgba(90,96,100,.035)' : 'rgba(255,255,255,.04)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) { g.save(); g.translate(ox, oy); g.fillRect(x - r, y - r, r * 2, r * 2); g.restore(); } }
@@ -3752,17 +3658,9 @@ function buildScene(THREE, plan, A) {
       outline(m); pick.push(m); shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
       continue;
     }
-    // studs re-spaced under beams: a plain face, the battens added as strips at the wall's own joints
-    const pw = (plan.walls || []).find(q => q.id === p.id), pmod = pw ? wallModule(pw, plan) : null;
-    const custom = !!pmod && pmod.some(m => Math.abs(m / 4 - Math.round(m / 4)) > 1e-4);
-    const tex = new THREE.CanvasTexture(custom ? seamPlain : seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO;
+    const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO;
     tex.repeat.set(p.len / 4, 1); tex.offset.set(((p.s0 % 4) + 4) % 4 / 4, 0);
     const WP = wallPM(p.id);
-    if (custom) {
-      const bm = M.batten || (M.batten = new THREE.MeshPhongMaterial({ color: 0xfbfbfb, specular: 0x222222, shininess: 20, name: 'H-stud batten' }));
-      const L0 = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, ux = (p.x2 - p.x1) / L0, uz = (p.z2 - p.z1) / L0;
-      for (const m of pmod) { const k = m - p.s0; if (k < 0.05 || k > p.len - 0.05) continue; const x = p.x1 + ux * k, z = p.z1 + uz * k; outline(segBox(x - ux * 0.125, z - uz * 0.125, x + ux * 0.125, z + uz * 0.125, 0.333, p.h - 0.01, p.t + 0.016, bm)); }
-    }
     const face = new THREE.MeshPhongMaterial({ map: tex, color: p.sp ? 0xf6dc80 : WP.face, emissive: p.sp ? 0x000000 : WP.emissive, specular: 0x1c1c1c, shininess: 16 }); face.name = p.sp ? 'Wall panel, S.P. yellow' : 'Wall panel, ' + WP.label.toLowerCase();
     // the other face runs its texture the other way along the wall: offset it so its seams land on the same
     // 48″ module (from the wall's start) as this face's, where the panels really join
@@ -6555,8 +6453,7 @@ function mount(container, plan, opts) {
           if (!p.hard) continue;
           const L = p.len || Math.hypot(p.x2 - p.x1, p.z2 - p.z1); if (L < 0.5) continue;
           const ux = (p.x2 - p.x1) / L, uz = (p.z2 - p.z1) / L, ang = Math.atan2(-uz, ux), s0 = p.s0 || 0;
-          const ww = (plan.walls || []).find(q => q.id === p.id);
-          for (const mm of ww ? wallModule(ww, plan) : []) { if (mm >= s0 + L - 0.2) continue;
+          for (let mm = Math.floor(s0 / 4 + 1e-6) * 4 + 4; mm < s0 + L - 0.2; mm += 4) {
             if (mm - s0 < 0.2) continue;
             const k = mm - s0, x = p.x1 + ux * k, z = p.z1 + uz * k, j = new THREE.Mesh(js, jm);
             j.scale.set(jw, Math.max(0.1, p.h - 0.333), (p.t || 0.25) + 0.012); j.position.set(x, 0.333 + (p.h - 0.333) / 2, z); j.rotation.y = ang; j.name = 'Wall panel joint';
@@ -6577,5 +6474,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { layStuds, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);

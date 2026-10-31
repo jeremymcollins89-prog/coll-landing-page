@@ -51,7 +51,7 @@ function walls(plan) {
       for (const p of A.pieces.filter(q => q.id === w.id && q.hard !== false)) {
         // the 48″ module from this wall's own start, as the parts list counts it
         const a = p.s0, b = p.s0 + p.len, cuts = [a];
-        for (const m of V().wallModule ? V().wallModule(w, plan) : []) if (m > a + 1e-6 && m < b - 1e-6) cuts.push(m);
+        for (let m = Math.floor(a / 4 + 1e-6) * 4 + 4; m < b - 1e-6; m += 4) cuts.push(m);
         cuts.push(b);
         const h = p.h || WH, rows = V().panelStack(h, V().wallCeil(plan, A, p));
         for (let i = 0; i + 1 < cuts.length; i++) if (cuts[i + 1] - cuts[i] >= 1 / 12) { const x = toRun(cuts[i]), y = toRun(cuts[i + 1]); panels.push({ s0: Math.min(x, y), s1: Math.max(x, y), h, rows, type: p.sp ? 'S.P. panel' : 'Wall panel', sp: !!p.sp }); }
