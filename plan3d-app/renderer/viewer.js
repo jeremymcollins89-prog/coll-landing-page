@@ -3835,9 +3835,12 @@ function buildScene(THREE, plan, A) {
     }
     // studs re-spaced under beams: a plain face, the battens added as strips at the wall's own joints
     const pw = (plan.walls || []).find(q => q.id === p.id), pmod = pw ? wallModule(pw, plan) : null;
-    const custom = !!pmod && pmod.some(m => Math.abs(m / 4 - Math.round(m / 4)) > 1e-4);
+    // studs 48″ apart (the building grid, or the 48″ module from the wall's start): the panel texture with its
+    // detailed H-studs and inserts, slid so its joints land on this wall's studs; uneven spacing gets strips
+    const m0 = pmod && pmod.length ? pmod[0] % 4 : 0, even = !pmod || pmod.every((m, i) => i === 0 || Math.abs(m - pmod[i - 1] - 4) < 1e-4);
+    const custom = !even;
     const tex = new THREE.CanvasTexture(custom ? seamPlain : seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO;
-    tex.repeat.set(p.len / 4, 1); tex.offset.set(((p.s0 % 4) + 4) % 4 / 4, 0);
+    tex.repeat.set(p.len / 4, 1); tex.offset.set((((p.s0 - m0) % 4) + 4) % 4 / 4, 0);
     const WP = wallPM(p.id);
     if (custom) {
       const bm = M.batten || (M.batten = new THREE.MeshPhongMaterial({ color: 0xfbfbfb, specular: 0x222222, shininess: 20, name: 'H-stud batten' }));
@@ -3847,7 +3850,7 @@ function buildScene(THREE, plan, A) {
     const face = new THREE.MeshPhongMaterial({ map: tex, color: p.sp ? 0xf6dc80 : WP.face, emissive: p.sp ? 0x000000 : WP.emissive, specular: 0x1c1c1c, shininess: 16 }); face.name = p.sp ? 'Wall panel, S.P. yellow' : 'Wall panel, ' + WP.label.toLowerCase();
     // the other face runs its texture the other way along the wall: offset it so its seams land on the same
     // 48″ module (from the wall's start) as this face's, where the panels really join
-    const tex2 = tex.clone(); tex2.offset.set(((-(p.len + p.s0) % 4) + 4) % 4 / 4, 0); tex2.needsUpdate = true;
+    const tex2 = tex.clone(); tex2.offset.set((((m0 - p.len - p.s0) % 4) + 4) % 4 / 4, 0); tex2.needsUpdate = true;
     const face2 = face.clone(); face2.map = tex2;
     const m = segBox(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, [WP.edge, WP.edge, WP.edge, WP.edge, face, face2]);
     outline(m); pick.push(m);
