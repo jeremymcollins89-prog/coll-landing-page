@@ -1285,13 +1285,120 @@ function studPoints(plan) {
     if (!isHard(w)) continue;
     const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 0.1) continue;
     put(w.x1, w.y1, w); put(w.x2, w.y2, w);
-    if (!w.piece) { const ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L; for (let m = 4; m < L - 1e-6; m += 4) put(w.x1 + ux * m, w.y1 + uy * m, w); }
+    if (!w.piece) { const ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L; for (const m of wallModule(w, plan)) put(w.x1 + ux * m, w.y1 + uy * m, w); }
   }
   return out;
 }
 /* The white cap over the top of every cleanroom wall: it fits over both faces and runs down 1″ on each; its top
    stands `up` above the panels (beams and the lid rest on it). */
 const WALL_CAP = { up: 0.03, down: 1 / 12, over: 0.015 };
+/* Where a cleanroom wall's panels join (H-studs), as distances from the wall's start (its centreline end). A full
+   panel is 45″ with a 3″ H-stud, so studs are 48″ on centre, the first one 48″ from the end (1½″ to the face of the
+   end post, a 45″ panel, half the stud). With beams on the wall (plan.studsUnderBeams, on unless turned off) a stud
+   stands right under each beam; between those studs it is full panels with one cut panel to make up the length (or
+   two equal ones of at least 24″ when the cut would be shorter than that), the cut panel put where it leaves the
+   grilles on full panels, closest to where they are. */
+const WMOD = new WeakMap();
+function wallModule(w, plan) {
+  const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), def = () => { const o = []; for (let m = 4; m < L - 1e-6; m += 4) o.push(m); return o; };
+  if (!plan || plan.studsUnderBeams === false || !(plan.beams || []).length || w.piece) return def();
+  const sig = JSON.stringify([plan.beams, (plan.walls || []).map(q => [q.id, q.x1, q.y1, q.x2, q.y2, q.t, q.type]), plan.ceiling, plan.plenum]);
+  let C = WMOD.get(plan); if (!C || C.sig !== sig) { C = { sig, fixed: beamStuds(plan) }; WMOD.set(plan, C); }
+  const F = (C.fixed.get(w.id) || []).filter(s => s > 0.35 && s < L - 0.35).sort((a, b) => a - b);
+  if (!F.length) return def();
+  const cols = grilleCols(w, plan);
+  const stops = [0]; for (const f of F) if (f - stops[stops.length - 1] > 0.3) stops.push(f); if (L - stops[stops.length - 1] < 0.3) stops.pop(); stops.push(L);
+  const out = [];
+  for (let i = 0; i + 1 < stops.length; i++) { out.push(...stretchStuds(stops[i], stops[i + 1], cols.filter(c => c.c > stops[i] && c.c < stops[i + 1]))); if (i + 2 < stops.length) out.push(stops[i + 1]); }
+  return out;
+}
+// the grille spots along a wall (a low return and the plenum grille over it count as one): [{ c, w }]
+function grilleCols(w, plan) {
+  const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, gx = (w.x2 - w.x1) / L, gy = (w.y2 - w.y1) / L, cols = [];
+  for (const g of plan.grilles || []) { if (g.wall !== w.id) continue; const c = (g.x - w.x1) * gx + (g.y - w.y1) * gy, gw = Math.max(0.25, +g.w || 20 / 12); const k = cols.find(q => Math.abs(q.c - c) < 0.3); if (k) { k.w = Math.max(k.w, gw); k.g.push(g); } else cols.push({ c, w: gw, g: [g] }); }
+  return cols.sort((a, b) => a.c - b.c);
+}
+// the grilles in a run of panels, in order, each to the panel nearest it that's wide enough: [{ col, panel | null }]
+function placeCols(panels, cols) {
+  const used = new Set(), out = [];
+  for (const col of cols) {
+    let best = null, bd = 1e9; for (let k = 0; k < panels.length; k++) { const q = panels[k]; if (used.has(k) || q[1] - q[0] - 3 / 12 < col.w + 0.25 / 12) continue; const d = Math.abs((q[0] + q[1]) / 2 - col.c); if (d < bd) { bd = d; best = k; } }
+    if (best != null) used.add(best); out.push({ col, panel: best == null ? null : panels[best], d: bd });
+  }
+  return out;
+}
+// the studs strictly between u and v: as many full 45″ panels as can be had while every grille in the stretch still
+// gets a panel wide enough to sit centred on (no stud ever runs through a grille), the fewest panels, no panel
+// under 24″ where it can be helped (under 12″ only if there's no other way). Searched on a ¼″ step.
+function stretchStuds(u, v, cols) {
+  const G = v - u, N = Math.max(1, Math.round(G * 48)), K = cols.length, need = K ? Math.max(...cols.map(c => c.w)) + 3.25 / 12 : 0, INF = 1e18;
+  const pos = (k) => (k >= N ? v : u + k / 48);
+  const cost = (wd) => 10 + (Math.abs(wd - 4) < 0.01 ? 0 : 3) + (wd < 2 ? 40 : 0) + (wd < 1 ? 400 + (1 - wd) * 1200 : 0) + (wd < 1 / 12 ? 1e6 : 0);
+  const dp = Array.from({ length: N + 1 }, () => new Float64Array(K + 1).fill(INF)), fr = Array.from({ length: N + 1 }, () => new Int32Array(K + 1).fill(-1)), fc = Array.from({ length: N + 1 }, () => new Int16Array(K + 1));
+  dp[0][0] = 0;
+  for (let k = 1; k <= N; k++) for (let d = 1; d <= 192 && d <= k; d++) {
+    const j = k - d, wd = pos(k) - pos(j); if (wd > 4 + 0.01 / 12) break;
+    const big = need && wd >= need - 1e-6 ? 1 : 0;
+    for (let c = 0; c <= K; c++) { if (dp[j][c] >= INF) continue; const c2 = Math.min(K, c + big), val = dp[j][c] + cost(wd); if (val < dp[k][c2] - 1e-9) { dp[k][c2] = val; fr[k][c2] = j; fc[k][c2] = c; } }
+  }
+  let c = K; while (c > 0 && dp[N][c] >= INF) c--;
+  if (dp[N][c] >= INF) { const o = []; for (let m = u + 4; m < v - 1e-6; m += 4) o.push(m); return o; }
+  const J = []; for (let k = N; k > 0;) { const j = fr[k][c], cc = fc[k][c]; if (j > 0) J.push(pos(j)); k = j; c = cc; }
+  return J.reverse();
+}
+/* Centre each wall's grilles on its panels after the studs move: each grille spot (with the plenum grille over it)
+   moves to the middle of the panel nearest it that's wide enough. Extra grilles (spots with no panel wide enough
+   left) are removed. Changes plan.grilles in place; returns { moved, removed, stuck: [{ wall, at, x, y, ids }] }. */
+function fitGrilles(plan) {
+  let moved = 0; const stuck = [];
+  for (const w of (plan.walls || []).filter(q => isHard(q) && !q.piece)) {
+    const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 1) continue;
+    const cols = grilleCols(w, plan); if (!cols.length) continue;
+    const gx = (w.x2 - w.x1) / L, gy = (w.y2 - w.y1) / L, J = [0, ...wallModule(w, plan), L], panels = [];
+    for (let i = 0; i + 1 < J.length; i++) panels.push([J[i], J[i + 1]]);
+    // when there are more grille spots than panels wide enough, choose which spots stay put (to sort out by hand) so
+    // that none of them overlaps a grille that moved, and the rest move the least
+    let P = placeCols(panels, cols), ns = P.filter(q => !q.panel).length;
+    if (ns && cols.length <= 12) {
+      const combos = []; const pick = (st, from) => { if (st.length === ns) { combos.push(st.slice()); return; } for (let k = from; k < cols.length; k++) { st.push(k); pick(st, k + 1); st.pop(); } }; pick([], 0);
+      let bs = 1e18;
+      for (const cb of combos) {
+        const rest = cols.filter((_, k) => !cb.includes(k)), R = placeCols(panels, rest); if (R.some(q => !q.panel)) continue;
+        const over = cb.reduce((t, k) => t + R.filter(q => Math.abs((q.panel[0] + q.panel[1]) / 2 - cols[k].c) < (q.col.w + cols[k].w) / 2).length, 0);
+        const sc = over * 1000 + R.reduce((t, q) => t + q.d, 0);
+        if (sc < bs) { bs = sc; P = R.concat(cb.map(k => ({ col: cols[k], panel: null }))); }
+      }
+    }
+    for (const p of P) {
+      if (!p.panel) { stuck.push({ wall: w.id, at: p.col.c, x: w.x1 + gx * p.col.c, y: w.y1 + gy * p.col.c, ids: p.col.g.map(g => g.id) }); continue; }
+      const c = (p.panel[0] + p.panel[1]) / 2; if (Math.abs(c - p.col.c) < 1e-4) continue;
+      for (const g of p.col.g) { g.x = w.x1 + gx * c; g.y = w.y1 + gy * c; moved++; }
+    }
+  }
+  // grilles with no panel left to sit centred on are taken out (a stud would run through them)
+  const gone = new Set([].concat(...stuck.map(q => q.ids)));
+  if (gone.size) plan.grilles = (plan.grilles || []).filter(g => !gone.has(g.id));
+  return { moved, removed: gone.size, stuck };
+}
+// the points where beams bear on cleanroom walls: Map(wall id → [distance along the wall])
+function beamStuds(plan) {
+  const out = new Map(); let A = null;
+  try { A = analyze(plan); } catch (e) { return out; }
+  const walls = (plan.walls || []).filter(w => isHard(w) && !w.piece);
+  for (const b of plan.beams || []) {
+    const q = beamSeat(plan, A, b); if (!q.onWalls) continue;
+    const L = Math.hypot(q.x2 - q.x1, q.y2 - q.y1); if (L < 1) continue;
+    const ux = (q.x2 - q.x1) / L, uy = (q.y2 - q.y1) / L;
+    for (const [px, py] of [[q.x1 + ux * (q.in0 || 0) / 2, q.y1 + uy * (q.in0 || 0) / 2], [q.x2 - ux * (q.in1 || 0) / 2, q.y2 - uy * (q.in1 || 0) / 2]]) {
+      let best = null, bd = 1e9;
+      for (const w of walls) { const d = segDist(px, py, w.x1, w.y1, w.x2, w.y2); if (d < (w.t || 0.25) / 2 + 0.15 && d < bd) { bd = d; best = w; } }
+      if (!best) continue;
+      const wl = Math.hypot(best.x2 - best.x1, best.y2 - best.y1) || 1, s2 = ((px - best.x1) * (best.x2 - best.x1) + (py - best.y1) * (best.y2 - best.y1)) / wl;
+      (out.get(best.id) || out.set(best.id, []).get(best.id)).push(s2);
+    }
+  }
+  return out;
+}
 /* The wall cap on one wall piece: 12′ lengths along it, its top cut round each beam flange that crosses the wall.
    beams: [{ q (beamSeat), bf (feet) }]. Returns { p, L, ux, uz, nx, nz, cuts: [{ a, b, side }] }. */
 function capPiece(p, beams) {
@@ -2792,7 +2899,7 @@ function wallJoints(plan, A) {
     if (!p.hard || p.len < 0.1) continue;
     const w = (plan.walls || []).find(q => q.id === p.id); if (!w || w.piece) continue;
     const ux = (p.x2 - p.x1) / p.len, uz = (p.z2 - p.z1) / p.len, a = Math.atan2(uz, ux);
-    for (let m = Math.floor(p.s0 / 4 + 1e-6) * 4 + 4; m < p.s0 + p.len - 1e-6; m += 4) { const t = m - p.s0; out.push({ x: p.x1 + ux * t, y: p.z1 + uz * t, kind: 'hstud', a, mod: true }); }
+    for (const m of wallModule(w, plan)) { if (m <= p.s0 + 1e-6 || m >= p.s0 + p.len - 1e-6) continue; const t = m - p.s0; out.push({ x: p.x1 + ux * t, y: p.z1 + uz * t, kind: 'hstud', a, mod: true }); }
   }
   return out;
 }
@@ -3503,6 +3610,12 @@ function buildScene(THREE, plan, A) {
     };
     batten(0); batten(w);
   }));
+  // the same panel face without the battens (a wall whose studs are re-spaced gets its battens as strips)
+  const seamPlain = cachedCanvas('seamPlain', () => makeCanvas(512, 256, (g, w, h) => {
+    g.fillStyle = '#f7f8f8'; g.fillRect(0, 0, w, h);
+    const vg = g.createLinearGradient(0, 0, 0, h); vg.addColorStop(0, 'rgba(255,255,255,.25)'); vg.addColorStop(1, 'rgba(0,0,0,.015)'); g.fillStyle = vg; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(${Math.random() < .5 ? '0,0,0' : '255,255,255'},${Math.random() * .025})`; g.fillRect(Math.random() * w, Math.random() * h, 1, 2 + Math.random() * 6); }
+  }));
   const floorCanvas = cachedCanvas('floorCanvas', () => makeCanvas(512, 512, (g, w, h) => {
     g.fillStyle = '#c3c7c8'; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 70; i++) { const x = Math.random() * w, y = Math.random() * h, r = 20 + Math.random() * 70; const gr = g.createRadialGradient(x, y, 0, x, y, r); const d = Math.random() < .5; gr.addColorStop(0, d ? 'rgba(90,96,100,.035)' : 'rgba(255,255,255,.04)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) { g.save(); g.translate(ox, oy); g.fillRect(x - r, y - r, r * 2, r * 2); g.restore(); } }
@@ -3658,9 +3771,17 @@ function buildScene(THREE, plan, A) {
       outline(m); pick.push(m); shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
       continue;
     }
-    const tex = new THREE.CanvasTexture(seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO;
+    // studs re-spaced under beams: a plain face, the battens added as strips at the wall's own joints
+    const pw = (plan.walls || []).find(q => q.id === p.id), pmod = pw ? wallModule(pw, plan) : null;
+    const custom = !!pmod && pmod.some(m => Math.abs(m / 4 - Math.round(m / 4)) > 1e-4);
+    const tex = new THREE.CanvasTexture(custom ? seamPlain : seamCanvas); tex.wrapS = THREE.RepeatWrapping; tex.anisotropy = ANISO;
     tex.repeat.set(p.len / 4, 1); tex.offset.set(((p.s0 % 4) + 4) % 4 / 4, 0);
     const WP = wallPM(p.id);
+    if (custom) {
+      const bm = M.batten || (M.batten = new THREE.MeshPhongMaterial({ color: 0xfbfbfb, specular: 0x222222, shininess: 20, name: 'H-stud batten' }));
+      const L0 = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, ux = (p.x2 - p.x1) / L0, uz = (p.z2 - p.z1) / L0;
+      for (const m of pmod) { const k = m - p.s0; if (k < 0.05 || k > p.len - 0.05) continue; const x = p.x1 + ux * k, z = p.z1 + uz * k; outline(segBox(x - ux * 0.125, z - uz * 0.125, x + ux * 0.125, z + uz * 0.125, 0.333, p.h - 0.01, p.t + 0.016, bm)); }
+    }
     const face = new THREE.MeshPhongMaterial({ map: tex, color: p.sp ? 0xf6dc80 : WP.face, emissive: p.sp ? 0x000000 : WP.emissive, specular: 0x1c1c1c, shininess: 16 }); face.name = p.sp ? 'Wall panel, S.P. yellow' : 'Wall panel, ' + WP.label.toLowerCase();
     // the other face runs its texture the other way along the wall: offset it so its seams land on the same
     // 48″ module (from the wall's start) as this face's, where the panels really join
@@ -6453,7 +6574,8 @@ function mount(container, plan, opts) {
           if (!p.hard) continue;
           const L = p.len || Math.hypot(p.x2 - p.x1, p.z2 - p.z1); if (L < 0.5) continue;
           const ux = (p.x2 - p.x1) / L, uz = (p.z2 - p.z1) / L, ang = Math.atan2(-uz, ux), s0 = p.s0 || 0;
-          for (let mm = Math.floor(s0 / 4 + 1e-6) * 4 + 4; mm < s0 + L - 0.2; mm += 4) {
+          const ww = (plan.walls || []).find(q => q.id === p.id);
+          for (const mm of ww ? wallModule(ww, plan) : []) { if (mm >= s0 + L - 0.2) continue;
             if (mm - s0 < 0.2) continue;
             const k = mm - s0, x = p.x1 + ux * k, z = p.z1 + uz * k, j = new THREE.Mesh(js, jm);
             j.scale.set(jw, Math.max(0.1, p.h - 0.333), (p.t || 0.25) + 0.012); j.position.set(x, 0.333 + (p.h - 0.333) / 2, z); j.rotation.y = ang; j.name = 'Wall panel joint';
@@ -6474,5 +6596,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
