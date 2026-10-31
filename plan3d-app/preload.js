@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
   openPath: (p) => ipcRenderer.invoke('open-path', p),
   showInFolder: (p) => ipcRenderer.invoke('show-in-folder', p),
   openUrl: (u) => ipcRenderer.invoke('open-url', u),
+  newWindow: () => ipcRenderer.invoke('new-window'),
   confirmClose: () => ipcRenderer.invoke('confirm-close'),
   closeDialog: (open) => ipcRenderer.send('close-dialog', open),
   closeCancelled: () => ipcRenderer.send('close-cancelled'),

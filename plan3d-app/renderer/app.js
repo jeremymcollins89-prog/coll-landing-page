@@ -3322,7 +3322,7 @@ document.addEventListener('keydown', (e) => { const o = openMenu(); if (e.key ==
 {
   const item = (id, fn) => { const b = $(id); if (b) b.onclick = (e) => { closeMenus(); fn(e); }; };
   // File
-  item('#bOpen', openProject); item('#bImport', importPlan); item('#bOpenSample', openSample); item('#bSave2', () => save(false)); item('#bSaveAs', () => save(true)); item('#bNewPlan', newPlan);
+  item('#bOpen', openProject); item('#bImport', importPlan); item('#bOpenSample', openSample); item('#bSave2', () => save(false)); item('#bSaveAs', () => save(true)); item('#bNewPlan', newPlan); item('#bNewWin', () => { if (api.newWindow) api.newWindow(); });
   // Ceiling
   item('#bCeiling', (e) => ceilingMenu(e)); item('#bGenCeil', generateCeilingDialog); item('#bLightsDwg', lightsDrawingDialog); item('#bLid', lidMenu);
   // Library

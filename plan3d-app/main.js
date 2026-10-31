@@ -7,9 +7,12 @@ const os = require('os');
 const { execFile } = require('child_process');
 const DxfParser = require('dxf-parser');
 
+// Several windows can be open at once (compare projects side by side). `win` is the window last used: the menu
+// and dialogs go to whichever window is in front.
 let win;
-
-function send(action) { if (win) win.webContents.send('menu', action); }
+const wins = new Set();
+const ownerOf = (e) => (e && e.sender && BrowserWindow.fromWebContents(e.sender)) || BrowserWindow.getFocusedWindow() || win;
+function send(action) { const w = BrowserWindow.getFocusedWindow() || win; if (w) w.webContents.send('menu', action); }
 
 function buildMenu() {
   const tpl = [
@@ -32,6 +35,7 @@ function buildMenu() {
         { label: 'Save for AutoCAD (DWG / DXF)…', accelerator: 'CmdOrCtrl+D', click: () => send('export-cad') },
         { type: 'separator' },
         { label: 'New Blank Plan', accelerator: 'CmdOrCtrl+N', click: () => send('new') },
+        { label: 'New Window (compare projects)', accelerator: 'CmdOrCtrl+Shift+N', click: () => createWindow() },
         { type: 'separator' },
         { role: 'quit' }
       ]
@@ -63,7 +67,7 @@ function buildMenu() {
       submenu: [
         { label: 'Quick Guide', click: () => send('help') },
         { label: 'Check for updates…', click: () => checkUpdates(true) },
-        { label: 'About Coll Plan3D', click: () => dialog.showMessageBox(win, {
+        { label: 'About Coll Plan3D', click: () => dialog.showMessageBox(BrowserWindow.getFocusedWindow() || win, {
           type: 'info', title: 'About Coll Plan3D',
           message: 'Coll Plan3D ' + app.getVersion(),
           detail: 'Floor plan to 3D walkthrough.\nColl Business Solutions LLC\ncollbusinesssolutions@gmail.com\n\nDWG files are read and saved with GNU LibreDWG (GPLv3), included as separate programs. License and source: resources\\libredwg\\README.txt in the install folder, or https://www.gnu.org/software/libredwg/'
@@ -74,8 +78,9 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(tpl));
 }
 
-function createWindow() {
-  win = new BrowserWindow({
+function createWindow(openFile) {
+  const prev = BrowserWindow.getFocusedWindow() || win;
+  const w = new BrowserWindow({
     width: 1520, height: 960, minWidth: 980, minHeight: 640,
     backgroundColor: '#14191c',
     title: 'Coll Plan3D',
@@ -87,41 +92,47 @@ function createWindow() {
       sandbox: false
     }
   });
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.on('close', (e) => {
+  // a new window opens a little down and right of the one in front, so both show
+  if (prev && !prev.isDestroyed() && !prev.isMaximized()) { const [x, y] = prev.getPosition(); w.setPosition(x + 36, y + 36); }
+  wins.add(w); win = w;
+  w.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  if (openFile) w.webContents.once('did-finish-load', () => w.webContents.send('open-path', openFile));
+  w.on('focus', () => { win = w; });
+  w.on('close', (e) => {
     // Ask the window whether there are unsaved changes. If it doesn't answer quickly
     // (page broken, crashed or still loading), close anyway so the app never hangs or lingers.
-    if (win.__allowClose) return;
+    if (w.__allowClose) return;
     e.preventDefault();
-    if (win.__closeAsked) return;
-    win.__closeAsked = true;
-    const wc = win.webContents;
-    if (wc.isCrashed() || wc.isLoading() || !win.__rendererReady) return forceClose();
-    win.__closeTimer = setTimeout(() => { if (!win.__dialogOpen) forceClose(); }, 2500);
+    if (w.__closeAsked) return;
+    w.__closeAsked = true;
+    const wc = w.webContents;
+    if (wc.isCrashed() || wc.isLoading() || !w.__rendererReady) return forceClose(w);
+    w.__closeTimer = setTimeout(() => { if (!w.__dialogOpen) forceClose(w); }, 2500);
     wc.send('menu', 'request-close');
   });
-  win.on('closed', () => { win = null; });
-  win.webContents.on('render-process-gone', () => { if (win) win.__rendererReady = false; });
+  w.on('closed', () => { wins.delete(w); if (win === w) win = [...wins].pop() || null; });
+  w.webContents.on('render-process-gone', () => { w.__rendererReady = false; });
+  return w;
 }
 
-function forceClose() {
-  if (!win) return;
-  clearTimeout(win.__closeTimer);
-  win.__allowClose = true;
-  win.close();
+function forceClose(w) {
+  if (!w || w.isDestroyed()) return;
+  clearTimeout(w.__closeTimer);
+  w.__allowClose = true;
+  w.close();
 }
 
 // Renderer says it is up and running (3D libraries loaded)
-ipcMain.on('renderer-ready', () => { if (win) win.__rendererReady = true; });
+ipcMain.on('renderer-ready', (e) => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.__rendererReady = true; });
 // Renderer is showing the "unsaved changes" question: wait for the person's answer
 ipcMain.on('close-dialog', (e, open) => {
-  if (!win) return;
-  win.__dialogOpen = !!open;
-  if (open) clearTimeout(win.__closeTimer);
+  const w = BrowserWindow.fromWebContents(e.sender); if (!w) return;
+  w.__dialogOpen = !!open;
+  if (open) clearTimeout(w.__closeTimer);
 });
 // Renderer answered "don't close" (Cancel)
-ipcMain.on('close-cancelled', () => { if (win) { clearTimeout(win.__closeTimer); win.__closeAsked = false; win.__dialogOpen = false; } });
-ipcMain.handle('confirm-close', () => forceClose());
+ipcMain.on('close-cancelled', (e) => { const w = BrowserWindow.fromWebContents(e.sender); if (w) { clearTimeout(w.__closeTimer); w.__closeAsked = false; w.__dialogOpen = false; } });
+ipcMain.handle('confirm-close', (e) => forceClose(BrowserWindow.fromWebContents(e.sender)));
 
 // ---------- File loading ----------
 const IMAGE_EXT = ['.png', '.jpg', '.jpeg', '.bmp', '.webp', '.gif'];
@@ -526,7 +537,7 @@ ipcMain.handle('open-file', async (e, which) => {
         { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'bmp', 'webp'] },
         { name: 'All files', extensions: ['*'] }
       ];
-  const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters });
+  const r = await dialog.showOpenDialog(ownerOf(e), { properties: ['openFile'], filters });
   if (r.canceled || !r.filePaths[0]) return null;
   return loadAny(r.filePaths[0]);
 });
@@ -542,7 +553,7 @@ ipcMain.handle('load-sample', (e, which) => {
 ipcMain.handle('save-project', async (e, json, current, suggested) => {
   let p = current;
   if (!p) {
-    const r = await dialog.showSaveDialog(win, {
+    const r = await dialog.showSaveDialog(ownerOf(e), {
       defaultPath: path.join(app.getPath('documents'), (suggested || 'Floor plan') + '.plan3d'),
       filters: [{ name: 'Plan3D Project', extensions: ['plan3d'] }]
     });
@@ -554,7 +565,7 @@ ipcMain.handle('save-project', async (e, json, current, suggested) => {
 });
 
 ipcMain.handle('export-file', async (e, { data, name, ext }) => {
-  const r = await dialog.showSaveDialog(win, {
+  const r = await dialog.showSaveDialog(ownerOf(e), {
     defaultPath: path.join(app.getPath('documents'), (name || 'Walkthrough') + '.' + ext),
     filters: [{ name: ext === 'html' ? 'Web page' : ext === 'csv' ? 'Spreadsheet (CSV)' : ext === 'ifc' ? 'IFC for Revit / BIM' : ext === 'jpg' ? 'Picture (JPEG)' : '3D model (glTF binary)', extensions: [ext] }]
   });
@@ -572,7 +583,7 @@ ipcMain.handle('export-cad', async (e, { dxf, name, format, version }) => {
   const dwg = format === 'dwg';
   if (dwg && !findOdaConverter() && !findLibreDwg()) return { error: 'nodwg' };
   const filters = dwg ? [{ name: 'AutoCAD Drawing (DWG)', extensions: ['dwg'] }] : [{ name: 'AutoCAD DXF', extensions: ['dxf'] }];
-  const r = await dialog.showSaveDialog(win, { defaultPath: path.join(app.getPath('documents'), (name || 'Floor plan') + (dwg ? '.dwg' : '.dxf')), filters });
+  const r = await dialog.showSaveDialog(ownerOf(e), { defaultPath: path.join(app.getPath('documents'), (name || 'Floor plan') + (dwg ? '.dwg' : '.dxf')), filters });
   if (r.canceled || !r.filePath) return null;
   let out = r.filePath;
   try {
@@ -595,7 +606,7 @@ ipcMain.handle('export-cad', async (e, { dxf, name, format, version }) => {
 
 // Plan sheet → PDF: render the sheet HTML in a hidden window and print it at the sheet's paper size
 ipcMain.handle('export-pdf', async (e, { html, name, w, h }) => {
-  const r = await dialog.showSaveDialog(win, {
+  const r = await dialog.showSaveDialog(ownerOf(e), {
     defaultPath: path.join(app.getPath('documents'), (name || 'Floor plan') + '.pdf'),
     filters: [{ name: 'PDF', extensions: ['pdf'] }]
   });
@@ -629,8 +640,8 @@ ipcMain.handle('get-assets', () => {
 
 ipcMain.handle('open-path', (e, p) => shell.openPath(p));
 // ---------- Equipment from Revit families (.rfa): their type table (PartAtom XML) holds sizes and specs ----------
-ipcMain.handle('read-rfa', async () => {
-  const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'Revit family', extensions: ['rfa'] }] });
+ipcMain.handle('read-rfa', async (e) => {
+  const r = await dialog.showOpenDialog(ownerOf(e), { properties: ['openFile'], filters: [{ name: 'Revit family', extensions: ['rfa'] }] });
   if (r.canceled || !r.filePaths[0]) return null;
   try {
     const CFB = require('cfb');
@@ -650,19 +661,17 @@ ipcMain.handle('equip-lib', () => { try { return JSON.parse(fs.readFileSync(equi
 ipcMain.handle('equip-lib-save', (e, list) => { try { fs.writeFileSync(equipFile(), JSON.stringify(list || [], null, 1)); return true; } catch (err) { return false; } });
 
 ipcMain.handle('show-in-folder', (e, p) => shell.showItemInFolder(p));
+ipcMain.handle('new-window', () => { createWindow(); return true; });
 ipcMain.handle('open-url', (e, u) => { if (/^https:\/\//.test(u)) shell.openExternal(u); });
 
-// Only one copy of the app at a time: opening it again (or double-clicking a .plan3d file)
-// brings the existing window forward instead of starting a second copy.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // opening the app again (or double-clicking a project) opens it in a window of its own, so projects can be
+  // compared side by side; all windows share one copy of the app (and its updates)
   app.on('second-instance', (e, argv) => {
-    if (!win) return;
-    if (win.isMinimized()) win.restore();
-    win.focus();
     const f = argv.slice(1).find(a => /\.(dxf|dwg|ifc|rvt|png|jpe?g|bmp|webp|plan3d)$/i.test(a));
-    if (f) win.webContents.send('open-path', f);
+    createWindow(f || null).focus();
   });
 }
 
@@ -671,7 +680,7 @@ if (!app.requestSingleInstanceLock()) {
    4 hours. A newer version downloads in the background; the app then shows an Update now button. Update now
    installs it quietly and starts the new version. Only in the installed app. */
 let updater = null, updateReady = null, manualCheck = false;
-function sendUpdate(state) { if (win && !win.isDestroyed()) win.webContents.send('update', state); }
+function sendUpdate(state) { for (const w of wins) if (!w.isDestroyed()) w.webContents.send('update', state); }
 function setupUpdates() {
   // the Microsoft Store copy is updated by the Store itself
   if (!app.isPackaged || process.windowsStore) return;
@@ -696,7 +705,7 @@ function checkUpdates(manual) {
 ipcMain.handle('check-updates', () => checkUpdates(true));
 ipcMain.handle('install-update', () => {
   if (!updater || !updateReady) return false;
-  if (win) win.__allowClose = true;
+  for (const w of wins) w.__allowClose = true;
   setImmediate(() => updater.quitAndInstall(true, true));
   return true;
 });
@@ -704,10 +713,9 @@ ipcMain.handle('install-update', () => {
 app.whenReady().then(() => {
   if (!app.hasSingleInstanceLock()) return;
   buildMenu();
-  createWindow();
-  setupUpdates();
   // File passed on the command line / "Open with"
   const arg = process.argv.slice(1).find(a => /\.(dxf|dwg|ifc|rvt|png|jpe?g|bmp|webp|plan3d)$/i.test(a));
-  if (arg) win.webContents.once('did-finish-load', () => win.webContents.send('open-path', arg));
+  createWindow(arg || null);
+  setupUpdates();
 });
 app.on('window-all-closed', () => app.quit());
