@@ -16,7 +16,7 @@ const LAYERS = [
   ['A-WALL', 7, 'CONTINUOUS'], ['A-WALL-SP', 2, 'CONTINUOUS'], ['A-WALL-JOINT', 8, 'CONTINUOUS'], ['A-WALL-POST', 7, 'CONTINUOUS'], ['A-WALL-BLDG', 8, 'CONTINUOUS'],
   ['A-DOOR', 4, 'CONTINUOUS'], ['A-DOOR-SWING', 4, 'DASHED'], ['A-GLAZ', 5, 'CONTINUOUS'], ['A-PASS', 6, 'CONTINUOUS'],
   ['A-OPEN', 4, 'DASHED'], ['A-WALL-REMV', 30, 'CONTINUOUS'], ['A-WALL-REMV-FRAM', 8, 'CONTINUOUS'], ['A-CHASE', 8, 'CONTINUOUS'], ['A-CHASE-HATCH', 9, 'CONTINUOUS'], ['A-GRILLE', 7, 'CONTINUOUS'],
-  ['A-CLNG-FIXT', 8, 'DASHED'], ['A-CLNG-FIXT-EMER', 1, 'CONTINUOUS'], ['A-CLNG-GRID', 9, 'CONTINUOUS'], ['S-BEAM', 30, 'DASHED'], ['A-DIMS', 3, 'CONTINUOUS'], ['A-ANNO-ROOM', 7, 'CONTINUOUS'], ['A-ANNO-TAG', 2, 'CONTINUOUS'],
+  ['A-CLNG-FIXT', 8, 'DASHED'], ['A-CLNG-FIXT-EMER', 1, 'CONTINUOUS'], ['A-CLNG-GRID', 9, 'CONTINUOUS'], ['S-BEAM', 30, 'DASHED'], ['A-WALL-CAP', 9, 'CONTINUOUS'], ['E-WHIP', 40, 'DASHED'], ['A-DIMS', 3, 'CONTINUOUS'], ['A-ANNO-ROOM', 7, 'CONTINUOUS'], ['A-ANNO-TAG', 2, 'CONTINUOUS'],
   [DATA_LAYER, 8, 'CONTINUOUS', true]
 ];
 // Layers whose lines make up the walls (used to tell whether the drawing was changed in AutoCAD)
@@ -191,6 +191,13 @@ function toDxf(plan, opts) {
         }
       }
     }
+    // the white wall caps (outline of each 12′ length, notched round the beam flanges) and the fixture whips
+    if (V.wallCaps && V.wallCapSolids) for (const c of V.wallCaps(plan, A)) for (const q of V.wallCapSolids(c)) {
+      if (q.y1 < c.p.h + 0.01) continue; // only the top of the cap (a leg under a flange shows as the gap's edge)
+      const L = Math.hypot(q.x2 - q.x1, q.z2 - q.z1) || 1, nx = -(q.z2 - q.z1) / L * q.t / 2, nz = (q.x2 - q.x1) / L * q.t / 2;
+      pline('A-WALL-CAP', [[q.x1 + nx, q.z1 + nz], [q.x2 + nx, q.z2 + nz], [q.x2 - nx, q.z2 - nz], [q.x1 - nx, q.z1 - nz]], true);
+    }
+    if (V.whipLines) for (const r of V.whipLines(plan, A)) { const P2 = r.pts.map(q => [q[0], q[2]]).filter((q, i, a2) => i === 0 || Math.hypot(q[0] - a2[i - 1][0], q[1] - a2[i - 1][1]) > 0.01); if (P2.length > 1) pline('E-WHIP', P2, false); }
     for (const b0 of plan.beams || []) { const bm = V.beamSeat ? V.beamSeat(plan, A, b0) : b0; line('S-BEAM', bm.x1, bm.y1, bm.x2, bm.y2); text('S-BEAM', (bm.x1 + bm.x2) / 2, (bm.y1 + bm.y2) / 2, (b0.size || 'W12x26').toUpperCase(), 0.3, Math.abs(bm.x2 - bm.x1) >= Math.abs(bm.y2 - bm.y1) ? 0 : 90); }
     for (const q of (V.isBuilt && V.isBuilt(plan) ? V.builtLines(plan) : plan.ceilingGrid && plan.ceilingGrid.length && V.ceilingLines ? V.ceilingLines(plan, A) : plan.ceilingGrid || [])) line('A-CLNG-GRID', q[0], q[1], q[2], q[3]);
   }

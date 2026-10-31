@@ -1292,6 +1292,44 @@ function studPoints(plan) {
 /* The white cap over the top of every cleanroom wall: it fits over both faces and runs down 1″ on each; its top
    stands `up` above the panels (beams and the lid rest on it). */
 const WALL_CAP = { up: 0.03, down: 1 / 12, over: 0.015 };
+/* The wall cap on one wall piece: 12′ lengths along it, its top cut round each beam flange that crosses the wall.
+   beams: [{ q (beamSeat), bf (feet) }]. Returns { p, L, ux, uz, nx, nz, cuts: [{ a, b, side }] }. */
+function capPiece(p, beams) {
+  const L0 = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, ux = (p.x2 - p.x1) / L0, uz = (p.z2 - p.z1) / L0, nx = -uz, nz = ux, cuts = [];
+  for (const bs of beams || []) {
+    const bx = bs.q.x2 - bs.q.x1, bz = bs.q.y2 - bs.q.y1, bl = Math.hypot(bx, bz) || 1, den = ux * bz / bl - uz * bx / bl; if (Math.abs(den) < 0.2) continue;
+    const ex = bs.q.x1 - p.x1, ez = bs.q.y1 - p.z1, sw = (ex * bz / bl - ez * bx / bl) / den, sb = (ex * uz - ez * ux) / den;
+    if (sw < -0.05 || sw > L0 + 0.05 || sb < -0.05 || sb > bl + 0.05) continue;
+    if (Math.min(sb, bl - sb) > (p.t || 0.25) + 0.1) continue; // the beam only bears on its end walls
+    const mx = (bs.q.x1 + bs.q.x2) / 2 - p.x1, mz = (bs.q.y1 + bs.q.y2) / 2 - p.z1, side = mx * nx + mz * nz > 0 ? 1 : -1;
+    const hw = bs.bf / 2 / Math.abs(den) + 0.01; cuts.push({ a: sw - hw, b: sw + hw, side });
+  }
+  return { p, L: L0, ux, uz, nx, nz, cuts };
+}
+// the cap as solids [{ x1, z1, x2, z2, y0, y1, t }]: one bent piece per length (top and legs together); under a
+// flange only the leg on the far side from the beam carries on
+function wallCapSolids(c) {
+  const { p, L, ux, uz, nx, nz, cuts } = c, out = [], T2 = (p.t || 0.25) / 2, lg = WALL_CAP.over + 0.006;
+  const minus = (a, b, C) => { const o = []; let s0 = a; for (const q of C.slice().sort((x, y) => x.a - y.a)) { if (q.b <= s0 || q.a >= b) continue; if (q.a - s0 > 0.01) o.push([s0, q.a]); s0 = Math.max(s0, q.b); } if (b - s0 > 0.01) o.push([s0, b]); return o; };
+  const seg = (a, b, o, y0, y1, t) => out.push({ x1: p.x1 + ux * a + nx * o, z1: p.z1 + uz * a + nz * o, x2: p.x1 + ux * b + nx * o, z2: p.z1 + uz * b + nz * o, y0, y1, t });
+  for (let a = 0; a < L - 0.01; a += 12) {
+    const b = Math.min(L, a + 12);
+    for (const [u, v] of minus(a, b, cuts)) seg(u, v, 0, p.h - WALL_CAP.down, p.h + WALL_CAP.up, p.t + 2 * WALL_CAP.over);
+    for (const q of cuts) { const u = Math.max(a, q.a), v = Math.min(b, q.b); if (v - u > 0.01) seg(u, v, -q.side * (T2 + lg / 2), p.h - WALL_CAP.down, p.h, lg); }
+  }
+  return out;
+}
+// every cleanroom wall's cap (parts list, IFC, DWG)
+function wallCaps(plan, A) {
+  A = A || analyze(plan);
+  const beams = A.PL > 0 ? (plan.beams || []).map(b => ({ q: beamSeat(plan, A, b), bf: beamSize(b).bf / 12 })).filter(o => o.q.onWalls) : [];
+  return (A.pieces || []).filter(p => p.hard && !p.frame).map(p => capPiece(p, beams));
+}
+// the top of the cleanroom's own lid: on the wall caps, or on the beams where beams sit on the walls
+function lidTop(plan, A) {
+  A = A || analyze(plan);
+  return Math.max((A.WH || A.H) + WALL_CAP.up, ...(plan.beams || []).map(b => { const q = beamSeat(plan, A, b); return q.onWalls ? q.bot + beamSize(b).d / 12 : 0; }));
+}
 function beamBottom(plan, A, b) { return beamSeat(plan, A, b).bot; }
 /* Zoom for the orbit views: the wheel zooms toward whatever is under the mouse (not the middle of the
    screen), in steps that scale with distance, so a far corner comes up in a few turns and a close-up
@@ -3648,26 +3686,7 @@ function buildScene(THREE, plan, A) {
     // gap; the leg on the outside face carries on under the flange, so each length is still one piece)
     {
       const cm = M.wallCap || (M.wallCap = new THREE.MeshLambertMaterial({ color: 0xf6f7f7, emissive: 0x2a2a2a, name: 'Wall cap, white' }));
-      const L0 = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, ux = (p.x2 - p.x1) / L0, uz = (p.z2 - p.z1) / L0, nx = -uz, nz = ux, cuts = [];
-      for (const bs of capBeams()) {
-        const bx = bs.q.x2 - bs.q.x1, bz = bs.q.y2 - bs.q.y1, bl = Math.hypot(bx, bz) || 1, den = ux * bz / bl - uz * bx / bl; if (Math.abs(den) < 0.2) continue;
-        const ex = bs.q.x1 - p.x1, ez = bs.q.y1 - p.z1, sw = (ex * bz / bl - ez * bx / bl) / den, sb = (ex * uz - ez * ux) / den;
-        if (sw < -0.05 || sw > L0 + 0.05 || sb < -0.05 || sb > bl + 0.05) continue;
-        if (Math.min(sb, bl - sb) > (p.t || 0.25) + 0.1) continue; // the beam only bears on its end walls
-        // the side of the wall the beam hangs on (its inside face)
-        const mx = (bs.q.x1 + bs.q.x2) / 2 - p.x1, mz = (bs.q.y1 + bs.q.y2) / 2 - p.z1, side = mx * nx + mz * nz > 0 ? 1 : -1;
-        const hw = bs.bf / 2 / Math.abs(den) + 0.01; cuts.push({ a: sw - hw, b: sw + hw, side });
-      }
-      const minus = (a, b, C) => { const out = []; let s0 = a; for (const c of C.slice().sort((x, y) => x.a - y.a)) { if (c.b <= s0 || c.a >= b) continue; if (c.a - s0 > 0.01) out.push([s0, c.a]); s0 = Math.max(s0, c.b); } if (b - s0 > 0.01) out.push([s0, b]); return out; };
-      const seg = (a, b, o, y0, y1, th) => outline(segBox(p.x1 + ux * a + nx * o, p.z1 + uz * a + nz * o, p.x1 + ux * b + nx * o, p.z1 + uz * b + nz * o, y0, y1, th, cm));
-      const T2 = (p.t || 0.25) / 2, lg = WALL_CAP.over + 0.006;
-      // one bent piece: the top and both legs drawn as one solid (no seam along it); under a flange, only the leg on
-      // the far side from the beam carries on
-      for (let a = 0; a < L0 - 0.01; a += 12) {
-        const b = Math.min(L0, a + 12);
-        for (const [u, v] of minus(a, b, cuts)) seg(u, v, 0, p.h - WALL_CAP.down, p.h + WALL_CAP.up, p.t + 2 * WALL_CAP.over);
-        for (const c of cuts) { const u = Math.max(a, c.a), v = Math.min(b, c.b); if (v - u > 0.01) seg(u, v, -c.side * (T2 + lg / 2), p.h - WALL_CAP.down, p.h, lg); }
-      }
+      for (const q of wallCapSolids(capPiece(p, capBeams()))) outline(segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, cm));
     }
     shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
   }
@@ -4233,7 +4252,7 @@ function buildScene(THREE, plan, A) {
     // a taller section (a ceiling area set to raise the walls): its own top, and panels closing the step
     const up = ceilAreas(plan, A).filter(a => a.raise && a.h + A.PL > WH + 0.05);
     // it rests on the wall caps, or on the beams where beams sit on the walls
-    const lidY = Math.max(WH + WALL_CAP.up, ...(plan.beams || []).map(b => { const q = beamSeat(plan, A, b); return q.onWalls ? q.bot + beamSize(b).d / 12 : 0; }));
+    const lidY = lidTop(plan, A);
     lid.add(new THREE.Mesh(rectsGeometry(THREE, up.length ? subtractRects(LR, up) : LR, lidY, true, 4, 4, 0, 0), lm));
     for (const a of up) {
       const T = a.h + A.PL;
@@ -4544,6 +4563,22 @@ function whipPorts(plan, A, obs) {
 // the run between two ports: along and across the grid (cables run square to it), plus slack at the ends
 const whipRun = (p, q) => Math.abs(p.x - q.x) + Math.abs(p.z - q.z) + Math.abs(p.y - q.y) + WHIP.slack;
 const whipExt = (L) => (L <= WHIP.len ? 0 : Math.ceil((L - WHIP.len) / WHIP.ext - 1e-9));
+/* The whips as simple runs for the drawings and the IFC: up off each box, along then across over whatever is in
+   between, down into the next box. [{ w, pts: [[x, y, z], ...], len }] */
+function whipLines(plan, A) {
+  A = A || analyze(plan);
+  if (!Array.isArray(plan.whips) || !plan.whips.length) return [];
+  const OB = [], PT = new Map(whipPorts(plan, A, OB).map(p => [p.id, p]));
+  const topOver = (x0, z0, x1, z1) => { let h = -1e9; const a = Math.min(x0, x1) - 0.05, b = Math.max(x0, x1) + 0.05, c = Math.min(z0, z1) - 0.05, d = Math.max(z0, z1) + 0.05; for (const o of OB) if (o[2] > a && o[0] < b && o[3] > c && o[1] < d && o[4] > h) h = o[4]; return h; };
+  const out = [];
+  for (const w of plan.whips) {
+    const a = PT.get(w.a), b = PT.get(w.b); if (!a || !b) continue;
+    const y = Math.max(a.y, b.y, topOver(a.x, a.z, b.x, a.z), topOver(b.x, a.z, b.x, b.z)) + 0.1;
+    const pts = [[a.x, a.y, a.z], [a.x, y, a.z], [b.x, y, a.z], [b.x, y, b.z], [b.x, b.y, b.z]].filter((q, i, A2) => i === 0 || Math.hypot(q[0] - A2[i - 1][0], q[1] - A2[i - 1][1], q[2] - A2[i - 1][2]) > 0.02);
+    out.push({ w, pts, len: WHIP.len + WHIP.ext * (w.ext || 0) });
+  }
+  return out;
+}
 /* Wire them: in each room (walls up to the lid split the plenum), a chain from the fixture nearest the room's corner
    to the nearest one not yet wired, and on, never through a wall. Returns the whips. */
 function wireFixtures(plan, A) {
@@ -5354,6 +5389,7 @@ function mount(container, plan, opts) {
   joyEl.addEventListener('pointerup', joyEnd); joyEl.addEventListener('pointercancel', joyEnd);
   function setModeUI() { modeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === mode))); if (touchy) { const was = mini.hidden; mini.hidden = !(mode === 'walk' || mode === 'fly'); container.classList.toggle('p3v-orbit', !(mode === 'walk' || mode === 'fly')); if (was && !mini.hidden && A) sizeMini(); } joyEl.hidden = !(touchy && (mode === 'walk' || mode === 'fly')); if (mode !== 'fly') drone.visible = false; if (udEl) udEl.hidden = !(touchy && mode === 'fly'); if (joyEl.hidden && joy.id == null) joySet(0, 0); }
   function goWalk(x, z, yaw, dur) {
+    if (walkHintLater) { walkHintLater = false; hint.textContent = walkTip; hint.classList.remove('gone'); setTimeout(() => { if (!commentMode) hint.classList.add('gone'); }, 6000); }
     const p = freeSpot(x, z); target = null;
     const to = { pos: new THREE.Vector3(p.x, EYE, p.z), look: new THREE.Vector3(p.x - Math.sin(yaw) * 6, EYE, p.z - Math.cos(yaw) * 6), fov };
     applyVis('walk'); labelsEl.hidden = true;
@@ -5826,11 +5862,14 @@ function mount(container, plan, opts) {
   }));
 
   const pts = new Map(); let down = null, pinch = null;
-  let hintGone = false; function dismissHint() { if (hintGone) return; hintGone = true; hint.classList.add('gone'); }
+  let hintGone = false; var walkHintLater = false; function dismissHint() { if (hintGone) return; hintGone = true; hint.classList.add('gone'); }
   const coarse = global.matchMedia && global.matchMedia('(pointer: coarse)').matches;
   if (coarse && lookBtn) lookBtn.hidden = true;
   hint.textContent = coarse ? 'Drag to look · Tap the floor to walk · Tap doors to open' : 'W A S D to walk, Shift to run · arrow keys aim the camera (← → turn, ↑ ↓ look up and down) · Click doors to open, switches for lights';
   setTimeout(dismissHint, 7000);
+  // a viewer that opens in an overview (Dollhouse, Plenum): the walking tips wait until the customer goes to Walk
+  const walkTip = hint.textContent;
+  if (opts.startMode && opts.startMode !== 'walk') { hint.classList.add('gone'); hintGone = true; walkHintLater = true; }
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('pointerdown', e => {
     dismissHint(); canvas.focus(); stopTour(); if (sheetOpen) setSheet(false);
@@ -6435,5 +6474,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);

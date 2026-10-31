@@ -248,8 +248,7 @@ function partsList(plan) {
 
   // Wall height sections: an end cap where a wall steps, a top cap on any section not at the cleanroom's top
   for (const st of A.steps || []) add('Studs & posts', 'Step end cap (where a wall changes height)', ftin(st.y1 - st.y0), 1, 'ea', 25);
-  let capFt = 0; for (const p of A.pieces) if (p.hard && Math.abs((p.h || WH) - WH) > 0.02) capFt += p.len;
-  if (capFt) add('Trim', 'Top cap, closure channel (wall sections not at the cleanroom top)', '', Math.ceil(capFt), 'lin ft', 54);
+  // (the top of every wall, whatever its height, is covered by the white wall cap: see Ceiling)
   // Ceiling areas: bulkhead panels on the 48″ module where the ceiling steps across open ceiling
   for (const q of V.areaBulkheads ? V.areaBulkheads(plan, A) : []) {
     const cuts = [0]; for (let m = 4; m < q.len - 1e-6; m += 4) cuts.push(m); cuts.push(q.len);
@@ -453,7 +452,14 @@ function partsList(plan) {
       }
       if (ch > 0) add('Ceiling', 'Lid step closure channel and cap', '', Math.ceil(ch * 1.05), 'lin ft', 67.2);
     }
-    if (!DKs.length && A.PL > 0) add('Ceiling', 'Plenum lid (top of the cleanroom)', ftin(A.PL) + ' plenum above the grid, top at ' + ftin(A.WH), Math.ceil(area), 'sq ft', 67);
+    if (!DKs.length && A.PL > 0) add('Ceiling', 'Plenum lid, galvanized steel deck 1½″ (top of the cleanroom)', ftin(A.PL) + ' plenum, sits at ' + ftin(V.lidTop ? V.lidTop(plan, A) : A.WH), Math.ceil(area * 1.05), 'sq ft', 67);
+    // the white cap over the top of every cleanroom wall, in 12′ lengths, notched round the beam flanges
+    if (V.wallCaps) {
+      const C = V.wallCaps(plan, A); let n = 0, ft = 0, notch = 0;
+      for (const c of C) { n += Math.ceil(c.L / 12 - 1e-6); ft += c.L; notch += c.cuts.length; }
+      if (n) add('Ceiling', 'Wall cap, white, over the top of the wall panels (down 1″ both faces)', '12′ lengths (' + Math.ceil(ft) + ' lin ft)', n, 'ea', 67.3);
+      if (notch) add('Ceiling', 'Wall cap notch round a beam flange (cut in the field)', '', notch, 'ea', 67.31);
+    }
     if (!(plan.ceilingGrid && plan.ceilingGrid.length)) {
       add('Ceiling', 'Ceiling grid (area, approx.)', '', Math.ceil(area), 'sq ft', 63);
       // tee takeoff from the grid as laid out
