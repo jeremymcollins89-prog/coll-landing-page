@@ -729,16 +729,13 @@ class Editor {
       let gone = 0;
       this.edit(P => {
         P.openings.push(o);
-        if (T === 'removable' && (P.grilles || []).length) {
-          const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1, ux = (o.x2 - o.x1) / L, uy = (o.y2 - o.y1) / L, n0 = P.grilles.length;
-          P.grilles = P.grilles.filter(g => {
-            const dx = g.x - o.x1, dy = g.y - o.y1, along = dx * ux + dy * uy, off = Math.abs(dx * uy - dy * ux), hw = Math.max(0.25, +g.w || 20 / 12) / 2;
-            return !(off < (o.t || 0.25) / 2 + 0.2 && along + hw > -0.3 && along - hw < L + 0.3);
-          });
-          gone = n0 - P.grilles.length;
+        if (T === 'removable' && global.Plan3DViewer && global.Plan3DViewer.removableGrilles) {
+          const n0 = (P.grilles || []).filter(g => !g.plenum).length;
+          global.Plan3DViewer.removableGrilles(P);
+          gone = n0 - (P.grilles || []).filter(g => !g.plenum).length;
         }
       });
-      if (gone) this.status(gone + ' grille' + (gone === 1 ? '' : 's') + ' in the way of the removable section taken out.');
+      this.status((gone ? gone + ' return grille' + (gone === 1 ? '' : 's') + ' in the way taken out; ' : '') + 'plenum grilles centred on the header panels.');
       return;
     }
     if (T === 'piece') {
