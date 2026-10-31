@@ -1,0 +1,47 @@
+# Coll Business Solutions LLC
+
+> Coll Business Solutions LLC is a Colorado software company that builds tools for working businesses: Coll Timeclock, a time clock, scheduling and invoicing app for small businesses with hourly teams, and Cleanroom Control, a cleanroom monitoring and fan filter unit (FFU) control system. Contact: collbusinesssolutions@gmail.com
+
+## Products
+
+- [Cleanroom Control](https://collbusinesssolutions.com/cleanroom.html): Cleanroom monitoring and fan filter unit control. A Pyr touchscreen controller in each room plus an app (any web browser, Windows, Android).
+- [Coll Timeclock](https://collbusinesssolutions.com/timeclock.html): Time tracking, scheduling, quotes, invoicing, online payments, inventory and profit reports for small businesses with hourly teams. 14-day free trial, then $9.99/month.
+
+## Other projects (free to use)
+
+- [Coll Plan3D](https://collbusinesssolutions.com/projects.html): Windows app that turns an AutoCAD drawing (DXF or DWG) or a photo of a plan sheet into a 3D model you can walk through: modular cleanrooms, warehouses and houses, with plan sheets and parts lists.
+- [Coll Ledger](https://collbusinesssolutions.com/projects.html): Windows bookkeeping software for independent bookkeepers who look after several small businesses: bank, Square and QuickBooks imports, reconciling, month-end close, client reports and tax-time packages. Books stay on the bookkeeper's computer.
+- [Coll Ledger Academy](https://collbusinesssolutions.com/academy.html): bookkeeping courses with exams and certificates (Professional Bookkeeping; Advanced Accounting & Tax). [Verify a certificate](https://collbusinesssolutions.com/verify.html).
+- [Dino Garden](https://collbusinesssolutions.com/dino-garden/): a calm learning and creativity game for toddlers and preschoolers. No accounts, no ads, works offline.
+- [Marble Atelier](https://collbusinesssolutions.com/marble-atelier/): a calm 3D marble-run game for grown-ups.
+
+## Cleanroom Control facts
+
+- Runs fan filter units: Envirco, Terra Universal ECM, AJ Manufacturing, ebm-papst EC, other Modbus brands, and any 0–10 V fan; up to 32 per controller, found automatically.
+- Monitors room differential pressure, temperature, humidity and particle counts; automatic pressure control adjusts fan speeds to hold a target.
+- Fan modes (Production, Setback, Purge) on a weekly schedule.
+- Alarms on the screen, by email, as phone notifications and on a horn or strobe, with escalation when nobody acknowledges; maintenance mode pauses alarms by room or area.
+- Fan watch: stopped motors, fans that lost power, filter loading and a filter life forecast; fan energy and savings estimates.
+- Records: history and trends, activity log, optional signed changes (password and reason), room logbook, printable reports for audits, weekly and monthly summary emails.
+- Keeps running the room offline and uploads missed readings when it reconnects.
+- Building management systems over Modbus TCP; Ethernet with 2.4 GHz Wi-Fi backup; microSD for local history and a settings backup.
+- Pricing: one-time purchase, no monthly fees for the app, any number of users. Quotes by email.
+- Not a life-safety system; does not by itself make a facility compliant with ISO 14644, GMP or FDA 21 CFR Part 11. Low-cost particle sensors are for trends and alarms; ISO 14644 monitoring uses calibrated Modbus counters (Lighthouse, Met One).
+
+## Coll Timeclock facts
+
+- Employees clock in with a 4-digit PIN, or automatically when they arrive at the shop.
+- Break and long-shift alerts, time off requests, team chat.
+- Job scheduling with push notifications and optimized multi-stop routes.
+- Quotes and invoices with a Pay now link (card or ACH) paid into the business's own Stripe account.
+- Inventory with barcode scanning and pull sheets; expense, gross and net profit reports.
+- Timesheets emailed to the payroll inbox (it does not run payroll itself).
+- Admin app for Windows and Mac, or in any phone browser.
+- 14-day free trial, then $9.99/month; cancel anytime.
+
+## Documents
+
+- [Cleanroom Control Quick Start guide (PDF)](https://collbusinesssolutions.com/cleanroom-setup.pdf)
+- [Cleanroom Control privacy policy](https://collbusinesssolutions.com/cleanroom-privacy.html)
+- [Cleanroom Control terms of service](https://collbusinesssolutions.com/cleanroom-terms.html)
+- [Coll Ledger and Academy privacy policy](https://collbusinesssolutions.com/privacy.html) and [terms of use](https://collbusinesssolutions.com/terms.html)
