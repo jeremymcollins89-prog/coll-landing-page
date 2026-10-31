@@ -205,7 +205,8 @@ function makeSheet(plan, opts) {
   for (const w of A.walls) {
     if (w.piece) continue;
     const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, t = w.t || 0.25;
-    for (let s = 4; s < L - 0.05; s += 4) {
+    for (const s of V.wallModule ? V.wallModule(w, plan) : []) {
+      if (s >= L - 0.05) continue;
       const px = w.x1 + ux * s, py = w.y1 + uy * s;
       if (A.opInfo.some(i => V.segDist(px, py, i.o.x1, i.o.y1, i.o.x2, i.o.y2) < t)) continue;
       line(px - uy * t / 2, py + ux * t / 2, px + uy * t / 2, py - ux * t / 2, `stroke="#111" stroke-width="${lw.thin}"`);
