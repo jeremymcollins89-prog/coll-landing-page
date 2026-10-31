@@ -647,6 +647,26 @@ function removableOf(plan, A, i) {
 /* The grilles on removable wall sections: a 36x36 return grille with damper centred on each removable panel, and a
    plenum grille centred on each header panel over them wide enough for one (as on a full panel in the wall).
    Changes plan.grilles in place; returns how many were taken out and added. */
+/* A grille can't sit where another wall runs into its wall (the joining wall would cover it): true when a wall's
+   end lands on the grille's wall line within the grille's width. */
+function grilleBlocked(plan, g) {
+  const a = +g.a || 0, ux = Math.cos(a), uy = Math.sin(a), hw = Math.max(0.25, +g.w || 20 / 12) / 2;
+  for (const w of plan.walls || []) {
+    if (!isHard(w) || w.id === g.wall) continue;
+    for (const [ex, ey, ox, oy] of [[w.x1, w.y1, w.x2, w.y2], [w.x2, w.y2, w.x1, w.y1]]) {
+      const L = Math.hypot(ox - ex, oy - ey); if (L < 0.5) continue;
+      const vx = (ox - ex) / L, vy = (oy - ey) / L; if (Math.abs(vx * uy - vy * ux) < 0.7) continue;
+      const dx = ex - g.x, dy = ey - g.y, al = dx * ux + dy * uy, off = dx * uy - dy * ux;
+      if (Math.abs(off) <= (+g.t || 0.33) / 2 + 0.25 && Math.abs(al) < hw + (+w.t || 0.33) / 2 + 0.02) return true;
+    }
+  }
+  return false;
+}
+function dropBlocked(plan) {
+  const G = plan.grilles || []; let n = 0;
+  for (let k = G.length - 1; k >= 0; k--) if (grilleBlocked(plan, G[k])) { G.splice(k, 1); n++; }
+  return n;
+}
 function removableGrilles(plan) {
   let A; try { A = analyze(plan); } catch (e) { return { removed: 0, added: 0 }; }
   const G = plan.grilles || (plan.grilles = []); let removed = 0, added = 0;
@@ -659,7 +679,7 @@ function removableGrilles(plan) {
     // the wall this section sits in (for the grilles' wall id and facing)
     let wall = null, bd = 1e9; for (const w of plan.walls || []) { const d = Math.max(segDist(o.x1, o.y1, w.x1, w.y1, w.x2, w.y2), segDist(o.x2, o.y2, w.x1, w.y1, w.x2, w.y2)); if (d < bd) { bd = d; wall = w; } }
     const keepPlenum = G.filter(g => g.plenum && inSpan(g, 0.3)), side = (keepPlenum[0] || G.find(g => wall && g.wall === wall.id) || {}).side || 1, tp = keepPlenum[0] || tmpl;
-    const n0 = G.length; for (let k = G.length - 1; k >= 0; k--) if (inSpan(G[k], 0.3)) G.splice(k, 1); removed += n0 - G.length;
+    const n0 = G.length; for (let k = G.length - 1; k >= 0; k--) if (inSpan(G[k], -0.05)) G.splice(k, 1);   // only grilles that actually overlap the section removed += n0 - G.length;
     // a 36x36 return grille with damper centred on each removable panel
     for (const pn of R.panels || []) {
       const c = (pn.s0 + pn.s1) / 2, gw = Math.min(3, pn.s1 - pn.s0 - 0.25 / 12); if (gw < 1) continue;
@@ -675,6 +695,7 @@ function removableGrilles(plan) {
     }
     removed -= Math.min(removed, keepPlenum.length) * 0; // (plenum grilles in the span are replaced, counted in removed)
   }
+  removed += dropBlocked(plan);
   return { removed, added };
 }
 /* ---------- Pure geometry analysis (no three.js) ---------- */
@@ -1489,7 +1510,8 @@ function fitGrilles(plan) {
   const gone = new Set([].concat(...stuck.map(q => q.ids)));
   if (gone.size) plan.grilles = (plan.grilles || []).filter(g => !gone.has(g.id));
   try { removableGrilles(plan); } catch (e) { /* the walls' grilles still stand */ }
-  return { moved, removed: gone.size, stuck };
+  const blocked = dropBlocked(plan);
+  return { moved, removed: gone.size + blocked, stuck };
 }
 // the points where beams bear on cleanroom walls: Map(wall id → [distance along the wall])
 function beamStuds(plan) {
@@ -6730,5 +6752,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { removableGrilles, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { removableGrilles, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
