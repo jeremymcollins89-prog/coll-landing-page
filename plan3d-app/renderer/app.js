@@ -222,7 +222,7 @@ function updateChrome() {
 /* ---------- 3D ---------- */
 function ensureViewer() {
   if (viewer) return viewer;
-  viewer = Plan3DViewer.mount($('#view3d'), clonePlan(), { superSrc: 'vendor/superrender.js', onSnapshot: (sn) => { ed.edit(P => { P.snaps = (P.snaps || []).concat([sn]); }); toast('Snapshot saved with the plan.', { label: 'Review snapshots', fn: () => snapsDialog() }); } });
+  viewer = Plan3DViewer.mount($('#view3d'), clonePlan(), { airflow: false, superSrc: 'vendor/superrender.js', onSnapshot: (sn) => { ed.edit(P => { P.snaps = (P.snaps || []).concat([sn]); }); toast('Snapshot saved with the plan.', { label: 'Review snapshots', fn: () => snapsDialog() }); } });
   return viewer;
 }
 // the 3D view doesn't need the background drawing or the snapshot pictures (big), so they stay out of its copy
