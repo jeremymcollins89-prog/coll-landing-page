@@ -3215,12 +3215,17 @@ async function exportHtml() {
   const a = await api.getAssets();
   const safe = (s) => s.replace(/<\/script/gi, '<\\/script');
   const S = ensureShare();
+  // the same walkthrough online too: the file shows the link when the app it's opened in can't run the 3D (an
+  // email or Files preview on an iPhone), and the link opens in any browser
+  let online = ''; try { online = await publishLink(); } catch (e) { online = ''; }
   const plan = linkPlan(); plan.share = { id: S.id };  // the walkthrough can send comments, never read them
-  plan.ver = recordPublished(); ed.dirty = true;
+  const pubs = ed.plan.published || []; plan.ver = online && pubs.length ? pubs[pubs.length - 1].ver : recordPublished(); ed.dirty = true;
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(plan.name)} — 3D Walkthrough</title>
-<style>html,body{margin:0;height:100%;background:#121719}#v{position:fixed;inset:0}
+<style>html,body{margin:0;height:100%;background:#121719}#v{position:fixed;top:0;right:0;bottom:0;left:0}
+#p3fb{position:fixed;top:0;right:0;bottom:0;left:0;display:flex;align-items:center;justify-content:center;padding:24px;font:16px/1.5 -apple-system,system-ui,Segoe UI,Arial,sans-serif;color:#e8edef;background:#121719;text-align:center}
+#p3fb .bx{max-width:420px}#p3fb h1{font-size:20px;margin:0 0 10px}#p3fb a{display:inline-block;margin-top:14px;padding:12px 18px;border-radius:12px;background:#f2c84b;color:#1a1f22;font-weight:700;text-decoration:none}#p3fb p{color:#aab5ba;margin:8px 0}
 :root{--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px)}
 /* a phone or tablet: the same layout as the online phone viewer */
 #v.p3v-touch .p3v-right > .p3v-look:not(.p3v-lidb):not(.p3v-air){display:none}
@@ -3239,12 +3244,13 @@ async function exportHtml() {
 #v .p3v-joy{left:calc(14px + var(--sl));bottom:calc(52px + var(--sb));width:112px;height:112px}#v .p3v-joy b{display:none}#v .p3v-hint{font-size:13px}}
 </style></head>
 <body><div id="v"></div>
+<div id="p3fb"><div class="bx"><h1>${esc(plan.name)}: 3D walkthrough</h1><p>Loading the 3D…</p><p>If this stays on screen, the app showing this file can't run the 3D (an email or file preview does this on iPhones and iPads). Open the file in Safari, Chrome, Edge or Firefox${online ? ', or open it online:' : '.'}</p>${online ? `<a href="${esc(online)}">Open the 3D walkthrough</a>` : ''}</div></div>
 <script>${safe(a.three)}</script>
 <script>${safe(a.orbit)}</script>
 <script>${safe(a.post || '')}</script>
 <script>${safe(a.exporter || '')}</script>
 <script>${safe(a.viewer)}</script>
-<script>Plan3DViewer.mount(document.getElementById('v'), ${safe(JSON.stringify(plan))}, { joystick: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches), comments: true, startOutside: true, startMode: 'doll', views: ['doll', 'plenum', 'walk'], airflow: false, measure: false });</script>
+<script>try { Plan3DViewer.mount(document.getElementById('v'), ${safe(JSON.stringify(plan))}, { joystick: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches), comments: true, startOutside: true, startMode: 'doll', views: ['doll', 'plenum', 'walk'], airflow: false, measure: false }); document.getElementById('p3fb').remove(); } catch (e) { var f = document.getElementById('p3fb'); if (f) f.querySelector('p').textContent = 'This browser couldn\u2019t start the 3D. Try Safari, Chrome, Edge or Firefox' + ('${online ? ', or the online link below.' : '.'}'); console.error(e); }</script>
 <!-- Made with Coll Plan3D · Coll Business Solutions LLC -->
 </body></html>`;
   const p = await api.exportFile(html, plan.name + ' walkthrough', 'html');
