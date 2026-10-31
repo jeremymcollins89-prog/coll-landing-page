@@ -644,7 +644,7 @@ function removableOf(plan, A, i) {
   const head = Math.min(i.hard ? Math.min(ceilHere, i.wallH || ceilHere) : (i.wallH || A.H), o.head || 7);
   return removableLayout(i.len, head, i.wallH || A.H);
 }
-/* The grilles on removable wall sections: no low return grille in the removable panels (they come out), and a
+/* The grilles on removable wall sections: a 36x36 return grille with damper centred on each removable panel, and a
    plenum grille centred on each header panel over them wide enough for one (as on a full panel in the wall).
    Changes plan.grilles in place; returns how many were taken out and added. */
 function removableGrilles(plan) {
@@ -660,6 +660,12 @@ function removableGrilles(plan) {
     let wall = null, bd = 1e9; for (const w of plan.walls || []) { const d = Math.max(segDist(o.x1, o.y1, w.x1, w.y1, w.x2, w.y2), segDist(o.x2, o.y2, w.x1, w.y1, w.x2, w.y2)); if (d < bd) { bd = d; wall = w; } }
     const keepPlenum = G.filter(g => g.plenum && inSpan(g, 0.3)), side = (keepPlenum[0] || G.find(g => wall && g.wall === wall.id) || {}).side || 1, tp = keepPlenum[0] || tmpl;
     const n0 = G.length; for (let k = G.length - 1; k >= 0; k--) if (inSpan(G[k], 0.3)) G.splice(k, 1); removed += n0 - G.length;
+    // a 36x36 return grille with damper centred on each removable panel
+    for (const pn of R.panels || []) {
+      const c = (pn.s0 + pn.s1) / 2, gw = Math.min(3, pn.s1 - pn.s0 - 0.25 / 12); if (gw < 1) continue;
+      G.push({ id: uid(), x: o.x1 + ux * c, y: o.y1 + uy * c, a: Math.atan2(uy, ux), t: i.t || 0.25, wall: wall ? wall.id : undefined, side, w: gw, h: Math.min(3, (pn.y1 || 4) - 1), sill: 0.5, damper: true, plenum: false, flow: 'in' });
+      added++;
+    }
     if (!(R.top - R.head > 0.05)) continue;
     for (const hp of R.headers) {
       const gw = Math.max(0.25, +tp.w || 2.75), clear = hp.s1 - hp.s0; if (clear < gw + 0.25 / 12) continue;
@@ -1055,6 +1061,21 @@ function footprint(A, all) {
     }
   }
   rects.length = 0; rects.push(...snapped);
+  // two rectangles snapped to different lines (one to the line closing an open side, one to a cell edge) can leave
+  // a thin strip between them where the floor and ceiling are missing: fill it where it's inside
+  const inAt = (x, z) => { const i = Math.floor((x - x0) / cell), j = Math.floor((z - z0) / cell); return i >= 0 && j >= 0 && i < nx && j < nz && !!inside[j * nx + i]; };
+  const fill = [];
+  for (const a of rects) for (const b of rects) {
+    if (a === b) continue;
+    for (const ax of [0, 1]) {   // 0: gap along z (a below b), 1: gap along x (a left of b)
+      const g0 = ax ? a[2] : a[3], g1 = ax ? b[0] : b[1]; if (!(g1 - g0 > 0.01 && g1 - g0 < 0.75)) continue;
+      const lo = Math.max(ax ? a[1] : a[0], ax ? b[1] : b[0]), hi = Math.min(ax ? a[3] : a[2], ax ? b[3] : b[2]); if (hi - lo < 0.3) continue;
+      let ok = true; for (let t = lo + 0.1; t < hi - 0.05 && ok; t += 0.25) ok = ax ? inAt((g0 + g1) / 2, t) : inAt(t, (g0 + g1) / 2);
+      if (ok && !rects.concat(fill).some(r => (ax ? r[0] < g1 - 0.005 && r[2] > g0 + 0.005 && r[1] < hi - 0.005 && r[3] > lo + 0.005 : r[1] < g1 - 0.005 && r[3] > g0 + 0.005 && r[0] < hi - 0.005 && r[2] > lo + 0.005)))
+        fill.push(ax ? [g0, lo, g1, hi] : [lo, g0, hi, g1]);
+    }
+  }
+  rects.push(...fill);
   const fp = { cell, x0, z0, nx, nz, inside, wall, rects, area: n * cell * cell,
     has(x, z) { const i = Math.floor((x - x0) / cell), j = Math.floor((z - z0) / cell); return i >= 0 && j >= 0 && i < nx && j < nz && !!inside[j * nx + i]; } };
   A[KEY] = fp;
