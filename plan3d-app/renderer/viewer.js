@@ -664,7 +664,7 @@ function grilleBlocked(plan, g) {
 }
 function dropBlocked(plan) {
   const G = plan.grilles || []; let n = 0;
-  for (let k = G.length - 1; k >= 0; k--) if (grilleBlocked(plan, G[k])) { G.splice(k, 1); n++; }
+  for (let k = G.length - 1; k >= 0; k--) if (!G[k].keep && grilleBlocked(plan, G[k])) { G.splice(k, 1); n++; }   // keep: placed there on purpose
   return n;
 }
 /* Plenum grilles sit below the wall cap: the grille's top 1/4" under the cap's legs, and never down into the
@@ -758,6 +758,19 @@ function opTopFor(plan, host, o, t, WH, PL) {
   const mx = (o.x1 + o.x2) / 2, mz = (o.y1 + o.y2) / 2;
   let h = null;
   if (host) { const L = Math.hypot(host.x2 - host.x1, host.y2 - host.y1) || 1, s = (mx - host.x1) * (host.x2 - host.x1) / L + (mz - host.y1) * (host.y2 - host.y1) / L; const own = sectionTop(host, s, null); if (own != null) h = own; }
+  else {
+    // a door standing between walls with no wall of its own: as tall as the cleanroom walls it meets at its ends
+    for (const w of plan.walls || []) {
+      if (!isHard(w)) continue; const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1;
+      for (const [px, pz] of [[o.x1, o.y1], [o.x2, o.y2]]) {
+        if (segDist(px, pz, w.x1, w.y1, w.x2, w.y2) > (w.t || 0.25) / 2 + 0.6) continue;
+        const sAt = Math.max(0, Math.min(L, (px - w.x1) * (w.x2 - w.x1) / L + (pz - w.y1) * (w.y2 - w.y1) / L)), own = sectionTop(w, sAt, null);
+        if (own != null) h = Math.max(h == null ? 0 : h, own);
+      }
+    }
+    // none at its ends: the nearest cleanroom wall's height
+    if (h == null) { let bd = 1e9; for (const w of plan.walls || []) { if (!isHard(w)) continue; const d = segDist(mx, mz, w.x1, w.y1, w.x2, w.y2); if (d < bd && d < 20) { const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, sAt = Math.max(0, Math.min(L, (mx - w.x1) * (w.x2 - w.x1) / L + (mz - w.y1) * (w.y2 - w.y1) / L)), own = sectionTop(w, sAt, null); if (own != null) { bd = d; h = own; } } } }
+  }
   for (const c of plan.ceilAreas || []) {
     if (!c || !c.raise || !(c.ceiling > 0)) continue;
     const m = (t || 0.25) / 2 + 0.3;
