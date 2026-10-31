@@ -615,7 +615,26 @@ function toIfc(plan, opts) {
     if (!V.beamSize) continue;
     const q = V.beamSeat(plan, A, bm), L = Math.hypot(q.x2 - q.x1, q.y2 - q.y1); if (L < 0.2) continue;
     const Z = V.beamSize(bm), d = Z.d / 12, bf = Z.bf / 12, tf = Math.max(0.025, Z.tf / 12), tw = Math.max(0.02, Z.tw / 12), y0 = q.bot, nm = (bm.size || 'W12x26').replace('x', '×');
-    put('IFCBEAM', 'Steel beam ' + nm + ', ' + V.fmtFt(L), 'Steel wide-flange beam (I-beam)', shape([seg(q.x1, q.y1, q.x2, q.y2, y0, y0 + tf, bf, S.struct), seg(q.x1, q.y1, q.x2, q.y2, y0 + d - tf, y0 + d, bf, S.struct), seg(q.x1, q.y1, q.x2, q.y2, y0 + tf, y0 + d - tf, tw, S.struct)]), ',.BEAM.', S.struct);
+    // hung between the walls (as the 3D view draws it): the top flange runs over the walls to their outside faces,
+    // the web and bottom flange stop at the inside faces
+    const ux = (q.x2 - q.x1) / L, uy = (q.y2 - q.y1) / L, i0 = A.PL > 0 ? q.in0 || 0 : 0, i1 = A.PL > 0 ? q.in1 || 0 : 0;
+    const ax = q.x1 + ux * i0, ay = q.y1 + uy * i0, bx = q.x2 - ux * i1, by = q.y2 - uy * i1;
+    put('IFCBEAM', 'Steel beam ' + nm + ', ' + V.fmtFt(L), 'Steel wide-flange beam (I-beam)', shape([seg(ax, ay, bx, by, y0, y0 + tf, bf, S.struct), seg(q.x1, q.y1, q.x2, q.y2, y0 + d - tf, y0 + d, bf, S.struct), seg(ax, ay, bx, by, y0 + tf, y0 + d - tf, tw, S.struct)]), ',.BEAM.', S.struct);
+  }
+  // the white wall caps over the top of every cleanroom wall (12′ lengths, notched round the beam flanges)
+  if (V.wallCaps && V.wallCapSolids && !A.empty) {
+    const capSt = S.capWhite || (S.capWhite = S.panelWhite || S.white), items = [];
+    for (const c of V.wallCaps(plan, A)) for (const q of V.wallCapSolids(c)) items.push(seg(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, capSt));
+    if (items.length) put('IFCMEMBER', 'Wall caps, white (12′ lengths)', 'Coll wall cap over the top of the wall panels', shape(items), ',.NOTDEFINED.', capSt);
+  }
+  // fixture whips (OnePass), box to box over the units
+  if (V.whipLines) {
+    const WL = V.whipLines(plan, A);
+    if (WL.length) {
+      const items = []; for (const r of WL) for (let k = 1; k < r.pts.length; k++) { const a2 = r.pts[k - 1], b2 = r.pts[k]; if (Math.abs(a2[1] - b2[1]) > 0.01) items.push(box(a2[0] - 0.035, a2[2] - 0.035, a2[0] + 0.035, a2[2] + 0.035, Math.min(a2[1], b2[1]), Math.max(a2[1], b2[1]), S.galv)); else items.push(seg(a2[0], a2[2], b2[0], b2[2], a2[1] - 0.035, a2[1] + 0.035, 0.07, S.galv)); }
+      const nx = plan.whips.reduce((n, w) => n + (w.ext || 0), 0);
+      put('IFCCABLESEGMENT', 'Fixture whips, OnePass OC1 ' + (plan.whipVolt == 277 ? 277 : 120) + 'V: ' + WL.length + ' × 9′' + (nx ? ', ' + nx + ' × 12′ extensions' : ''), 'Acuity RELOC OnePass OC1, 1-port, flexible steel', shape(items), ',.CABLESEGMENT.', S.galv);
+    }
   }
   // return grilles (and dampers) set into wall panels with the Grille tool: louvred faces on both sides of the
   // panel at their own size and height, a damper frame round them when there is one
@@ -651,7 +670,7 @@ function toIfc(plan, opts) {
     // the plenum lid: the top of the cleanroom, over the plenum
     // (a roof-type slab, so in Revit it hides with Roofs in Visibility/Graphics while the grid ceiling stays,
     // like the Plenum view)
-    const lName = 'Plenum lid, top at ' + V.fmtFt(WH) + ' (' + V.fmtFt(A.PL) + ' plenum)';
+    const lName = 'Plenum lid, steel deck at ' + V.fmtFt(V.lidTop ? V.lidTop(plan, A) : WH) + ' (' + V.fmtFt(A.PL) + ' plenum)';
     // a lid you placed (plan.deckPieces) replaces the automatic one: each piece at the heights it sits at
     // over the walls and beams, exactly as the 3D view builds it, and the step panels between heights
     const DK = V.deckShapes ? V.deckShapes(plan) : [];
@@ -676,7 +695,7 @@ function toIfc(plan, opts) {
       });
       const steps = (V.deckSteps ? V.deckSteps(plan, A, WH) : []).filter(q => q.y1 - q.y0 >= 0.05);
       if (steps.length) put('IFCPLATE', 'Lid step panels', 'Coll hardwall panels closing the steps in the lid', shape(steps.map(q => seg(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t || 0.25, S.white))), ',.NOTDEFINED.', S.white);
-    } else if (A.PL > 0) areas.forEach((ar, idx) => put('IFCSLAB', areas.length > 1 ? `${lName} (${idx + 1})` : lName, 'Coll cleanroom top over the plenum', shape([slab(ar, WH, WH + 0.17, S.white)]), ',.ROOF.', S.white));
+    } else if (A.PL > 0) { const LT = V.lidTop ? V.lidTop(plan, A) : WH; areas.forEach((ar, idx) => put('IFCSLAB', areas.length > 1 ? `${lName} (${idx + 1})` : lName, 'Coll cleanroom lid, 1½″ steel deck, galvanized', shape([slab(ar, LT, LT + 0.17, S.deck)]), ',.ROOF.', S.deck)); }
     // the T-grid just under the tiles: 15/16″ tees on the 2′ × 4′ layout (or the imported ceiling drawing's
     // own grid), only where there's ceiling
     // each tee: the 15/16″ face below the tiles and its web standing up 1½″ into the plenum
