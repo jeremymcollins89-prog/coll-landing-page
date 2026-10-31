@@ -725,17 +725,14 @@ class Editor {
       else if (T === 'overhead') { const W = pv.wall, V = global.Plan3DViewer, wh = W && V ? (V.isHard(W) ? (this.plan.ceiling || 8) : V.isFrame(W) ? (W.h || this.plan.ceiling || 8) : V.shellHeight(this.plan, W)) : 16; o.head = Math.max(7, Math.min(14, wh - 2)); }
       else if ((T === 'door' || T === 'door2') && (!pv.wall || !global.Plan3DViewer || global.Plan3DViewer.isHard(pv.wall))) { o.style = 'cr'; o.leafW = 3; o.head = 86 / 12; }
       else o.head = 7;
-      // a removable wall section takes out any grille in its way (and the plenum grille over it)
-      let gone = 0;
+      // a removable wall section re-does the grilles in its span: centred return grilles below, plenum grilles above
       this.edit(P => {
         P.openings.push(o);
         if (T === 'removable' && global.Plan3DViewer && global.Plan3DViewer.removableGrilles) {
-          const n0 = (P.grilles || []).filter(g => !g.plenum).length;
           global.Plan3DViewer.removableGrilles(P);
-          gone = n0 - (P.grilles || []).filter(g => !g.plenum).length;
         }
       });
-      this.status((gone ? gone + ' return grille' + (gone === 1 ? '' : 's') + ' in the way taken out; ' : '') + 'plenum grilles centred on the header panels.');
+      this.status('Removable section: 36x36 return grilles with damper centred on its panels, plenum grilles centred on the header panels.');
       return;
     }
     if (T === 'piece') {
