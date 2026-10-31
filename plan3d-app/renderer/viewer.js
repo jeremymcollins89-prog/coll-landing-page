@@ -21,7 +21,7 @@ const CSS = `
 .p3v-modes{display:flex;border-radius:999px;padding:3px;gap:2px}
 .p3v-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
 .p3v-mlabels{position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;overflow:hidden}.p3v-mlab{position:absolute;transform:translate(-50%,-50%);background:#ff9a1f;color:#1a1206;font:700 12.5px/1.2 ui-monospace,Consolas,monospace;padding:4px 7px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.35)}.p3v-mlab small{display:block;font-weight:600;font-size:10.5px;opacity:.8}
-.p3v-mhover{position:absolute;pointer-events:none;transform:translate(14px,14px);background:rgba(20,26,29,.92);color:#e8edef;font:600 12px/1.35 system-ui,sans-serif;padding:6px 9px;border-radius:8px;white-space:nowrap}.p3v-mhover b{color:#ffb547}
+.p3v-measuring .p3v-top>*,.p3v-measuring .p3v-panel:not(.p3v-meas){pointer-events:none}.p3v-measuring .p3v-panel:not(.p3v-meas){opacity:.18}.p3v-measuring .p3v-meas{pointer-events:auto}.p3v-mhover{position:absolute;pointer-events:none;transform:translate(14px,14px);background:rgba(20,26,29,.92);color:#e8edef;font:600 12px/1.35 system-ui,sans-serif;padding:6px 9px;border-radius:8px;white-space:nowrap}.p3v-mhover b{color:#ffb547}
 .p3v-ud{position:absolute;right:18px;bottom:150px;display:flex;flex-direction:column;gap:8px;pointer-events:auto}.p3v-ud button{width:54px;height:54px;border-radius:50%;border:0;background:rgba(20,26,29,.8);color:#fff;font-size:20px}
 .p3v-snapdlg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,90%);padding:14px;border-radius:14px;display:flex;flex-direction:column;gap:10px;pointer-events:auto;z-index:5}.p3v-snapdlg b{color:#fff;font-size:15px}.p3v-snapdlg img{width:100%;border-radius:8px}.p3v-snapdlg textarea{background:#11171a;color:#e8edef;border:1px solid #3a464c;border-radius:8px;padding:8px;font:13px system-ui,sans-serif;resize:vertical}.p3v-snapdlg div{display:flex;justify-content:flex-end;gap:8px}.p3v-snapdlg button{border:0;border-radius:8px;padding:8px 14px;font:600 13px system-ui,sans-serif;background:#2b353a;color:#e8edef;cursor:pointer}.p3v-snapdlg button.pri{background:#f2c84b;color:#1a1606}
 .p3v-meas[aria-pressed=true]{background:#ff9a1f;color:#1a1206}
@@ -1588,9 +1588,10 @@ function wallCaps(plan, A) {
   A = A || analyze(plan);
   const beams = A.PL > 0 ? (plan.beams || []).map(b => ({ q: beamSeat(plan, A, b), bf: beamSize(b).bf / 12 })).filter(o => o.q.onWalls) : [];
   const caps = (A.pieces || []).filter(p => p.hard && !p.frame).map(p => capPiece(p, beams));
-  // the cap carries on over removable sections (their header runs up to the top of the wall)
+  // the cap carries on over doors, glass and removable sections in cleanroom walls (their headers run up to the
+  // top of the wall)
   for (const i of A.opInfo || []) {
-    if (!i.o || i.o.type !== 'removable') continue;
+    if (!i.o || !i.hard || i.frame) continue;
     const o = i.o; caps.push(capPiece({ id: 'rem', x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t || 0.25, h: i.wallH || A.WH || A.H, len: i.len, hard: true }, beams));
   }
   return caps;
@@ -6024,7 +6025,7 @@ function mount(container, plan, opts) {
   function dotAt(p) { const m = new THREE.Mesh(mDotG, mDot); m.position.copy(p); m.renderOrder = 21; mGroup.add(m); return m; }
   function lineOf(a, b) { const g = new THREE.BufferGeometry().setFromPoints([a, b]), l = new THREE.Line(g, mLine); l.renderOrder = 21; mGroup.add(l); return l; }
   function setMeasure(on) { measureOn = on; measBtn.setAttribute('aria-pressed', String(on)); if (!on) { cancelPending(); mHover.hidden = true; mSnapDot.visible = false; } canvas.style.cursor = on ? 'crosshair' : ''; if (on) dismissHint(); }
-  function cancelPending() { if (!mPending) return; mGroup.remove(mPending.dot); if (mRubber) { mGroup.remove(mRubber.line); mRubber.el.remove(); mRubber = null; } mPending = null; }
+  function cancelPending() { container.classList.remove('p3v-measuring'); if (!mPending) return; mGroup.remove(mPending.dot); if (mRubber) { mGroup.remove(mRubber.line); mRubber.el.remove(); mRubber = null; } mPending = null; }
   function refreshClear() { mClearBtn.hidden = !meas.length; }
   measBtn.addEventListener('click', (e) => { e.stopPropagation(); setMeasure(!measureOn); });
   // a customer viewer (shared link, phone, exported file) has no measuring tool
@@ -6077,6 +6078,21 @@ function mount(container, plan, opts) {
       const E = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]], seg = new THREE.Line3(), q = new THREE.Vector3();
       for (const [a, b] of E) { seg.set(C[a], C[b]); seg.closestPointToPoint(hit.point, true, q); consider(q, 'Edge · ' + name, 2, 10); }
     }
+    // a cleanroom wall: the edges of its stud posts (the panels and studs are one face in 3D, so they come from the
+    // wall's stud layout: each post is 3 in wide, centred on its joint) and the stud centres
+    if (pc.ref && pc.ref.kind === 'wall' && plan) {
+      const w = (plan.walls || []).find(q => q.id === pc.ref.id);
+      if (w && isHard(w)) {
+        const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uz = (w.y2 - w.y1) / L, sh = (hit.point.x - w.x1) * ux + (hit.point.z - w.y1) * uz;
+        let J = []; try { J = wallModule(w, plan) || []; } catch (e) { J = []; }
+        const at = (s2) => new THREE.Vector3(hit.point.x + ux * (s2 - sh), hit.point.y, hit.point.z + uz * (s2 - sh));
+        for (const j of J) {
+          if (Math.abs(j - sh) > 3) continue;
+          consider(at(j - 1.5 / 12), 'Stud edge · ' + name, 3, 14); consider(at(j + 1.5 / 12), 'Stud edge · ' + name, 3, 14);
+          consider(at(j), 'Stud centre · ' + name, 2, 8);
+        }
+      }
+    }
     // the whole piece: its highest point and its bottom, right above / below where you're pointing (and its
     // top centre), so "top of the FFU" is one click
     if (pc.obj) { const box = new THREE.Box3().setFromObject(pc.obj);
@@ -6111,18 +6127,21 @@ function mount(container, plan, opts) {
       if (pc && pc.obj) { const box = new THREE.Box3().setFromObject(pc.obj), sz = box.getSize(new THREE.Vector3()); html += `<br>${fIn(Math.max(sz.x, sz.z))} × ${fIn(Math.min(sz.x, sz.z))} × ${fIn(sz.y)} high · top at ${fIn(Math.max(0, box.max.y))}`; }
       html += `<br><span style="opacity:.75">height here ${fIn(Math.max(0, sn.p.y))} · click to start measuring</span>`;
     }
+    container.classList.toggle('p3v-measuring', !!mPending);
     mHover.innerHTML = html; mHover.style.left = (cx - r.left) + 'px'; mHover.style.top = (cy - r.top) + 'px'; mHover.hidden = false;
     // keep the tip clear of the measurement being drawn (and the other measurement labels): try below-right of the
     // pointer, then below-left, above-right, above-left
     const labs = [...mLabels.children].map(e => e.getBoundingClientRect()).filter(q => q.width);
     const W = mHover.offsetWidth, Hh = mHover.offsetHeight, G = 14, cw = r.width, ch = r.height;
     const spots = [[G, G], [-W - G, G], [G, -Hh - G], [-W - G, -Hh - G]];
-    let pick = spots[0], best = 1e18;
+    let pick = spots[0], best = 1e18; const s0 = mPending ? toScreen(mPending.p) : null;
     for (const [dx, dy] of spots) {
       const x0 = cx + dx, y0 = cy + dy, x1 = x0 + W, y1 = y0 + Hh;
       let over = 0; for (const q of labs) over += Math.max(0, Math.min(x1, q.right) - Math.max(x0, q.left)) * Math.max(0, Math.min(y1, q.bottom) - Math.max(y0, q.top));
       const off = Math.max(0, r.left - x0) + Math.max(0, x1 - r.left - cw) + Math.max(0, r.top - y0) + Math.max(0, y1 - r.top - ch);
-      const sc = over + off * 400; if (sc < best - 1e-6) { best = sc; pick = [dx, dy]; }
+      // with a measurement going, keep it off the way the line is heading (the tip goes on the side you came from)
+      let ahead = 0; if (s0) { const mx = (x0 + x1) / 2 - cx, my = (y0 + y1) / 2 - cy, tx = cx - s0.x, ty = cy - s0.y, tl = Math.hypot(tx, ty); if (tl > 4) ahead = Math.max(0, (mx * tx + my * ty) / tl) * W * Hh * 0.05; }
+      const sc = over + off * 400 + ahead; if (sc < best - 1e-6) { best = sc; pick = [dx, dy]; }
     }
     mHover.style.transform = 'translate(' + pick[0] + 'px,' + pick[1] + 'px)';
   }
@@ -6134,7 +6153,7 @@ function mount(container, plan, opts) {
     const a = mPending.p, el = document.createElement('div'); el.className = 'p3v-mlab'; el.innerHTML = mLabelHTML(a, p); mLabels.appendChild(el);
     meas.push({ a, b: p, line: lineOf(a, p), da: mPending.dot, db: dotAt(p), el });
     if (mRubber) { mGroup.remove(mRubber.line); mRubber.el.remove(); mRubber = null; }
-    mPending = null; refreshClear();
+    mPending = null; refreshClear(); container.classList.remove('p3v-measuring');
   }
   const mTmp = new THREE.Vector3();
   function placeLabel(el, a, b) {
