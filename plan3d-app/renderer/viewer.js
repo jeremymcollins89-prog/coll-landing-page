@@ -1301,7 +1301,11 @@ const WALL_CAP = { up: 0.03, down: 1 / 12, over: 0.015 };
 const WMOD = new WeakMap();
 function wallModule(w, plan) {
   const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), def = () => { const o = []; for (let m = 4; m < L - 1e-6; m += 4) o.push(m); return o; };
-  if (!plan || plan.studsUnderBeams === false || !(plan.beams || []).length || w.piece) return def();
+  // square walls sit on one building-wide grid: studs 48″ on centre from the building's corner, so walls facing
+  // each other have their studs (and panels) lined up across the room and a beam set on a stud lands on a stud on
+  // both sides
+  if (plan && plan.studGrid !== false && !w.piece) { const g = gridStuds(w, plan); if (g) return g; }
+  if (!plan || plan.studsUnderBeams !== true || !(plan.beams || []).length || w.piece) return def();
   const sig = JSON.stringify([plan.beams, (plan.walls || []).map(q => [q.id, q.x1, q.y1, q.x2, q.y2, q.t, q.type]), plan.ceiling, plan.plenum]);
   let C = WMOD.get(plan); if (!C || C.sig !== sig) { C = { sig, fixed: beamStuds(plan) }; WMOD.set(plan, C); }
   const F = (C.fixed.get(w.id) || []).filter(s => s > 0.35 && s < L - 0.35).sort((a, b) => a - b);
@@ -1350,6 +1354,44 @@ function wallStuds(L, F, K, need, ends) {
   if (dp[N][c] >= INF) { const o = []; for (let m = 4; m < L - 1e-6; m += 4) o.push(m); return o; }
   const J = []; for (let k = N; k > 0;) { const j = fr[k][c], cc = fc[k][c]; if (j > 0) J.push(P[j]); k = j; c = cc; }
   return J.reverse();
+}
+// the building grid's origin, one for each direction: the 48″ grid placed (on a ¼″ step) where it gives the most
+// grille spots a panel wide enough to sit centred on, then the most full panels, then the fewest short ones
+const SGRID = new WeakMap();
+function gridOrigin(plan) {
+  const H = (plan.walls || []).filter(q => isHard(q) && !q.piece);
+  const sig = JSON.stringify([H.map(q => [q.x1, q.y1, q.x2, q.y2]), (plan.grilles || []).map(g => g.wall).sort()]);
+  const c = SGRID.get(plan); if (c && c.sig === sig) return c.o;
+  let o = null;
+  if (H.length) {
+    const pick = (alongX) => {
+      const W = H.filter(q => alongX ? Math.abs(q.y2 - q.y1) < 0.02 : Math.abs(q.x2 - q.x1) < 0.02).map(q => {
+        const cols = grilleCols(q, plan); return { lo: Math.min(alongX ? q.x1 : q.y1, alongX ? q.x2 : q.y2), hi: Math.max(alongX ? q.x1 : q.y1, alongX ? q.x2 : q.y2), k: cols.length, need: cols.length ? Math.max(...cols.map(x => x.w)) + 3.25 / 12 : 0 };
+      });
+      const base = Math.min(...H.map(q => alongX ? Math.min(q.x1, q.x2) : Math.min(q.y1, q.y2)));
+      let best = base, bs = -1e18;
+      for (let s4 = 0; s4 < 192; s4++) {
+        const org = base + s4 / 48; let sc = 0;
+        for (const w of W) {
+          const J = [w.lo]; for (let m = org + Math.ceil((w.lo - org) / 4 - 1e-6) * 4; m < w.hi - 1e-6; m += 4) if (m - w.lo >= 0.3 && w.hi - m >= 0.3) J.push(m); J.push(w.hi);
+          let big = 0, full = 0, small = 0; for (let i = 0; i + 1 < J.length; i++) { const wd = J[i + 1] - J[i]; if (w.need && wd >= w.need - 1e-6) big++; if (Math.abs(wd - 4) < 0.01) full++; if (wd < 2) small++; }
+          sc += 1000 * Math.min(big, w.k) + 10 * full - small;
+        }
+        if (sc > bs + 1e-9) { bs = sc; best = org; }
+      }
+      return best;
+    };
+    o = { x: pick(true), y: pick(false) };
+  }
+  SGRID.set(plan, { sig, o }); return o;
+}
+function gridStuds(w, plan) {
+  const o = gridOrigin(plan); if (!o) return null;
+  const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), alongX = Math.abs(w.y2 - w.y1) < 0.02, alongY = Math.abs(w.x2 - w.x1) < 0.02;
+  if (!alongX && !alongY) return null;
+  const a = alongX ? w.x1 : w.y1, b = alongX ? w.x2 : w.y2, org = alongX ? o.x : o.y, lo = Math.min(a, b), hi = Math.max(a, b), out = [];
+  for (let m = org + Math.ceil((lo - org) / 4 - 1e-6) * 4; m < hi - 1e-6; m += 4) { if (m - lo < 0.3 || hi - m < 0.3) continue; out.push(Math.abs(m - a)); }
+  return out.sort((x, y) => x - y).filter(v => v > 0 && v < L);
 }
 // the grille spots along a wall (a low return and the plenum grille over it count as one): [{ c, w }]
 function grilleCols(w, plan) {
