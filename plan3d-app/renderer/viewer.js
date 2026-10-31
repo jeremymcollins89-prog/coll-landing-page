@@ -672,6 +672,8 @@ function removableGrilles(plan) {
   const G = plan.grilles || (plan.grilles = []); let removed = 0, added = 0;
   const tmpl = G.find(g => g.plenum) || { w: 2.75, h: 2.75, sill: (A.WH || A.H) - 0.375 - 2.75, damper: false, flow: 'out' };
   const uid = () => Math.random().toString(36).slice(2, 10);
+  const rems = (A.opInfo || []).filter(i => i.o.type === 'removable');
+  const inRem = g => rems.some(i => { const o = i.o, L = i.len || 1, ux = (o.x2 - o.x1) / L, uy = (o.y2 - o.y1) / L, dx = g.x - o.x1, dy = g.y - o.y1, al = dx * ux + dy * uy; return Math.abs(dx * uy - dy * ux) < (i.t || 0.25) / 2 + 0.2 && al > -0.3 && al < L + 0.3; });
   for (const i of A.opInfo || []) {
     if (i.o.type !== 'removable') continue;
     const o = i.o, L = i.len || 1, ux = (o.x2 - o.x1) / L, uy = (o.y2 - o.y1) / L, R = removableOf(plan, A, i);
@@ -687,10 +689,13 @@ function removableGrilles(plan) {
       added++;
     }
     if (!(R.top - R.head > 0.05)) continue;
+    // match the plenum grilles on the regular panels of this wall (nearest one outside the section)
+    let refSill = null, rd = 1e9;
+    for (const g of G) { if (!g.plenum || inRem(g) || (wall && g.wall !== wall.id && segDist(g.x, g.y, o.x1, o.y1, o.x2, o.y2) > 30)) continue; const d = Math.hypot(g.x - (o.x1 + o.x2) / 2, g.y - (o.y1 + o.y2) / 2); if (d < rd) { rd = d; refSill = +g.sill; } }
     for (const hp of R.headers) {
       const gw = Math.max(0.25, +tp.w || 2.75), clear = hp.s1 - hp.s0; if (clear < gw + 0.25 / 12) continue;
       const gh = Math.min(+tp.h || 2.75, R.top - R.head - 0.25), c = (hp.s0 + hp.s1) / 2; if (gh < 0.5) continue;
-      G.push({ id: uid(), x: o.x1 + ux * c, y: o.y1 + uy * c, a: Math.atan2(uy, ux), t: i.t || 0.25, wall: wall ? wall.id : undefined, side, w: gw, h: gh, sill: Math.max(R.head + 0.1, R.top - 0.375 - gh), damper: false, plenum: true, flow: tp.flow || 'out' });
+      G.push({ id: uid(), x: o.x1 + ux * c, y: o.y1 + uy * c, a: Math.atan2(uy, ux), t: i.t || 0.25, wall: wall ? wall.id : undefined, side, w: gw, h: gh, sill: Math.max(R.head + 0.1, Math.min(R.top - gh - 0.01, refSill != null ? refSill : R.top - 0.125 - gh)), damper: false, plenum: true, flow: tp.flow || 'out' });
       added++;
     }
     removed -= Math.min(removed, keepPlenum.length) * 0; // (plenum grilles in the span are replaced, counted in removed)
@@ -1563,7 +1568,13 @@ function wallCapSolids(c) {
 function wallCaps(plan, A) {
   A = A || analyze(plan);
   const beams = A.PL > 0 ? (plan.beams || []).map(b => ({ q: beamSeat(plan, A, b), bf: beamSize(b).bf / 12 })).filter(o => o.q.onWalls) : [];
-  return (A.pieces || []).filter(p => p.hard && !p.frame).map(p => capPiece(p, beams));
+  const caps = (A.pieces || []).filter(p => p.hard && !p.frame).map(p => capPiece(p, beams));
+  // the cap carries on over removable sections (their header runs up to the top of the wall)
+  for (const i of A.opInfo || []) {
+    if (!i.o || i.o.type !== 'removable') continue;
+    const o = i.o; caps.push(capPiece({ id: 'rem', x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t || 0.25, h: i.wallH || A.WH || A.H, len: i.len, hard: true }, beams));
+  }
+  return caps;
 }
 // the top of the cleanroom's own lid: on the wall caps, or on the beams where beams sit on the walls
 function lidTop(plan, A) {
