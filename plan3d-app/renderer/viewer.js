@@ -1327,24 +1327,24 @@ function placeCols(panels, cols) {
   }
   return out;
 }
-// the studs strictly between u and v
+// the studs strictly between u and v: as many full 45″ panels as can be had while every grille in the stretch still
+// gets a panel wide enough to sit centred on (no stud ever runs through a grille), the fewest panels, no panel
+// under 24″ where it can be helped (under 12″ only if there's no other way). Searched on a ¼″ step.
 function stretchStuds(u, v, cols) {
-  const G = v - u, n = Math.floor(G / 4 + 1e-6), r = G - 4 * n;
-  let widths;
-  if (r < 0.02) widths = Array(Math.max(1, n)).fill(G / Math.max(1, n));
-  else if (r >= 2 || n === 0) widths = Array(n).fill(4).concat([r]);
-  else widths = Array(n - 1).fill(4).concat([(4 + r) / 2, (4 + r) / 2]);
-  const cuts = widths.filter(x => Math.abs(x - 4) > 0.01).length;
-  // try the cut panel(s) at every place in the run; keep the one that leaves the grilles best placed
-  const fulls = widths.filter(x => Math.abs(x - 4) <= 0.01), cutW = widths.filter(x => Math.abs(x - 4) > 0.01);
-  let best = null, bs = 1e18;
-  for (let at = 0; at <= fulls.length; at++) {
-    const seq = fulls.slice(0, at).concat(cutW, fulls.slice(at)), panels = []; let x = u;
-    for (const wd of seq) { panels.push([x, x + wd]); x += wd; }
-    const P = placeCols(panels, cols), score = P.reduce((t, p) => t + (p.panel ? p.d : 1000), 0) + (cuts ? Math.abs(at - fulls.length) * 1e-3 : 0);
-    if (score < bs - 1e-9) { bs = score; best = panels; }
+  const G = v - u, N = Math.max(1, Math.round(G * 48)), K = cols.length, need = K ? Math.max(...cols.map(c => c.w)) + 3.25 / 12 : 0, INF = 1e18;
+  const pos = (k) => (k >= N ? v : u + k / 48);
+  const cost = (wd) => 10 + (Math.abs(wd - 4) < 0.01 ? 0 : 3) + (wd < 2 ? 40 : 0) + (wd < 1 ? 400 + (1 - wd) * 1200 : 0) + (wd < 1 / 12 ? 1e6 : 0);
+  const dp = Array.from({ length: N + 1 }, () => new Float64Array(K + 1).fill(INF)), fr = Array.from({ length: N + 1 }, () => new Int32Array(K + 1).fill(-1)), fc = Array.from({ length: N + 1 }, () => new Int16Array(K + 1));
+  dp[0][0] = 0;
+  for (let k = 1; k <= N; k++) for (let d = 1; d <= 192 && d <= k; d++) {
+    const j = k - d, wd = pos(k) - pos(j); if (wd > 4 + 0.01 / 12) break;
+    const big = need && wd >= need - 1e-6 ? 1 : 0;
+    for (let c = 0; c <= K; c++) { if (dp[j][c] >= INF) continue; const c2 = Math.min(K, c + big), val = dp[j][c] + cost(wd); if (val < dp[k][c2] - 1e-9) { dp[k][c2] = val; fr[k][c2] = j; fc[k][c2] = c; } }
   }
-  return best.slice(0, -1).map(q => q[1]);
+  let c = K; while (c > 0 && dp[N][c] >= INF) c--;
+  if (dp[N][c] >= INF) { const o = []; for (let m = u + 4; m < v - 1e-6; m += 4) o.push(m); return o; }
+  const J = []; for (let k = N; k > 0;) { const j = fr[k][c], cc = fc[k][c]; if (j > 0) J.push(pos(j)); k = j; c = cc; }
+  return J.reverse();
 }
 /* Centre each wall's grilles on its panels after the studs move: each grille spot (with the plenum grille over it)
    moves to the middle of the panel nearest it that's wide enough. Spots with no panel wide enough stay where they
