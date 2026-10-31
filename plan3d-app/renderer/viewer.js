@@ -3752,7 +3752,7 @@ function buildScene(THREE, plan, A) {
   const H = A.H, WH = A.WH || H, B = A.bounds;
   const pick = [];
   const doors = [];
-  const doorObs = [], removable = [];
+  const doorObs = [], removable = [], grilleMeshes = [];
 
   const PX_IN = 512 / 48;
   const seamCanvas = cachedCanvas('seamCanvas', () => makeCanvas(512, 256, (g, w, h) => {
@@ -4042,7 +4042,8 @@ function buildScene(THREE, plan, A) {
     const w = Math.max(0.25, +gr.w || 20 / 12), h = Math.max(0.25, +gr.h || 20 / 12), sill = Math.max(0, gr.sill == null ? 0.5 : +gr.sill), a = gr.a || 0, c = Math.cos(a), sn = Math.sin(a), t = (gr.t || 0.25) + 0.03;
     curRef = gr.id ? { kind: 'grille', id: gr.id } : null;
     const m = segBox(gr.x - c * w / 2, gr.y - sn * w / 2, gr.x + c * w / 2, gr.y + sn * w / 2, sill, sill + h, t, [M.edge, M.edge, M.edge, M.edge, M.grille, M.grille]); outline(m); pick.push(m);
-    if (gr.damper) { const dm = M.damper || (M.damper = new THREE.MeshPhongMaterial({ color: 0x3c4348, specular: 0x666666, shininess: 40, name: 'Damper' })), e = 0.06; for (const [y0, y1, s0, s1] of [[sill - e, sill, -w / 2 - e, w / 2 + e], [sill + h, sill + h + e, -w / 2 - e, w / 2 + e], [sill, sill + h, -w / 2 - e, -w / 2], [sill, sill + h, w / 2, w / 2 + e]]) { const f = segBox(gr.x + c * s0, gr.y + sn * s0, gr.x + c * s1, gr.y + sn * s1, y0, y1, t + 0.01, dm); pick.push(f); } }
+    const grMs = [m]; grilleMeshes.push({ gr, ms: grMs });
+    if (gr.damper) { const dm = M.damper || (M.damper = new THREE.MeshPhongMaterial({ color: 0x3c4348, specular: 0x666666, shininess: 40, name: 'Damper' })), e = 0.06; for (const [y0, y1, s0, s1] of [[sill - e, sill, -w / 2 - e, w / 2 + e], [sill + h, sill + h + e, -w / 2 - e, w / 2 + e], [sill, sill + h, -w / 2 - e, -w / 2], [sill, sill + h, w / 2, w / 2 + e]]) { const f = segBox(gr.x + c * s0, gr.y + sn * s0, gr.x + c * s1, gr.y + sn * s1, y0, y1, t + 0.01, dm); pick.push(f); grMs.push(f); } }
     curRef = null;
   }
   // end caps where a wall steps up or down
@@ -4155,7 +4156,7 @@ function buildScene(THREE, plan, A) {
       for (const q of RL.headers) box(q, t, EE.concat([face, face]), true);
       for (const q of RL.hstuds) box(q, t + 0.006, EE.concat([sc, sc]));
       const out = [];
-      for (const q of RL.panels) out.push(box(q, t, EE.concat([face, face]), true));
+      const panelMs = []; for (const q of RL.panels) { const pm = box(q, t, EE.concat([face, face]), true); out.push(pm); panelMs.push({ m: pm, s0: q.s0, s1: q.s1 }); }
       for (const q of RL.studs) out.push(box(q, t + 0.006, EE.concat([sc, sc])));
       const bq = { s0: RL.panels[0].s0, s1: RL.panels[RL.panels.length - 1].s1, y0: 0, y1: 0.333 };
       out.push(box(bq, t + 0.022, M.base));
@@ -4165,7 +4166,7 @@ function buildScene(THREE, plan, A) {
       doorObs.push(ob);
       // click it in 3D and the pieces come out of the wall and float to the side of the opening (click again: back)
       const home = out.map(m => ({ p: m.position.clone(), ry: m.rotation.y, s: (m.position.x - ax) * i.ux + (m.position.z - az) * i.uz, w: m.geometry.parameters ? m.geometry.parameters.width : 1 }));
-      removable.push({ meshes: out, ob, o, home, ux: i.ux, uz: i.uz, nx, nz, len: i.len, t, k: 0, open: false, side: 1 });
+      removable.push({ meshes: out, ob, o, home, ux: i.ux, uz: i.uz, nx, nz, len: i.len, t, k: 0, open: false, side: 1, panelMs, ax, az });
       shadow((ax + bx) / 2, (az + bz) / 2, i.len, t, Math.atan2(-i.uz, i.ux));
     } else if (o.type === 'pass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill)), D = Math.max(t + 0.1, o.depth || 2), ph = head - sill;
@@ -4805,6 +4806,16 @@ function buildScene(THREE, plan, A) {
   }
   // the extras never stop the model from showing
   try { root.add(airflowArrows(THREE, plan, A)); } catch (e) { console.error(e); }
+  // a return grille in a removable panel is part of that panel: it comes out (and hides) with it
+  if (removable.length && grilleMeshes.length) {
+    root.updateMatrixWorld(true);
+    for (const r of removable) for (const gm of grilleMeshes) {
+      const g = gm.gr; if (g.plenum) continue;
+      const dx = g.x - r.ax, dz = g.y - r.az, al = dx * r.ux + dz * r.uz, off = Math.abs(dx * r.nx + dz * r.nz); if (off > r.t / 2 + 0.25) continue;
+      const pn = (r.panelMs || []).find(q => al > q.s0 && al < q.s1); if (!pn) continue;
+      for (const m of gm.ms) pn.m.attach(m);
+    }
+  }
   return { root, pick, floor, floors: [floor], ground, ceiling, lid, roof, ceilPlane: ceil || new THREE.Object3D(), fixtures, doors, doorObs, removable };
 }
 
