@@ -23,6 +23,8 @@ jobs:
           for f in index.html sw.js manifest.json apple-touch-icon.png icon-512.png; do
             curl -fsSL "https://raw.githubusercontent.com/$SRC/HEAD/$f" -o "dino-garden/$f"
           done
+          # the site's search and AI tags (canonical, sharing preview, structured data) go back in after each copy
+          python3 scripts/seo/inject.py dino-garden "Dino Garden: calm learning game for toddlers and preschoolers"
       - name: Publish if it changed
         id: commit
         run: |
