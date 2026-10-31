@@ -4918,12 +4918,14 @@ function wireFixtures(plan, A) {
   const room = new Array(P.length).fill(-1); let nr = 0;
   for (let i = 0; i < P.length; i++) { if (room[i] >= 0) continue; room[i] = nr; const st = [i]; while (st.length) { const k = st.pop(); for (let j = 0; j < P.length; j++) if (room[j] < 0 && Math.hypot(P[j].x - P[k].x, P[j].z - P[k].z) < 30 && reach(P[k], P[j])) { room[j] = nr; st.push(j); } } nr++; }
   const out = [];
-  for (let r = 0; r < nr; r++) {
-    const idx = P.map((p, i) => i).filter(i => room[i] === r); if (idx.length < 2) continue;
+  // FFUs and lights go on separate circuits: each kind is daisy-chained on its own in each room
+  const kind = (p) => p.f && p.f.type === 'ffu' ? 'ffu' : 'light';
+  for (let r = 0; r < nr; r++) for (const K of ['ffu', 'light']) {
+    const idx = P.map((p, i) => i).filter(i => room[i] === r && kind(P[i]) === K); if (idx.length < 2) continue;
     let cur = idx.reduce((m, i) => (P[i].x + P[i].z < P[m].x + P[m].z ? i : m), idx[0]); const left = new Set(idx); left.delete(cur);
     while (left.size) {
       let best = null, bd = 1e9; for (const j of left) { const d = whipRun(P[cur], P[j]) + (reach(P[cur], P[j]) ? 0 : 1e4); if (d < bd) { bd = d; best = j; } }
-      const L = whipRun(P[cur], P[best]); out.push({ id: 'wh' + out.length.toString(36) + Math.random().toString(36).slice(2, 6), a: P[cur].id, b: P[best].id, ext: whipExt(L) });
+      const L = whipRun(P[cur], P[best]); out.push({ id: 'wh' + out.length.toString(36) + Math.random().toString(36).slice(2, 6), a: P[cur].id, b: P[best].id, ext: whipExt(L), circuit: K });
       left.delete(best); cur = best;
     }
   }
