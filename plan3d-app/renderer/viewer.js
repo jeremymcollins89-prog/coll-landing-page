@@ -5738,12 +5738,12 @@ function mount(container, plan, opts) {
     const r = canvas.getBoundingClientRect();
     ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     remRay.setFromCamera(ndc, camera);
-    const all = []; for (const q of RS) for (const m of q.meshes) if (m.visible) all.push(m);
+    const all = []; for (const q of RS) for (const m of q.meshes) if (m.visible) { all.push(m); for (const c of m.children) if (c.isMesh) all.push(c); }
     const hit = remRay.intersectObjects(all, false)[0]; if (!hit) return false;
     // something else (a wall, a door) in front of it takes the click
     const other = remRay.intersectObjects(built.pick.filter(m => !all.includes(m)), false)[0];
     if (other && other.distance < hit.distance - 0.05) return false;
-    const q = RS.find(x => x.meshes.includes(hit.object)); if (!q) return false;
+    const q = RS.find(x => x.meshes.includes(hit.object) || x.meshes.includes(hit.object.parent)); if (!q) return false;
     q.open = !q.open;
     if (q.open) { const mx = (q.o.x1 + q.o.x2) / 2, mz = (q.o.y1 + q.o.y2) / 2; q.side = ((camera.position.x - mx) * q.nx + (camera.position.z - mz) * q.nz) >= 0 ? 1 : -1; }
     q.ob.doorGroup.userData.isOpen = q.open || remOpen;
