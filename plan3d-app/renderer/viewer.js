@@ -7,7 +7,7 @@
 const CSS = `
 .p3v [hidden]{display:none!important}
 .p3v{position:relative;overflow:hidden;background:#dde4e8;font-family:Bahnschrift,"Segoe UI",system-ui,sans-serif;color:#eef2f3;-webkit-user-select:none;user-select:none}
-.p3v-c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab;outline:none}
+.p3v-c{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab;outline:none}
 .p3v-c.drag{cursor:grabbing}
 .p3v-top{position:absolute;top:12px;left:12px;right:12px;display:flex;gap:10px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;pointer-events:none;z-index:5}
 .p3v-top>*{pointer-events:auto}
@@ -20,7 +20,7 @@ const CSS = `
 .p3v-here span{font:11.5px Consolas,"Cascadia Mono",ui-monospace,monospace;color:#f2c84b}
 .p3v-modes{display:flex;border-radius:999px;padding:3px;gap:2px}
 .p3v-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-.p3v-mlabels{position:absolute;inset:0;pointer-events:none;overflow:hidden}.p3v-mlab{position:absolute;transform:translate(-50%,-50%);background:#ff9a1f;color:#1a1206;font:700 12.5px/1.2 ui-monospace,Consolas,monospace;padding:4px 7px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.35)}.p3v-mlab small{display:block;font-weight:600;font-size:10.5px;opacity:.8}
+.p3v-mlabels{position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;overflow:hidden}.p3v-mlab{position:absolute;transform:translate(-50%,-50%);background:#ff9a1f;color:#1a1206;font:700 12.5px/1.2 ui-monospace,Consolas,monospace;padding:4px 7px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.35)}.p3v-mlab small{display:block;font-weight:600;font-size:10.5px;opacity:.8}
 .p3v-mhover{position:absolute;pointer-events:none;transform:translate(14px,14px);background:rgba(20,26,29,.92);color:#e8edef;font:600 12px/1.35 system-ui,sans-serif;padding:6px 9px;border-radius:8px;white-space:nowrap}.p3v-mhover b{color:#ffb547}
 .p3v-ud{position:absolute;right:18px;bottom:150px;display:flex;flex-direction:column;gap:8px;pointer-events:auto}.p3v-ud button{width:54px;height:54px;border-radius:50%;border:0;background:rgba(20,26,29,.8);color:#fff;font-size:20px}
 .p3v-snapdlg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,90%);padding:14px;border-radius:14px;display:flex;flex-direction:column;gap:10px;pointer-events:auto;z-index:5}.p3v-snapdlg b{color:#fff;font-size:15px}.p3v-snapdlg img{width:100%;border-radius:8px}.p3v-snapdlg textarea{background:#11171a;color:#e8edef;border:1px solid #3a464c;border-radius:8px;padding:8px;font:13px system-ui,sans-serif;resize:vertical}.p3v-snapdlg div{display:flex;justify-content:flex-end;gap:8px}.p3v-snapdlg button{border:0;border-radius:8px;padding:8px 14px;font:600 13px system-ui,sans-serif;background:#2b353a;color:#e8edef;cursor:pointer}.p3v-snapdlg button.pri{background:#f2c84b;color:#1a1606}
@@ -44,8 +44,8 @@ const CSS = `
 .p3v-chips button.on{border-color:#f2c84b;color:#f2c84b}
 .p3v-joy{position:absolute;left:16px;bottom:62px;width:124px;height:124px;border-radius:50%;background:rgba(18,23,25,.42);border:1px solid rgba(255,255,255,.22);z-index:6;touch-action:none;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);-webkit-user-select:none;user-select:none}.p3v-joy[hidden]{display:none}.p3v-joy i{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:rgba(255,255,255,.88);box-shadow:0 4px 14px rgba(0,0,0,.35);pointer-events:none}.p3v-joy b{position:absolute;left:0;right:0;top:-22px;text-align:center;font:600 11px system-ui,sans-serif;color:rgba(255,255,255,.75);letter-spacing:.04em;pointer-events:none}.p3v-hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;pointer-events:none;background:rgba(18,23,25,.86);border:1px solid rgba(255,255,255,.13);border-radius:999px;padding:9px 16px;font-size:14px;transition:opacity .6s;white-space:nowrap;max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis}
 .p3v-hint.gone{opacity:0}
-.p3v-nogl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:#e8edef;background:#121719;font:600 15px system-ui,sans-serif;z-index:9}
-.p3v-labels{position:absolute;inset:0;pointer-events:none;z-index:3}
+.p3v-nogl{position:absolute;top:0;right:0;bottom:0;left:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:#e8edef;background:#121719;font:600 15px system-ui,sans-serif;z-index:9}
+.p3v-labels{position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;z-index:3}
 .p3v-rl{position:absolute;left:0;top:0;background:rgba(18,23,25,.86);border:1px solid rgba(255,255,255,.13);border-radius:6px;padding:3px 8px;text-align:center;white-space:nowrap}
 .p3v-rl b{display:block;font-size:12.5px;font-weight:600}
 .p3v-rl span{font:10.5px Consolas,ui-monospace,monospace;color:#f2c84b}
@@ -66,7 +66,7 @@ const CSS = `
 .p3v-touch .p3v-cbtn[aria-pressed=true] .p3v-cn{background:#1a1f22;color:#f2c84b}
 .p3v-adec button{flex:1;margin:0!important;background:#28343a!important;color:#e8edef!important}.p3v-adec button[aria-pressed=true]{background:#3fb36b!important;color:#fff!important}.p3v-adec button[data-dec=changes][aria-pressed=true]{background:#f2c84b!important;color:#1a1f22!important}
 .p3v-cform button{font:600 13px inherit;padding:7px 12px;border-radius:7px;border:0;margin-right:6px;cursor:pointer;background:#f2c84b;color:#1a1f22}.p3v-cform .p3v-ccancel{background:#3d4a50;color:#e8edef}
-.p3v-empty{position:absolute;inset:0;display:grid;place-items:center;color:#5b676d;font-size:16px;pointer-events:none;z-index:2}
+.p3v-empty{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;color:#5b676d;font-size:16px;pointer-events:none;z-index:2}
 `;
 
 function injectCSS() {
@@ -5211,6 +5211,13 @@ function mount(container, plan, opts) {
   // phones and tablets: a lighter canvas (sharp enough on their small screens, and well inside the graphics
   // memory iPhones and Android browsers give a page, so the 3D doesn't go black or reload)
   const COARSE = !!(global.matchMedia && global.matchMedia('(pointer: coarse)').matches);
+  // iPhone / iPad Safari: a pinch on the 3D zooms the 3D, not the page; no text-select loupe or callout on a long
+  // press; no grey tap flash
+  try {
+    container.style.webkitTouchCallout = 'none'; container.style.webkitUserSelect = 'none'; container.style.userSelect = 'none'; container.style.webkitTapHighlightColor = 'transparent';
+    for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) container.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+    canvas.addEventListener('touchmove', (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  } catch (e) { /* older browsers */ }
   let renderer;
   try { renderer = new THREE.WebGLRenderer({ canvas, antialias: !COARSE || (global.devicePixelRatio || 1) < 2, preserveDrawingBuffer: !!opts.preserve, powerPreference: COARSE ? 'default' : 'high-performance' }); }
   catch (e) { container.insertAdjacentHTML('beforeend', '<div class="p3v-nogl">This browser can’t show 3D (WebGL is turned off or not supported). Try Safari, Chrome, Edge or Firefox, or turn on hardware acceleration.</div>'); throw e; }
