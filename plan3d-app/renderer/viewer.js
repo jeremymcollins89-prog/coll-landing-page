@@ -644,6 +644,33 @@ function removableOf(plan, A, i) {
   const head = Math.min(i.hard ? Math.min(ceilHere, i.wallH || ceilHere) : (i.wallH || A.H), o.head || 7);
   return removableLayout(i.len, head, i.wallH || A.H);
 }
+/* The grilles on removable wall sections: no low return grille in the removable panels (they come out), and a
+   plenum grille centred on each header panel over them wide enough for one (as on a full panel in the wall).
+   Changes plan.grilles in place; returns how many were taken out and added. */
+function removableGrilles(plan) {
+  let A; try { A = analyze(plan); } catch (e) { return { removed: 0, added: 0 }; }
+  const G = plan.grilles || (plan.grilles = []); let removed = 0, added = 0;
+  const tmpl = G.find(g => g.plenum) || { w: 2.75, h: 2.75, sill: (A.WH || A.H) - 0.375 - 2.75, damper: false, flow: 'out' };
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  for (const i of A.opInfo || []) {
+    if (i.o.type !== 'removable') continue;
+    const o = i.o, L = i.len || 1, ux = (o.x2 - o.x1) / L, uy = (o.y2 - o.y1) / L, R = removableOf(plan, A, i);
+    const inSpan = (g, pad) => { const dx = g.x - o.x1, dy = g.y - o.y1, along = dx * ux + dy * uy, off = Math.abs(dx * uy - dy * ux), hw = Math.max(0.25, +g.w || 20 / 12) / 2; return off < (i.t || 0.25) / 2 + 0.2 && along + hw > -pad && along - hw < L + pad; };
+    // the wall this section sits in (for the grilles' wall id and facing)
+    let wall = null, bd = 1e9; for (const w of plan.walls || []) { const d = Math.max(segDist(o.x1, o.y1, w.x1, w.y1, w.x2, w.y2), segDist(o.x2, o.y2, w.x1, w.y1, w.x2, w.y2)); if (d < bd) { bd = d; wall = w; } }
+    const keepPlenum = G.filter(g => g.plenum && inSpan(g, 0.3)), side = (keepPlenum[0] || G.find(g => wall && g.wall === wall.id) || {}).side || 1, tp = keepPlenum[0] || tmpl;
+    const n0 = G.length; for (let k = G.length - 1; k >= 0; k--) if (inSpan(G[k], 0.3)) G.splice(k, 1); removed += n0 - G.length;
+    if (!(R.top - R.head > 0.05)) continue;
+    for (const hp of R.headers) {
+      const gw = Math.max(0.25, +tp.w || 2.75), clear = hp.s1 - hp.s0; if (clear < gw + 0.25 / 12) continue;
+      const gh = Math.min(+tp.h || 2.75, R.top - R.head - 0.25), c = (hp.s0 + hp.s1) / 2; if (gh < 0.5) continue;
+      G.push({ id: uid(), x: o.x1 + ux * c, y: o.y1 + uy * c, a: Math.atan2(uy, ux), t: i.t || 0.25, wall: wall ? wall.id : undefined, side, w: gw, h: gh, sill: Math.max(R.head + 0.1, R.top - 0.375 - gh), damper: false, plenum: true, flow: tp.flow || 'out' });
+      added++;
+    }
+    removed -= Math.min(removed, keepPlenum.length) * 0; // (plenum grilles in the span are replaced, counted in removed)
+  }
+  return { removed, added };
+}
 /* ---------- Pure geometry analysis (no three.js) ---------- */
 function leavesFor(i) {
   const o = i.o, sw = o.swing === -1 ? -1 : 1, nx = -i.uz, nz = i.ux, out = [];
@@ -1440,6 +1467,7 @@ function fitGrilles(plan) {
   // grilles with no panel left to sit centred on are taken out (a stud would run through them)
   const gone = new Set([].concat(...stuck.map(q => q.ids)));
   if (gone.size) plan.grilles = (plan.grilles || []).filter(g => !gone.has(g.id));
+  try { removableGrilles(plan); } catch (e) { /* the walls' grilles still stand */ }
   return { moved, removed: gone.size, stuck };
 }
 // the points where beams bear on cleanroom walls: Map(wall id → [distance along the wall])
@@ -6674,5 +6702,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { removableGrilles, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
 })(typeof window !== 'undefined' ? window : this);
