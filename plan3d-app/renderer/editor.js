@@ -725,7 +725,21 @@ class Editor {
       else if (T === 'overhead') { const W = pv.wall, V = global.Plan3DViewer, wh = W && V ? (V.isHard(W) ? (this.plan.ceiling || 8) : V.isFrame(W) ? (W.h || this.plan.ceiling || 8) : V.shellHeight(this.plan, W)) : 16; o.head = Math.max(7, Math.min(14, wh - 2)); }
       else if ((T === 'door' || T === 'door2') && (!pv.wall || !global.Plan3DViewer || global.Plan3DViewer.isHard(pv.wall))) { o.style = 'cr'; o.leafW = 3; o.head = 86 / 12; }
       else o.head = 7;
-      this.edit(P => P.openings.push(o)); return;
+      // a removable wall section takes out any grille in its way (and the plenum grille over it)
+      let gone = 0;
+      this.edit(P => {
+        P.openings.push(o);
+        if (T === 'removable' && (P.grilles || []).length) {
+          const L = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1, ux = (o.x2 - o.x1) / L, uy = (o.y2 - o.y1) / L, n0 = P.grilles.length;
+          P.grilles = P.grilles.filter(g => {
+            const dx = g.x - o.x1, dy = g.y - o.y1, along = dx * ux + dy * uy, off = Math.abs(dx * uy - dy * ux), hw = Math.max(0.25, +g.w || 20 / 12) / 2;
+            return !(off < (o.t || 0.25) / 2 + 0.2 && along + hw > -0.3 && along - hw < L + 0.3);
+          });
+          gone = n0 - P.grilles.length;
+        }
+      });
+      if (gone) this.status(gone + ' grille' + (gone === 1 ? '' : 's') + ' in the way of the removable section taken out.');
+      return;
     }
     if (T === 'piece') {
       if (!this.pieces || this.pieces.tool === 'select') return;
