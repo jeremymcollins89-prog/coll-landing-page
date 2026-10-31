@@ -1347,8 +1347,8 @@ function stretchStuds(u, v, cols) {
   return J.reverse();
 }
 /* Centre each wall's grilles on its panels after the studs move: each grille spot (with the plenum grille over it)
-   moves to the middle of the panel nearest it that's wide enough. Spots with no panel wide enough stay where they
-   are and are listed. Changes plan.grilles in place; returns { moved, stuck: [{ wall, at, x, y }] }. */
+   moves to the middle of the panel nearest it that's wide enough. Extra grilles (spots with no panel wide enough
+   left) are removed. Changes plan.grilles in place; returns { moved, removed, stuck: [{ wall, at, x, y, ids }] }. */
 function fitGrilles(plan) {
   let moved = 0; const stuck = [];
   for (const w of (plan.walls || []).filter(q => isHard(q) && !q.piece)) {
@@ -1370,12 +1370,15 @@ function fitGrilles(plan) {
       }
     }
     for (const p of P) {
-      if (!p.panel) { stuck.push({ wall: w.id, at: p.col.c, x: w.x1 + gx * p.col.c, y: w.y1 + gy * p.col.c }); continue; }
+      if (!p.panel) { stuck.push({ wall: w.id, at: p.col.c, x: w.x1 + gx * p.col.c, y: w.y1 + gy * p.col.c, ids: p.col.g.map(g => g.id) }); continue; }
       const c = (p.panel[0] + p.panel[1]) / 2; if (Math.abs(c - p.col.c) < 1e-4) continue;
       for (const g of p.col.g) { g.x = w.x1 + gx * c; g.y = w.y1 + gy * c; moved++; }
     }
   }
-  return { moved, stuck };
+  // grilles with no panel left to sit centred on are taken out (a stud would run through them)
+  const gone = new Set([].concat(...stuck.map(q => q.ids)));
+  if (gone.size) plan.grilles = (plan.grilles || []).filter(g => !gone.has(g.id));
+  return { moved, removed: gone.size, stuck };
 }
 // the points where beams bear on cleanroom walls: Map(wall id → [distance along the wall])
 function beamStuds(plan) {
