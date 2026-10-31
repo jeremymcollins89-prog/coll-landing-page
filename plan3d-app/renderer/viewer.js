@@ -1305,26 +1305,42 @@ function wallModule(w, plan) {
   const sig = JSON.stringify([plan.beams, (plan.walls || []).map(q => [q.id, q.x1, q.y1, q.x2, q.y2, q.t, q.type]), plan.ceiling, plan.plenum]);
   let C = WMOD.get(plan); if (!C || C.sig !== sig) { C = { sig, fixed: beamStuds(plan) }; WMOD.set(plan, C); }
   const F = (C.fixed.get(w.id) || []).filter(s => s > 0.35 && s < L - 0.35).sort((a, b) => a - b);
-  if (!F.length) return def();
   const cols = grilleCols(w, plan), stops = [];
   for (const f of F) if (!stops.length || f - stops[stops.length - 1] > 0.3) stops.push(f);
-  return wallStuds(L, stops, cols.length, cols.length ? Math.max(...cols.map(c => c.w)) + 3.25 / 12 : 0);
+  const ends = [wallEnd(w, plan, true), wallEnd(w, plan, false)];
+  return wallStuds(L, stops, cols.length, cols.length ? Math.max(...cols.map(c => c.w)) + 3.25 / 12 : 0, ends);
+}
+/* What a wall end meets: 'corner' (another wall turning there, or nothing: a free end) or 'tee' (it butts into the
+   side of another wall, or carries straight on into one). Short panels go at corners, not at tees. */
+function wallEnd(w, plan, start) {
+  const x = start ? w.x1 : w.x2, y = start ? w.y1 : w.y2, L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L;
+  let tee = false;
+  for (const o of plan.walls || []) {
+    if (o === w || !isHard(o)) continue;
+    const d = segDist(x, y, o.x1, o.y1, o.x2, o.y2); if (d > (o.t || 0.25) / 2 + 0.15) continue;
+    const ol = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1, par = Math.abs(ux * (o.x2 - o.x1) / ol + uy * (o.y2 - o.y1) / ol) > 0.98;
+    const atEnd = Math.min(Math.hypot(o.x1 - x, o.y1 - y), Math.hypot(o.x2 - x, o.y2 - y)) < 0.3;
+    if (par || !atEnd) tee = true;
+  }
+  return tee ? 'tee' : 'corner';
 }
 /* The whole wall at once (feet, from its start): a stud at every fixed point F (under the beams); full 45″ panels
    (48″ on centre) wherever they fit; the fewest panels; a short panel (under 24″) put at a corner rather than in
    the middle of the wall, and two short ones combined into one where they can be; and at least K panels wide
    enough (`need`) for the grilles to sit centred on. Searched on a ¼″ step. */
-function wallStuds(L, F, K, need) {
+function wallStuds(L, F, K, need, ends) {
   const P = [0]; for (let k = 1; k < Math.round(L * 48); k++) P.push(k / 48);
   const fixed = new Set(); for (const f of F) { let i = P.findIndex(x => Math.abs(x - f) < 0.125 / 12); if (i < 0) { P.push(f); P.sort((a, b) => a - b); i = P.indexOf(f); } else P[i] = f; fixed.add(i); }
   P.push(L); const N = P.length - 1, INF = 1e18;
-  const cost = (wd, end) => 10 + (Math.abs(wd - 4) < 0.01 ? 0 : 3) + (wd < 2 ? (end ? 15 : 70) : 0) + (wd < 1 ? (end ? 60 : 700) + (1 - wd) * 600 : 0) + (wd < 1 / 12 ? 1e6 : 0);
+  // a cut panel is best at a corner; a short one (under 24″) belongs at a corner, never mid-wall or at a tee
+  const cost = (wd, end) => 10 + (Math.abs(wd - 4) < 0.01 ? 0 : end ? 2 : 3) + (wd < 2.01 ? (end ? 2 : 70) : 0) + (wd < 1 ? (end ? 8 : 700) + (end ? 0 : (1 - wd) * 600) : 0) + (wd < 1 / 12 ? 1e6 : 0);
+  const E = ends || ['corner', 'corner'];
   const dp = Array.from({ length: N + 1 }, () => new Float64Array(K + 1).fill(INF)), fr = Array.from({ length: N + 1 }, () => new Int32Array(K + 1).fill(-1)), fc = Array.from({ length: N + 1 }, () => new Int16Array(K + 1));
   dp[0][0] = 0;
   for (let k = 1; k <= N; k++) {
     for (let j = k - 1; j >= 0; j--) {
       const wd = P[k] - P[j]; if (wd > 4 + (k === N ? 1.1 : 0.01) / 12) break;
-      const big = need && wd >= need - 1e-6 ? 1 : 0, end = j === 0 || k === N;
+      const big = need && wd >= need - 1e-6 ? 1 : 0, end = (j === 0 && E[0] === 'corner') || (k === N && E[1] === 'corner');
       for (let c = 0; c <= K; c++) { if (dp[j][c] >= INF) continue; const c2 = Math.min(K, c + big), v = dp[j][c] + cost(wd, end); if (v < dp[k][c2] - 1e-9) { dp[k][c2] = v; fr[k][c2] = j; fc[k][c2] = c; } }
       if (fixed.has(j)) break; // a stud under a beam can't be skipped
     }
