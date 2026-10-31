@@ -5993,6 +5993,19 @@ function mount(container, plan, opts) {
       html += `<br><span style="opacity:.75">height here ${fIn(Math.max(0, sn.p.y))} · click to start measuring</span>`;
     }
     mHover.innerHTML = html; mHover.style.left = (cx - r.left) + 'px'; mHover.style.top = (cy - r.top) + 'px'; mHover.hidden = false;
+    // keep the tip clear of the measurement being drawn (and the other measurement labels): try below-right of the
+    // pointer, then below-left, above-right, above-left
+    const labs = [...mLabels.children].map(e => e.getBoundingClientRect()).filter(q => q.width);
+    const W = mHover.offsetWidth, Hh = mHover.offsetHeight, G = 14, cw = r.width, ch = r.height;
+    const spots = [[G, G], [-W - G, G], [G, -Hh - G], [-W - G, -Hh - G]];
+    let pick = spots[0], best = 1e18;
+    for (const [dx, dy] of spots) {
+      const x0 = cx + dx, y0 = cy + dy, x1 = x0 + W, y1 = y0 + Hh;
+      let over = 0; for (const q of labs) over += Math.max(0, Math.min(x1, q.right) - Math.max(x0, q.left)) * Math.max(0, Math.min(y1, q.bottom) - Math.max(y0, q.top));
+      const off = Math.max(0, r.left - x0) + Math.max(0, x1 - r.left - cw) + Math.max(0, r.top - y0) + Math.max(0, y1 - r.top - ch);
+      const sc = over + off * 400; if (sc < best - 1e-6) { best = sc; pick = [dx, dy]; }
+    }
+    mHover.style.transform = 'translate(' + pick[0] + 'px,' + pick[1] + 'px)';
   }
   function measureClick(cx, cy, ev) {
     const sn = smartSnap(cx, cy, ev); if (!sn) return;
