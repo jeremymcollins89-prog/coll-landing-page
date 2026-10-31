@@ -1420,7 +1420,7 @@ class Editor {
     // posts: corner, T and cross posts, end caps and H-studs (the 48″ module and where runs meet straight), as the
     // parts list counts them, so they can be checked on the plan; H-mold joints along header panels too
     if (this.showPosts !== false && s > 6 && global.Plan3DViewer && global.Plan3DViewer.wallJoints) {
-      const key = JSON.stringify(P.walls) + JSON.stringify(P.openings || []) + JSON.stringify(P.beams || []) + P.studsUnderBeams;
+      const key = JSON.stringify(P.walls) + JSON.stringify(P.openings || []);
       if (this._jKey !== key) { this._jKey = key; try { this._joints = global.Plan3DViewer.wallJoints(P); } catch (e) { this._joints = []; } }
       g.save(); const lab = s > 13, r = Math.max(2.5, 0.17 * s);
       g.font = '600 9px Consolas, monospace'; g.textAlign = 'left'; g.textBaseline = 'bottom';
