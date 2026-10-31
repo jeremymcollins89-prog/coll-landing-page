@@ -3979,6 +3979,15 @@ function buildScene(THREE, plan, A) {
     shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
   }
   curRef = null;
+  // the wall cap carries on over the headers of doors, glass and removable sections in cleanroom walls
+  {
+    const cm = M.wallCap || (M.wallCap = new THREE.MeshLambertMaterial({ color: 0xf6f7f7, emissive: 0x2a2a2a, name: 'Wall cap, white' }));
+    for (const i of A.opInfo || []) {
+      if (!i.o || !i.hard || i.frame) continue;
+      const o = i.o, piece = { id: 'op', x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t || 0.25, h: i.wallH || A.WH || A.H, len: i.len, hard: true };
+      for (const q of wallCapSolids(capPiece(piece, capBeams()))) outline(segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, cm));
+    }
+  }
   // an upper floor's floor system (rim joist, subfloor) between it and the floor below, sided on the outside
   // corner boards: a white 1×5 on both faces of every outside corner of the house, floor band to wall top, so the
   // siding of the two walls meets under trim (as built) instead of in a raw seam
