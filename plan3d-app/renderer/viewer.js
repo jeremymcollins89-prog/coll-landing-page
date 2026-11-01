@@ -4896,8 +4896,9 @@ function whipLines(plan, A) {
   const out = [];
   for (const w of plan.whips) {
     const a = PT.get(w.a), b = PT.get(w.b); if (!a || !b) continue;
-    const y = Math.max(a.y, b.y, topOver(a.x, a.z, b.x, a.z), topOver(b.x, a.z, b.x, b.z)) + 0.1;
-    const pts = [[a.x, a.y, a.z], [a.x, y, a.z], [b.x, y, a.z], [b.x, y, b.z], [b.x, b.y, b.z]].filter((q, i, A2) => i === 0 || Math.hypot(q[0] - A2[i - 1][0], q[1] - A2[i - 1][1], q[2] - A2[i - 1][2]) > 0.02);
+    const zx = w.bend === 'zx', mx = zx ? a.x : b.x, mz = zx ? b.z : a.z;
+    const y = Math.max(a.y, b.y, topOver(a.x, a.z, mx, mz), topOver(mx, mz, b.x, b.z)) + 0.1;
+    const pts = [[a.x, a.y, a.z], [a.x, y, a.z], [mx, y, mz], [b.x, y, b.z], [b.x, b.y, b.z]].filter((q, i, A2) => i === 0 || Math.hypot(q[0] - A2[i - 1][0], q[1] - A2[i - 1][1], q[2] - A2[i - 1][2]) > 0.02);
     out.push({ w, pts, len: WHIP.len + WHIP.ext * (w.ext || 0) });
   }
   return out;
@@ -4908,25 +4909,35 @@ function wireFixtures(plan, A) {
   A = A || analyze(plan);
   // the walls and the doorways in them (the panels over a door close the plenum there too)
   const P = whipPorts(plan, A), walls = (A.pieces || []).filter(p => p.hard).concat((A.opInfo || []).map(i => ({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2 })));
-  const cross = (a, b) => walls.some(w => {
+  // a wall's line, run on past each end a little (the whip can't squeeze round the end of a wall either)
+  const WL = walls.map(w => { const L = Math.hypot(w.x2 - w.x1, w.z2 - w.z1) || 1, e = (w.t || 0.25) / 2 + 0.15, ux = (w.x2 - w.x1) / L, uz = (w.z2 - w.z1) / L; return { x1: w.x1 - ux * e, z1: w.z1 - uz * e, x2: w.x2 + ux * e, z2: w.z2 + uz * e }; });
+  const cross = (a, b) => WL.some(w => {
     const d1x = b.x - a.x, d1z = b.z - a.z, d2x = w.x2 - w.x1, d2z = w.z2 - w.z1, den = d1x * d2z - d1z * d2x; if (Math.abs(den) < 1e-9) return false;
     const s1 = ((w.x1 - a.x) * d2z - (w.z1 - a.z) * d2x) / den, s2 = ((w.x1 - a.x) * d1z - (w.z1 - a.z) * d1x) / den;
-    return s1 > 0 && s1 < 1 && s2 > -0.02 && s2 < 1.02;
+    return s1 > -0.001 && s1 < 1.001 && s2 >= 0 && s2 <= 1;
   });
-  // rooms: fixtures that can reach each other without crossing a wall (straight or with one bend)
-  const reach = (a, b) => !cross(a, b) || !cross(a, { x: b.x, z: a.z }) && !cross({ x: b.x, z: a.z }, b) || !cross(a, { x: a.x, z: b.z }) && !cross({ x: a.x, z: b.z }, b);
+  // a whip runs square to the grid with one bend: along x then z, or along z then x. Which one stays clear of
+  // the walls ('xz', 'zx', or null when neither does)
+  const route = (a, b) => { const m1 = { x: b.x, z: a.z }, m2 = { x: a.x, z: b.z };
+    if (!cross(a, m1) && !cross(m1, b)) return 'xz'; if (!cross(a, m2) && !cross(m2, b)) return 'zx'; return null; };
+  // rooms: fixtures that can reach each other without crossing a wall
   const room = new Array(P.length).fill(-1); let nr = 0;
-  for (let i = 0; i < P.length; i++) { if (room[i] >= 0) continue; room[i] = nr; const st = [i]; while (st.length) { const k = st.pop(); for (let j = 0; j < P.length; j++) if (room[j] < 0 && Math.hypot(P[j].x - P[k].x, P[j].z - P[k].z) < 30 && reach(P[k], P[j])) { room[j] = nr; st.push(j); } } nr++; }
+  for (let i = 0; i < P.length; i++) { if (room[i] >= 0) continue; room[i] = nr; const st = [i]; while (st.length) { const k = st.pop(); for (let j = 0; j < P.length; j++) if (room[j] < 0 && Math.hypot(P[j].x - P[k].x, P[j].z - P[k].z) < 30 && route(P[k], P[j])) { room[j] = nr; st.push(j); } } nr++; }
   const out = [];
-  // FFUs and lights go on separate circuits: each kind is daisy-chained on its own in each room
+  // FFUs and lights go on separate circuits: each kind is daisy-chained on its own in each room. A chain only
+  // steps to a fixture it can reach without going through a wall; when none is left in reach, a new chain starts
   const kind = (p) => p.f && p.f.type === 'ffu' ? 'ffu' : 'light';
   for (let r = 0; r < nr; r++) for (const K of ['ffu', 'light']) {
     const idx = P.map((p, i) => i).filter(i => room[i] === r && kind(P[i]) === K); if (idx.length < 2) continue;
-    let cur = idx.reduce((m, i) => (P[i].x + P[i].z < P[m].x + P[m].z ? i : m), idx[0]); const left = new Set(idx); left.delete(cur);
+    const left = new Set(idx), corner = () => [...left].reduce((m, i) => (P[i].x + P[i].z < P[m].x + P[m].z ? i : m), [...left][0]);
+    let cur = corner(); left.delete(cur);
     while (left.size) {
-      let best = null, bd = 1e9; for (const j of left) { const d = whipRun(P[cur], P[j]) + (reach(P[cur], P[j]) ? 0 : 1e4); if (d < bd) { bd = d; best = j; } }
-      const L = whipRun(P[cur], P[best]); out.push({ id: 'wh' + out.length.toString(36) + Math.random().toString(36).slice(2, 6), a: P[cur].id, b: P[best].id, ext: whipExt(L), circuit: K });
-      left.delete(best); cur = best;
+      let best = null, bd = 1e9, bend = null; for (const j of left) { const rt = route(P[cur], P[j]); if (!rt) continue; const d = whipRun(P[cur], P[j]); if (d < bd) { bd = d; best = j; bend = rt; } }
+      // a jump longer than a whip and one extension starts a new chain instead (a new home run)
+      if (best == null || bd > WHIP.len + WHIP.ext + 0.01) { cur = corner(); left.delete(cur); continue; }
+      const L = whipRun(P[cur], P[best]), wh = { id: 'wh' + out.length.toString(36) + Math.random().toString(36).slice(2, 6), a: P[cur].id, b: P[best].id, ext: whipExt(L), circuit: K };
+      if (bend === 'zx') wh.bend = 'zx';
+      out.push(wh); left.delete(best); cur = best;
     }
   }
   return out;

@@ -1503,7 +1503,7 @@ class Editor {
         g.save(); g.strokeStyle = '#c9a227'; g.lineWidth = 1.4; g.setLineDash([5, 3]);
         // HEPA circuit gold, light circuit blue
         const col = (w) => w.circuit === 'light' ? '#3d8fd6' : '#c9a227';
-        for (const w of P.whips) { const a = PT.get(w.a), b = PT.get(w.b); if (!a || !b) continue; g.strokeStyle = col(w); g.beginPath(); g.moveTo(this.sx(a.x), this.sy(a.z)); g.lineTo(this.sx(b.x), this.sy(a.z)); g.lineTo(this.sx(b.x), this.sy(b.z)); g.stroke(); }
+        for (const w of P.whips) { const a = PT.get(w.a), b = PT.get(w.b); if (!a || !b) continue; g.strokeStyle = col(w); const zx = w.bend === 'zx'; g.beginPath(); g.moveTo(this.sx(a.x), this.sy(a.z)); g.lineTo(this.sx(zx ? a.x : b.x), this.sy(zx ? b.z : a.z)); g.lineTo(this.sx(b.x), this.sy(b.z)); g.stroke(); }
         g.setLineDash([]);
         for (const w of P.whips) { const a = PT.get(w.a); if (a) { g.fillStyle = col(w); g.beginPath(); g.arc(this.sx(a.x), this.sy(a.z), 2.5, 0, Math.PI * 2); g.fill(); } }
         g.restore();
