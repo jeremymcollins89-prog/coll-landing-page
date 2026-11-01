@@ -1134,7 +1134,7 @@ function footprint(A, all) {
     }
   }
   rects.push(...fill);
-  const fp = { cell, x0, z0, nx, nz, inside, wall, rects, area: n * cell * cell,
+  const fp = { cell, x0, z0, nx, nz, inside, wall, rects, joins, area: n * cell * cell,
     has(x, z) { const i = Math.floor((x - x0) / cell), j = Math.floor((z - z0) / cell); return i >= 0 && j >= 0 && i < nx && j < nz && !!inside[j * nx + i]; } };
   A[KEY] = fp;
   return fp;
@@ -4909,6 +4909,24 @@ function wireFixtures(plan, A) {
   A = A || analyze(plan);
   // the walls and the doorways in them (the panels over a door close the plenum there too)
   const P = whipPorts(plan, A), walls = (A.pieces || []).filter(p => p.hard).concat((A.opInfo || []).map(i => ({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2 })));
+  // the open side of a room (no wall, where it meets a hallway) is still the room's edge: a whip doesn't cross it.
+  // Those are the lines closing the building's open sides, and the gap between two walls on one line
+  try { const fp = footprint(A); for (const j of (fp && fp.joins) || []) walls.push({ x1: j[0], z1: j[1], x2: j[2], z2: j[3], t: 0.05 }); } catch (e) { /* walls only */ }
+  const HW = (A.walls || []).filter(w => isHard(w) && Math.hypot(w.x2 - w.x1, w.y2 - w.y1) > 0.3);
+  for (let i = 0; i < HW.length; i++) for (let j = i + 1; j < HW.length; j++) {
+    const a = HW[i], b = HW[j], la = Math.hypot(a.x2 - a.x1, a.y2 - a.y1), ux = (a.x2 - a.x1) / la, uz = (a.y2 - a.y1) / la, lb = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
+    if (Math.abs(ux * (b.y2 - b.y1) / lb - uz * (b.x2 - b.x1) / lb) > 0.02 || Math.abs((b.x1 - a.x1) * -uz + (b.y1 - a.y1) * ux) > 0.5) continue;
+    let best = null, bd = 30;
+    for (const [ex, ez] of [[a.x1, a.y1], [a.x2, a.y2]]) for (const [fx, fz] of [[b.x1, b.y1], [b.x2, b.y2]]) {
+      const g = Math.hypot(fx - ex, fz - ez); if (g < 0.3 || g >= bd) continue;
+      const mx = (ex + fx) / 2, mz = (ez + fz) / 2;
+      // the gap lies between them (not one wall overlapping the other) and no other wall fills it
+      if (segDist(mx, mz, a.x1, a.y1, a.x2, a.y2) < g / 2 - 0.05 || segDist(mx, mz, b.x1, b.y1, b.x2, b.y2) < g / 2 - 0.05) continue;
+      if (HW.some(w => w !== a && w !== b && segDist(mx, mz, w.x1, w.y1, w.x2, w.y2) < 0.2)) continue;
+      bd = g; best = [ex, ez, fx, fz];
+    }
+    if (best) walls.push({ x1: best[0], z1: best[1], x2: best[2], z2: best[3], t: 0.05 });
+  }
   // a wall's line, run on past each end a little (the whip can't squeeze round the end of a wall either)
   const WL = walls.map(w => { const L = Math.hypot(w.x2 - w.x1, w.z2 - w.z1) || 1, e = (w.t || 0.25) / 2 + 0.15, ux = (w.x2 - w.x1) / L, uz = (w.z2 - w.z1) / L; return { x1: w.x1 - ux * e, z1: w.z1 - uz * e, x2: w.x2 + ux * e, z2: w.z2 + uz * e }; });
   const cross = (a, b) => WL.some(w => {
