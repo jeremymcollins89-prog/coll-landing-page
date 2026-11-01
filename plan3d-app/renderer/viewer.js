@@ -4805,10 +4805,22 @@ function buildScene(THREE, plan, A) {
         // a loose coil of flexible cable: out of the box, a lazy bow to one side and back, lying over the units
         const R = WHIP.len + WHIP.ext * (w.ext || 0), spare = Math.max(0, R - D), bow = Math.min(1.6, 0.25 + spare * 0.12) * (rnd() < 0.5 ? -1 : 1);
         // straight up off the top of each box, then a lazy bow over to the next
-        const pts = [A3.clone(), new THREE.Vector3(a.x, a.y + 0.22, a.z), new THREE.Vector3(a.x + ux * 0.3, a.y + 0.32, a.z + uz * 0.3)];
-        const n = Math.max(2, Math.round(D / 2.5));
-        for (let k = 1; k < n; k++) { const t = k / n, side = Math.sin(t * Math.PI) * bow + (rnd() - 0.5) * 0.35; pts.push(new THREE.Vector3(a.x + dx * t + nx * side, 0, a.z + dz * t + nz * side)); }
-        pts.push(new THREE.Vector3(b.x - ux * 0.3, b.y + 0.32, b.z - uz * 0.3), new THREE.Vector3(b.x, b.y + 0.22, b.z), B3.clone());
+        // the first and last legs' directions (off the first box, into the last)
+        const zx0 = w.bend === 'zx', cx0 = zx0 ? a.x : b.x, cz0 = zx0 ? b.z : a.z;
+        const dir = (x0, z0, x1, z1, fx, fz) => { const l = Math.hypot(x1 - x0, z1 - z0); return l > 0.05 ? [(x1 - x0) / l, (z1 - z0) / l] : [fx, fz]; };
+        const [u0x, u0z] = dir(a.x, a.z, cx0, cz0, ...dir(cx0, cz0, b.x, b.z, ux, uz)), [u1x, u1z] = dir(cx0, cz0, b.x, b.z, ...dir(a.x, a.z, cx0, cz0, ux, uz));
+        const pts = [A3.clone(), new THREE.Vector3(a.x, a.y + 0.22, a.z), new THREE.Vector3(a.x + u0x * 0.3, a.y + 0.32, a.z + u0z * 0.3)];
+        // it follows the whip's square route (along x then z, or z then x: the way that stays clear of the walls),
+        // with only a little slack wander either side so it never strays into a wall
+        void bow; void nx; void nz;
+        const zx = w.bend === 'zx', mxp = zx ? a.x : b.x, mzp = zx ? b.z : a.z, legs = [[a.x, a.z, mxp, mzp], [mxp, mzp, b.x, b.z]];
+        for (const [x0, z0, x1, z1] of legs) {
+          const Lg = Math.hypot(x1 - x0, z1 - z0); if (Lg < 0.05) continue;
+          const gx = (x1 - x0) / Lg, gz = (z1 - z0) / Lg, n = Math.max(1, Math.round(Lg / 2));
+          for (let k = 1; k <= n; k++) { const t = k / n, side = k === n ? 0 : (rnd() - 0.5) * 0.3 * Math.sin(t * Math.PI); pts.push(new THREE.Vector3(x0 + (x1 - x0) * t - gz * side, 0, z0 + (z1 - z0) * t + gx * side)); }
+        }
+        pts.pop();   // the leg's last point is the far box: the rise into it comes next
+        pts.push(new THREE.Vector3(b.x - u1x * 0.3, b.y + 0.32, b.z - u1z * 0.3), new THREE.Vector3(b.x, b.y + 0.22, b.z), B3.clone());
         // it lies on whatever is under it: dense points along the bow, each set on the boxes below (never into them)
         const rough = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.5), Lr = rough.getLength(), m = Math.max(12, Math.round(Lr / 0.25)), dense = [];
         for (let k = 0; k <= m; k++) {
@@ -4927,10 +4939,35 @@ function wireFixtures(plan, A) {
     }
     if (best) walls.push({ x1: best[0], z1: best[1], x2: best[2], z2: best[3], t: 0.05 });
   }
+  // a wall that stops in the open (its end touches no other wall or doorway): the room's edge carries on square
+  // from its end, across the opening to the next wall, either way
+  for (const w of HW) {
+    const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), ux = (w.x2 - w.x1) / L, uz = (w.y2 - w.y1) / L;
+    for (const [ex, ez] of [[w.x1, w.y1], [w.x2, w.y2]]) {
+      if (HW.some(o => o !== w && segDist(ex, ez, o.x1, o.y1, o.x2, o.y2) < (o.t || 0.25) / 2 + 0.4)) continue;
+      if ((A.opInfo || []).some(i => Math.min(Math.hypot(i.o.x1 - ex, i.o.y1 - ez), Math.hypot(i.o.x2 - ex, i.o.y2 - ez)) < 0.4)) continue;
+      for (const sd of [1, -1]) {
+        const dx = -uz * sd, dz = ux * sd;
+        for (let d = 0.5; d <= 30; d += 0.25) {
+          const x = ex + dx * d, z = ez + dz * d;
+          const hit = HW.find(o => o !== w && segDist(x, z, o.x1, o.y1, o.x2, o.y2) < (o.t || 0.25) / 2 + 0.2);
+          if (hit) { walls.push({ x1: ex, z1: ez, x2: x, z2: z, t: 0.05 }); break; }
+        }
+      }
+    }
+  }
   // a wall's line, run on past each end a little (the whip can't squeeze round the end of a wall either)
   const WL = walls.map(w => { const L = Math.hypot(w.x2 - w.x1, w.z2 - w.z1) || 1, e = (w.t || 0.25) / 2 + 0.15, ux = (w.x2 - w.x1) / L, uz = (w.z2 - w.z1) / L; return { x1: w.x1 - ux * e, z1: w.z1 - uz * e, x2: w.x2 + ux * e, z2: w.z2 + uz * e }; });
   const cross = (a, b) => WL.some(w => {
-    const d1x = b.x - a.x, d1z = b.z - a.z, d2x = w.x2 - w.x1, d2z = w.z2 - w.z1, den = d1x * d2z - d1z * d2x; if (Math.abs(den) < 1e-9) return false;
+    const d1x = b.x - a.x, d1z = b.z - a.z, d2x = w.x2 - w.x1, d2z = w.z2 - w.z1, den = d1x * d2z - d1z * d2x;
+    // running along a wall, inside its thickness (on top of it)
+    const l1 = Math.hypot(d1x, d1z), l2 = Math.hypot(d2x, d2z);
+    if (l1 > 1e-6 && l2 > 1e-6 && Math.abs(den) / (l1 * l2) < 0.05) {
+      const off = Math.abs((a.x - w.x1) * d2z - (a.z - w.z1) * d2x) / l2; if (off > (w.t || 0.25) / 2 + 0.1) return false;
+      const t0 = ((a.x - w.x1) * d2x + (a.z - w.z1) * d2z) / (l2 * l2), t1 = ((b.x - w.x1) * d2x + (b.z - w.z1) * d2z) / (l2 * l2);
+      return Math.max(t0, t1) > 0 && Math.min(t0, t1) < 1;
+    }
+    if (Math.abs(den) < 1e-9) return false;
     const s1 = ((w.x1 - a.x) * d2z - (w.z1 - a.z) * d2x) / den, s2 = ((w.x1 - a.x) * d1z - (w.z1 - a.z) * d1x) / den;
     return s1 > -0.001 && s1 < 1.001 && s2 >= 0 && s2 <= 1;
   });
