@@ -4798,6 +4798,7 @@ function buildScene(THREE, plan, A) {
         const face = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.012), blk); face.position.z = 0.002; g.add(face);
         fixtures.add(g);
       };
+      const WALLS3 = (A.pieces || []).filter(q => q.hard).concat((A.opInfo || []).filter(i => i.hard).map(i => ({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, t: i.t })));
       for (const w of plan.whips) {
         const a = PT.get(w.a), b = PT.get(w.b); if (!a || !b) continue;
         const A3 = new THREE.Vector3(a.x, a.y, a.z), B3 = new THREE.Vector3(b.x, b.y, b.z), dx = b.x - a.x, dz = b.z - a.z, D = Math.hypot(dx, dz) || 1;
@@ -4812,14 +4813,26 @@ function buildScene(THREE, plan, A) {
         const pts = [A3.clone(), new THREE.Vector3(a.x, a.y + 0.22, a.z), new THREE.Vector3(a.x + u0x * 0.3, a.y + 0.32, a.z + u0z * 0.3)];
         // it follows the whip's square route (along x then z, or z then x: the way that stays clear of the walls),
         // with only a little slack wander either side so it never strays into a wall
-        void bow; void nx; void nz;
+        // each leg gets the loose bow of a flexible whip (its spare length snaking to one side), but every point is
+        // kept clear of the walls: a bow that would reach a wall is pulled in until it fits
+        void nx; void nz;
         const zx = w.bend === 'zx', mxp = zx ? a.x : b.x, mzp = zx ? b.z : a.z, legs = [[a.x, a.z, mxp, mzp], [mxp, mzp, b.x, b.z]];
+        const clear = (x, z) => !WALLS3.some(q => segDist(x, z, q.x1, q.z1, q.x2, q.z2) < (q.t || 0.25) / 2 + 0.12);
+        const crossW = (x0, z0, x1, z1) => WALLS3.some(q => { const d1x = x1 - x0, d1z = z1 - z0, d2x = q.x2 - q.x1, d2z = q.z2 - q.z1, den = d1x * d2z - d1z * d2x; if (Math.abs(den) < 1e-9) return false; const s1 = ((q.x1 - x0) * d2z - (q.z1 - z0) * d2x) / den, s2 = ((q.x1 - x0) * d1z - (q.z1 - z0) * d1x) / den; return s1 > 0 && s1 < 1 && s2 > 0 && s2 < 1; });
+        const Ltot = Math.max(0.1, Math.abs(b.x - a.x) + Math.abs(b.z - a.z));
         for (const [x0, z0, x1, z1] of legs) {
           const Lg = Math.hypot(x1 - x0, z1 - z0); if (Lg < 0.05) continue;
-          const gx = (x1 - x0) / Lg, gz = (z1 - z0) / Lg, n = Math.max(1, Math.round(Lg / 2));
-          for (let k = 1; k <= n; k++) { const t = k / n, side = k === n ? 0 : (rnd() - 0.5) * 0.3 * Math.sin(t * Math.PI); pts.push(new THREE.Vector3(x0 + (x1 - x0) * t - gz * side, 0, z0 + (z1 - z0) * t + gx * side)); }
+          const gx = (x1 - x0) / Lg, gz = (z1 - z0) / Lg, n = Math.max(2, Math.round(Lg / 2.2)), share = spare * Lg / Ltot;
+          const amp = Math.min(1.4, 0.2 + share * 0.14 + Math.min(Lg, 6) * 0.04) * (rnd() < 0.5 ? -1 : 1);
+          for (let k = 1; k <= n; k++) {
+            const t = k / n, px = x0 + (x1 - x0) * t, pz = z0 + (z1 - z0) * t;
+            if (k === n) { pts.push(new THREE.Vector3(px, 0, pz)); continue; }
+            let side = Math.sin(t * Math.PI) * amp + (rnd() - 0.5) * 0.3;
+            for (let tries = 0; tries < 8; tries++) { const qx = px - gz * side, qz = pz + gx * side; if (clear(qx, qz) && !crossW(px, pz, qx, qz)) break; side *= tries === 3 ? -1 : 0.6; if (tries === 7) side = 0; }
+            pts.push(new THREE.Vector3(px - gz * side, 0, pz + gx * side));
+          }
         }
-        pts.pop();   // the leg's last point is the far box: the rise into it comes next
+        pts.pop();   // the last leg's last point is the far box: the rise into it comes next
         pts.push(new THREE.Vector3(b.x - u1x * 0.3, b.y + 0.32, b.z - u1z * 0.3), new THREE.Vector3(b.x, b.y + 0.22, b.z), B3.clone());
         // it lies on whatever is under it: dense points along the bow, each set on the boxes below (never into them)
         const rough = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.5), Lr = rough.getLength(), m = Math.max(12, Math.round(Lr / 0.25)), dense = [];
