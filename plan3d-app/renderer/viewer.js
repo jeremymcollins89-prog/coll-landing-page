@@ -1351,16 +1351,23 @@ const beamSize = (b) => BEAMS[b && b.size] || BEAMS.W12x26;
 function beamSeat(plan, A, b) {
   A = A || analyze(plan);
   const base = beamSeat0(plan, A, b);
-  if (b.bot > 0 || base.onWalls) return base;
-  const tops = [];
-  for (const [x, y] of [[b.x1, b.y1], [b.x2, b.y2]]) {
-    for (const c of plan.beams || []) {
-      if (c === b) continue;
-      if (segDist(x, y, c.x1, c.y1, c.x2, c.y2) > beamSize(c).bf / 24 + 0.35) continue;
-      const q = beamSeat0(plan, A, c); if (!q.onWalls) continue;
-      tops.push(q.bot + beamSize(c).d / 12); break;
-    }
+  if (b.bot > 0) return base;
+  // which ends land on another beam (that beam, if it sits on the walls)
+  const onBeam = [[b.x1, b.y1], [b.x2, b.y2]].map(([x, y]) => {
+    for (const c of plan.beams || []) { if (c !== b && segDist(x, y, c.x1, c.y1, c.x2, c.y2) <= beamSize(c).bf / 24 + 0.35) return c; }
+    return null;
+  });
+  if (base.onWalls) {
+    // an end framed into a beam stops there: it doesn't run on to the wall past it
+    if (!onBeam[0] && !onBeam[1]) return base;
+    const q = { ...base };
+    if (onBeam[0]) { q.x1 = b.x1; q.y1 = b.y1; q.in0 = 0; }
+    if (onBeam[1]) { q.x2 = b.x2; q.y2 = b.y2; q.in1 = 0; }
+    q.framed = [!!onBeam[0], !!onBeam[1]];
+    return q;
   }
+  const tops = [];
+  for (const c of onBeam) { if (!c) continue; const q = beamSeat0(plan, A, c); if (q.onWalls) tops.push(q.bot + beamSize(c).d / 12); }
   if (!tops.length) return base;
   return { x1: b.x1, y1: b.y1, x2: b.x2, y2: b.y2, in0: 0, in1: 0, bot: Math.min(...tops) - beamSize(b).d / 12, onWalls: true, onBeams: true };
 }
