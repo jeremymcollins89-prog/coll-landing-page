@@ -1,14 +1,22 @@
 /* Coll Business Solutions LLC website analytics (Google Analytics 4, G-BEVS3VPRRD).
-   Google's consent mode: nothing is stored and no analytics cookies are set until the visitor clicks Accept on the
-   small notice. Their choice is remembered on this device; "Cookie settings" in a page footer (any element with
-   data-cookie-settings) brings the notice back. Ads storage and ad personalisation stay off either way. */
+   No pop-up: analytics is on by default for visitors in the US and most countries. Visitors in the EU/EEA, the UK
+   and Switzerland (where cookies need consent first) get no analytics cookies (Google's consent mode, cookieless).
+   A visitor who has turned on Global Privacy Control in their browser is treated as opted out. "Cookie settings" in
+   a page footer (any element with data-cookie-settings) lets anyone opt out or back in; the choice is remembered on
+   this device. Ads storage and ad personalisation stay off for everyone. */
 (function () {
   var ID = 'G-BEVS3VPRRD', KEY = 'cbs-analytics-consent';
   window.dataLayer = window.dataLayer || [];
   function gtag() { window.dataLayer.push(arguments); }
   window.gtag = window.gtag || gtag;
   var saved = null; try { saved = localStorage.getItem(KEY); } catch (e) { /* private window: ask each visit */ }
-  gtag('consent', 'default', { analytics_storage: saved === 'yes' ? 'granted' : 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied', wait_for_update: 500 });
+  var gpc = !!navigator.globalPrivacyControl;
+  var EU = ['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE','IS','LI','NO','GB','CH'];
+  var ads = { ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' };
+  // where cookies need consent first: off unless the visitor opted in with Cookie settings
+  gtag('consent', 'default', Object.assign({ analytics_storage: saved === 'yes' ? 'granted' : 'denied', region: EU }, ads));
+  // everywhere else: on, unless they opted out (Cookie settings) or their browser sends Global Privacy Control
+  gtag('consent', 'default', Object.assign({ analytics_storage: saved === 'no' || (gpc && saved !== 'yes') ? 'denied' : 'granted' }, ads));
   gtag('js', new Date());
   gtag('config', ID, { anonymize_ip: true });
   var s = document.createElement('script'); s.async = true; s.src = 'https://www.googletagmanager.com/gtag/js?id=' + ID; document.head.appendChild(s);
@@ -26,13 +34,12 @@
       + '#cbs-consent .y{background:#1E6B53;color:#fff}#cbs-consent .n{background:transparent;color:#E8EDEA;border:1px solid #4B5250}';
     document.head.appendChild(css);
     var d = document.createElement('div'); d.id = 'cbs-consent'; d.setAttribute('role', 'region'); d.setAttribute('aria-label', 'Cookie choice');
-    d.innerHTML = '<p>We use Google Analytics cookies to count visits and see which pages help. Nothing is used for ads. OK?</p><button type="button" class="n">No thanks</button><button type="button" class="y">Accept</button>';
+    d.innerHTML = '<p>We use Google Analytics cookies to count visits and see which pages help. Nothing is used for ads.</p><button type="button" class="n">Turn off</button><button type="button" class="y">Allow</button>';
     d.querySelector('.y').onclick = function () { choose(true); };
     d.querySelector('.n').onclick = function () { choose(false); };
     document.body.appendChild(d);
   }
   function ready() {
-    if (saved !== 'yes' && saved !== 'no') banner();
     var links = document.querySelectorAll('[data-cookie-settings]');
     for (var i = 0; i < links.length; i++) links[i].addEventListener('click', function (e) { e.preventDefault(); banner(); });
   }
