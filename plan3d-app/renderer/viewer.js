@@ -1364,6 +1364,9 @@ function beamSeat(plan, A, b) {
     if (onBeam[0]) { q.x1 = b.x1; q.y1 = b.y1; q.in0 = 0; }
     if (onBeam[1]) { q.x2 = b.x2; q.y2 = b.y2; q.in1 = 0; }
     q.framed = [!!onBeam[0], !!onBeam[1]];
+    // a beam framed into other beams sits flush with them: never higher than the lowest beam it frames into
+    const d = beamSize(b).d / 12;
+    for (const c of onBeam) { if (!c) continue; const r = beamSeat0(plan, A, c); if (r.onWalls) q.bot = Math.min(q.bot, r.bot + beamSize(c).d / 12 - d); }
     return q;
   }
   const tops = [];
