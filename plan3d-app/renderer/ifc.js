@@ -138,12 +138,16 @@ function planFromIfc(data, opts) {
   }
   // ceiling height: Revit ceilings if there are any, otherwise the walls
   const ceil = els.filter(e => e.kind === 'covering').map(e => e.y0 - floor).filter(v => v > 6 && v < 40);
-  let H = ceil.length ? median(ceil) : median(walls.map(w => w.h));
+  // the main ceiling: the one covering the most floor (a smaller ceiling at another height becomes a ceiling area)
+  const area = (hl) => { let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18; for (const p of hl || []) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); } return x1 > x0 ? (x1 - x0) * (y1 - y0) : 0; };
+  const main = els.filter(e => e.kind === 'covering' && e.y0 - floor > 6 && e.y0 - floor < 40).sort((p, q2) => area(q2.hull) - area(p.hull))[0];
+  let H = main ? main.y0 - floor : ceil.length ? median(ceil) : median(walls.map(w => w.h));
   H = q16(Math.max(6, Math.min(40, H || 8)));
   // ceiling lights and fan filter units (Revit light fixtures and air terminals near the ceiling)
   const fixtures = [];
   for (const e of els) {
-    if (e.kind !== 'light' && e.kind !== 'terminal') continue;
+    // generic models named for what they are count too (FFUs are often modelled as a generic family)
+    if (e.kind !== 'light' && e.kind !== 'terminal' && !(e.kind === 'proxy' && /ffu|fan.?filter|hepa|light|led|troffer/i.test((e.name || '') + ' ' + (e.type || '')))) continue;
     if (e.y1 - floor < H - 2.5) continue;
     const r = minRect(e.hull); if (!r || r.T < 0.9 || r.L > 6.2) continue;
     const txt = (e.name || '') + ' ' + (e.type || '');
@@ -151,6 +155,22 @@ function planFromIfc(data, opts) {
     if (!type) continue;
     const along = Math.abs(r.ux) >= Math.abs(r.uy);
     fixtures.push({ id: uid(), type, x: r.cx, y: r.cy, w: along ? r.L : r.T, h: along ? r.T : r.L });
+  }
+  // ceilings at their own height (a raised gowning room, a dropped corridor): ceiling areas over those parts
+  const ceilAreas = [];
+  for (const e of els) {
+    if (e.kind !== 'covering' || !e.hull || e.hull.length < 3) continue;
+    const h = q16(e.y0 - floor); if (!(h > 6 && h < 40) || Math.abs(h - H) < 0.25) continue;
+    let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18; for (const p of e.hull) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+    if ((x1 - x0) < 2 || (y1 - y0) < 2) continue;
+    ceilAreas.push({ id: uid(), x0, y0, x1, y1, ceiling: h });
+  }
+  // columns where they stand
+  const columns = [];
+  for (const e of els) {
+    if (e.kind !== 'column' || !e.hull) continue;
+    const r = minRect(e.hull); if (!r || r.L > 4) continue;
+    columns.push({ id: uid(), x: r.cx, y: r.cy, size: q16(Math.max(0.33, Math.max(r.L, r.T))), kind: /conc/i.test((e.name || '') + ' ' + (e.type || '')) ? 'concrete' : 'steel' });
   }
   // move to the sheet's corner, round to 1/16″
   let mx = 1e18, my = 1e18;
@@ -161,11 +181,13 @@ function planFromIfc(data, opts) {
   openings.forEach(o => { sh(o, [['x1', 'y1'], ['x2', 'y2']]); o.t = q16(o.t); });
   rooms.forEach(r => sh(r, [['x', 'y']]));
   fixtures.forEach(f => sh(f, [['x', 'y']]));
+  ceilAreas.forEach(c => sh(c, [['x0', 'y0'], ['x1', 'y1']]));
+  columns.forEach(c => sh(c, [['x', 'y']]));
   const counts = {
     walls: walls.length, doors: openings.filter(o => o.type !== 'glass').length, glass: openings.filter(o => o.type === 'glass').length, rooms: rooms.length,
     columns: els.filter(e => e.kind === 'column').length, fixtures: fixtures.length
   };
-  return { plan: { version: 1, name: data.name, ceiling: H, wallT: median(walls.map(w => w.t)) || 0.25, walls, openings, chases: [], rooms, fixtures, ceilingMode: fixtures.length ? 'manual' : 'auto', background: null }, counts, level: lv };
+  return { plan: { version: 1, name: data.name, ceiling: H, wallT: median(walls.map(w => w.t)) || 0.25, walls, openings, chases: [], rooms, fixtures, ceilAreas, columns, ceilingMode: fixtures.length ? 'manual' : 'auto', background: null }, counts, level: lv };
 }
 
 /* ---------- IFC writer ---------- */

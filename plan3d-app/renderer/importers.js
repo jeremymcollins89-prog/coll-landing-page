@@ -422,6 +422,80 @@ function dxfSize(data, layers, unitFt) {
   return { w: (maxX - minX) * unitFt, h: (maxY - minY) * unitFt, n };
 }
 
+/* Curved walls: two arcs on a wall layer with the same centre, a wall-thickness apart, become a curved wall, made
+   of short straight panels (about 2′ each) along the middle of the two arcs. Returns the new walls (feet). */
+function curvedWalls(data, o) {
+  const F = dxfFrame(data, o), k = F.k, A = (data.arcs || []).filter(a => o.layers.has(a.layer)), out = [], used = new Set();
+  const span = (a) => { let sw = a.a1 - a.a0; while (sw <= 0) sw += Math.PI * 2; return sw; };
+  for (let i = 0; i < A.length; i++) {
+    if (used.has(i)) continue;
+    const a = A[i]; let best = null;
+    for (let j = 0; j < A.length; j++) {
+      if (j === i || used.has(j)) continue;
+      const b = A[j], dc = Math.hypot(a.x - b.x, a.y - b.y) * k, t = Math.abs(a.r - b.r) * k;
+      if (dc > 0.1 || t < o.minT * 0.9 || t > o.maxT * 1.1) continue;
+      if (!best || Math.abs(t - (o.tFt || t)) < Math.abs(best.t - (o.tFt || best.t))) best = { j, t };
+    }
+    if (!best) continue;
+    const b = A[best.j], R = (a.r + b.r) / 2;
+    // the angles both arcs cover
+    const a0 = a.a0, sa = span(a), b0 = ((b.a0 - a0) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2), sb = span(b);
+    const s0 = Math.max(0, b0 > Math.PI * 1.5 ? b0 - Math.PI * 2 : b0), s1 = Math.min(sa, (b0 > Math.PI * 1.5 ? b0 - Math.PI * 2 : b0) + sb);
+    if (s1 - s0 < 0.15 || R * k * (s1 - s0) < 1.5) continue;
+    used.add(i); used.add(best.j);
+    const n = Math.max(2, Math.min(64, Math.round(R * k * (s1 - s0) / 2))), gid = uid();
+    let prev = null;
+    for (let q2 = 0; q2 <= n; q2++) {
+      const ang = a0 + s0 + (s1 - s0) * q2 / n, P = F.P(a.x + R * Math.cos(ang), a.y + R * Math.sin(ang));
+      if (prev) out.push({ id: uid(), x1: q(prev[0]), y1: q(prev[1]), x2: q(P[0]), y2: q(P[1]), t: q(best.t), sp: false, curve: gid });
+      prev = P;
+    }
+  }
+  return out;
+}
+/* Room names from the labels on a drawing: each label (feet, plan coordinates) that reads like a room name and sits
+   inside an enclosed room becomes that room's name (the biggest-lettered one per room, with a room number next to it
+   added: "GOWNING 104"). Rooms the plan already has are left alone. Returns the rooms to add. */
+function roomsFromLabels(plan, labels) {
+  const V = global.Plan3DViewer; if (!V || !labels || !labels.length || !(plan.walls || []).length) return [];
+  let fp; try { fp = V.footprint(V.analyze(plan), true); } catch (e) { return []; }
+  if (!fp || !fp.inside || !fp.wall) return [];
+  const { nx, nz, cell, x0, z0, inside, wall } = fp, comp = new Int32Array(nx * nz).fill(-1);
+  let nc = 0;
+  for (let s0 = 0; s0 < nx * nz; s0++) {
+    if (!inside[s0] || wall[s0] || comp[s0] >= 0) continue;
+    const st = [s0]; comp[s0] = nc;
+    while (st.length) { const c = st.pop(), i = c % nx, j = (c - i) / nx; for (const d of [i > 0 ? c - 1 : -1, i < nx - 1 ? c + 1 : -1, j > 0 ? c - nx : -1, j < nz - 1 ? c + nx : -1]) if (d >= 0 && inside[d] && !wall[d] && comp[d] < 0) { comp[d] = nc; st.push(d); } }
+    nc++;
+  }
+  const at = (x, y) => { const i = Math.floor((x - x0) / cell), j = Math.floor((y - z0) / cell); if (i < 0 || j < 0 || i >= nx || j >= nz) return -1; for (const [di, dj] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) { const ii = i + di, jj = j + dj; if (ii >= 0 && jj >= 0 && ii < nx && jj < nz && comp[jj * nx + ii] >= 0) return comp[jj * nx + ii]; } return -1; };
+  const bad = /scale|north|sheet|drawing|dwg|date|rev\b|revision|note|see |typ\b|typical|elev|section|detail|match ?line|keynote|legend|title|project|client|drawn|check|approv|^\W|\bx\b|×|±|@|["″']/i;
+  const isName = (t) => { const L = (t.match(/[A-Za-z]/g) || []).length; return L >= 3 && t.length <= 40 && !bad.test(t) && !/^[A-Z]?\d+[A-Z]?$/.test(t); };
+  const isNum = (t) => /^[A-Z]?\d{2,4}[A-Z]?$/.test(t.trim());
+  const per = new Map();
+  for (const l of labels) {
+    const t = (l.text || '').trim(); if (!t) continue;
+    const c = at(l.x, l.y); if (c < 0) continue;
+    const g = per.get(c) || per.set(c, { names: [], nums: [] }).get(c);
+    if (isName(t)) g.names.push(l); else if (isNum(t)) g.nums.push(l);
+  }
+  const have = new Set((plan.rooms || []).map(r => at(r.x, r.y)));
+  const out = [];
+  for (const [c, g] of per) {
+    if (have.has(c) || !g.names.length) continue;
+    const best = g.names.slice().sort((p2, r2) => (r2.h || 0) - (p2.h || 0) || r2.text.length - p2.text.length)[0];
+    let name = best.text.trim().replace(/\s+/g, ' ').replace(/[,;:.\-–]+$/, '').trim();
+    if (!/\d/.test(name)) { const n = g.nums.map(u => ({ u, d: Math.hypot(u.x - best.x, u.y - best.y) })).filter(z => z.d < 5).sort((p2, r2) => p2.d - r2.d)[0]; if (n) name += ' ' + n.u.text.trim(); }
+    out.push({ id: uid(), name, dims: '', x: q(best.x), y: q(best.y) });
+  }
+  return out;
+}
+/* The labels of a drawing in plan feet (same frame as its walls). */
+function dxfLabels(data, o) {
+  const F = dxfFrame(data, o), k = F.k;
+  return (data.roomTexts || []).map(t => { const P = F.P(t.x, t.y); return { x: P[0], y: P[1], text: t.text, h: (t.h || 0) * k }; });
+}
+
 /* ---------- Plan pictures (scans, PDFs, photos) ---------- */
 /* The picture drawn into a canvas turned by `rot` (radians), as a mask of its dark ink: each pixel compared with
    its neighbourhood, so uneven light and grey paper don't hide the lines. The canvas is centred on the picture's
@@ -737,5 +811,5 @@ function wallClusters(walls, gapFt) {
   const g = new Map(); walls.forEach((w, i) => { const r = find(i); (g.get(r) || g.set(r, []).get(r)).push(w); });
   return [...g.values()].map(ws => ({ walls: ws, len: ws.reduce((t, w) => t + Math.hypot(w.x2 - w.x1, w.y2 - w.y1), 0) })).sort((a, b) => b.len - a.len);
 }
-global.Plan3DImport = { sheetExtras, alignToWalls, arcDoors, mergeLayered, wallClusters, buildingWalls, joinCollinear, pairLines, snapJunctions, wallsFromDxf, openingsFromDxf, dxfOpeningBlocks, dxfFrame, dxfSize, wallsFromImage, imageMask, lineAngles, imageSkew, unwarpImage, UNIT_FT, UNIT_NAMES };
+global.Plan3DImport = { sheetExtras, alignToWalls, arcDoors, mergeLayered, wallClusters, buildingWalls, joinCollinear, pairLines, snapJunctions, wallsFromDxf, openingsFromDxf, dxfOpeningBlocks, dxfFrame, dxfSize, wallsFromImage, curvedWalls, roomsFromLabels, dxfLabels, imageMask, lineAngles, imageSkew, unwarpImage, UNIT_FT, UNIT_NAMES };
 })(window);
