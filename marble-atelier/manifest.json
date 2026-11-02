@@ -1,7 +1,7 @@
 {
   "name": "Marble Atelier",
   "short_name": "Marbles",
-  "description": "Build glass marble runs in 3D, ride along inside them, and color calm pictures.",
+  "description": "Build glass marble runs in 3D, ride along inside them, play tunes with chimes, and color calm pictures. No ads, no timers, works offline.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -9,8 +9,58 @@
   "background_color": "#e6ebe8",
   "theme_color": "#dfe5e2",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ]
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "id": "/marble-atelier/",
+  "lang": "en-US",
+  "dir": "ltr",
+  "categories": [
+    "games",
+    "entertainment"
+  ],
+  "display_override": [
+    "standalone",
+    "fullscreen"
+  ],
+  "screenshots": [
+    {
+      "src": "shot-1.webp",
+      "sizes": "540x1200",
+      "type": "image/webp",
+      "form_factor": "narrow",
+      "label": "Build glass marble runs"
+    },
+    {
+      "src": "shot-2.webp",
+      "sizes": "540x1200",
+      "type": "image/webp",
+      "form_factor": "narrow",
+      "label": "Five calm places to build"
+    },
+    {
+      "src": "shot-3.webp",
+      "sizes": "540x1200",
+      "type": "image/webp",
+      "form_factor": "narrow",
+      "label": "Color calm pictures"
+    }
+  ],
+  "prefer_related_applications": false
 }
