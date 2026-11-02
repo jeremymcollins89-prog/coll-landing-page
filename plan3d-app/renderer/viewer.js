@@ -1346,7 +1346,25 @@ const beamSize = (b) => BEAMS[b && b.size] || BEAMS.W12x26;
    on top of the walls. A beam that never crosses the cleanroom stays building structure, up under the roof deck.
    b.bot (feet) sets the underside by hand and leaves the beam where it was drawn.
    Returns { x1, y1, x2, y2, bot, onWalls }. */
+/* A beam framed into other beams (its end landing on a beam that sits on the walls) hangs from them: its top flush
+   with theirs. Otherwise it sits as beamSeat0 works out (on the walls it spans, or up at the roof). */
 function beamSeat(plan, A, b) {
+  A = A || analyze(plan);
+  const base = beamSeat0(plan, A, b);
+  if (b.bot > 0 || base.onWalls) return base;
+  const tops = [];
+  for (const [x, y] of [[b.x1, b.y1], [b.x2, b.y2]]) {
+    for (const c of plan.beams || []) {
+      if (c === b) continue;
+      if (segDist(x, y, c.x1, c.y1, c.x2, c.y2) > beamSize(c).bf / 24 + 0.35) continue;
+      const q = beamSeat0(plan, A, c); if (!q.onWalls) continue;
+      tops.push(q.bot + beamSize(c).d / 12); break;
+    }
+  }
+  if (!tops.length) return base;
+  return { x1: b.x1, y1: b.y1, x2: b.x2, y2: b.y2, in0: 0, in1: 0, bot: Math.min(...tops) - beamSize(b).d / 12, onWalls: true, onBeams: true };
+}
+function beamSeat0(plan, A, b) {
   A = A || analyze(plan);
   const d = beamSize(b).d / 12, raw = { x1: b.x1, y1: b.y1, x2: b.x2, y2: b.y2 };
   const up = () => ({ ...raw, bot: A.shellTop ? Math.max(1, A.shellTop - d - 0.05) : (A.WH || (plan.ceiling || 8)) + (A.PL > 0 ? 0.17 : 0.05), onWalls: false });

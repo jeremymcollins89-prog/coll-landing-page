@@ -325,6 +325,31 @@ class Editor {
     if (!this._studs || this._studsKey !== key) { this._studs = V && V.studPoints ? V.studPoints(this.plan) : []; this._studsKey = key; }
     return this._studs;
   }
+  /* a point on another beam to frame into: its ends first, then square off from the first end (from), then the nearest
+     point along it. skip: the beam being moved. */
+  beamSnap(x, y, from, skip) {
+    const tol = 12 / this.view.s; let best = null, bd = tol, pri = 0;
+    const take = (px, py, p, extra) => { const d = Math.hypot(px - x, py - y); if (d < tol * (extra || 1) && (p > pri || (p === pri && d < bd))) { best = { x: px, y: py, beam: true }; bd = d; pri = p; } };
+    for (const b of this.plan.beams || []) {
+      if (b === skip) continue;
+      take(b.x1, b.y1, 3); take(b.x2, b.y2, 3);
+      const dx = b.x2 - b.x1, dy = b.y2 - b.y1, L2 = dx * dx + dy * dy || 1;
+      if (from) {
+        // square to the first end: straight across or straight down from it onto this beam
+        if (Math.abs(dy) > 1e-6) { const t = (from.y - b.y1) / dy; if (t >= 0 && t <= 1) take(b.x1 + dx * t, from.y, 2, 1.5); }
+        if (Math.abs(dx) > 1e-6) { const t = (from.x - b.x1) / dx; if (t >= 0 && t <= 1) take(from.x, b.y1 + dy * t, 2, 1.5); }
+      }
+      const t = Math.max(0, Math.min(1, ((x - b.x1) * dx + (y - b.y1) * dy) / L2)); take(b.x1 + dx * t, b.y1 + dy * t, 1);
+    }
+    return best;
+  }
+  /* where a beam end goes: a stud or another beam (whichever is nearer), else the usual snap; Alt: anywhere */
+  beamEndSnap(x, y, from, skip, alt) {
+    if (alt) return this.snap(x, y, from, { free: true });
+    const st = this.studSnap(x, y), bm = this.beamSnap(x, y, from, skip);
+    if (st && bm) return Math.hypot(st.x - x, st.y - y) <= Math.hypot(bm.x - x, bm.y - y) ? st : bm;
+    return st || bm || this.snap(x, y, from, {});
+  }
   studSnap(x, y) { const tol = 12 / this.view.s; let best = null, bd = tol; for (const p of this.studs()) { const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = p; } } return best ? { x: best.x, y: best.y, stud: true } : null; }
   /* the ceiling lights (not FFUs) a switch can work, from the ceiling as laid out; worked out once per change */
   lights() {
@@ -767,7 +792,7 @@ class Editor {
       this.render(); return;
     }
     if (T === 'beam') {
-      const s = (!e.altKey && this.studSnap(p.x, p.y)) || this.snap(p.x, p.y, this.beamA || null, { free: e.altKey });
+      const s = this.beamEndSnap(p.x, p.y, this.beamA || null, null, e.altKey);
       if (!this.beamA) { this.beamA = { x: s.x, y: s.y }; this.status('Click the other end of the beam. Esc to stop.'); }
       else { const b = { id: uid(), x1: this.beamA.x, y1: this.beamA.y, x2: s.x, y2: s.y, size: this.beamSize || 'W12x26' }; if (Math.hypot(b.x2 - b.x1, b.y2 - b.y1) > 0.5) this.edit(P => { (P.beams = P.beams || []).push(b); }); this.beamA = null; this.status('Beam placed. Click to start another.'); }
       this.render(); return;
@@ -861,9 +886,9 @@ class Editor {
     if (D && D.kind === 'box') { D.x1 = p.x; D.y1 = p.y; this.render(); return; }
     if (D && D.kind === 'tfill') { const q = this.snapBox(p.x, p.y, 0, 0, null, e.altKey); D.x1 = q.x; D.y1 = q.y; this.status('Fill ' + fmt(Math.abs(D.x1 - D.x0)) + ' × ' + fmt(Math.abs(D.y1 - D.y0)) + ' with ' + fmtIn(this.tileW || 2) + ' × ' + fmtIn(this.tileH || 4) + ' tiles'); this.render(); return; }
     if (D && D.kind === 'bend') {
-      const st = !e.altKey && this.studSnap(p.x, p.y), q = st || this.snap(p.x, p.y, D.other, { free: e.altKey });
+      const q = this.beamEndSnap(p.x, p.y, D.other, D.b, e.altKey);
       if (D.end === 1) { D.b.x1 = q.x; D.b.y1 = q.y; } else { D.b.x2 = q.x; D.b.y2 = q.y; }
-      this.status('Beam ' + fmt(Math.hypot(D.b.x2 - D.b.x1, D.b.y2 - D.b.y1)) + (st ? ' · on a stud' : '') + ' (Alt: anywhere)');
+      this.status('Beam ' + fmt(Math.hypot(D.b.x2 - D.b.x1, D.b.y2 - D.b.y1)) + (q.stud ? ' · on a stud' : q.beam ? ' · on a beam' : '') + ' (Alt: anywhere)');
       this.emit('live'); this.render(); return;
     }
     if (D && D.kind === 'linkbox') { D.x1 = p.x; D.y1 = p.y; this.render(); return; }
@@ -1379,7 +1404,8 @@ class Editor {
         g.save(); g.fillStyle = '#c9a66b'; for (const [x, y] of [[q.x1, q.y1], [q.x2, q.y2]]) { const r = Math.max(3, hw * this.view.s); g.fillRect(this.sx(x) - r, this.sy(y) - r, 2 * r, 2 * r); } g.restore();
       } else run(b, false);
     }
-    if (this.tool === 'beam' && this.beamA && this.cursor) { const q = this.snap(this.cursor.x, this.cursor.y, this.beamA, {}); g.save(); g.strokeStyle = COL.draft; g.setLineDash([7, 4]); g.lineWidth = 1.5; g.beginPath(); g.moveTo(this.sx(this.beamA.x), this.sy(this.beamA.y)); g.lineTo(this.sx(q.x), this.sy(q.y)); g.stroke(); g.restore(); this.status('Beam ' + fmt(Math.hypot(q.x - this.beamA.x, q.y - this.beamA.y)) + ' — click the other end.'); }
+    if (this.tool === 'beam' && this.cursor && !this.beamA) { const q = this.beamEndSnap(this.cursor.x, this.cursor.y, null, null, false); if (q.beam || q.stud) { g.save(); g.strokeStyle = COL.snap; g.lineWidth = 2; g.beginPath(); g.arc(this.sx(q.x), this.sy(q.y), 7, 0, Math.PI * 2); g.stroke(); g.restore(); } }
+    if (this.tool === 'beam' && this.beamA && this.cursor) { const q = this.beamEndSnap(this.cursor.x, this.cursor.y, this.beamA, null, false); if (q.beam || q.stud) { g.save(); g.strokeStyle = COL.snap; g.lineWidth = 2; g.beginPath(); g.arc(this.sx(q.x), this.sy(q.y), 7, 0, Math.PI * 2); g.stroke(); g.restore(); } g.save(); g.strokeStyle = COL.draft; g.setLineDash([7, 4]); g.lineWidth = 1.5; g.beginPath(); g.moveTo(this.sx(this.beamA.x), this.sy(this.beamA.y)); g.lineTo(this.sx(q.x), this.sy(q.y)); g.stroke(); g.restore(); this.status('Beam ' + fmt(Math.hypot(q.x - this.beamA.x, q.y - this.beamA.y)) + ' — click the other end.'); }
     // a generated ceiling: its T-grid, drawn over the rooms it was laid out in
     if (Array.isArray(P.ceilRects) && P.ceilRects.length && this.showCeil !== false && V2 && V2.ceilingGrid) {
       const key = JSON.stringify([P.ceilRects.length, P.ceilRects[0], P.gridZones || [], P.ceilGrid || null, P.walls.length, (P.fixtures || []).map(f => [f.x, f.y, f.w, f.h]), (P.ceilTiles || []).map(t => [t.x, t.y, t.w, t.h])]);
