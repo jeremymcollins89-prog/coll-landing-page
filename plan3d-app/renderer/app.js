@@ -2591,6 +2591,31 @@ function layerPieces(data, o, p) {
   }
   return said.length ? 'From the other layers: ' + said.join(', ') + '.' : '';
 }
+/* Before an import lands on the plan: a picture of it and what was found, to import or go back and change the
+   settings. Resolves 'import', 'back' or null. */
+function importPreview(p, x) {
+  x = x || {};
+  const ty = {}; (p.openings || []).forEach(o => { ty[o.type] = (ty[o.type] || 0) + 1; });
+  const fx = (p.fixtures || []), ffu = fx.filter(f => f.type === 'ffu').length, lt = fx.length - ffu;
+  const curved = new Set((p.walls || []).filter(w => w.curve).map(w => w.curve)).size;
+  const rows = [
+    [(p.walls || []).length, 'walls' + (x.building ? ` (${x.building} of them the building around the cleanroom)` : '') + (curved ? `, ${curved} curved` : '')],
+    [ty.door || 0, 'doors'], [ty.door2 || 0, 'pairs of doors'], [ty.glass || 0, 'windows'], [ty.pass || 0, 'pass-thrus'],
+    [(p.rooms || []).length, 'rooms named' + ((p.rooms || []).length ? ': ' + p.rooms.slice(0, 8).map(r => r.name).join(', ') + (p.rooms.length > 8 ? '…' : '') : '')],
+    [ffu, 'FFUs'], [lt, 'lights'], [(p.beams || []).length, 'steel beams'], [(p.ceilingGrid || []).length, 'ceiling grid lines'],
+    [(p.chases || []).length, 'air chases'], [(p.columns || []).length, 'columns']
+  ].filter(r => r[0] > 0);
+  return dialogOpen({
+    wide: true,
+    title: 'Here\'s what was found',
+    body: `<div style="display:grid;grid-template-columns:minmax(220px,1fr) 1fr;gap:16px;align-items:start">
+      <div style="background:var(--panel2,#1b2124);border-radius:10px;padding:10px;aspect-ratio:3/2">${planThumb(p)}</div>
+      <ul style="margin:0;padding-left:18px;line-height:1.7">${rows.map(r => `<li><b>${r[0]}</b> ${esc(r[1])}</li>`).join('') || '<li>Nothing found.</li>'}</ul></div>
+      ${x.skipped ? `<p class="note">Left out ${x.skipped} loose bit${x.skipped === 1 ? '' : 's'} standing on ${x.skipped === 1 ? 'its' : 'their'} own.</p>` : ''}
+      <p class="note">Import puts it on the plan, where you can fix anything. Back takes you to the settings.</p>`,
+    buttons: [{ label: 'Back to settings', ret: 'back' }, { label: 'Import', primary: true, ret: 'import' }]
+  });
+}
 function dxfDialog(data, preset) {
   preset = preset || {};
   const opTypes = {};
@@ -2640,7 +2665,7 @@ function dxfDialog(data, preset) {
       try { const c = localStorage.getItem('p3d.dxClusters'); if (c && $('#dxC')) $('#dxC').value = c; } catch (e) { /* no storage */ }
       upd();
     }
-  }).then(o => {
+  }).then(async o => {
     if (!o) return;
     try { localStorage.setItem('p3d.dxClusters', o.clusters); } catch (e) { /* no storage */ }
     // no walls on the drawing (a beam or FFU drawing on its own): its other pieces set where (0, 0) is
@@ -2649,6 +2674,8 @@ function dxfDialog(data, preset) {
     // coordinates (exported from the same AutoCAD file) lands right on the plan
     const plF = addMode && ed.plan.dxfOrigin && !preset.keepOrigin ? ed.plan.dxfOrigin : null; if (plF) o.frame = plF;
     let walls = IMP.wallsFromDxf(data, o), skipped = 0;
+    // curved walls: two arcs a wall-thickness apart, as short straight panels
+    try { walls.push(...IMP.curvedWalls(data, o)); } catch (e) { console.error(e); }
     // a second copy of the plan or loose bits elsewhere on the sheet: keep the main building
     if (o.clusters === 'main' && IMP.wallClusters && walls.length) { const C = IMP.wallClusters(walls, 30); if (C.length > 1) { skipped = walls.length - C[0].walls.length; walls = C[0].walls; } }
     const ops0 = walls.length ? IMP.openingsFromDxf(data, walls, o, opTypes) : { openings: [], found: {} };
@@ -2688,16 +2715,24 @@ function dxfDialog(data, preset) {
         p.__inPlace = true;
       }
     }
+    // room names from the labels on the drawing
+    let named = 0; try { const R = IMP.roomsFromLabels(p, IMP.dxfLabels(data, o)); p.rooms = (p.rooms || []).concat(R); named = R.length; } catch (e) { console.error(e); }
+    // what came in, at a glance, before it lands on the plan
+    const go = await importPreview(p, { building: bld.size, skipped, extraText: extra && extra.text });
+    if (go === 'back') { dxfDialog(data, { ...preset, layers: [...o.layers], unit: o.unit }); return; }
+    if (!go) return;
     if (adoptImported(p, extra && extra.text)) return;
     projectPath = null; ed.setPlan(p); ed.dirty = true; updateChrome();
     const f = ops.found, parts = [];
     if (f.door) parts.push(f.door + ' door' + (f.door > 1 ? 's' : '')); if (f.door2) parts.push(f.door2 + ' pair' + (f.door2 > 1 ? 's' : '') + ' of doors');
     if (f.glass) parts.push(f.glass + ' window' + (f.glass > 1 ? 's' : '')); if (f.pass) parts.push(f.pass + ' pass-thru' + (f.pass > 1 ? 's' : ''));
     const exText = extra && extra.text ? ' ' + extra.text : '';
+    const curvedN = new Set(walls.filter(w => w.curve).map(w => w.curve)).size;
+    const moreText = (curvedN ? ` ${curvedN} curved wall${curvedN === 1 ? '' : 's'} came in as short panels.` : '') + (named ? ` Named ${named} room${named === 1 ? '' : 's'} from the drawing's labels.` : '');
     const opsText = parts.length ? ' and ' + parts.join(', ') : '. No door or window symbols were found; add them with the Door, Pair and Glass tools';
     const bldText = bld.size ? ` The ${bld.size} outside walls are the building (${Plan3DViewer.WALL_KINDS[walls.find(w => bld.has(w.id)).kind].short.toLowerCase()}); pick one to change it.` : '';
     const skipText = !skipped ? '' : o.clusters === 'all' ? ` Left out ${skipped} loose wall bit${skipped === 1 ? '' : 's'} standing on ${skipped === 1 ? 'its' : 'their'} own (a curb or a sign on a wall layer).` : ` Left out ${skipped} wall${skipped === 1 ? '' : 's'} away from the main building (a copy off to the side, loose bits); import again with “Separate drawings: Everything on the sheet” to keep them.`;
-    if (walls.length) showBanner(`Imported ${walls.length} walls${opsText}.${bldText}${skipText}${exText} Check them, then add chases and rooms.`, [{ label: 'View in 3D', primary: true, fn: () => { hideBanner(); setView('split'); } }]);
+    if (walls.length) showBanner(`Imported ${walls.length} walls${opsText}.${bldText}${skipText}${moreText}${exText} Check them, then add chases and rooms.`, [{ label: 'View in 3D', primary: true, fn: () => { hideBanner(); setView('split'); } }]);
     else if (rp) showBanner(rp + ' No walls came in (no layer set to Walls).', [{ label: 'View in 3D', primary: true, fn: () => { hideBanner(); setView('split'); } }]);
     else showBanner('No walls were found with these settings. Try "Single centerline", a wider thickness range, or other layers.', [{ label: 'Try again', primary: true, fn: () => dxfDialog(data, preset) }]);
   });
@@ -2707,7 +2742,7 @@ function dxfDialog(data, preset) {
     const unitFt = IMP.UNIT_FT[+$('#dxU').value] || 1 / 12, mode = $('#dxM').value;
     const tv = $('#dxT').value.split(/to|-|–/i).map(s => parseLen(s.trim(), 'in')).filter(v => v > 0);
     const minT = tv.length > 1 ? Math.min(...tv) : (tv[0] || 0.25) * 0.6, maxT = tv.length > 1 ? Math.max(...tv) : (tv[0] || 0.25) * 1.5;
-    return { layers, unitFt, mode, minT, maxT, tFt: tv[0] || 0.25, minLen: 0.75, keepOrigin: !!preset.keepOrigin, bldMode: ($('#dxB') || {}).value || 'auto', bldKind: ($('#dxBK') || {}).value || 'auto', clusters: ($('#dxC') || {}).value || 'all', extras: !$('#dxX') || $('#dxX').checked, roles };
+    return { layers, unitFt, unit: +$('#dxU').value, mode, minT, maxT, tFt: tv[0] || 0.25, minLen: 0.75, keepOrigin: !!preset.keepOrigin, bldMode: ($('#dxB') || {}).value || 'auto', bldKind: ($('#dxBK') || {}).value || 'auto', clusters: ($('#dxC') || {}).value || 'all', extras: !$('#dxX') || $('#dxX').checked, roles };
   }
 }
 
@@ -3078,12 +3113,19 @@ async function handleLoaded(r) {
     const text = r.code === 'nodwg'
       ? `<p>DWG files need a free converter. Either:</p><ol class="help"><li>In AutoCAD, use <b>Save As → AutoCAD DXF (*.dxf)</b> and import the DXF, or</li><li>Install the free <b>ODA File Converter</b>, then import the DWG again. Coll Plan3D finds it automatically.</li></ol>`
       : r.code === 'dwgfail' ? `<p>The built-in DWG reader couldn't open ${esc(r.name)}. Either:</p><ol class="help"><li>In AutoCAD, use <b>Save As → AutoCAD DXF (*.dxf)</b> and import the DXF, or</li><li>Install the free <b>ODA File Converter</b>. Coll Plan3D uses it automatically for DWGs it can't read on its own.</li></ol>`
-      : r.code === 'unsupported' ? `<p>Coll Plan3D can't read ${esc(r.ext)} files. Use DXF, DWG, PNG, JPG or a saved .plan3d project. For a PDF plan, export the page as PNG first.</p>`
+      : r.code === 'unsupported' ? `<p>Coll Plan3D can't read ${esc(r.ext)} files. Use DXF, DWG, IFC, PDF, PNG, JPG or a saved .plan3d project.</p>`
       : `<p>Couldn't read ${esc(r.name)}. ${esc(r.message || '')}</p>`;
     const btns = [{ label: 'OK', primary: true, ret: null }];
     if (r.code === 'nodwg' || r.code === 'dwgfail') btns.unshift({ label: 'Get ODA File Converter', ret: 'oda' });
     const a = await dialogOpen({ title: r.code === 'nodwg' ? 'DWG needs one extra step' : "Can't open that file", body: text, buttons: btns });
-    if (a === 'oda' && api.openUrl) api.openUrl('https://www.opendesign.com/guestfiles/oda_file_converter');
+    if (a === 'oda' && api.openUrl) {
+      api.openUrl('https://www.opendesign.com/guestfiles/oda_file_converter');
+      // once it's installed, open the same DWG again without hunting for it
+      if (r.path && api.loadPath) {
+        const again = await dialogOpen({ title: 'Install the converter', body: `<p>The ODA File Converter download page is open in your browser. Download it, run the installer, then come back and click <b>Try again</b>. Nothing else to set up: Coll Plan3D finds it on its own.</p>`, buttons: [{ label: 'Cancel', ret: null }, { label: 'Try again', primary: true, ret: 'again' }] });
+        if (again === 'again') { msg('Opening ' + r.name + '…'); handleLoaded(await api.loadPath(r.path)); msg(''); }
+      }
+    }
     return;
   }
   if (r.kind === 'project') {
@@ -3139,6 +3181,15 @@ async function openPlanPdf(r) {
       if (!pageNo) { msg(''); return; }
     }
     const page = await doc.getPage(pageNo), v1 = page.getViewport({ scale: 1 });
+    // a PDF made from CAD keeps its lines: read them exactly (like a DXF) when there are enough of them
+    try {
+      const V = await pdfVector(lib, page);
+      if (V && V.segs.length + V.arcs.length >= 20) {
+        const sc = await pdfScaleDialog(V.scale, V.scales);
+        if (sc && sc !== 'picture') { msg(''); const dd = pdfAsDrawing(V, sc, r.name + (doc.numPages > 1 ? ' p' + pageNo : '')); dxfDialog(dd, { unit: 2, layers: dd.wallLayers }); return; }
+        if (!sc) { msg(''); return; }
+      }
+    } catch (e) { console.error(e); }
     // sharp enough to read thin wall lines: about 4500 px on the long side (within the canvas limits)
     const k = Math.min(4500 / Math.max(v1.width, v1.height), Math.sqrt(30e6 / (v1.width * v1.height))), vp = page.getViewport({ scale: k });
     const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
@@ -3147,6 +3198,117 @@ async function openPlanPdf(r) {
     openPlanPicture(r.name + (doc.numPages > 1 ? ' p' + pageNo : ''), cv.toDataURL('image/png'), 'PDF page ' + pageNo + ' opened. ');
     msg('');
   } catch (err) { console.error(err); msg(''); toast('Could not open that PDF: ' + (err && err.message || err)); }
+}
+/* The drawing inside a PDF page: every stroked or filled path as line segments (in PDF points, y up, like a DXF),
+   door swings drawn as curves as arcs, and the text with where it sits. Lines are grouped by their weight, which
+   stands in for layers. Also the drawing scale written on the sheet, if it can be read. */
+async function pdfVector(lib, page) {
+  const OPS = lib.OPS, ol = await page.getOperatorList(), F = ol.fnArray, A = ol.argsArray;
+  const mul = (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
+  const ap = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+  let ctm = [1, 0, 0, 1, 0, 0], lw = 1; const stack = [];
+  const segs = [], arcs = [], layers = {}; let path = [], pathArcs = [];
+  const flush = (kind) => {
+    if (!path.length && !pathArcs.length) return;
+    const w = lw * Math.sqrt(Math.abs(ctm[0] * ctm[3] - ctm[1] * ctm[2])) || 0;
+    const layer = kind === 'fill' ? 'Filled shapes' : 'Lines ' + (Math.round(w * 20) / 20).toFixed(2) + ' pt';
+    for (const q of path) { segs.push([q[0], q[1], q[2], q[3], layer]); layers[layer] = (layers[layer] || 0) + 1; }
+    for (const a of pathArcs) { arcs.push({ ...a, layer }); layers[layer] = (layers[layer] || 0) + 1; }
+    path = []; pathArcs = [];
+  };
+  const bez = (p0, p1, p2, p3) => {
+    // as short segments, and as an arc when it is a piece of a circle (a door swing)
+    const B = (t) => { const u = 1 - t; return [u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0], u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]]; };
+    const n0 = path.length; let prev = p0; for (let k = 1; k <= 6; k++) { const c = B(k / 6); path.push([prev[0], prev[1], c[0], c[1]]); prev = c; }
+    const m = B(0.5), ax = p0[0], ay = p0[1], bx = m[0], by = m[1], cx = p3[0], cy = p3[1];
+    const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by)); if (Math.abs(d) < 1e-9) return;
+    const ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d;
+    const uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d;
+    const r = Math.hypot(ax - ux, ay - uy); if (!(r > 0)) return;
+    for (const t of [0.25, 0.75]) { const q = B(t); if (Math.abs(Math.hypot(q[0] - ux, q[1] - uy) - r) > r * 0.03) return; }
+    let a0 = Math.atan2(ay - uy, ax - ux), a1 = Math.atan2(cy - uy, cx - ux), am = Math.atan2(by - uy, bx - ux);
+    const ccw = (s, e, x) => { const n = (v) => ((v % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); return n(x - s) < n(e - s); };
+    if (!ccw(a0, a1, am)) { const t = a0; a0 = a1; a1 = t; }
+    pathArcs.push({ x: ux, y: uy, r, a0, a1 });
+    path.length = n0;   // a circle piece is kept as the arc only (its short chords would pair up into tiny walls)
+  };
+  for (let i = 0; i < F.length; i++) {
+    const f = F[i], g = A[i];
+    if (f === OPS.save) stack.push([ctm, lw]);
+    else if (f === OPS.restore) { const s0 = stack.pop(); if (s0) { ctm = s0[0]; lw = s0[1]; } }
+    else if (f === OPS.transform) ctm = mul(ctm, g);
+    else if (f === OPS.paintFormXObjectBegin) { stack.push([ctm, lw]); if (g && g[0]) ctm = mul(ctm, g[0]); }
+    else if (f === OPS.paintFormXObjectEnd) { const s0 = stack.pop(); if (s0) { ctm = s0[0]; lw = s0[1]; } }
+    else if (f === OPS.setLineWidth) lw = g[0];
+    else if (f === OPS.constructPath) {
+      const ops = g[0], c = g[1]; let k = 0, cur = null, start = null;
+      for (const op of ops) {
+        if (op === OPS.moveTo) { cur = ap(ctm, c[k], c[k + 1]); start = cur; k += 2; }
+        else if (op === OPS.lineTo) { const p2 = ap(ctm, c[k], c[k + 1]); if (cur) path.push([cur[0], cur[1], p2[0], p2[1]]); cur = p2; k += 2; }
+        else if (op === OPS.curveTo) { const p1 = ap(ctm, c[k], c[k + 1]), p2 = ap(ctm, c[k + 2], c[k + 3]), p3 = ap(ctm, c[k + 4], c[k + 5]); if (cur) bez(cur, p1, p2, p3); cur = p3; k += 6; }
+        else if (op === OPS.curveTo2) { const p2 = ap(ctm, c[k], c[k + 1]), p3 = ap(ctm, c[k + 2], c[k + 3]); if (cur) bez(cur, cur, p2, p3); cur = p3; k += 4; }
+        else if (op === OPS.curveTo3) { const p1 = ap(ctm, c[k], c[k + 1]), p3 = ap(ctm, c[k + 2], c[k + 3]); if (cur) bez(cur, p1, p3, p3); cur = p3; k += 4; }
+        else if (op === OPS.closePath) { if (cur && start) path.push([cur[0], cur[1], start[0], start[1]]); cur = start; }
+        else if (op === OPS.rectangle) { const x = c[k], y = c[k + 1], w = c[k + 2], h = c[k + 3], P = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].map(q => ap(ctm, q[0], q[1])); for (let j = 0; j < 4; j++) path.push([P[j][0], P[j][1], P[(j + 1) % 4][0], P[(j + 1) % 4][1]]); cur = P[0]; start = P[0]; k += 4; }
+      }
+    }
+    else if (f === OPS.stroke || f === OPS.closeStroke) flush('stroke');
+    else if (f === OPS.fill || f === OPS.eoFill) flush('fill');
+    else if (f === OPS.fillStroke || f === OPS.eoFillStroke || f === OPS.closeFillStroke || f === OPS.closeEOFillStroke) flush('stroke');
+    else if (f === OPS.endPath) { path = []; pathArcs = []; }
+    if (segs.length > 400000) break;
+  }
+  // a swing drawn as several curve pieces (one per 45°, say) is one arc: join pieces that carry on from each other
+  for (let joined = true; joined;) {
+    joined = false;
+    for (let i = 0; i < arcs.length && !joined; i++) for (let j = 0; j < arcs.length; j++) {
+      if (i === j) continue; const a = arcs[i], b = arcs[j];
+      if (a.layer !== b.layer || Math.hypot(a.x - b.x, a.y - b.y) > Math.max(0.5, a.r * 0.01) || Math.abs(a.r - b.r) > a.r * 0.01) continue;
+      const d = Math.abs(Math.atan2(Math.sin(b.a0 - a.a1), Math.cos(b.a0 - a.a1))); if (d > 0.02) continue;
+      a.a1 = b.a1; arcs.splice(j, 1); joined = true; break;
+    }
+  }
+  // text: where each piece sits (points) and how tall it is
+  const tc = await page.getTextContent(), texts = [];
+  for (const it of tc.items) { const t = (it.str || '').trim(); if (!t || !it.transform) continue; const [a, b, c, d, e, f2] = it.transform; texts.push({ x: e, y: f2, h: Math.hypot(c, d) || Math.hypot(a, b), text: t }); }
+  // the drawing scale written on the sheet: paper inches per real foot (1/4" = 1'-0" → 0.25), or 1:N
+  const all = texts.map(t => t.text).join(' ').replace(/[″“”]/g, '"').replace(/[′’‘]/g, "'"), found = [];
+  const frac = (v) => v.trim().split(/\s+/).reduce((t, part) => t + (part.includes('/') ? (+part.split('/')[0] / +part.split('/')[1]) : +part), 0);
+  for (const m2 of all.matchAll(/((?:\d+\s+)?\d+\/\d+|\d+(?:\.\d+)?)\s*"\s*=\s*1\s*'\s*(?:-?\s*0\s*"?)?/g)) { const v = frac(m2[1]); if (v > 0 && v <= 3) found.push(v); }
+  for (const m2 of all.matchAll(/\b1\s*"\s*=\s*(\d+(?:\.\d+)?)\s*'/g)) { const v = 1 / +m2[1]; if (v > 0 && v < 1) found.push(v); }
+  for (const m2 of all.matchAll(/\b1\s*:\s*(\d{2,4})\b/g)) found.push(-(+m2[1]));
+  const cnt = new Map(); found.forEach(v => cnt.set(v, (cnt.get(v) || 0) + 1));
+  const scale = found.length ? [...cnt.entries()].sort((p2, r2) => r2[1] - p2[1])[0][0] : null;
+  return { segs, arcs, layers, texts, scale, scales: [...cnt.keys()] };
+}
+/* The scale of a PDF drawing: the one written on the sheet (if any) pre-picked. Resolves paper inches per foot
+   (negative = a metric 1:N), 'picture' to open it as a picture instead, or null. */
+const PDF_SCALES = [[1, '1" = 1\'-0"'], [0.5, '1/2" = 1\'-0"'], [0.375, '3/8" = 1\'-0"'], [0.25, '1/4" = 1\'-0"'], [0.1875, '3/16" = 1\'-0"'], [0.125, '1/8" = 1\'-0"'], [0.09375, '3/32" = 1\'-0"'], [0.0625, '1/16" = 1\'-0"'], [0.1, '1" = 10\''], [0.05, '1" = 20\''], [-50, '1:50'], [-100, '1:100'], [-200, '1:200']];
+function pdfScaleLabel(v) { const k = PDF_SCALES.find(z => Math.abs(z[0] - v) < 1e-6); return k ? k[1] : v < 0 ? '1:' + (-v) : (v + '" = 1\'-0"'); }
+function pdfScaleDialog(found, all) {
+  const opts = PDF_SCALES.slice(); (all || []).forEach(v => { if (!opts.some(z => Math.abs(z[0] - v) < 1e-6)) opts.push([v, pdfScaleLabel(v)]); });
+  const pick = found != null ? found : 0.25;
+  return dialogOpen({
+    title: 'This PDF has real drawing lines',
+    body: `<p>Coll Plan3D can read its lines exactly, like an AutoCAD file: walls, door swings and room names land right where they are drawn.</p>
+      ${found != null ? `<p>The sheet says <b>${esc(pdfScaleLabel(found))}</b>${(all || []).length > 1 ? ' (other scales on the sheet: ' + all.filter(v => v !== found).map(v => esc(pdfScaleLabel(v))).join(', ') + ')' : ''}.</p>` : '<p>No scale was found on the sheet. Pick the scale the plan was drawn at; you can fix the size afterwards with Set scale.</p>'}
+      ${fld('Drawing scale', `<select id="pdfSc">${opts.map(([v, l]) => `<option value="${v}" ${Math.abs(v - pick) < 1e-6 ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`)}`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Open as a picture', ret: 'picture' }, { label: 'Read the lines', primary: true, value: () => +$('#pdfSc').value }]
+  });
+}
+/* A PDF page's drawing as the importer's DXF data, in feet at the chosen scale. */
+function pdfAsDrawing(V, sc, name) {
+  const ft = sc < 0 ? (-sc) / 72 / 12 : 1 / 72 / sc;
+  const segs = V.segs.map(q => [q[0] * ft, q[1] * ft, q[2] * ft, q[3] * ft, q[4]]);
+  const arcs = V.arcs.map(a => ({ ...a, x: a.x * ft, y: a.y * ft, r: a.r * ft }));
+  const roomTexts = V.texts.map(t => ({ x: t.x * ft, y: t.y * ft, h: t.h * ft, text: t.text, layer: 'Text' })).filter(t => t.text.length <= 48);
+  const labels = roomTexts.filter(t => t.text.length <= 16);
+  // walls are drawn with the heavier pens: start with the line weights at or above the middle weight (and filled
+  // shapes); thin lines (dimensions, hatching, text outlines) are left out until picked
+  const W = Object.keys(V.layers).filter(l => /^Lines /.test(l)).map(l => ({ l, w: parseFloat(l.slice(6)), n: V.layers[l] })).sort((p2, r2) => p2.w - r2.w);
+  let acc = 0, tot = W.reduce((t, z) => t + z.n, 0), mid = 0; for (const z of W) { acc += z.n; if (acc >= tot / 2) { mid = z.w; break; } }
+  const wallLayers = W.length > 1 ? W.filter(z => z.w >= mid).map(z => z.l) : W.map(z => z.l); if (V.layers['Filled shapes']) wallLayers.push('Filled shapes');
+  return { kind: 'dxf', name, segs, layers: V.layers, insunits: 2, texts: [], rects: [], labels, roomTexts, blocks: [], arcs, fromPdf: true, wallLayers };
 }
 /* Fix a phone photo's perspective: click the four corners of the drawing's border (or of the building), and the
    picture is straightened so they make a rectangle. The scale is set again afterwards. */
@@ -3504,5 +3666,5 @@ window.addEventListener('drop', async e => {
 
 renderProps(); updateChrome(); toolHint('select');
 if (api.rendererReady) api.rendererReady();
-window.__app = { standardDoors, snapsDialog, lightsDrawingDialog, ensureShare, checkComments, recordPublished, linkPlan, mergeComments, markApproved, changeOrderDialog, exportHtml, wallHeightDialog, setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
+window.__app = { pdfVector, loadPdfLib, standardDoors, snapsDialog, lightsDrawingDialog, ensureShare, checkComments, recordPublished, linkPlan, mergeComments, markApproved, changeOrderDialog, exportHtml, wallHeightDialog, setAddMode: (v) => { addMode = v; }, adoptImported, libraryDialog, saveGroupDialog, saveCeilingDialog, collectPieces, pastePieces, applyCeiling, ed, setView, handleLoaded, placeBuilding, saveBuildingDialog, insertBuildingDialog, loadBldLib, ceilingDialogs: { cad: cadCeilingDialog, image: imageCeilingDialog, move: moveCeilingDialog }, exportIfc, get viewer() { return viewer; }, get builder() { return builder; } };
 })();

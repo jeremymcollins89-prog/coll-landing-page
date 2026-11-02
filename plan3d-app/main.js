@@ -147,7 +147,7 @@ function flattenDxf(dxf) {
     segs.push([x1, y1, x2, y2, layer]);
     layers[layer] = (layers[layer] || 0) + 1;
   }
-  const texts = [];
+  const texts = [], roomTexts = [];
   // For ceiling drawings: closed rectangles and block outlines (light fixtures, FFUs) and short labels
   const rects = [], labels = [];
   // Every block placed in the drawing (doors, windows, pass-thrus …): where it is, which way it faces,
@@ -193,10 +193,16 @@ function flattenDxf(dxf) {
           const t = e.text.replace(/\\[A-Za-z][^;]*;/g, '').replace(/[{}]/g, '').trim();
           const p = e.startPoint || e.position;
           if (t && t.length <= 16 && p && labels.length < 20000) { const q = T(p); labels.push({ x: q[0], y: q[1], text: t, layer }); }
+          // longer labels too (room names like "GOWNING 101"), with their height, for naming the rooms
+          if (t && t.length <= 48 && p && roomTexts.length < 20000) { const q = T(p), q2 = T({ x: (p.x || 0), y: (p.y || 0) + (e.textHeight || e.height || 0) }); roomTexts.push({ x: q[0], y: q[1], text: t.replace(/\\P/g, ' ').replace(/\s+/g, ' '), h: Math.hypot(q2[0] - q[0], q2[1] - q[1]), layer }); }
         } else if (e.type === 'ARC' && depth === 0 && e.center && e.radius > 0 && arcsLoose.length < 20000) {
           // door swings drawn straight on the sheet (not as a door block)
           const c = T(e.center), a0 = e.startAngle || 0, a1 = e.endAngle != null ? e.endAngle : a0;
           arcsLoose.push({ x: c[0], y: c[1], r: e.radius, a0, a1, layer });
+        } else if (e.type === 'SOLID' && e.points && e.points.length >= 3) {
+          // a filled shape (walls drawn solid): its outline, so its two long sides pair up as a wall
+          const P = e.points.map(T), o = P.length === 4 ? [P[0], P[1], P[3], P[2]] : P;
+          for (let i = 0; i < o.length; i++) { const a2 = o[i], b2 = o[(i + 1) % o.length]; add(a2[0], a2[1], b2[0], b2[1], layer); }
         } else if (e.type === 'LINE' && e.vertices && e.vertices.length >= 2) {
           const a = T(e.vertices[0]), b = T(e.vertices[1]);
           add(a[0], a[1], b[0], b[1], layer);
@@ -243,7 +249,51 @@ function flattenDxf(dxf) {
   }
   walk(dxf.entities, (x, y) => [x, y], 0, null);
   const insunits = (dxf.header && dxf.header.$INSUNITS) || 0;
-  return { segs, layers, insunits, texts, rects, labels, blocks: blocksPlaced, arcs: arcsLoose };
+  return { segs, layers, insunits, texts, rects, labels, roomTexts, blocks: blocksPlaced, arcs: arcsLoose };
+}
+
+/* Hatches (walls drawn filled, "poché"): dxf-parser skips HATCH, so their boundaries are read straight from the
+   DXF text (top level only). Returns [[x1, y1, x2, y2, layer]]: the outline of each boundary. */
+function dxfHatchSegs(text) {
+  const out = [], L = text.split(/\r?\n/), n = L.length;
+  let i = 0, inEnt = false;
+  while (i + 1 < n) {
+    const c = L[i].trim(), v = (L[i + 1] || '').trim();
+    if (c === '0' && v === 'SECTION' && (L[i + 3] || '').trim() === 'ENTITIES') { inEnt = true; i += 4; continue; }
+    if (inEnt && c === '0' && v === 'ENDSEC') break;
+    if (!inEnt || c !== '0' || v !== 'HATCH') { i += 2; continue; }
+    // one HATCH: read its group codes up to the next entity
+    const G = []; i += 2;
+    while (i + 1 < n && L[i].trim() !== '0') { G.push([+L[i].trim(), (L[i + 1] || '').trim()]); i += 2; }
+    let layer = '0', k = 0; for (const [g, val] of G) if (g === 8) { layer = val; break; }
+    while (k < G.length && G[k][0] !== 91) k++;
+    if (k >= G.length) continue;
+    const paths = +G[k][1]; k++;
+    const num = () => +G[k++][1];
+    try {
+      for (let pth = 0; pth < paths && k < G.length; pth++) {
+        while (k < G.length && G[k][0] !== 92) k++; const flag = num();
+        if (flag & 2) {
+          // polyline boundary: 72 has-bulge, 73 closed, 93 count, then 10/20 (42)
+          let bulge = 0, closed = 1, cnt = 0; while (k < G.length && G[k][0] !== 93) { if (G[k][0] === 72) bulge = +G[k][1]; if (G[k][0] === 73) closed = +G[k][1]; k++; }
+          cnt = num(); const pts = [];
+          for (let j = 0; j < cnt && k < G.length; j++) { while (k < G.length && G[k][0] !== 10) k++; const x = num(); const y = +G[k++][1]; if (bulge && k < G.length && G[k][0] === 42) k++; pts.push([x, y]); }
+          for (let j = 0; j + 1 < pts.length; j++) out.push([pts[j][0], pts[j][1], pts[j + 1][0], pts[j + 1][1], layer]);
+          if (closed && pts.length > 2) out.push([pts[pts.length - 1][0], pts[pts.length - 1][1], pts[0][0], pts[0][1], layer]);
+        } else {
+          // edge boundary: 93 edges; 72 = 1 line (10 20 11 21); other edge kinds skipped
+          while (k < G.length && G[k][0] !== 93) k++; const ne = num();
+          for (let j = 0; j < ne && k < G.length; j++) {
+            while (k < G.length && G[k][0] !== 72) k++; const type = num();
+            if (type === 1) { const get = (code) => { while (k < G.length && G[k][0] !== code) k++; return num(); }; const x1 = get(10), y1 = get(20), x2 = get(11), y2 = get(21); out.push([x1, y1, x2, y2, layer]); }
+          }
+        }
+        while (k < G.length && G[k][0] !== 97) k++; if (k < G.length) { const ns = num(); k += ns; }
+      }
+    } catch (err) { /* a hatch we can't follow is skipped */ }
+    if (out.length > 200000) break;
+  }
+  return out;
 }
 
 function findOdaConverter() {
@@ -511,7 +561,7 @@ async function loadAny(file) {
     let dxfFile = file;
     if (ext === '.dwg') {
       const r = await convertDwg(file);
-      if (r.error) return { kind: 'error', code: r.error, name };
+      if (r.error) return { kind: 'error', code: r.error, name, path: file };
       dxfFile = r.dxfPath;
     } else if (ext !== '.dxf') {
       return { kind: 'error', code: 'unsupported', name, ext };
@@ -520,6 +570,7 @@ async function loadAny(file) {
     const parser = new DxfParser();
     const dxf = parser.parseSync(text);
     const flat = flattenDxf(dxf);
+    try { for (const q of dxfHatchSegs(text)) { if (Math.hypot(q[2] - q[0], q[3] - q[1]) < 1e-9) continue; flat.segs.push(q); flat.layers[q[4]] = (flat.layers[q[4]] || 0) + 1; } } catch (e) { /* no hatches */ }
     return { kind: 'dxf', name, path: file, ...flat };
   } catch (err) {
     return { kind: 'error', code: 'read', name, message: String(err && err.message || err) };
