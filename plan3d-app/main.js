@@ -502,6 +502,7 @@ async function loadAny(file) {
       const mime = ext === '.jpg' ? 'image/jpeg' : 'image/' + ext.slice(1);
       return { kind: 'image', name, path: file, dataUrl: 'data:' + mime + ';base64,' + buf.toString('base64') };
     }
+    if (ext === '.pdf') return { kind: 'pdf', name, path: file, data: fs.readFileSync(file).toString('base64') };
     if (ext === '.ifc') return await loadIfc(file);
     if (ext === '.rvt' || ext === '.rfa' || ext === '.rte') return { kind: 'error', code: 'revit', name, ext };
     if (ext === '.plan3d' || ext === '.json') {
@@ -531,10 +532,10 @@ ipcMain.handle('open-file', async (e, which) => {
     : which === 'ceiling'
     ? [{ name: 'Ceiling drawings', extensions: ['dxf', 'dwg', 'png', 'jpg', 'jpeg', 'bmp', 'webp'] }, { name: 'All files', extensions: ['*'] }]
     : [
-        { name: 'Floor plans', extensions: ['dxf', 'dwg', 'ifc', 'rvt', 'png', 'jpg', 'jpeg', 'bmp', 'webp', 'plan3d'] },
+        { name: 'Floor plans', extensions: ['dxf', 'dwg', 'ifc', 'rvt', 'pdf', 'png', 'jpg', 'jpeg', 'bmp', 'webp', 'plan3d'] },
         { name: 'AutoCAD', extensions: ['dxf', 'dwg'] },
         { name: 'Revit / BIM (IFC)', extensions: ['ifc', 'rvt'] },
-        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'bmp', 'webp'] },
+        { name: 'Images and PDFs', extensions: ['pdf', 'png', 'jpg', 'jpeg', 'bmp', 'webp'] },
         { name: 'All files', extensions: ['*'] }
       ];
   const r = await dialog.showOpenDialog(ownerOf(e), { properties: ['openFile'], filters });
@@ -670,7 +671,7 @@ if (!app.requestSingleInstanceLock()) {
   // opening the app again (or double-clicking a project) opens it in a window of its own, so projects can be
   // compared side by side; all windows share one copy of the app (and its updates)
   app.on('second-instance', (e, argv) => {
-    const f = argv.slice(1).find(a => /\.(dxf|dwg|ifc|rvt|png|jpe?g|bmp|webp|plan3d)$/i.test(a));
+    const f = argv.slice(1).find(a => /\.(dxf|dwg|ifc|rvt|pdf|png|jpe?g|bmp|webp|plan3d)$/i.test(a));
     createWindow(f || null).focus();
   });
 }
@@ -714,7 +715,7 @@ app.whenReady().then(() => {
   if (!app.hasSingleInstanceLock()) return;
   buildMenu();
   // File passed on the command line / "Open with"
-  const arg = process.argv.slice(1).find(a => /\.(dxf|dwg|ifc|rvt|png|jpe?g|bmp|webp|plan3d)$/i.test(a));
+  const arg = process.argv.slice(1).find(a => /\.(dxf|dwg|ifc|rvt|pdf|png|jpe?g|bmp|webp|plan3d)$/i.test(a));
   createWindow(arg || null);
   setupUpdates();
 });
