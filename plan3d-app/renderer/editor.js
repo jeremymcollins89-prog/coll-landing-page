@@ -746,7 +746,7 @@ class Editor {
       else if (this.house && (T === 'door' || T === 'door2' || T === 'open')) o.head = 6 + 8 / 12;
       else if (T === 'glass') { o.sill = 3; o.head = 7; }
       else if (T === 'pass') { o.sill = 3; o.head = 5; o.depth = 2; }
-      else if (T === 'removable') { delete o.swing; o.head = Math.min(8 + 3 / 12, this.plan.ceiling || 8.25); }   // 8′ clear under the 3″ header tube
+      else if (T === 'removable') { delete o.swing; o.head = Math.min(8, this.plan.ceiling || 8); }
       else if (T === 'overhead') { const W = pv.wall, V = global.Plan3DViewer, wh = W && V ? (V.isHard(W) ? (this.plan.ceiling || 8) : V.isFrame(W) ? (W.h || this.plan.ceiling || 8) : V.shellHeight(this.plan, W)) : 16; o.head = Math.max(7, Math.min(14, wh - 2)); }
       else if ((T === 'door' || T === 'door2') && (!pv.wall || !global.Plan3DViewer || global.Plan3DViewer.isHard(pv.wall))) { o.style = 'cr'; o.leafW = 3; o.head = 86 / 12; }
       else o.head = 7;
