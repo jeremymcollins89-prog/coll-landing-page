@@ -20,6 +20,7 @@ const ed = new Editor($('#plan'), {
   onStatus: (m) => msg(m || toolHintText(ed.tool)),
   onCursor: (p) => { $('#sXY').textContent = fmt(p.x) + ', ' + fmt(p.y); $('#sZoom').textContent = Math.round(ed.view.s) + ' px/ft'; },
   onCalibrate: (cal) => calibrateDialog(cal),
+  onPersp: (pts) => perspApply(pts),
   onDrafttext: (pt) => draftTextDialog(pt),
   onBgload: () => updateChrome()
 });
@@ -65,6 +66,7 @@ const HINTS = {
   beam: 'Click both ends of a steel beam (I-beam). Over the cleanroom it spans wall to wall in the plenum, its top level with the top of the walls; otherwise it goes up under the roof. Pick it to change its size or height.',
   measure: 'Click two points to measure between them. Snaps to wall ends and lines up with them; Alt for any angle. Esc clears.',
   calibrate: 'Click both ends of a dimension you know, like the 40′ overall.',
+  persp: 'Click the four corners of the drawing\'s border, or of the building, in the photo. Esc cancels.',
   item: 'Pick an item above, then click near a wall: it backs up against the wall. R turns it. Carts, chairs, IV poles, islands, tables, rugs and lights go anywhere. Pick a placed item to change its size.',
   piece: 'Pick a piece above and click to place it, or drag to lay a whole run of panels. Drag a placed panel with Select to move it; its ends catch on nearby walls. Pieces snap to open ends and turn the corner toward the mouse. R turns a free piece. Right-drag pans.'
 };
@@ -827,6 +829,7 @@ function renderProps(opt) {
       ${fld('Opacity', `<input type="range" id="pBgOp" min="0.1" max="1" step="0.05" value="${B.opacity == null ? 0.55 : B.opacity}">`)}
       ${fld('Rotate', `<input type="range" id="pBgRot" min="-10" max="10" step="0.1" value="${(((B.rot || 0) - Math.round((B.rot || 0) / (Math.PI / 2)) * (Math.PI / 2)) * 180 / Math.PI).toFixed(1)}">`)}
       <div class="row"><button class="btn small" id="pBgL">⟲ 90°</button><button class="btn small" id="pBgR">⟳ 90°</button><button class="btn small" id="pBgCal">Set scale</button></div>
+      <div class="row"><button class="btn small" id="pBgStraight" title="Turn the picture so the drawing\'s lines run square">Straighten</button><button class="btn small" id="pBgPersp" title="A phone photo taken at an angle: click its four corners to make it square">Fix perspective</button></div>
       <div class="row"><button class="btn small" id="pBgDetect">Detect walls</button><button class="btn small danger" id="pBgDel">Remove image</button></div>
       <p class="note">${B.calibrated ? 'Scale is set. Trace walls over the image, or try Detect walls.' : 'Set the scale first: click both ends of a known dimension.'}</p></div>`;
   }
@@ -893,6 +896,8 @@ function renderProps(opt) {
     $('#pBgL').onclick = () => ed.edit(() => { B.rot = (B.rot || 0) - Math.PI / 2; });
     $('#pBgR').onclick = () => ed.edit(() => { B.rot = (B.rot || 0) + Math.PI / 2; });
     $('#pBgCal').onclick = () => { ed.setTool('calibrate'); };
+    $('#pBgStraight').onclick = straightenBg;
+    $('#pBgPersp').onclick = perspStart;
     $('#pBgDetect').onclick = () => detectDialog();
     $('#pBgDel').onclick = () => { ed.sel = { kind: 'bg' }; ed.deleteSel(); };
   }
@@ -2436,17 +2441,21 @@ function detectDialog() {
       ${fld('Wall thickness', '<input type="text" id="dT" value="3&quot;">')}
       ${fld('Shortest wall', '<input type="text" id="dMin" value="2\'">')}
       ${fld('Sensitivity', '<input type="range" id="dSens" min="0.65" max="0.95" step="0.01" value="0.82">')}
+      <label class="chk"><input type="checkbox" id="dAng" checked> Find angled walls too</label>
+      <label class="chk"><input type="checkbox" id="dDoor" checked> Find doors (a gap in a wall with its swing drawn)</label>
       ${ed.plan.walls.length ? '<label class="chk"><input type="checkbox" id="dReplace" checked> Replace the walls already on the plan</label>' : ''}`,
-    buttons: [{ label: 'Cancel', ret: null }, { label: 'Detect', primary: true, value: () => ({ t: parseLen($('#dT').value, 'in'), min: parseLen($('#dMin').value, 'ft'), sens: +$('#dSens').value, replace: !$('#dReplace') || $('#dReplace').checked }) }]
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Detect', primary: true, value: () => ({ t: parseLen($('#dT').value, 'in'), min: parseLen($('#dMin').value, 'ft'), sens: +$('#dSens').value, angled: $('#dAng').checked, doors: $('#dDoor').checked, replace: !$('#dReplace') || $('#dReplace').checked }) }]
   }).then(o => {
     if (!o || !(o.t > 0)) return;
     msg('Detecting walls…');
     setTimeout(() => {
       try {
-        const walls = IMP.wallsFromImage(ed.bgImg, B, { tFt: o.t, minLen: o.min > 0 ? o.min : 2, sensitivity: o.sens });
-        ed.edit(Pl => { if (o.replace) { Pl.walls = []; Pl.openings = []; } Pl.walls.push(...walls); Pl.wallT = o.t; });
-        msg('Found ' + walls.length + ' walls.');
-        if (walls.length) showBanner(`Found ${walls.length} walls. Delete extras, draw anything missing, then add doors, glass and chases.`, [{ label: 'Hide image', fn: () => { ed.edit(() => { B.visible = false; }); renderProps(); } }, { label: 'View in 3D', primary: true, fn: () => { hideBanner(); setView('split'); } }]);
+        const walls = IMP.wallsFromImage(ed.bgImg, B, { tFt: o.t, minLen: o.min > 0 ? o.min : 2, sensitivity: o.sens, angled: o.angled, doors: o.doors });
+        const doors = walls.openings || [];
+        ed.edit(Pl => { if (o.replace) { Pl.walls = []; Pl.openings = []; } Pl.walls.push(...walls); Pl.openings.push(...doors); Pl.wallT = o.t; });
+        const nd = doors.length, what = `${walls.length} wall${walls.length === 1 ? '' : 's'}${nd ? ` and ${nd} door${nd === 1 ? '' : 's'}` : ''}`;
+        msg('Found ' + what + '.');
+        if (walls.length) showBanner(`Found ${what}. Delete extras, draw anything missing, check the doors swing the right way, then add glass and chases.`, [{ label: 'Hide image', fn: () => { ed.edit(() => { B.visible = false; }); renderProps(); } }, { label: 'View in 3D', primary: true, fn: () => { hideBanner(); setView('split'); } }]);
         else showBanner('No walls found. Try a higher sensitivity or a thicker wall setting, or trace with the Wall tool.', [{ label: 'Try again', primary: true, fn: detectDialog }, { label: 'Trace by hand', fn: () => { hideBanner(); ed.setTool('wall'); } }]);
       } catch (err) { msg('Detection failed: ' + err.message); }
     }, 30);
@@ -3085,18 +3094,88 @@ async function handleLoaded(r) {
   }
   if (r.kind === 'dxf') { if (await openCadProject(r)) return; dxfDialog(r); return; }
   if (r.kind === 'ifc') { ifcDialog(r); return; }
-  if (r.kind === 'image') {
-    const im = new Image();
-    im.onload = () => {
-      const p = Editor.blank(); p.name = r.name;
-      const scale = 60 / Math.max(im.naturalWidth, im.naturalHeight); // provisional: longest side = 60 ft
-      p.background = { src: r.dataUrl, cx: im.naturalWidth * scale / 2, cy: im.naturalHeight * scale / 2, scale, rot: 0, opacity: 0.6, visible: true, calibrated: false };
-      projectPath = null; ed.setPlan(p); ed.dirty = true; updateChrome(); renderProps();
-      ed.setTool('calibrate');
-      showBanner('Set the scale: click both ends of a dimension you know, like the 40′ overall. Rotate the image first in the right panel if it is sideways.', []);
-    };
-    im.src = r.dataUrl;
-  }
+  if (r.kind === 'image') { openPlanPicture(r.name, r.dataUrl); return; }
+  if (r.kind === 'pdf') { openPlanPdf(r); return; }
+}
+/* A picture of a plan (a scan, a photo, a PDF page) as the background to trace or detect walls from. It is
+   straightened automatically when the drawing sits a little crooked. */
+function openPlanPicture(name, dataUrl, note) {
+  const im = new Image();
+  im.onload = () => {
+    const p = Editor.blank(); p.name = name;
+    const scale = 60 / Math.max(im.naturalWidth, im.naturalHeight); // provisional: longest side = 60 ft
+    let rot = 0, skew = 0; try { skew = IMP.imageSkew(im, 0); rot = -skew * Math.PI / 180; } catch (e) { /* left as it is */ }
+    p.background = { src: dataUrl, cx: im.naturalWidth * scale / 2, cy: im.naturalHeight * scale / 2, scale, rot, opacity: 0.6, visible: true, calibrated: false };
+    projectPath = null; ed.setPlan(p); ed.dirty = true; updateChrome(); renderProps();
+    ed.setTool('calibrate');
+    const straight = Math.abs(skew) >= 0.15 ? ` It was ${Math.abs(skew).toFixed(1)}° crooked, so it's been straightened.` : '';
+    showBanner((note || '') + 'Set the scale: click both ends of a dimension you know, like the 40′ overall.' + straight + ' A phone photo taken at an angle? Fix its perspective first.', [{ label: 'Fix perspective', fn: perspStart }]);
+  };
+  im.src = dataUrl;
+}
+/* A PDF plan: its page drawn as a picture (pick the page when there are several). pdf.js is loaded the first time. */
+let pdfLib = null;
+function loadPdfLib() {
+  if (pdfLib) return pdfLib;
+  const add = (src) => new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = src; sc.onload = ok; sc.onerror = () => no(new Error('could not load ' + src)); document.head.appendChild(sc); });
+  // the worker code runs on this page (no separate worker thread), which is plenty for one page of a plan
+  pdfLib = add('vendor/pdf.worker.min.js').then(() => add('vendor/pdf.min.js')).then(() => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js'; return window.pdfjsLib; });
+  pdfLib.catch(() => { pdfLib = null; });
+  return pdfLib;
+}
+async function openPlanPdf(r) {
+  msg('Opening the PDF…');
+  try {
+    const lib = await loadPdfLib();
+    const bin = atob(r.data), bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const doc = await lib.getDocument({ data: bytes, isEvalSupported: false }).promise;
+    let pageNo = 1;
+    if (doc.numPages > 1) {
+      pageNo = await dialogOpen({
+        title: 'Which page is the floor plan?',
+        body: `<p>This PDF has ${doc.numPages} pages.</p>${fld('Page', `<input type="number" id="pdfPg" min="1" max="${doc.numPages}" value="1">`)}`,
+        buttons: [{ label: 'Cancel', ret: null }, { label: 'Open page', primary: true, value: () => Math.max(1, Math.min(doc.numPages, Math.round(+$('#pdfPg').value || 1))) }]
+      });
+      if (!pageNo) { msg(''); return; }
+    }
+    const page = await doc.getPage(pageNo), v1 = page.getViewport({ scale: 1 });
+    // sharp enough to read thin wall lines: about 4500 px on the long side (within the canvas limits)
+    const k = Math.min(4500 / Math.max(v1.width, v1.height), Math.sqrt(30e6 / (v1.width * v1.height))), vp = page.getViewport({ scale: k });
+    const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+    const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+    await page.render({ canvasContext: g, viewport: vp }).promise;
+    openPlanPicture(r.name + (doc.numPages > 1 ? ' p' + pageNo : ''), cv.toDataURL('image/png'), 'PDF page ' + pageNo + ' opened. ');
+    msg('');
+  } catch (err) { console.error(err); msg(''); toast('Could not open that PDF: ' + (err && err.message || err)); }
+}
+/* Fix a phone photo's perspective: click the four corners of the drawing's border (or of the building), and the
+   picture is straightened so they make a rectangle. The scale is set again afterwards. */
+function perspStart() {
+  const B = ed.plan.background; if (!B || !ed.bgImg) { toast('Open a picture of the plan first.'); return; }
+  ed.setTool('persp');
+  showBanner('Click the four corners of the drawing\'s border, or of the building, in the photo. Esc cancels.', []);
+}
+function perspApply(pts) {
+  const B = ed.plan.background, im = ed.bgImg; if (!B || !im) return;
+  // plan feet → picture pixels (the background is drawn centred on cx, cy, turned by rot, scale ft per pixel)
+  const c = Math.cos(-(B.rot || 0)), sn = Math.sin(-(B.rot || 0));
+  const quad = pts.map(p => { const dx = (p.x - B.cx) / B.scale, dy = (p.y - B.cy) / B.scale; return { x: dx * c - dy * sn + im.naturalWidth / 2, y: dx * sn + dy * c + im.naturalHeight / 2 }; });
+  msg('Straightening the photo…');
+  setTimeout(() => {
+    try {
+      const cv = IMP.unwarpImage(im, quad), url = cv.toDataURL('image/png');
+      ed.edit(P => { const b = P.background; b.src = url; b.rot = 0; b.calibrated = false; b.cx = B.cx; b.cy = B.cy; });
+      ed.loadBg();
+      ed.setTool('calibrate'); renderProps(); msg('');
+      showBanner('Photo straightened. Now set the scale: click both ends of a dimension you know.', []);
+    } catch (err) { msg('Could not straighten it: ' + err.message); ed.setTool('select'); }
+  }, 30);
+}
+function straightenBg() {
+  const B = ed.plan.background; if (!B || !ed.bgImg) return;
+  let d = 0; try { d = IMP.imageSkew(ed.bgImg, B.rot || 0); } catch (e) { /* none */ }
+  if (!d) { toast('It already looks straight.'); return; }
+  ed.edit(() => { B.rot = (B.rot || 0) - d * Math.PI / 180; }); renderProps(); toast(`Straightened by ${Math.abs(d).toFixed(1)}°.`);
 }
 /* Import: into a new project, or (when this one already has a plan) added to it, so several buildings or
    drawings can be put together in one project */

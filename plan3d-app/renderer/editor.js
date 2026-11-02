@@ -459,7 +459,7 @@ class Editor {
 
   /* ---------- tools ---------- */
   setTool(t) {
-    this.tool = t; this.draft = null; this.cal = null; this.stepA = null; this.hdrA = null; if (t === 'header') this.refreshHeaderGaps(); if (t === 'lstep') this.refreshSteps(); this.meas = null; this.beamA = null; this.typed = ''; this.drag = null;
+    this.tool = t; this.draft = null; this.cal = null; this.persp = null; this.stepA = null; this.hdrA = null; if (t === 'header') this.refreshHeaderGaps(); if (t === 'lstep') this.refreshSteps(); this.meas = null; this.beamA = null; this.typed = ''; this.drag = null;
     if (t !== 'select' && !(t === 'draft' && (this.dtool === 'offset'))) { this.sel = null; this.multi = null; }
     this.dd = null;
     this.emit('select'); this.emit('tool', t); this.render();
@@ -825,6 +825,13 @@ class Editor {
       const r = { id: uid(), name: 'Room ' + (this.plan.rooms.length + 1), dims: '', x: p.x, y: p.y };
       this.edit(P => P.rooms.push(r)); this.setTool('select'); this.sel = { kind: 'room', id: r.id }; this.emit('select', { focusName: true }); this.render(); return;
     }
+    if (T === 'persp') {
+      // four corners of the drawing (or the building) in a photo, any order; the fourth click straightens it
+      const pts = this.persp || (this.persp = []); pts.push({ x: p.x, y: p.y });
+      if (pts.length < 4) this.status('Corner ' + pts.length + ' of 4. Click the next corner.');
+      else { const P = pts.slice(); this.persp = null; this.render(); this.emit('persp', P); return; }
+      this.render(); return;
+    }
     if (T === 'calibrate') {
       const s = this.snap(p.x, p.y, this.cal && this.cal.p1, { free: e.altKey });
       if (!this.cal || this.cal.p2) { this.cal = { p1: { x: s.x, y: s.y } }; this.status('Click the other end of the known dimension.'); }
@@ -1144,6 +1151,7 @@ class Editor {
     if (k === 'Escape' && this.hdrA) { this.hdrA = null; this.status(''); this.render(); return true; }
     if (k === 'Escape' && this.stepA) { this.stepA = null; this.status(''); this.render(); return true; }
     if (k === 'Escape' && this.beamA) { this.beamA = null; this.status(''); this.render(); return true; }
+    if (k === 'Escape' && this.tool === 'persp') { this.persp = null; this.setTool('select'); this.status(''); return true; }
     if (k === 'Escape' && this.meas) { this.meas = null; this.status(''); this.render(); return true; }
     if (k === 'Escape') { if (this.draft) this.endChain(); else if (this.cal) { this.cal = null; this.render(); } else if (this.tool !== 'select') this.setTool('select'); else { this.sel = null; this.emit('select'); this.render(); } return true; }
     if ((k === 'Delete' || k === 'Backspace') && (this.sel || this.multi)) { this.deleteSel(); return true; }
@@ -1752,6 +1760,14 @@ class Editor {
         g.fillStyle = line; g.beginPath(); g.arc(this.sx(PG.x1), this.sy(PG.y1), 3.5, 0, Math.PI * 2); g.fill();
         if (PG.pieces && PG.n > 1) { const L = Math.hypot(PG.x2 - PG.x1, PG.y2 - PG.y1) || 1, nx = -(PG.y2 - PG.y1) / L * t * 0.8, ny = (PG.x2 - PG.x1) / L * t * 0.8; g.beginPath(); for (const q of PG.pieces.slice(1)) { g.moveTo(this.sx(q.x1 - nx), this.sy(q.y1 - ny)); g.lineTo(this.sx(q.x1 + nx), this.sy(q.y1 + ny)); } g.stroke(); }
       }
+    }
+    if (this.tool === 'persp') {
+      const pts = (this.persp || []).concat(C ? [{ x: C.x, y: C.y }] : []);
+      g.save(); g.strokeStyle = COL.cal; g.fillStyle = COL.cal; g.lineWidth = 2; g.setLineDash([6, 4]);
+      if (pts.length > 1) { g.beginPath(); pts.forEach((q, i) => i ? g.lineTo(this.sx(q.x), this.sy(q.y)) : g.moveTo(this.sx(q.x), this.sy(q.y))); if (pts.length === 4) g.closePath(); g.stroke(); }
+      g.setLineDash([]); for (const q of this.persp || []) { g.beginPath(); g.arc(this.sx(q.x), this.sy(q.y), 6, 0, Math.PI * 2); g.fill(); }
+      g.restore();
+      if (C) this.crosshair(C);
     }
     if (this.tool === 'calibrate') {
       const c1 = this.cal && this.cal.p1;

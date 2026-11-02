@@ -422,40 +422,115 @@ function dxfSize(data, layers, unitFt) {
   return { w: (maxX - minX) * unitFt, h: (maxY - minY) * unitFt, n };
 }
 
-/* Image: find long dark horizontal / vertical strokes, pair them into walls.
-   bg: {cx, cy, scale (ft per image px), rot (rad)} */
-function wallsFromImage(img, bg, o) {
+/* ---------- Plan pictures (scans, PDFs, photos) ---------- */
+/* The picture drawn into a canvas turned by `rot` (radians), as a mask of its dark ink: each pixel compared with
+   its neighbourhood, so uneven light and grey paper don't hide the lines. The canvas is centred on the picture's
+   centre, so canvas pixels line up with the plan (at rot = the background's own turn). */
+function imageMask(img, rot, sens) {
   const nw = img.naturalWidth, nh = img.naturalHeight;
   const k = Math.min(1, 3000 / Math.max(nw, nh));
-  const iw = nw * k, ih = nh * k, c = Math.cos(bg.rot || 0), s = Math.sin(bg.rot || 0);
+  const iw = nw * k, ih = nh * k, c = Math.cos(rot || 0), s = Math.sin(rot || 0);
   const W = Math.ceil(Math.abs(iw * c) + Math.abs(ih * s)), H = Math.ceil(Math.abs(iw * s) + Math.abs(ih * c));
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const g = cv.getContext('2d', { willReadFrequently: true });
   g.fillStyle = '#fff'; g.fillRect(0, 0, W, H);
-  g.translate(W / 2, H / 2); g.rotate(bg.rot || 0); g.drawImage(img, -iw / 2, -ih / 2, iw, ih);
+  g.translate(W / 2, H / 2); g.rotate(rot || 0); g.drawImage(img, -iw / 2, -ih / 2, iw, ih);
   const px = g.getImageData(0, 0, W, H).data;
   const N = W * H, lum = new Uint8Array(N);
   for (let i = 0, j = 0; i < N; i++, j += 4) lum[i] = (px[j] * 77 + px[j + 1] * 150 + px[j + 2] * 29) >> 8;
   // local mean threshold via integral image
   const W1 = W + 1, ii = new Uint32Array(W1 * (H + 1));
   for (let y = 0; y < H; y++) { let row = 0; for (let x = 0; x < W; x++) { row += lum[y * W + x]; ii[(y + 1) * W1 + x + 1] = ii[y * W1 + x + 1] + row; } }
-  const r = 18, dark = new Uint8Array(N), sens = o.sensitivity || 0.82;
+  const r = 18, dark = new Uint8Array(N), sv = sens || 0.82;
   for (let y = 0; y < H; y++) {
     const y0 = Math.max(0, y - r), y1 = Math.min(H, y + r + 1);
     for (let x = 0; x < W; x++) {
       const x0 = Math.max(0, x - r), x1 = Math.min(W, x + r + 1);
       const sum = ii[y1 * W1 + x1] - ii[y0 * W1 + x1] - ii[y1 * W1 + x0] + ii[y0 * W1 + x0];
-      const mean = sum / ((x1 - x0) * (y1 - y0));
-      const v = lum[y * W + x];
-      dark[y * W + x] = (v < mean * sens && v < 200) ? 1 : 0;
+      const mean = sum / ((x1 - x0) * (y1 - y0)), v = lum[y * W + x];
+      dark[y * W + x] = (v < mean * sv && v < 200) ? 1 : 0;
     }
   }
-  const ftPerPx = bg.scale / k;
-  const tPx = o.tFt / ftPerPx, minLenPx = o.minLen / ftPerPx;
-  const toPlan = (x, y) => ({ x: bg.cx + (x - W / 2) * ftPerPx, y: bg.cy + (y - H / 2) * ftPerPx });
+  return { W, H, k, dark };
+}
+/* The directions the drawing's straight lines run (degrees, 0 = across, 90 = down, in the mask's frame), strongest
+   first: a Hough count of the ink, each direction scored by how much ink lines up along it. */
+function lineAngles(M) {
+  const { W, H, dark } = M, pts = [];
+  // thin the ink to a few tens of thousands of samples
+  let n = 0; for (let i = 0; i < dark.length; i++) n += dark[i];
+  const step = Math.max(1, Math.floor(n / 60000));
+  for (let y = 0, c = 0; y < H; y++) for (let x = 0; x < W; x++) if (dark[y * W + x] && (c++ % step === 0)) pts.push(x - W / 2, y - H / 2);
+  if (pts.length < 200) return [];
+  const T = 360, R = Math.ceil(Math.hypot(W, H) / 2 / 2) + 1, score = new Float64Array(T), acc = new Uint32Array(2 * R + 1);
+  for (let t = 0; t < T; t++) {
+    const th = t / T * Math.PI, ct = Math.cos(th), st = Math.sin(th); acc.fill(0);
+    for (let i = 0; i < pts.length; i += 2) acc[R + Math.round((pts[i] * ct + pts[i + 1] * st) / 2)]++;
+    let sc = 0; for (let b = 0; b < acc.length; b++) { const v = acc[b]; if (v > 6) sc += v * v; }
+    score[t] = sc;
+  }
+  const max = Math.max(...score), out = [];
+  for (let t = 0; t < T; t++) {
+    const v = score[t]; if (v < max * 0.07) continue;
+    let peak = true; for (let d = -6; d <= 6; d++) { if (d && score[(t + d + T) % T] > v) { peak = false; break; } }
+    if (!peak) continue;
+    // refine between neighbours, then the line runs square to the Hough normal
+    const a = score[(t - 1 + T) % T], b = score[(t + 1) % T], off = (a - b) / (2 * (a - 2 * v + b) || 1);
+    let dir = ((t + (Number.isFinite(off) ? Math.max(-0.5, Math.min(0.5, off)) : 0)) / T * 180 + 90) % 180;
+    out.push({ deg: dir, score: v / max });
+  }
+  return out.sort((p, q2) => q2.score - p.score);
+}
+/* How far the drawing is turned off square (degrees, within ±10): the strongest line direction near across or
+   down. 0 when it is straight or can't tell. */
+function imageSkew(img, rot) {
+  const A = lineAngles(imageMask(img, rot || 0));
+  for (const a of A) { let d = a.deg % 90; if (d > 45) d -= 90; if (Math.abs(d) <= 10) return Math.abs(d) < 0.15 ? 0 : d; }
+  return 0;
+}
+/* Straighten a phone photo: the four corners clicked (picture pixels, any order) become a rectangle. Returns a
+   canvas with the warped picture (with a little margin round the corners). */
+function unwarpImage(img, quad) {
+  const P = quad.slice(), cx = P.reduce((t, p) => t + p.x, 0) / 4, cy = P.reduce((t, p) => t + p.y, 0) / 4;
+  P.sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx)); // TL, TR, BR, BL (y down)
+  let st = 0, bd = 1e18; P.forEach((p, i) => { const v = p.x + p.y; if (v < bd) { bd = v; st = i; } });
+  const [tl, tr, br, bl] = [0, 1, 2, 3].map(i => P[(st + i) % 4]);
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  let w = (dist(tl, tr) + dist(bl, br)) / 2, h = (dist(tl, bl) + dist(tr, br)) / 2;
+  const cap = 4000 / Math.max(w, h); if (cap < 1) { w *= cap; h *= cap; }
+  const m = 0.05, ox = w * m, oy = h * m, OW = Math.round(w + 2 * ox), OH = Math.round(h + 2 * oy);
+  // homography: output rectangle corners → picture corners
+  const src = [[ox, oy], [ox + w, oy], [ox + w, oy + h], [ox, oy + h]], dst = [tl, tr, br, bl].map(p => [p.x, p.y]);
+  const A = [], B = [];
+  for (let i = 0; i < 4; i++) { const [x, y] = src[i], [u, v] = dst[i]; A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); B.push(u); A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); B.push(v); }
+  for (let c = 0; c < 8; c++) { let piv = c; for (let r = c + 1; r < 8; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r; [A[c], A[piv]] = [A[piv], A[c]]; [B[c], B[piv]] = [B[piv], B[c]];
+    for (let r = 0; r < 8; r++) { if (r === c) continue; const f = A[r][c] / A[c][c]; for (let k2 = c; k2 < 8; k2++) A[r][k2] -= f * A[c][k2]; B[r] -= f * B[c]; } }
+  const h8 = B.map((b, i) => b / A[i][i]);
+  const sc = document.createElement('canvas'); sc.width = img.naturalWidth; sc.height = img.naturalHeight;
+  const sg = sc.getContext('2d', { willReadFrequently: true }); sg.drawImage(img, 0, 0);
+  const S = sg.getImageData(0, 0, sc.width, sc.height).data, SW = sc.width, SH = sc.height;
+  const out = document.createElement('canvas'); out.width = OW; out.height = OH;
+  const og = out.getContext('2d'), O = og.createImageData(OW, OH), D = O.data;
+  for (let y = 0; y < OH; y++) for (let x = 0; x < OW; x++) {
+    const z = h8[6] * x + h8[7] * y + 1, u = (h8[0] * x + h8[1] * y + h8[2]) / z, v = (h8[3] * x + h8[4] * y + h8[5]) / z, o = (y * OW + x) * 4;
+    // outside the picked corners (the table, the edge of the sheet) is left white, so it can't be taken for walls
+    if (x < ox - 2 || y < oy - 2 || x > ox + w + 2 || y > oy + h + 2 || u < 0 || v < 0 || u >= SW - 1 || v >= SH - 1) { D[o] = D[o + 1] = D[o + 2] = 255; D[o + 3] = 255; continue; }
+    const x0 = u | 0, y0 = v | 0, fx = u - x0, fy = v - y0, i0 = (y0 * SW + x0) * 4, i1 = i0 + 4, i2 = i0 + SW * 4, i3 = i2 + 4;
+    for (let ch = 0; ch < 3; ch++) D[o + ch] = (S[i0 + ch] * (1 - fx) + S[i1 + ch] * fx) * (1 - fy) + (S[i2 + ch] * (1 - fx) + S[i3 + ch] * fx) * fy;
+    D[o + 3] = 255;
+  }
+  og.putImageData(O, 0, 0);
+  return out;
+}
+/* Image: find walls drawn as two parallel lines. Across and down first, then any other direction the drawing's
+   lines run (angled walls), then doors: a door-wide gap in a wall line with its swing arc drawn.
+   bg: {cx, cy, scale (ft per image px), rot (rad)}. Returns the walls, with .openings (the doors found) on it. */
+function wallsFromImage(img, bg, o) {
+  const base = imageMask(img, bg.rot || 0, o.sensitivity);
+  const ftPerPx = bg.scale / base.k, tPx = o.tFt / ftPerPx, minLenPx = o.minLen / ftPerPx;
 
-  function scan(horizontal) {
-    const A = horizontal ? H : W, Bn = horizontal ? W : H;
+  function scan(M, horizontal) {
+    const { W, H, dark } = M, A = horizontal ? H : W, Bn = horizontal ? W : H;
     const at = horizontal ? (a, b) => dark[a * W + b] : (a, b) => dark[b * W + a];
     const lines = []; let active = [];
     for (let a = 0; a < A; a++) {
@@ -495,11 +570,81 @@ function wallsFromImage(img, bg, o) {
     }
     return merged;
   }
-  const walls = [];
-  for (const m of pair(scan(true))) { const p1 = toPlan(m.a, m.c), p2 = toPlan(m.b, m.c); walls.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, t: o.tFt }); }
-  for (const m of pair(scan(false))) { const p1 = toPlan(m.c, m.a), p2 = toPlan(m.c, m.b); walls.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, t: o.tFt }); }
+  // a mask pixel → plan feet; a mask turned a further `d` (radians) past the background's turn is turned back
+  const toPlanIn = (M, d) => { const c = Math.cos(-d), s = Math.sin(-d); return (x, y) => { const X = (x - M.W / 2) * ftPerPx, Y = (y - M.H / 2) * ftPerPx; return { x: bg.cx + X * c - Y * s, y: bg.cy + X * s + Y * c }; }; };
+  const walls = [], P0 = toPlanIn(base, 0);
+  for (const m of pair(scan(base, true))) { const p1 = P0(m.a, m.c), p2 = P0(m.b, m.c); walls.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, t: o.tFt }); }
+  for (const m of pair(scan(base, false))) { const p1 = P0(m.c, m.a), p2 = P0(m.c, m.b); walls.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, t: o.tFt }); }
+  // angled walls: each other direction the drawing's lines run, turned level and scanned across
+  if (o.angled !== false) {
+    const seen = [];
+    for (const A of lineAngles(base)) {
+      let r = A.deg % 90; if (r > 45) r -= 90;
+      if (Math.abs(r) < 4 || A.score < 0.05) continue;                      // across / down: done above
+      if (seen.some(s => Math.abs(((A.deg - s) % 180 + 270) % 180 - 90) < 3)) continue; seen.push(A.deg);
+      const d = -A.deg * Math.PI / 180, M = imageMask(img, (bg.rot || 0) + d, o.sensitivity), PM = toPlanIn(M, d);
+      for (const m of pair(scan(M, true))) {
+        const p1 = PM(m.a, m.c), p2 = PM(m.b, m.c), w = { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, t: o.tFt };
+        // not one already found
+        const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), mx = (w.x1 + w.x2) / 2, my = (w.y1 + w.y2) / 2;
+        if (walls.some(v => { const vl = Math.hypot(v.x2 - v.x1, v.y2 - v.y1) || 1, cr = Math.abs((v.x2 - v.x1) * (w.y2 - w.y1) - (v.y2 - v.y1) * (w.x2 - w.x1)) / (vl * L); return cr < 0.1 && segD(mx, my, v) < o.tFt; })) continue;
+        walls.push(w);
+      }
+      if (seen.length >= 4) break;
+    }
+  }
   snapJunctions(walls, Math.max(0.75, o.tFt * 4));
-  return finish(walls, o.minLen);
+  const W2 = finish(walls, o.minLen);
+  W2.openings = o.doors === false ? [] : doorsFromGaps(W2, base, bg, ftPerPx, o);
+  return W2;
+}
+function segD(x, y, w) { const dx = w.x2 - w.x1, dy = w.y2 - w.y1, L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((x - w.x1) * dx + (y - w.y1) * dy) / L2)); return Math.hypot(x - w.x1 - dx * t, y - w.y1 - dy * t); }
+/* Doors in a picture: two pieces of one wall line with a door-wide gap (2′ to 7′) between them, and the swing drawn
+   in the gap (a quarter circle from a jamb, or two from both jambs for a pair). The pieces are joined into one wall
+   with the door in it. A gap with no swing drawn (a cased opening, a hallway) is left open. Changes walls. */
+function doorsFromGaps(walls, M, bg, ftPerPx, o) {
+  // every wall pointing the same general way (left to right, or down), so a wall's far end faces the next piece
+  for (const w of walls) { const dx = w.x2 - w.x1, dy = w.y2 - w.y1; if (dx < -1e-6 || (Math.abs(dx) <= 1e-6 && dy < 0)) { [w.x1, w.x2] = [w.x2, w.x1]; [w.y1, w.y2] = [w.y2, w.y1]; } }
+  const out = [], toPx = (x, y) => [(x - bg.cx) / ftPerPx + M.W / 2, (y - bg.cy) / ftPerPx + M.H / 2];
+  const inkAt = (x, y) => { const [px, py] = toPx(x, y), X = Math.round(px), Y = Math.round(py); for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const xx = X + dx, yy = Y + dy; if (xx >= 0 && yy >= 0 && xx < M.W && yy < M.H && M.dark[yy * M.W + xx]) return true; } return false; };
+  // how much of a quarter circle (centre c, radius r, from the wall's direction u round towards side n) is drawn
+  const arc = (c, r, u, n) => { let hit = 0, tot = 0; for (let a = 12; a <= 78; a += 3) { const t = a * Math.PI / 180, x = c[0] + (u[0] * Math.cos(t) + n[0] * Math.sin(t)) * r, y = c[1] + (u[1] * Math.cos(t) + n[1] * Math.sin(t)) * r; tot++; if (inkAt(x, y)) hit++; } return hit / tot; };
+  let changed = true;
+  while (changed) {
+    changed = false;
+    outer: for (let i = 0; i < walls.length; i++) for (let j = 0; j < walls.length; j++) {
+      if (i === j) continue;
+      const a = walls[i], b = walls[j], L = Math.hypot(a.x2 - a.x1, a.y2 - a.y1) || 1, ux = (a.x2 - a.x1) / L, uy = (a.y2 - a.y1) / L;
+      const Lb = Math.hypot(b.x2 - b.x1, b.y2 - b.y1) || 1; if (Math.abs(ux * (b.y2 - b.y1) / Lb - uy * (b.x2 - b.x1) / Lb) > 0.03) continue;
+      const off = (p) => Math.abs(-(p[0] - a.x1) * uy + (p[1] - a.y1) * ux), sAt = (p) => (p[0] - a.x1) * ux + (p[1] - a.y1) * uy;
+      const B1 = [b.x1, b.y1], B2 = [b.x2, b.y2]; if (off(B1) > a.t * 0.6 || off(B2) > a.t * 0.6) continue;
+      const s1 = sAt(B1), s2 = sAt(B2), bs = Math.min(s1, s2), be = Math.max(s1, s2); if (bs <= L) continue;   // b must lie past a's far end
+      const g = bs - L; if (g < 2 || g > 7.2) continue;
+      if (walls.some((w, k2) => k2 !== i && k2 !== j && segD(a.x2 + ux * g / 2, a.y2 + uy * g / 2, w) < a.t)) continue; // something else in the gap
+      const P = [a.x2, a.y2], Q = [a.x2 + ux * g, a.y2 + uy * g], u = [ux, uy], nu = [-ux, -uy];
+      let best = null;
+      for (const sd of [1, -1]) {
+        const n = [-uy * sd, ux * sd];
+        const cand = [
+          { kind: 'door', f: arc(P, g, u, n), hinge: 'P', sd },
+          { kind: 'door', f: arc(Q, g, nu, n), hinge: 'Q', sd },
+          { kind: 'door2', f: Math.min(arc(P, g / 2, u, n), arc(Q, g / 2, nu, n)), sd }
+        ];
+        for (const c of cand) if (!best || c.f > best.f) best = c;
+      }
+      if (!best || best.f < 0.5) continue;
+      if (best.kind === 'door' && g > 4.6) best.kind = 'door2';
+      // the opening runs from the hinge; swing = the side the leaf opens to (left of the opening's direction = +1)
+      let p1 = P, p2 = Q; if (best.hinge === 'Q') { p1 = Q; p2 = P; }
+      const dx = p2[0] - p1[0], dy = p2[1] - p1[1], nl = Math.hypot(dx, dy) || 1, nx = -dy / nl, ny = dx / nl, side = [-uy * best.sd, ux * best.sd];
+      const swing = nx * side[0] + ny * side[1] >= 0 ? 1 : -1;
+      out.push({ id: uid(), type: best.kind, x1: q(p1[0]), y1: q(p1[1]), x2: q(p2[0]), y2: q(p2[1]), t: a.t, swing, head: 7, from: 'picture' });
+      // one wall through the door
+      const far = s1 > s2 ? B1 : B2; a.x2 = q(far[0]); a.y2 = q(far[1]); walls.splice(j, 1);
+      changed = true; break outer;
+    }
+  }
+  return out;
 }
 
 /* Which imported walls are a building around the cleanroom (a warehouse shell)? For each group of joined
@@ -592,5 +737,5 @@ function wallClusters(walls, gapFt) {
   const g = new Map(); walls.forEach((w, i) => { const r = find(i); (g.get(r) || g.set(r, []).get(r)).push(w); });
   return [...g.values()].map(ws => ({ walls: ws, len: ws.reduce((t, w) => t + Math.hypot(w.x2 - w.x1, w.y2 - w.y1), 0) })).sort((a, b) => b.len - a.len);
 }
-global.Plan3DImport = { sheetExtras, alignToWalls, arcDoors, mergeLayered, wallClusters, buildingWalls, joinCollinear, pairLines, snapJunctions, wallsFromDxf, openingsFromDxf, dxfOpeningBlocks, dxfFrame, dxfSize, wallsFromImage, UNIT_FT, UNIT_NAMES };
+global.Plan3DImport = { sheetExtras, alignToWalls, arcDoors, mergeLayered, wallClusters, buildingWalls, joinCollinear, pairLines, snapJunctions, wallsFromDxf, openingsFromDxf, dxfOpeningBlocks, dxfFrame, dxfSize, wallsFromImage, imageMask, lineAngles, imageSkew, unwarpImage, UNIT_FT, UNIT_NAMES };
 })(window);
