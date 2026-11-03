@@ -4028,7 +4028,7 @@ function buildScene(THREE, plan, A) {
     // gap; the leg on the outside face carries on under the flange, so each length is still one piece)
     {
       const cm = M.wallCap || (M.wallCap = new THREE.MeshLambertMaterial({ color: 0xf6f7f7, emissive: 0x2a2a2a, name: 'Wall cap, white' }));
-      for (const q of wallCapSolids(capPiece(p, capBeams()))) outline(segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, cm));
+      for (const q of wallCapSolids(capPiece(p, capBeams()))) { const cpm = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, cm); cpm.userData.layer = 'caps'; outline(cpm); }
     }
     shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1));
   }
@@ -4039,7 +4039,7 @@ function buildScene(THREE, plan, A) {
     for (const i of A.opInfo || []) {
       if (!i.o || !i.hard || i.frame) continue;
       const o = i.o, piece = { id: 'op', x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t || 0.25, h: i.wallH || A.WH || A.H, len: i.len, hard: true };
-      for (const q of wallCapSolids(capPiece(piece, capBeams()))) outline(segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, cm));
+      for (const q of wallCapSolids(capPiece(piece, capBeams()))) { const cpm = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, cm); cpm.userData.layer = 'caps'; outline(cpm); }
     }
   }
   // an upper floor's floor system (rim joist, subfloor) between it and the floor below, sided on the outside
@@ -4449,7 +4449,7 @@ function buildScene(THREE, plan, A) {
   const gDrop = A.frameAny ? ((FOUNDATIONS[foundationOf(plan).type] || {}).exp || 0) : 0;
   ground.rotation.x = -Math.PI / 2; ground.position.set(B.cx, -0.08 - gDrop, B.cz); root.add(ground);
 
-  const ceiling = new THREE.Group(); root.add(ceiling);
+  const ceiling = new THREE.Group(); root.add(ceiling); ceiling.userData.layer = 'grid';
   let gridLines = null;
   const cTex = new THREE.CanvasTexture(ceilCanvas); cTex.wrapS = cTex.wrapT = THREE.RepeatWrapping; cTex.repeat.set(B.w / 2, B.d / 4); cTex.anisotropy = ANISO;
   const built = isBuilt(plan), ownGrid = built || (Array.isArray(plan.ceilingGrid) && plan.ceilingGrid.length > 0);
@@ -4776,10 +4776,11 @@ function buildScene(THREE, plan, A) {
     const teeMat = new THREE.MeshBasicMaterial({ color: GC, side: THREE.DoubleSide, name: GRID_NAME }), tw = 15 / 16 / 12;
     for (const [x1, z1, x2, z2] of fixtureFrames(plan, A).lines) {
       const L = Math.hypot(x2 - x1, z2 - z1), hc = ceilingAt(CA, H, (x1 + x2) / 2, (z1 + z2) / 2), t = new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(x2 - x1) > 0.01 ? L + tw : tw, Math.abs(z2 - z1) > 0.01 ? L + tw : tw), teeMat);
-      t.rotation.x = Math.PI / 2; t.position.set((x1 + x2) / 2, hc - 0.007, (z1 + z2) / 2); fixtures.add(t);
+      t.rotation.x = Math.PI / 2; t.position.set((x1 + x2) / 2, hc - 0.007, (z1 + z2) / 2); t.userData.layer = 'grid'; fixtures.add(t);
     }
   } catch (e) { /* drawn without the frames */ }
-  for (const f of FXL) {
+  const tagFrom = (grp, n0, k) => { for (let i = n0; i < grp.children.length; i++) if (!grp.children[i].userData.layer) grp.children[i].userData.layer = k; };
+  for (const f of FXL) { const fx0 = fixtures.children.length; try {
     if (FM && f.type === 'ffu') {
       const u = ffuUnit(ffuSize(f)); u.position.set(f.x, ceilingAt(CA, H, f.x, f.y), f.y);
       if ((f.w || 2) > (f.h || 4)) u.rotation.y = Math.PI / 2; // long side across the room
@@ -4820,9 +4821,10 @@ function buildScene(THREE, plan, A) {
     const hs = new THREE.Mesh(new THREE.BoxGeometry(fw, hh, fd), f.type === 'ffu' ? M.fx : LMo && LMo.finish === 'sst' ? M.steel : LMo ? housingMat : lightBack); hs.position.set(f.x, fh + 0.005 + hh / 2, f.y); outline(hs); fixtures.add(hs);
     // the driver box on its back, along one short end (a picked light model's own, else our panels' driver)
     if (f.type !== 'ffu' && (!LMo || LMo.box)) { const B = LMo ? LMo.box : LIGHT_BOX, alongX = (nw || 2) >= (nh || 4), bx = new THREE.Mesh(new THREE.BoxGeometry(alongX ? B.w : B.l, B.h, alongX ? B.l : B.w), LMo ? housingMat : lightBack); bx.position.set(f.x + (alongX ? fw / 2 - B.w / 2 - 0.08 : 0), fh + 0.005 + hh + B.h / 2, f.y + (alongX ? 0 : fd / 2 - B.w / 2 - 0.08)); outline(bx); fixtures.add(bx); }
-  }
+  } finally { tagFrom(fixtures, fx0, f.type === 'ffu' ? 'ffu' : 'light'); } }
   // the fixture whips: flexible steel-armoured cable from box to box over the ceiling, a connector at each end and at
   // each joint where a 12′ extension carries the run on
+  const wh0 = fixtures.children.length;
   if (Array.isArray(plan.whips) && plan.whips.length) {
     try {
       const OB = [], PT = new Map(whipPorts(plan, A, OB).map(p => [p.id, p])), RAD = 0.036;
@@ -4903,6 +4905,7 @@ function buildScene(THREE, plan, A) {
       }
     } catch (e) { console.error(e); }
   }
+  for (let i = wh0; i < fixtures.children.length; i++) if (!fixtures.children[i].userData.layer) fixtures.children[i].userData.layer = 'whips';
   // the extras never stop the model from showing
   try { root.add(airflowArrows(THREE, plan, A)); } catch (e) { console.error(e); }
   // a return grille in a removable panel is part of that panel: it comes out (and hides) with it
@@ -5813,6 +5816,25 @@ function mount(container, plan, opts) {
   }
   // what shows in each view: Walk = everything; Dollhouse/Plan = no ceiling, lid or roof;
   // Plenum = the grid ceiling without the lid; Exterior = everything, from outside
+  /* View layers (plan.layersOff): what's on a hidden layer goes onto three.js layer 31, which the camera doesn't
+     draw and clicks don't reach. Nothing is removed, and showing it again puts it straight back. */
+  const OP_LAYER = { door: 'doors', door2: 'doors', overhead: 'doors', glass: 'windows', window: 'windows', pass: 'pass', removable: 'removable', open: 'openings' };
+  const REF_LAYER = { wall: 'walls', header: 'headers', grille: 'grilles', carea: 'carea', chase: 'chases', column: 'columns', beam: 'beams', item: 'items', device: 'elec', deck: 'lid', lstep: 'lid' };
+  function applyLayers() {
+    if (!built) return;
+    const off = (plan && plan.layersOff) || {}, ops = new Map(), fxs = new Map();
+    for (const o of (plan && plan.openings) || []) ops.set(o.id, o.type);
+    for (const f of (plan && plan.fixtures) || []) fxs.set(f.id, f.type);
+    const keyOf = (o) => {
+      if (o.userData.layer) return o.userData.layer;
+      const r = o.userData.ref; if (!r) return null;
+      if (r.kind === 'opening') return OP_LAYER[ops.get(r.id)] || 'doors';
+      if (r.kind === 'fixture') return fxs.get(r.id) === 'ffu' ? 'ffu' : 'light';
+      return REF_LAYER[r.kind] || null;
+    };
+    const walk = (o, k) => { const kk = keyOf(o) || k; if (kk) o.layers.set(off[kk] ? 31 : 0); for (const c of o.children) walk(c, kk); };
+    walk(built.root, null);
+  }
   function applyVis(m) {
     if (!built) return;
     built.ceiling.visible = m === 'walk' || m === 'fly' || m === 'plenum' || m === 'exterior';
@@ -6753,6 +6775,7 @@ function mount(container, plan, opts) {
     scene.add(built.root);
     if (real) placeRoomLights();
     try { refreshAir(); applySwitches(); } catch (e) { console.error(e); }
+    try { applyLayers(); } catch (e) { console.error(e); }
     try { stopTour(); refreshTour(); } catch (e) { console.error(e); }
     try { upgradeScene(scene); let top = (A && A.H) || 10; try { const LP = levelPlans(p); top = LP[LP.length - 1].elev + 30; } catch (e) { } fitSun(A && A.bounds, top); } catch (e) { console.error(e); }
     if (typeof drawPins === 'function' && cList) { loadMine(); drawPins(); aSetup(); }
@@ -6882,6 +6905,7 @@ function mount(container, plan, opts) {
   raf = requestAnimationFrame(loop);
 
   return {
+    setLayers: (off) => { if (plan) plan.layersOff = off || {}; applyLayers(); },
     setPlan: (p) => setPlan(p, true),
     loadPlan: (p) => setPlan(p, false),
     setMode: (m) => { if (m === 'walk') goWalk(st.x, st.z, st.yaw); else goOrbit(m); },

@@ -251,7 +251,7 @@ function houseDefaults(P, keepWalls) {
 let modePicked = false;
 function updateChrome() {
   const P = ed.plan, house = P.mode === 'house';
-  document.body.dataset.mode = house ? 'house' : 'cleanroom'; if (window.__tgReady) refreshToolGroups();
+  document.body.dataset.mode = house ? 'house' : 'cleanroom'; if (window.__tgReady) refreshToolGroups(); if (typeof layerBadge === 'function' && document.getElementById('bLayers')) { try { layerBadge(); } catch (e) { /* not ready yet */ } }
   $('#modeChip').textContent = house ? 'Project' : 'Cleanroom';
   $('#docName').textContent = (P.name || 'Untitled plan') + (ed.dirty ? ' •' : '');
   document.title = (P.name || 'Untitled plan') + ' — Coll Plan3D';
@@ -269,7 +269,7 @@ function ensureViewer() {
 }
 // the 3D view doesn't need the background drawing or the snapshot pictures (big), so they stay out of its copy
 // a copy for the customer: no prices, markup, purchase orders or the app's own records
-function linkPlan() { const p = clonePlan(); for (const k of ['quote', 'pos', 'baseline', 'changeOrders', 'published', 'approvals', 'submittal', 'install']) delete p[k]; return p; }
+function linkPlan() { const p = clonePlan(); for (const k of ['quote', 'pos', 'baseline', 'changeOrders', 'published', 'approvals', 'submittal', 'install', 'layersOff', 'layersLock']) delete p[k]; return p; }
 function clonePlan() { const sn = ed.plan.snaps; if (sn) delete ed.plan.snaps; let p; try { p = JSON.parse(JSON.stringify(ed.plan)); } finally { if (sn) ed.plan.snaps = sn; } delete p.background; return p; }
 function queue3D() {
   if (view === '2d' || !viewer) return;
@@ -3790,6 +3790,65 @@ window.addEventListener('drop', async e => {
   const p = api.pathForFile && api.pathForFile(f);
   if (p) { if (await guardUnsaved()) handleLoaded(await api.loadPath(p)); }
 });
+
+/* ---------- Layers (like AutoCAD's Layer Properties) ----------
+   Every kind of thing on the plan is on its own layer. A layer can be turned off (hidden on the plan and in 3D;
+   nothing is deleted) or locked (seen, but can't be picked or moved). Isolate shows only the layers picked;
+   Restore puts back what was on before. Saved with the plan, and the AutoCAD file carries the same layers
+   turned off or locked. A shared walkthrough always shows everything. */
+const VIEW_LAYER_DEFS = [
+  ['walls', 'Walls'], ['caps', 'Wall caps'], ['doors', 'Doors'], ['windows', 'Windows & glass'], ['pass', 'Pass-thrus'], ['removable', 'Removable sections'],
+  ['openings', 'Cased openings'], ['chases', 'Air chases'], ['grilles', 'Return grilles'], ['headers', 'Header panels'], ['columns', 'Columns'], ['beams', 'Beams'],
+  ['ffu', 'HEPA filters (FFUs)'], ['light', 'Lights'], ['whips', 'Whips'], ['grid', 'Ceiling grid & tiles'], ['carea', 'Ceiling areas'], ['lid', 'Lid / deck'],
+  ['items', 'Equipment & furniture'], ['elec', 'Electrical'], ['rooms', 'Room names'], ['dims', 'Dimensions'], ['tags', 'Door & glass tags']
+];
+const ACI_HEX = { 1: '#ff3b30', 2: '#ffd60a', 3: '#30d158', 4: '#40e0f0', 5: '#3b6cff', 6: '#ff4fd8', 7: '#f2f4f5', 8: '#808080', 9: '#c0c0c0', 30: '#ff7f00', 40: '#ffbf00' };
+const LY = { sel: new Set(), iso: null };
+function layerDxf(k) { const V = (window.Plan3DCad && Plan3DCad.VIEW_LAYERS) || {}; return V[k] || []; }
+function layerColor(k) { const n = layerDxf(k)[0], L = (window.Plan3DCad && Plan3DCad.LAYERS || []).find(q => q[0] === n); return L ? ACI_HEX[L[1]] || '#9aa5aa' : '#5d6a71'; }
+function layerState(prop, k) { const m = ed.plan[prop]; return !!(m && m[k]); }
+function setLayers(prop, keys, val) {
+  const P = ed.plan, m = Object.assign({}, P[prop] || {});
+  for (const k of keys) { if (val) m[k] = true; else delete m[k]; }
+  if (Object.keys(m).length) P[prop] = m; else delete P[prop];
+  ed.sel = null; ed.multi = null; ed.dirty = true;
+  ed.render(); renderProps(); updateChrome(); layerBadge();
+  if (viewer && viewer.setLayers) viewer.setLayers(P.layersOff || {});
+  if (!$('#layerPanel').hidden) layerPanel();
+}
+function layerBadge() {
+  const b = $('#bLayers'); if (!b) return;
+  const n = Object.keys(ed.plan.layersOff || {}).length, l = Object.keys(ed.plan.layersLock || {}).length;
+  b.querySelector('em').textContent = n || l ? ' · ' + [n ? n + ' off' : '', l ? l + ' locked' : ''].filter(Boolean).join(', ') : '';
+  b.classList.toggle('on', !!(n || l));
+}
+function layerPanel() {
+  const el = $('#layerPanel'); el.hidden = false;
+  const bulb = (on) => `<svg viewBox="0 0 24 24" class="${on ? 'lon' : 'loff'}"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>`;
+  const lock = (on) => `<svg viewBox="0 0 24 24" class="${on ? 'lkon' : 'lkoff'}"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="${on ? 'M8 11V8a4 4 0 0 1 8 0v3' : 'M8 11V8a4 4 0 0 1 7.5-2'}" fill="none"/></svg>`;
+  el.innerHTML = `<div class="lyhd"><b>Layers</b><span class="lyhint">Light bulb: show / hide · Lock: can't pick or move</span><button class="lyx" title="Close" aria-label="Close">×</button></div>
+    <div class="lybar"><button data-ly="all">Show all</button><button data-ly="unlock">Unlock all</button><button data-ly="iso" ${LY.sel.size ? '' : 'disabled'} title="Show only the layers picked (click rows to pick them)">Isolate</button><button data-ly="uniso" ${LY.iso ? '' : 'disabled'} title="Put the layers back the way they were before Isolate">Restore</button></div>
+    <div class="lyhead"><span>On</span><span>Lock</span><span>Color</span><span>Name</span><span>AutoCAD layer</span></div>
+    <div class="lylist">${VIEW_LAYER_DEFS.map(([k, name]) => { const off = layerState('layersOff', k), lk = layerState('layersLock', k), dx = layerDxf(k); return `<div class="lyrow${LY.sel.has(k) ? ' sel' : ''}${off ? ' isoff' : ''}" data-k="${k}">
+      <button class="lyon" title="${off ? 'Turn on' : 'Turn off'}">${bulb(!off)}</button><button class="lylk" title="${lk ? 'Unlock' : 'Lock'}">${lock(lk)}</button><i class="lysw" style="background:${layerColor(k)}"></i><span class="lyn">${esc(name)}</span><span class="lyd">${dx.length ? esc(dx[0]) + (dx.length > 1 ? ' +' + (dx.length - 1) : '') : '—'}</span></div>`; }).join('')}</div>`;
+  el.querySelector('.lyx').onclick = () => { el.hidden = true; };
+  el.querySelectorAll('.lyrow').forEach(r => {
+    const k = r.dataset.k;
+    r.querySelector('.lyon').onclick = (e) => { e.stopPropagation(); setLayers('layersOff', [k], !layerState('layersOff', k)); };
+    r.querySelector('.lylk').onclick = (e) => { e.stopPropagation(); setLayers('layersLock', [k], !layerState('layersLock', k)); };
+    r.onclick = (e) => { if (e.ctrlKey || e.shiftKey || e.metaKey) { if (LY.sel.has(k)) LY.sel.delete(k); else LY.sel.add(k); } else { const only = LY.sel.size === 1 && LY.sel.has(k); LY.sel.clear(); if (!only) LY.sel.add(k); } layerPanel(); };
+    r.ondblclick = () => setLayers('layersOff', [k], !layerState('layersOff', k));
+  });
+  el.querySelectorAll('[data-ly]').forEach(b => b.onclick = () => {
+    const a = b.dataset.ly, keys = VIEW_LAYER_DEFS.map(d => d[0]);
+    if (a === 'all') { LY.iso = null; setLayers('layersOff', keys, false); }
+    if (a === 'unlock') setLayers('layersLock', keys, false);
+    if (a === 'iso' && LY.sel.size) { LY.iso = Object.assign({}, ed.plan.layersOff || {}); setLayers('layersOff', keys, true); setLayers('layersOff', [...LY.sel], false); }
+    if (a === 'uniso' && LY.iso) { const prev = LY.iso; LY.iso = null; setLayers('layersOff', keys, false); setLayers('layersOff', Object.keys(prev).filter(k => prev[k]), true); }
+  });
+}
+$('#bLayers').addEventListener('click', () => { const el = $('#layerPanel'); if (el.hidden) layerPanel(); else el.hidden = true; });
+layerBadge();
 
 renderProps(); updateChrome(); toolHint('select');
 if (api.rendererReady) api.rendererReady();
