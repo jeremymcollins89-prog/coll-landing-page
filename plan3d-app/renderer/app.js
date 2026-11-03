@@ -16,7 +16,7 @@ const ed = new Editor($('#plan'), {
   onLive: () => queue3D(),
   onSelect: (d) => { renderProps(d); if (builder && view === 'build') builder.drawSel(); },
   onTilesize: () => { if (ed.tool === 'grid') gridPalette(); },
-  onTool: (t) => { $$('.tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; $('#itemPal').hidden = t !== 'item'; if (t === 'item') itemPalette(); $('#draftPal').hidden = t !== 'draft'; if (t === 'draft') { draftPalette(); $('#welcome').hidden = true; } $('#elecPal').hidden = t !== 'elec'; $('#grillePal').hidden = t !== 'grille'; if (t === 'grille') grillePalette(); $('#winPal').hidden = t !== 'window'; if (t === 'window') windowPalette(); $('#colPal').hidden = t !== 'column'; if (t === 'column') columnPalette(); if (t === 'elec') elecPalette(); $('#gridPal').hidden = t !== 'grid'; if (t === 'grid') gridPalette(); if (t === 'piece') hideBanner(); toolHint(t); },
+  onTool: (t) => { $$('.tools button[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); if (window.__tgReady) noteToolGroup(t); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; $('#itemPal').hidden = t !== 'item'; if (t === 'item') itemPalette(); $('#draftPal').hidden = t !== 'draft'; if (t === 'draft') { draftPalette(); $('#welcome').hidden = true; } $('#elecPal').hidden = t !== 'elec'; $('#grillePal').hidden = t !== 'grille'; if (t === 'grille') grillePalette(); $('#winPal').hidden = t !== 'window'; if (t === 'window') windowPalette(); $('#colPal').hidden = t !== 'column'; if (t === 'column') columnPalette(); if (t === 'elec') elecPalette(); $('#gridPal').hidden = t !== 'grid'; if (t === 'grid') gridPalette(); if (t === 'piece') hideBanner(); toolHint(t); },
   onStatus: (m) => msg(m || toolHintText(ed.tool)),
   onCursor: (p) => { $('#sXY').textContent = fmt(p.x) + ', ' + fmt(p.y); $('#sZoom').textContent = Math.round(ed.view.s) + ' px/ft'; },
   onCalibrate: (cal) => calibrateDialog(cal),
@@ -251,7 +251,7 @@ function houseDefaults(P, keepWalls) {
 let modePicked = false;
 function updateChrome() {
   const P = ed.plan, house = P.mode === 'house';
-  document.body.dataset.mode = house ? 'house' : 'cleanroom';
+  document.body.dataset.mode = house ? 'house' : 'cleanroom'; if (window.__tgReady) refreshToolGroups();
   $('#modeChip').textContent = house ? 'Project' : 'Cleanroom';
   $('#docName').textContent = (P.name || 'Untitled plan') + (ed.dirty ? ' •' : '');
   document.title = (P.name || 'Untitled plan') + ' — Coll Plan3D';
@@ -298,7 +298,76 @@ function setView(v) {
 $$('.views button').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
 
 /* ---------- Tools ---------- */
-$$('.tools button').forEach(b => b.addEventListener('click', () => { ed.setTool(b.dataset.tool); $('#plan').focus(); }));
+$$('.tools button[data-tool]').forEach(b => b.addEventListener('click', () => { ed.setTool(b.dataset.tool); $('#plan').focus(); }));
+/* ---------- Grouped toolbar ----------
+   The tools sit in a few groups down the left (Doors, Windows, Structure, Air & ceiling, Equipment, Notes). Each
+   group shows the tool last used in it, with a small corner mark when it holds more: click it to use that tool
+   and to open the group beside it; pick another tool there and it becomes the group's face. Every tool keeps its
+   key. "Show every tool" (the button at the foot of the bar) brings back the full list. */
+const TOOL_GROUPS = [
+  { key: 'doors', name: 'Doors & openings', tools: ['door', 'door2', 'overhead', 'open', 'pass', 'removable'] },
+  { key: 'windows', name: 'Windows & glass', tools: ['window', 'glass'] },
+  { key: 'structure', name: 'Structure', tools: ['column', 'beam'] },
+  { key: 'air', name: 'Air & ceiling', tools: ['grille', 'chase', 'header', 'grid', 'carea'] },
+  { key: 'equip', name: 'Equipment & electrical', tools: ['item', 'elec'] },
+  { key: 'notes', name: 'Rooms & measuring', tools: ['room', 'measure', 'calibrate'] }
+];
+const TG = { cur: {}, open: null };
+try { TG.cur = JSON.parse(localStorage.getItem('p3-toolgroups') || '{}') || {}; } catch (e) { TG.cur = {}; }
+function toolShown(b) { const o = b.dataset.only, house = document.body.dataset.mode === 'house'; return !o || (o === 'house') === house; }
+function buildToolGroups() {
+  const nav = $('nav.tools'), sep = nav.querySelector('.tsep'); if (sep) sep.remove();
+  for (const G of TOOL_GROUPS) {
+    const btns = G.tools.map(t => nav.querySelector(`button[data-tool="${t}"]`)).filter(Boolean); if (!btns.length) continue;
+    const wrap = document.createElement('div'); wrap.className = 'tgroup'; wrap.dataset.group = G.key;
+    const face = document.createElement('button'); face.type = 'button'; face.className = 'tgface';
+    const fly = document.createElement('div'); fly.className = 'tfly'; fly.setAttribute('role', 'menu'); fly.innerHTML = `<h6>${esc(G.name)}</h6>`;
+    btns[0].before(wrap); wrap.append(face, fly); btns.forEach(b => fly.append(b));
+    face.addEventListener('click', () => { const b = groupCur(G); if (b) { ed.setTool(b.dataset.tool); $('#plan').focus(); } if (fly.querySelectorAll('button[data-tool]').length > 1) openGroup(G.key); });
+    wrap.addEventListener('mouseleave', () => { if (TG.open === G.key) TG.leave = setTimeout(() => closeGroups(), 450); });
+    wrap.addEventListener('mouseenter', () => clearTimeout(TG.leave));
+  }
+  const all = document.createElement('button'); all.type = 'button'; all.className = 'tgall'; all.title = 'Show every tool, or group them again';
+  all.innerHTML = '<svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h14" fill="none"/></svg><span>All tools</span>';
+  all.onclick = () => { const on = !document.body.classList.contains('tools-all'); document.body.classList.toggle('tools-all', on); try { localStorage.setItem('p3-tools-all', on ? '1' : ''); } catch (e) { /* not remembered */ } closeGroups(); refreshToolGroups(); };
+  nav.append(all);
+  try { if (localStorage.getItem('p3-tools-all')) document.body.classList.add('tools-all'); } catch (e) { /* default: grouped */ }
+  window.__tgReady = true;
+  document.addEventListener('pointerdown', (e) => { if (TG.open && !e.target.closest('.tgroup')) closeGroups(); }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && TG.open) closeGroups(); }, true);
+  refreshToolGroups();
+}
+function groupCur(G) {
+  const fly = $(`.tgroup[data-group="${G.key}"] .tfly`); if (!fly) return null;
+  const shown = [...fly.querySelectorAll('button[data-tool]')].filter(toolShown);
+  return shown.find(b => b.dataset.tool === TG.cur[G.key]) || shown[0] || null;
+}
+function refreshToolGroups() {
+  for (const G of TOOL_GROUPS) {
+    const wrap = $(`.tgroup[data-group="${G.key}"]`); if (!wrap) continue;
+    const b = groupCur(G), face = wrap.querySelector('.tgface'), n = [...wrap.querySelectorAll('.tfly button[data-tool]')].filter(toolShown).length;
+    wrap.hidden = !b; if (!b) continue;
+    const label = [...b.querySelectorAll('span')].find(toolShown);
+    face.innerHTML = b.querySelector('svg').outerHTML + `<span>${esc(label ? label.textContent : b.dataset.tool)}</span>` + (n > 1 ? '<i class="tgmore"></i>' : '');
+    face.title = G.name + ': ' + (b.title || '') + (n > 1 ? ' — click for the rest of the group' : '');
+    face.classList.toggle('on', ed && ed.tool && [...wrap.querySelectorAll('.tfly button[data-tool]')].some(x => x.dataset.tool === ed.tool));
+  }
+}
+function openGroup(key) {
+  if (document.body.classList.contains('tools-all')) return;
+  closeGroups(); const wrap = $(`.tgroup[data-group="${key}"]`); if (!wrap) return;
+  const r = wrap.getBoundingClientRect(), fly = wrap.querySelector('.tfly');
+  fly.style.left = (r.right + 6) + 'px'; fly.style.top = Math.max(8, Math.min(window.innerHeight - 40 - fly.childElementCount * 34, r.top - 4)) + 'px';
+  wrap.classList.add('open'); TG.open = key;
+}
+function closeGroups() { $$('.tgroup.open').forEach(w => w.classList.remove('open')); TG.open = null; }
+function noteToolGroup(t) {
+  for (const G of TOOL_GROUPS) if (G.tools.includes(t)) { TG.cur[G.key] = t; try { localStorage.setItem('p3-toolgroups', JSON.stringify(TG.cur)); } catch (e) { /* not remembered */ } }
+  if (TG.open) { const G = TOOL_GROUPS.find(g => g.key === TG.open); if (G && G.tools.includes(t)) setTimeout(closeGroups, 120); }
+  refreshToolGroups();
+}
+buildToolGroups();
+
 $('#optOrtho').addEventListener('change', e => { ed.ortho = e.target.checked; });
 $('#optDims').addEventListener('change', e => { ed.showDims = e.target.checked; ed.render(); });
 $('#optPosts').addEventListener('change', e => { ed.showPosts = e.target.checked; ed.render(); });
