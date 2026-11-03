@@ -421,8 +421,9 @@ function colDims(c) {
   const round = c.shape === 'round', w = Math.max(0.17, +c.w || +c.size || 0.67), d = round ? w : Math.max(0.17, +c.d || w);
   return { w, d, round };
 }
-// the roof deck the columns run up to: the height set for it, else the building walls' top, else the building height
-const deckHeight = (plan, A) => Math.max(6, +(plan && plan.deckH) || (A && A.shellTop) || shellHeight(plan, null));
+// how high the columns run: the height set for them; in a cleanroom, the top of the plenum (the walls' top),
+// so they stop under the lid / deck; otherwise the building walls' top, else the building height
+const deckHeight = (plan, A) => { A = A || analyze(plan); return Math.max(6, +(plan && plan.colTop) || (A.hardAny ? (A.WH || A.H) : 0) || A.shellTop || shellHeight(plan, null)); };
 const colLabel = (c) => { const D = colDims(c), i = (v) => Math.round(v * 12 * 4) / 4 + '″'; return D.round ? i(D.w) + ' dia.' : i(D.w) + ' × ' + i(D.d); };
 
 /* ---------- Buildings placed in a plan ----------

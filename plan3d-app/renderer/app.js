@@ -49,7 +49,7 @@ const HINTS = {
   draft: 'Drafting: pick Line, Polyline, Rectangle, Circle, Arc, Text or Dimension in the bar. It snaps to endpoints, midpoints, centers and crossings; type lengths, @x,y or length<angle and Enter. Select a drawn piece to edit it exactly, move, copy, rotate, mirror, scale, offset or array it.',
   removable: 'Click on a wall to put a removable wall section there (8′-6″ wide, 8′ clear opening under the header): wall panels in a 3″ × 3″ steel tube frame that come out to bring equipment in. Change its width and header in its properties; in 3D, Show removed takes the panels out.',
   overhead: 'Click on a wall to put an overhead sectional door there (12′ wide, head 2′ below the top of the wall). Change its size in its properties.',
-  column: 'Set the column in the bar above: square / rectangle or round, its size (8x8, 8x12, or 8 for an 8″ round), steel or concrete, and the deck height. Click to place it: it runs from the floor up through the ceiling to the deck.',
+  column: 'Set the column in the bar above: square / rectangle or round, its size (8x8, 8x12, or 8 for an 8″ round), steel or concrete, and how high it goes. Click to place it: it runs from the floor up through the ceiling to the top of the plenum, under the lid.',
   window: 'Set the window in the bar above: width, height and how high its bottom sits off the floor. Then click on a wall to put it in.',
   elec: 'Pick a device (the list folds away; Tab or the ⚡ chip brings it back), then click on a wall: it goes on that face of the wall, facing the room you clicked in. Heights follow the usual mounting heights; change one in its properties.',
   select: 'Click to select. Drag to move. Drag a wall end to stretch it. Drag empty space to pan. Delete removes.',
@@ -147,13 +147,13 @@ function columnPalette() {
     <button data-cs="sq" class="${rnd ? '' : 'on'}">Square / rectangle</button><button data-cs="round" class="${rnd ? 'on' : ''}">Round</button>
     <label>${rnd ? 'Diameter' : 'Size'} <input type="text" id="cpS" value="${colSizeText(w, d, rnd)}" placeholder="${rnd ? '8' : '8x8'}" style="width:64px"></label><span style="opacity:.75">inches</span></div>
     <div class="row">${kinds.map(([k, l]) => `<button data-ck="${k}" class="${K === k ? 'on' : ''}">${l}</button>`).join('')}
-    <label>Deck height <input type="text" id="cpD" value="${fmt(deck)}" style="width:64px"></label></div></div>`;
+    <label>Column top <input type="text" id="cpD" value="${fmt(deck)}" style="width:64px"></label></div></div>`;
   $$('#colPal [data-cs]').forEach(b => b.onclick = () => { ed.columnShape = b.dataset.cs === 'round' ? 'round' : null; if (ed.columnShape === 'round' && ed.columnKind === 'tube') ed.columnKind = 'steel'; columnPalette(); $('#plan').focus(); });
   $$('#colPal [data-ck]').forEach(b => b.onclick = () => { ed.columnKind = b.dataset.ck; columnPalette(); $('#plan').focus(); });
   const sz = $('#cpS'); sz.onkeydown = (e) => e.stopPropagation();
   sz.onchange = () => { const r = parseColSize(sz.value, rnd); if (r) { if (r.round && !rnd) { ed.columnShape = 'round'; if (ed.columnKind === 'tube') ed.columnKind = 'steel'; } ed.columnSize = r.w; ed.columnD = r.d; } columnPalette(); };
   const dk = $('#cpD'); dk.onkeydown = (e) => e.stopPropagation();
-  dk.onchange = () => { const v = parseLen(dk.value, 'ft'); if (isFinite(v) && v >= 6) ed.edit(Pl => { Pl.deckH = Math.min(80, v); }); columnPalette(); };
+  dk.onchange = () => { const v = parseLen(dk.value, 'ft'); if (isFinite(v) && v >= 6) ed.edit(Pl => { Pl.colTop = Math.min(80, v); }); columnPalette(); };
 }
 function itemPalette() {
   // one group at a time, picked from a row of tabs, so the palette stays small over the plan
@@ -707,16 +707,16 @@ function renderProps(opt) {
       ${fld('Shape', `<select id="pColSh"><option value="sq" ${rnd ? '' : 'selected'}>Square / rectangle</option><option value="round" ${rnd ? 'selected' : ''}>Round</option></select>`)}
       ${fld(rnd ? 'Diameter (in)' : 'Size (in)', txt('pColS', colSizeText(D.w, D.d, rnd), rnd ? '8' : '8x8'))}
       ${fld('Type', `<select id="pColK">${kinds.map(([k, l]) => `<option value="${k}" ${(o.kind || 'steel') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
-      ${fld('Height', txt('pColH', o.h ? fmt(o.h) : '', 'Up to the deck (' + fmt(deck) + ')'))}
-      ${fld('Deck height', txt('pColDk', fmt(deck)))}
+      ${fld('Height', txt('pColH', o.h ? fmt(o.h) : '', 'Top of the plenum (' + fmt(deck) + ')'))}
+      ${fld('All columns top', txt('pColDk', fmt(deck)))}
       <div class="row"><button class="btn small" id="pColDup">Add another 25′ over</button></div>
-      <p class="note">Runs from the floor up through the ceiling to the deck. Columns go on the parts list and into the Revit export. Drag to move.</p>`;
+      <p class="note">Runs from the floor up through the ceiling to the top of the plenum, under the lid. Columns go on the parts list and into the Revit export. Drag to move.</p>`;
     box.innerHTML = h;
     $('#pColSh').onchange = e => ed.edit(() => { if (e.target.value === 'round') { o.shape = 'round'; o.d = o.w = D.w; if (o.kind === 'tube') o.kind = 'steel'; } else { delete o.shape; o.w = D.w; o.d = D.w; } o.size = o.w; ed.columnShape = o.shape || null; });
     $('#pColK').onchange = e => ed.edit(() => { o.kind = e.target.value; ed.columnKind = o.kind; });
     const cs = $('#pColS'); cs.onchange = () => { const r = parseColSize(cs.value, rnd); if (!r) { cs.value = colSizeText(D.w, D.d, rnd); return; } ed.edit(() => { o.w = r.w; o.d = r.d; o.size = r.w; if (r.round) { o.shape = 'round'; if (o.kind === 'tube') o.kind = 'steel'; } ed.columnSize = r.w; ed.columnD = r.d; }); };
     const ch = $('#pColH'); ch.onchange = () => { const raw = ch.value.trim(); if (!raw) { ed.edit(() => { delete o.h; }); return; } const v = parseLen(raw, 'ft'); if (isFinite(v) && v > 0) ed.edit(() => { o.h = Math.max(6, Math.min(80, v)); }); };
-    bindLen('pColDk', 'ft', v => ed.edit(Pl => { Pl.deckH = Math.max(6, Math.min(80, v)); }));
+    bindLen('pColDk', 'ft', v => ed.edit(Pl => { Pl.colTop = Math.max(6, Math.min(80, v)); }));
     $('#pColDup').onclick = () => { const n = { ...o, id: Plan3DEditor.uid(), x: o.x + 25 }; ed.edit(Pl => Pl.columns.push(n)); ed.sel = { kind: 'column', id: n.id }; ed.emit('select'); };
     $('#pDel').onclick = () => ed.deleteSel();
     return;
