@@ -5376,6 +5376,7 @@ function mount(container, plan, opts) {
       <div class="p3v-panel p3v-card"><div class="p3v-title"></div><div class="p3v-meta"></div><div class="p3v-here"><b></b><span></span></div></div>
       <div class="p3v-right"><div class="p3v-panel p3v-modes" role="group" aria-label="View"><button data-m="walk">Walk</button><button data-m="fly" title="Drone: fly a little drone anywhere, through walls, up into the plenum, outside round the building. W A S D to move, Space or R up, C or F down, Shift faster, drag to look, V for the drone’s own camera">Drone</button><button data-m="doll">Dollhouse</button><button data-m="plenum" hidden title="Looks into the plenum: the grid ceiling stays, the top comes off">Plenum</button><button data-m="exterior" hidden title="The outside, with the roof on">Exterior</button><button data-m="plan">Plan</button></div>
       <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button>
+      <button class="p3v-panel p3v-look p3v-hd" aria-pressed="false" title="HD: always the sharpest, fullest picture. Off, the picture steps down by itself on a slow computer or phone to keep moving smoothly.">HD</button>
       <button class="p3v-panel p3v-look p3v-lidb" aria-pressed="false" hidden title="Show the lid (the top of the cleanroom, or a roof deck you placed) in every view, or take it off again">Lid</button>
       <button class="p3v-panel p3v-look p3v-remb" aria-pressed="false" hidden title="Take the removable wall sections out, to see the opening (and walk through it) when equipment comes in">Show removed</button>
       
@@ -5457,10 +5458,16 @@ function mount(container, plan, opts) {
     for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) container.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
     canvas.addEventListener('touchmove', (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
   } catch (e) { /* older browsers */ }
+  // HD (full quality): the sharpest picture, and nothing steps down by itself. Remembered on this device; until
+  // it's set, on for a computer, and on a phone or tablet only when the page asks for it (opts.hd)
+  let hdOn = !COARSE || opts.hd === true;
+  try { const v = global.localStorage && global.localStorage.getItem('p3v-hd'); if (v === '1' || v === '0') hdOn = v === '1'; } catch (e) { /* not remembered */ }
+  if (opts.hd === 'always') hdOn = true;
+  const prFor = (hd) => Math.min(hd ? 2 : (COARSE ? 1.5 : 2), global.devicePixelRatio || 1);
   let renderer;
   try { renderer = new THREE.WebGLRenderer({ canvas, antialias: !COARSE || (global.devicePixelRatio || 1) < 2, preserveDrawingBuffer: !!opts.preserve, powerPreference: COARSE ? 'default' : 'high-performance' }); }
   catch (e) { container.insertAdjacentHTML('beforeend', '<div class="p3v-nogl">This browser can’t show 3D (WebGL is turned off or not supported). Try Safari, Chrome, Edge or Firefox, or turn on hardware acceleration.</div>'); throw e; }
-  renderer.setPixelRatio(Math.min(COARSE ? 1.5 : 2, global.devicePixelRatio || 1));
+  renderer.setPixelRatio(prFor(hdOn));
   ANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 4);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xdde4e8);
@@ -6800,17 +6807,25 @@ function mount(container, plan, opts) {
      the extras step down one at a time: the floor reflection, then the sharpness (pixel ratio 1), then the
      corner shading. Hitches (a frame over half a second: loading, rebuilding) don't count. It never turns
      anything back up on its own; turning Realistic off and on starts it over. */
-  const PR0 = renderer.getPixelRatio();
+  let PR0 = renderer.getPixelRatio();
   const gov = { ema: 1 / 60, slow: 0, level: 0 };
+  const hdBtn = container.querySelector('.p3v-hd');
+  function setHD(on, keep) {
+    hdOn = !!on; if (hdBtn) hdBtn.setAttribute('aria-pressed', String(hdOn));
+    if (keep !== false) { try { global.localStorage && global.localStorage.setItem('p3v-hd', hdOn ? '1' : '0'); } catch (e) { /* not remembered */ } }
+    gov.level = Math.max(gov.level, 1); govReset(); PR0 = prFor(hdOn);
+    if (renderer.getPixelRatio() !== PR0) { renderer.setPixelRatio(PR0); resize(); }
+  }
+  if (hdBtn) { hdBtn.setAttribute('aria-pressed', String(hdOn)); hdBtn.addEventListener('click', (e) => { e.stopPropagation(); setHD(!hdOn); }); }
   function govReset() { gov.ema = 1 / 60; gov.slow = 0; if (gov.level) { gov.level = 0; if (!fxGroup.parent) scene.add(fxGroup); aoOff = false; if (renderer.getPixelRatio() !== PR0) { renderer.setPixelRatio(PR0); resize(); } } }
   function govStep(rawDt) {
-    if (rawDt <= 0 || rawDt > 0.5 || document.hidden || global.P3NOAUTO) return;
+    if (rawDt <= 0 || rawDt > 0.5 || document.hidden || global.P3NOAUTO || hdOn) return;
     gov.ema += (rawDt - gov.ema) * 0.08;
     if (gov.ema > 1 / 24) gov.slow += rawDt; else gov.slow = Math.max(0, gov.slow - rawDt * 0.5);
     if (gov.slow < 3 || gov.level >= 3) return;
     gov.slow = 0; gov.level++;
     if (gov.level === 1) { if (real && gloss) { scene.remove(gloss); gloss.getRenderTarget().dispose(); gloss = null; } aoOff = true; }
-    else if (gov.level === 2) { if (renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); resize(); } scene.remove(fxGroup); fxOn = false; roomLights.children.forEach(l => { if (l.userData.i0 != null) l.intensity = l.userData.i0; }); }
+    else if (gov.level === 2) { if (renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); resize(); hint.textContent = 'The picture was lowered to keep it moving smoothly. Tap HD for full quality.'; hint.classList.remove('gone'); setTimeout(() => hint.classList.add('gone'), 7000); } scene.remove(fxGroup); fxOn = false; roomLights.children.forEach(l => { if (l.userData.i0 != null) l.intensity = l.userData.i0; }); }
     else if (gov.level === 3) { if (rSSAO && real) { rSSAO.enabled = false; rPlain.enabled = true; } }
   }
   function loop(now) {

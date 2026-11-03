@@ -76,7 +76,7 @@ body.viewing #view{display:block}
 }
 #v .p3v-bottom{bottom:calc(12px + var(--sb))}
 /* no mouse on a phone: drag to look, the joystick to walk */
-body.touch #v .p3v-right > .p3v-look:not(.p3v-lidb):not(.p3v-air){display:none}
+body.touch #v .p3v-right > .p3v-look:not(.p3v-lidb):not(.p3v-air):not(.p3v-hd){display:none}
 
 /* turn sideways: a phone that tips over, on the start screen and over a plan held upright */
 @keyframes p3turn{0%,18%{transform:rotate(0)}42%,78%{transform:rotate(-90deg)}100%{transform:rotate(0)}}
