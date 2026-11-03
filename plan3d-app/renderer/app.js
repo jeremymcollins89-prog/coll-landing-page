@@ -1834,7 +1834,7 @@ async function cadDialog() {
         const dwg = $('#cadFmt').value === 'dwg';
         $('#cadVerRow').hidden = !dwg;
         if ($('#cadFmt').value === 'ifc') { $('#cadNote').textContent = 'A full 3D model: walls, posts, doors, glass, pass-thrus, chases, ceiling, lights and FFUs. In Revit: File → Open → IFC, then File → Save As → Project to keep it as an .rvt. Or Insert → Link IFC to drop it into a building model.'; return; }
-        $('#cadNote').textContent = dwg ? (hasOda ? 'DWG files are made with ODA File Converter, found on this computer.' : hasDwg ? 'Saved with the built-in DWG converter. Newer AutoCAD versions open it and can save it in their own format.' : 'DWG isn’t available on this computer. Save a DXF; AutoCAD opens DXF files too.') : 'DXF opens in AutoCAD, DraftSight, LibreCAD, SketchUp and most CAD programs.';
+        $('#cadNote').textContent = dwg ? (hasOda ? 'DWG files are made with ODA File Converter, found on this computer.' : hasDwg ? 'ODA File Converter isn’t on this computer. The built-in DWG converter can make files AutoCAD has to recover, with parts missing; DXF opens in AutoCAD cleanly (Save As DWG there), or install ODA File Converter (free) for real DWGs.' : 'DWG isn’t available on this computer. Save a DXF; AutoCAD opens DXF files too.') : 'DXF opens in AutoCAD, DraftSight, LibreCAD, SketchUp and most CAD programs.';
       };
       $('#cadFmt').onchange = upd; upd();
     }
@@ -1853,6 +1853,18 @@ async function cadDialog() {
     if (a === 'oda' && api.openUrl) api.openUrl('https://www.opendesign.com/guestfiles/oda_file_converter');
     if (a !== 'dxf') return;
     fmtNow = 'dxf';
+  }
+  if (fmtNow === 'dwg' && !hasOda) {
+    // the built-in converter's DWGs can need Recover in AutoCAD and come in wrong: offer the clean ways first
+    const a = await dialogOpen({
+      title: 'Save a DXF for AutoCAD instead?',
+      body: `<p>ODA File Converter isn’t installed on this computer, so the DWG would come from the built-in converter. AutoCAD can have to <b>recover</b> those files, and parts can come in wrong or missing.</p>
+        <ul class="help"><li><b>Save DXF</b>: AutoCAD opens it cleanly with everything on its layers. To keep a DWG, use Save As → DWG in AutoCAD.</li><li><b>Get ODA File Converter</b> (free, one time): from then on Coll Plan3D makes real AutoCAD DWGs.</li></ul>`,
+      buttons: [{ label: 'Cancel', ret: null }, { label: 'Built-in DWG anyway', ret: 'dwg' }, { label: 'Get ODA File Converter', ret: 'oda' }, { label: 'Save DXF', primary: true, ret: 'dxf' }]
+    });
+    if (a === 'oda' && api.openUrl) api.openUrl('https://www.opendesign.com/guestfiles/oda_file_converter');
+    if (a !== 'dxf' && a !== 'dwg') return;
+    fmtNow = a;
   }
   let dxf;
   try { dxf = Plan3DCad.toDxf(clonePlan(), { dims: o.dims, fixtures: o.fixtures, plainText: fmtNow === 'dwg' }); }
