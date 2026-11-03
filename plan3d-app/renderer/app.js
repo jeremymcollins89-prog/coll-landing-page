@@ -3585,7 +3585,7 @@ async function exportHtml() {
 #p3fb .bx{max-width:420px}#p3fb h1{font-size:20px;margin:0 0 10px}#p3fb a{display:inline-block;margin-top:14px;padding:12px 18px;border-radius:12px;background:#f2c84b;color:#1a1f22;font-weight:700;text-decoration:none}#p3fb p{color:#aab5ba;margin:8px 0}
 :root{--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px)}
 /* a phone or tablet: the same layout as the online phone viewer */
-#v.p3v-touch .p3v-right > .p3v-look:not(.p3v-lidb):not(.p3v-air):not(.p3v-hd){display:none}
+#v.p3v-touch .p3v-right > .p3v-look:not(.p3v-lidb):not(.p3v-air){display:none}
 @media (max-width:640px){#v .p3v-card{max-width:58vw}#v .p3v-mini{width:96px;height:110px}#v .p3v-hint{font-size:13px;white-space:normal;text-align:center;border-radius:14px}}
 @media (orientation:landscape) and (max-height:540px){
 #v .p3v-top{top:calc(8px + var(--st));left:calc(8px + var(--sl));right:calc(8px + var(--sr))}
