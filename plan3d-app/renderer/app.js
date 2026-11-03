@@ -300,7 +300,7 @@ $$('.views button').forEach(b => b.addEventListener('click', () => setView(b.dat
 /* ---------- Tools ---------- */
 $$('.tools button[data-tool]').forEach(b => b.addEventListener('click', () => { ed.setTool(b.dataset.tool); $('#plan').focus(); }));
 /* ---------- Grouped toolbar ----------
-   The tools sit in a few groups down the left (Doors, Windows, Structure, Ceiling, Equipment, Notes); Grille stands on its own. Each
+   The tools sit in a few groups down the left (Doors, Windows, Structure, Ceiling, Equipment, Notes); Grille and Chase stand on their own. Each
    group shows the tool last used in it, with a small corner mark when it holds more: click it to use that tool
    and to open the group beside it; pick another tool there and it becomes the group's face. Every tool keeps its
    key. "Show every tool" (the button at the foot of the bar) brings back the full list. */
@@ -308,7 +308,7 @@ const TOOL_GROUPS = [
   { key: 'doors', name: 'Doors & openings', tools: ['door', 'door2', 'overhead', 'open', 'pass', 'removable'] },
   { key: 'windows', name: 'Windows & glass', tools: ['window', 'glass'] },
   { key: 'structure', name: 'Structure', tools: ['column', 'beam'] },
-  { key: 'ceiling', name: 'Ceiling', tools: ['carea', 'grid', 'header', 'chase'] },
+  { key: 'ceiling', name: 'Ceiling', tools: ['carea', 'grid', 'header'] },
   { key: 'equip', name: 'Equipment & electrical', tools: ['item', 'elec'] },
   { key: 'notes', name: 'Rooms & measuring', tools: ['room', 'measure', 'calibrate'] }
 ];
