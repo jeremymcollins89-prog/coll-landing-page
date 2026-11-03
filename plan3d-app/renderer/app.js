@@ -16,7 +16,7 @@ const ed = new Editor($('#plan'), {
   onLive: () => queue3D(),
   onSelect: (d) => { renderProps(d); if (builder && view === 'build') builder.drawSel(); },
   onTilesize: () => { if (ed.tool === 'grid') gridPalette(); },
-  onTool: (t) => { $$('.tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; $('#itemPal').hidden = t !== 'item'; if (t === 'item') itemPalette(); $('#draftPal').hidden = t !== 'draft'; if (t === 'draft') { draftPalette(); $('#welcome').hidden = true; } $('#elecPal').hidden = t !== 'elec'; $('#grillePal').hidden = t !== 'grille'; if (t === 'grille') grillePalette(); if (t === 'elec') elecPalette(); $('#gridPal').hidden = t !== 'grid'; if (t === 'grid') gridPalette(); if (t === 'piece') hideBanner(); toolHint(t); },
+  onTool: (t) => { $$('.tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); $('.pane2d').dataset.tool = t; $('#pal2d').hidden = t !== 'piece'; $('#itemPal').hidden = t !== 'item'; if (t === 'item') itemPalette(); $('#draftPal').hidden = t !== 'draft'; if (t === 'draft') { draftPalette(); $('#welcome').hidden = true; } $('#elecPal').hidden = t !== 'elec'; $('#grillePal').hidden = t !== 'grille'; if (t === 'grille') grillePalette(); $('#winPal').hidden = t !== 'window'; if (t === 'window') windowPalette(); $('#colPal').hidden = t !== 'column'; if (t === 'column') columnPalette(); if (t === 'elec') elecPalette(); $('#gridPal').hidden = t !== 'grid'; if (t === 'grid') gridPalette(); if (t === 'piece') hideBanner(); toolHint(t); },
   onStatus: (m) => msg(m || toolHintText(ed.tool)),
   onCursor: (p) => { $('#sXY').textContent = fmt(p.x) + ', ' + fmt(p.y); $('#sZoom').textContent = Math.round(ed.view.s) + ' px/ft'; },
   onCalibrate: (cal) => calibrateDialog(cal),
@@ -49,7 +49,8 @@ const HINTS = {
   draft: 'Drafting: pick Line, Polyline, Rectangle, Circle, Arc, Text or Dimension in the bar. It snaps to endpoints, midpoints, centers and crossings; type lengths, @x,y or length<angle and Enter. Select a drawn piece to edit it exactly, move, copy, rotate, mirror, scale, offset or array it.',
   removable: 'Click on a wall to put a removable wall section there (8′-6″ wide, 8′ clear opening under the header): wall panels in a 3″ × 3″ steel tube frame that come out to bring equipment in. Change its width and header in its properties; in 3D, Show removed takes the panels out.',
   overhead: 'Click on a wall to put an overhead sectional door there (12′ wide, head 2′ below the top of the wall). Change its size in its properties.',
-  column: 'Click to place a building column. Its size and steel or concrete are in its properties; it runs up to the roof structure.',
+  column: 'Set the column in the bar above: square / rectangle or round, its size (8x8, 8x12, or 8 for an 8″ round), steel or concrete, and the deck height. Click to place it: it runs from the floor up through the ceiling to the deck.',
+  window: 'Set the window in the bar above: width, height and how high its bottom sits off the floor. Then click on a wall to put it in.',
   elec: 'Pick a device (the list folds away; Tab or the ⚡ chip brings it back), then click on a wall: it goes on that face of the wall, facing the room you clicked in. Heights follow the usual mounting heights; change one in its properties.',
   select: 'Click to select. Drag to move. Drag a wall end to stretch it. Drag empty space to pan. Delete removes.',
   build: 'Build mode: pick a piece and click to place it.',
@@ -115,6 +116,44 @@ function grillePalette() {
   const inch = (id, set) => { const el = $('#' + id); if (!el) return; el.onchange = () => { const v = parseLen(el.value, 'in'); if (isFinite(v) && v > 0) set(v); grillePalette(); }; el.onkeydown = (e) => e.stopPropagation(); };
   inch('gpW', v => { ed.grW = Math.round(Math.min(96, v * 12)); }); inch('gpH', v => { ed.grH = Math.round(Math.min(96, v * 12)); }); inch('gpS', v => { ed.grSill = Math.min(10, v); });
   $('#gpD').onchange = (e) => { ed.grDamper = e.target.checked; };
+}
+/* Column size typed the way it's said: "8x8", "8 x 12", "10" (square), "8 dia" or "Ø8" (round), in inches unless
+   feet are marked. Returns { w, d, round } in feet, or null. */
+function parseColSize(str, round) {
+  const t = String(str || '').trim().toLowerCase(); if (!t) return null;
+  const rnd = round || /dia|ø|⌀|round/.test(t);
+  const parts = t.replace(/(diameter|dia\.?|ø|⌀|round)/g, ' ').split(/\s*(?:x|×|by|\*)\s*/).map(p => p.trim()).filter(Boolean);
+  const vals = parts.map(p => parseLen(p, 'in')).filter(v => isFinite(v) && v > 0);
+  if (!vals.length) return null;
+  const w = Math.max(2 / 12, Math.min(6, vals[0])), d = rnd ? w : Math.max(2 / 12, Math.min(6, vals[1] || vals[0]));
+  return { w, d, round: rnd };
+}
+function colSizeText(w, d, round) { const i = (v) => Math.round(v * 12 * 4) / 4; return round ? i(w) + '' : i(w) + 'x' + i(d); }
+function windowPalette() {
+  const W = ed.winW || 3, H = ed.winH || 4, S = ed.winSill != null ? ed.winSill : 3;
+  $('#winPal').innerHTML = `<div class="grp"><div class="row"><b style="margin-right:6px">Window</b>
+    <label>Width <input type="text" id="wpW" value="${fmt(W)}" style="width:64px"></label>
+    <label>Height <input type="text" id="wpH" value="${fmt(H)}" style="width:64px"></label>
+    <label>Bottom off floor <input type="text" id="wpS" value="${fmt(S)}" style="width:64px"></label>
+    <span style="opacity:.75">Top at ${fmt(S + H)}</span></div></div>`;
+  const len = (id, set) => { const el = $('#' + id); el.onchange = () => { const v = parseLen(el.value, 'ft'); if (isFinite(v) && v >= 0) set(v); windowPalette(); }; el.onkeydown = (e) => e.stopPropagation(); };
+  len('wpW', v => { if (v > 0) ed.winW = Math.min(40, Math.max(0.5, v)); }); len('wpH', v => { if (v > 0) ed.winH = Math.min(20, Math.max(0.5, v)); }); len('wpS', v => { ed.winSill = Math.min(20, v); });
+}
+function columnPalette() {
+  const rnd = ed.columnShape === 'round', w = ed.columnSize || 0.67, d = rnd ? w : (ed.columnD || w), K = ed.columnKind || 'steel';
+  const kinds = rnd ? [['steel', 'Steel pipe'], ['concrete', 'Concrete']] : [['steel', 'Steel wide flange'], ['tube', 'Steel tube'], ['concrete', 'Concrete']];
+  const A = Plan3DViewer.analyze(ed.plan), deck = Plan3DViewer.deckHeight(ed.plan, A);
+  $('#colPal').innerHTML = `<div class="grp"><div class="row"><b style="margin-right:6px">Column</b>
+    <button data-cs="sq" class="${rnd ? '' : 'on'}">Square / rectangle</button><button data-cs="round" class="${rnd ? 'on' : ''}">Round</button>
+    <label>${rnd ? 'Diameter' : 'Size'} <input type="text" id="cpS" value="${colSizeText(w, d, rnd)}" placeholder="${rnd ? '8' : '8x8'}" style="width:64px"></label><span style="opacity:.75">inches</span></div>
+    <div class="row">${kinds.map(([k, l]) => `<button data-ck="${k}" class="${K === k ? 'on' : ''}">${l}</button>`).join('')}
+    <label>Deck height <input type="text" id="cpD" value="${fmt(deck)}" style="width:64px"></label></div></div>`;
+  $$('#colPal [data-cs]').forEach(b => b.onclick = () => { ed.columnShape = b.dataset.cs === 'round' ? 'round' : null; if (ed.columnShape === 'round' && ed.columnKind === 'tube') ed.columnKind = 'steel'; columnPalette(); $('#plan').focus(); });
+  $$('#colPal [data-ck]').forEach(b => b.onclick = () => { ed.columnKind = b.dataset.ck; columnPalette(); $('#plan').focus(); });
+  const sz = $('#cpS'); sz.onkeydown = (e) => e.stopPropagation();
+  sz.onchange = () => { const r = parseColSize(sz.value, rnd); if (r) { if (r.round && !rnd) { ed.columnShape = 'round'; if (ed.columnKind === 'tube') ed.columnKind = 'steel'; } ed.columnSize = r.w; ed.columnD = r.d; } columnPalette(); };
+  const dk = $('#cpD'); dk.onkeydown = (e) => e.stopPropagation();
+  dk.onchange = () => { const v = parseLen(dk.value, 'ft'); if (isFinite(v) && v >= 6) ed.edit(Pl => { Pl.deckH = Math.min(80, v); }); columnPalette(); };
 }
 function itemPalette() {
   // one group at a time, picked from a row of tabs, so the palette stays small over the plan
@@ -264,7 +303,7 @@ $('#optOrtho').addEventListener('change', e => { ed.ortho = e.target.checked; })
 $('#optDims').addEventListener('change', e => { ed.showDims = e.target.checked; ed.render(); });
 $('#optPosts').addEventListener('change', e => { ed.showPosts = e.target.checked; ed.render(); });
 
-const TOOL_KEYS = { l: 'draft', q: 'grille', j: 'header', v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', b: 'beam', i: 'item', e: 'elec', h: 'overhead', u: 'column', a: 'carea', t: 'grid' };
+const TOOL_KEYS = { y: 'window', l: 'draft', q: 'grille', j: 'header', v: 'select', n: 'piece', w: 'wall', d: 'door', f: 'door2', g: 'glass', o: 'open', p: 'pass', c: 'chase', r: 'room', k: 'calibrate', m: 'measure', b: 'beam', i: 'item', e: 'elec', h: 'overhead', u: 'column', a: 'carea', t: 'grid' };
 const HOUSE_ONLY = new Set(['draft']), CLEANROOM_ONLY = new Set(['piece', 'pass', 'chase', 'column', 'carea', 'grid']);
 function inField(e) { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA'); }
 window.addEventListener('keydown', e => {
@@ -454,7 +493,7 @@ function renderProps(opt) {
       ${fld('Type', `<select id="pType">${types.map(t => `<option value="${t[0]}" ${t[0] === o.type ? 'selected' : ''}>${t[1]}</option>`).join('')}</select>`)}
       ${fld('Width', txt('pW', fmt(len)))}
       ${isPass ? fld('Height', txt('pPH', fmtIn((o.head || 5) - sill))) + fld('Bottom at', txt('pSill', fmt(sill))) + fld('Depth', txt('pDepth', fmtIn(o.depth || 2))) : fld(o.type === 'glass' || o.type === 'window' ? 'Top' : o.type === 'removable' ? 'Header height' : 'Head height', txt('pHead', fmt(o.head || 7)))}
-      ${o.type === 'glass' || o.type === 'window' ? fld('Sill height', txt('pSill', fmt(sill))) : ''}
+      ${o.type === 'glass' || o.type === 'window' ? fld('Bottom off floor', txt('pSill', fmt(sill))) + fld('Window height', txt('pWinH', fmt(Math.max(0.5, (o.head || 7) - sill)))) : ''}
       ${o.type === 'overhead' ? `<div class="row"><button class="btn small" id="pSwing">Flip inside face</button></div>` : ''}
       ${o.type === 'door' || o.type === 'door2' ? `${fld('Build', `<label class="chk"><input type="checkbox" id="pStd" ${o.style === 'cr' ? 'checked' : ''}> Standard door (frame, 84″ leaves, vision lite, lever)</label>`)}${o.style === 'cr' ? fld('Leaf width', txt('pLeafW', fmtIn(o.leafW || 3))) : ''}` : ''}
       ${(o.type === 'door' || o.type === 'door2') && P.mode !== 'house' && P.openings.some(q => (q.type === 'door' || q.type === 'door2') && q.style !== 'cr') ? `<div class="row"><button class="btn small" id="pStdAll" title="Every door and pair on the plan becomes the standard door (frame, 84″ leaves, vision lite, lever), the same opening width it has now">Make all doors standard</button></div>` : ''}
@@ -467,7 +506,8 @@ function renderProps(opt) {
     // openings in building walls can be taller than the cleanroom ceiling (an overhead door, say)
     const topFor = () => { let best = null, bd = 1.5; for (const w of P.walls) { const d = Plan3DViewer.segDist((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, w.x1, w.y1, w.x2, w.y2); if (d < bd) { bd = d; best = w; } } return best && !Plan3DViewer.isHard(best) ? Plan3DViewer.shellHeight(P, best) : P.ceiling; };
     bindLen('pHead', 'ft', v => ed.edit(() => { o.head = Math.min(topFor(), Math.max(1, v)); }));
-    bindLen('pSill', 'ft', v => ed.edit(() => { const h = (o.head || 5) - (o.sill == null ? 3 : o.sill); o.sill = Math.max(0, v); if (isPass) o.head = Math.min(P.ceiling - 0.25, o.sill + h); }));
+    if (!$('#pWinH')) bindLen('pSill', 'ft', v => ed.edit(() => { const h = (o.head || 5) - (o.sill == null ? 3 : o.sill); o.sill = Math.max(0, v); if (isPass) o.head = Math.min(P.ceiling - 0.25, o.sill + h); }));
+    else { bindLen('pWinH', 'ft', v => ed.edit(() => { o.head = (o.sill == null ? 3 : o.sill) + Math.max(0.5, v); })); bindLen('pSill', 'ft', v => ed.edit(() => { const h = (o.head || 7) - (o.sill == null ? 3 : o.sill); o.sill = Math.max(0, v); o.head = o.sill + Math.max(0.5, h); })); }
     bindLen('pPH', 'in', v => ed.edit(() => { o.head = Math.min(P.ceiling - 0.25, (o.sill == null ? 3 : o.sill) + Math.max(0.5, v)); }));
     bindLen('pDepth', 'in', v => ed.edit(() => { o.depth = Math.max(o.t || 0.25, v); }));
     if ($('#pSwing')) $('#pSwing').onclick = () => ed.edit(() => { o.swing = o.swing === -1 ? 1 : -1; });
@@ -661,16 +701,22 @@ function renderProps(opt) {
     return;
   }
   if (s && o && s.kind === 'column') {
+    const D = Plan3DViewer.colDims(o), rnd = D.round, deck = Plan3DViewer.deckHeight(ed.plan, Plan3DViewer.analyze(ed.plan));
+    const kinds = rnd ? [['steel', 'Steel pipe'], ['concrete', 'Concrete']] : [['steel', 'Steel, wide flange'], ['tube', 'Steel tube'], ['concrete', 'Concrete']];
     h = `<div class="hd"><span class="kind">Column</span><button class="btn small danger" id="pDel">Delete</button></div>
-      ${fld('Type', `<select id="pColK"><option value="steel" ${o.kind !== 'concrete' ? 'selected' : ''}>Steel, wide flange</option><option value="concrete" ${o.kind === 'concrete' ? 'selected' : ''}>Concrete</option></select>`)}
-      ${fld('Size', txt('pColS', fmtIn(o.size || 0.67)))}
-      ${fld('Height', txt('pColH', o.h ? fmt(o.h) : '', 'Up to the roof (' + fmt(Plan3DViewer.analyze(ed.plan).shellTop || ed.plan.shellH || 20) + ')'))}
+      ${fld('Shape', `<select id="pColSh"><option value="sq" ${rnd ? '' : 'selected'}>Square / rectangle</option><option value="round" ${rnd ? 'selected' : ''}>Round</option></select>`)}
+      ${fld(rnd ? 'Diameter (in)' : 'Size (in)', txt('pColS', colSizeText(D.w, D.d, rnd), rnd ? '8' : '8x8'))}
+      ${fld('Type', `<select id="pColK">${kinds.map(([k, l]) => `<option value="${k}" ${(o.kind || 'steel') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
+      ${fld('Height', txt('pColH', o.h ? fmt(o.h) : '', 'Up to the deck (' + fmt(deck) + ')'))}
+      ${fld('Deck height', txt('pColDk', fmt(deck)))}
       <div class="row"><button class="btn small" id="pColDup">Add another 25′ over</button></div>
-      <p class="note">Columns go on the parts list and into the Revit export. Drag to move.</p>`;
+      <p class="note">Runs from the floor up through the ceiling to the deck. Columns go on the parts list and into the Revit export. Drag to move.</p>`;
     box.innerHTML = h;
+    $('#pColSh').onchange = e => ed.edit(() => { if (e.target.value === 'round') { o.shape = 'round'; o.d = o.w = D.w; if (o.kind === 'tube') o.kind = 'steel'; } else { delete o.shape; o.w = D.w; o.d = D.w; } o.size = o.w; ed.columnShape = o.shape || null; });
     $('#pColK').onchange = e => ed.edit(() => { o.kind = e.target.value; ed.columnKind = o.kind; });
-    bindLen('pColS', 'in', v => ed.edit(() => { o.size = Math.max(0.25, Math.min(4, v)); ed.columnSize = o.size; }));
+    const cs = $('#pColS'); cs.onchange = () => { const r = parseColSize(cs.value, rnd); if (!r) { cs.value = colSizeText(D.w, D.d, rnd); return; } ed.edit(() => { o.w = r.w; o.d = r.d; o.size = r.w; if (r.round) { o.shape = 'round'; if (o.kind === 'tube') o.kind = 'steel'; } ed.columnSize = r.w; ed.columnD = r.d; }); };
     const ch = $('#pColH'); ch.onchange = () => { const raw = ch.value.trim(); if (!raw) { ed.edit(() => { delete o.h; }); return; } const v = parseLen(raw, 'ft'); if (isFinite(v) && v > 0) ed.edit(() => { o.h = Math.max(6, Math.min(80, v)); }); };
+    bindLen('pColDk', 'ft', v => ed.edit(Pl => { Pl.deckH = Math.max(6, Math.min(80, v)); }));
     $('#pColDup').onclick = () => { const n = { ...o, id: Plan3DEditor.uid(), x: o.x + 25 }; ed.edit(Pl => Pl.columns.push(n)); ed.sel = { kind: 'column', id: n.id }; ed.emit('select'); };
     $('#pDel').onclick = () => ed.deleteSel();
     return;
