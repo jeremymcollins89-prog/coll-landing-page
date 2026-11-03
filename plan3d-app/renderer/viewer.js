@@ -4646,7 +4646,8 @@ function buildScene(THREE, plan, A) {
     // from the floor up through the ceiling and the plenum to the roof deck (or the height it was given)
     const D = colDims(c), cw = D.w, cd = D.d, ht = c.h || colTop, conc = c.kind === 'concrete', g = new THREE.Group();
     curRef = c.id ? { kind: 'column', id: c.id } : null;
-    const stl = new THREE.MeshPhongMaterial({ color: 0x8a9297, specular: 0x444444, shininess: 30 });
+    // steel columns are painted white
+    const stl = new THREE.MeshPhongMaterial({ color: 0xf1f3f4, specular: 0x333333, shininess: 40, name: 'White painted steel' });
     if (D.round) {
       const m = new THREE.Mesh(new THREE.CylinderGeometry(cw / 2, cw / 2, ht, 28), conc ? shellMat('concrete', cw, ht, 0) : stl); m.position.y = ht / 2; g.add(m);
       if (!conc) { const bp = new THREE.Mesh(new THREE.BoxGeometry(cw + 0.5, 0.06, cw + 0.5), stl); bp.position.y = 0.03; g.add(bp); }

@@ -630,7 +630,7 @@ function toIfc(plan, opts) {
   // building columns
   const colTop = V.deckHeight(plan, A);
   for (const c of plan.columns || []) {
-    const D = V.colDims(c), ht = c.h || colTop, conc = c.kind === 'concrete', m = conc ? S.concrete : S.struct;
+    const D = V.colDims(c), ht = c.h || colTop, conc = c.kind === 'concrete', m = conc ? S.concrete : S.white;
     // a round column as a cylinder; a square or rectangular one as its box
     const parts = D.round ? [disc(c.x, c.y, D.w / 2, 0, ht, m)]
       : [box(c.x - D.w / 2, c.y - D.d / 2, c.x + D.w / 2, c.y + D.d / 2, 0, ht, m)];

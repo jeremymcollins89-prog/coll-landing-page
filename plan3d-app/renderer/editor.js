@@ -1534,7 +1534,7 @@ class Editor {
     }
     for (const c of P.columns || []) {
       const D = V2.colDims(c), X0 = this.sx(c.x - D.w / 2), Y0 = this.sy(c.y - D.d / 2), W = D.w * this.view.s, H = D.d * this.view.s;
-      g.save(); g.fillStyle = c.kind === 'concrete' ? '#8d8a84' : '#6f777c'; g.strokeStyle = '#e8edef'; g.lineWidth = 1.2; g.beginPath();
+      g.save(); const conc = c.kind === 'concrete'; g.fillStyle = conc ? '#8d8a84' : '#eef1f2'; g.strokeStyle = conc ? '#e8edef' : '#59636a'; g.lineWidth = 1.2; g.beginPath();
       if (D.round) { const cx = this.sx(c.x), cy = this.sy(c.y), r = W / 2; g.arc(cx, cy, r, 0, Math.PI * 2); g.fill(); g.stroke(); g.beginPath(); g.moveTo(cx - r * 0.7, cy - r * 0.7); g.lineTo(cx + r * 0.7, cy + r * 0.7); g.moveTo(cx + r * 0.7, cy - r * 0.7); g.lineTo(cx - r * 0.7, cy + r * 0.7); g.stroke(); }
       else { g.fillRect(X0, Y0, W, H); g.strokeRect(X0, Y0, W, H); g.moveTo(X0, Y0); g.lineTo(X0 + W, Y0 + H); g.moveTo(X0 + W, Y0); g.lineTo(X0, Y0 + H); g.stroke(); }
       g.restore();
