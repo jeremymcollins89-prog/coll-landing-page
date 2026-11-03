@@ -613,6 +613,11 @@ class Editor {
     g.restore();
   }
   hitTest(x, y) {
+    // things on a hidden layer can't be picked
+    const P0 = this.plan, Q = this.layerView(P0, true); if (Q === P0) return this.hitTest0(x, y);
+    this.plan = Q; try { const h = this.hitTest0(x, y); if (h && h.kind === 'fixture' && Q._fxOff) { const f = (P0.fixtures || []).find(q => q.id === h.id); if (f && Q._fxOff[f.type === 'ffu' ? 'ffu' : 'light']) return null; } return h; } finally { this.plan = P0; }
+  }
+  hitTest0(x, y) {
     const P = this.plan, tol = 7 / this.view.s;
     // general drafting first (it is drawn on top)
     if (P.draft && global.Plan3DDraft) { const h = global.Plan3DDraft.hit(this, x, y); if (h) return h; }
@@ -1273,7 +1278,25 @@ class Editor {
     g.restore();
   }
   /* chases, walls, openings and room labels of a plan (the main plan, or a placed building moved into place) */
+  /* View layers (plan.layersOff = { ffu: true, grid: true, … }): hidden things stay in the plan, they just
+     aren't drawn, picked or (in 3D) shown. This is the plan as the view sees it. */
+  layerOff(k) { const L = this.plan && this.plan.layersOff; return !!(L && L[k]); }
+  layerView(P, pick) {
+    // pick: for clicking, a locked layer counts as hidden too (seen, but can't be picked or moved)
+    const L0 = (this.plan && this.plan.layersOff) || {}, LK = pick ? (this.plan && this.plan.layersLock) || {} : {};
+    const L = Object.assign({}, L0); for (const k in LK) if (LK[k]) L[k] = true;
+    if (!Object.keys(L).some(k => L[k])) return P;
+    const Q = Object.assign({}, P), off = (k) => !!L[k];
+    const OPL = { door: 'doors', door2: 'doors', overhead: 'doors', glass: 'windows', window: 'windows', pass: 'pass', removable: 'removable', open: 'openings' };
+    if (off('walls')) Q.walls = [];
+    Q.openings = (P.openings || []).filter(o => !off(OPL[o.type] || 'doors'));
+    for (const [k, arr] of [['chases', 'chases'], ['grilles', 'grilles'], ['headers', 'headers'], ['columns', 'columns'], ['beams', 'beams'], ['items', 'items'], ['elec', 'devices'], ['rooms', 'rooms'], ['carea', 'ceilAreas'], ['lid', 'deckPieces'], ['whips', 'whips']]) if (off(k) && P[arr]) Q[arr] = [];
+    if (off('grid')) { Q.ceilRects = []; Q.ceilTiles = []; Q.gridZones = []; }
+    Q._fxOff = { ffu: off('ffu'), light: off('light') };
+    return Q;
+  }
   drawContent(P) {
+    P = this.layerView(P);
     const g = this.g, s = this.view.s, V = global.Plan3DViewer, KC = {};
     if (V && V.WALL_KINDS) for (const k in V.WALL_KINDS) KC[k] = V.WALL_KINDS[k].plan;
     // ceiling areas: a dashed outline with the area's ceiling height
@@ -1529,7 +1552,7 @@ class Editor {
     // FFUs and lights from a drawn ceiling (drag them; they land in the grid's cells)
     if (P.ceilingMode === 'manual' && this.showCeil !== false && !(this.tool === 'piece' && this.pieces && (this.pieces.tool === 'led' || this.pieces.tool === 'ffu'))) {
       g.save(); g.lineWidth = 1;
-      for (const f of P.fixtures || []) { const fw = (f.w || 2) - 0.1, fh = (f.h || 4) - 0.1; g.strokeStyle = f.type === 'ffu' ? 'rgba(127,211,227,.75)' : 'rgba(230,236,238,.7)'; g.fillStyle = f.type === 'ffu' ? 'rgba(127,211,227,.10)' : 'rgba(255,255,255,.07)'; g.fillRect(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2), fw * s, fh * s); g.strokeRect(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2), fw * s, fh * s); if (f.type !== 'ffu') { g.beginPath(); g.moveTo(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2)); g.lineTo(this.sx(f.x + fw / 2), this.sy(f.y + fh / 2)); g.stroke(); if (f.em) this.emHatch(g, f.x, f.y, fw, fh); } else { g.beginPath(); g.arc(this.sx(f.x), this.sy(f.y), Math.min(fw, fh) * 0.34 * s, 0, Math.PI * 2); g.stroke(); } if (f.surprise && s > 5) { g.fillStyle = 'rgba(120,220,60,.9)'; g.beginPath(); g.arc(this.sx(f.x), this.sy(f.y), Math.max(3, s * 0.35), 0, Math.PI * 2); g.fill(); } }
+      for (const f of P.fixtures || []) { if (P._fxOff && P._fxOff[f.type === 'ffu' ? 'ffu' : 'light']) continue; const fw = (f.w || 2) - 0.1, fh = (f.h || 4) - 0.1; g.strokeStyle = f.type === 'ffu' ? 'rgba(127,211,227,.75)' : 'rgba(230,236,238,.7)'; g.fillStyle = f.type === 'ffu' ? 'rgba(127,211,227,.10)' : 'rgba(255,255,255,.07)'; g.fillRect(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2), fw * s, fh * s); g.strokeRect(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2), fw * s, fh * s); if (f.type !== 'ffu') { g.beginPath(); g.moveTo(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2)); g.lineTo(this.sx(f.x + fw / 2), this.sy(f.y + fh / 2)); g.stroke(); if (f.em) this.emHatch(g, f.x, f.y, fw, fh); } else { g.beginPath(); g.arc(this.sx(f.x), this.sy(f.y), Math.min(fw, fh) * 0.34 * s, 0, Math.PI * 2); g.stroke(); } if (f.surprise && s > 5) { g.fillStyle = 'rgba(120,220,60,.9)'; g.beginPath(); g.arc(this.sx(f.x), this.sy(f.y), Math.max(3, s * 0.35), 0, Math.PI * 2); g.fill(); } }
       g.restore();
     }
     for (const c of P.columns || []) {
@@ -1709,7 +1732,7 @@ class Editor {
       g.fillStyle = 'rgba(26,32,36,.85)'; g.fillRect(-tw / 2 - 3, -7, tw + 6, 14);
       g.fillStyle = color; g.fillText(txt, 0, 0); g.restore();
     };
-    if (this.showDims && s > 5) for (const w of P.walls) dimFor(w.x1, w.y1, w.x2, w.y2, w.t || 0.25, COL.dim);
+    if (this.showDims && !this.layerOff('dims') && !this.layerOff('walls') && s > 5) for (const w of P.walls) dimFor(w.x1, w.y1, w.x2, w.y2, w.t || 0.25, COL.dim);
     // hover / selection
     const outlineSel = (sel, color, width) => {
       const o = this.find(sel); if (!o) return;

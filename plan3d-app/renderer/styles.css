@@ -382,3 +382,36 @@ body.tools-all .tools .tfly button span { font: 600 11px var(--display); letter-
 body.tools-all .tools .tfly button kbd { top: 3px; right: 4px; transform: none; font-size: 9px; }
 body.tools-all .tools .tgall { opacity: 1; color: var(--accent); }
 body:not(.tools-all) .tools .tfly button span[style] { font-size: 12.5px !important; letter-spacing: 0 !important; }
+
+/* layers (like AutoCAD's Layer Properties palette) */
+.lybtn { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 2px 8px; font: inherit; cursor: pointer; }
+.lybtn:hover { color: var(--text); background: var(--raise); }
+.lybtn.on { color: var(--accent); border-color: var(--accent); }
+.lybtn svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+.lybtn em { font-style: normal; }
+#layerPanel { position: fixed; right: 12px; bottom: 34px; z-index: 60; width: min(440px, calc(100vw - 24px)); max-height: min(640px, calc(100vh - 120px)); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 14px 40px rgba(0,0,0,.45); font-size: 12.5px; color: var(--text); }
+#layerPanel[hidden] { display: none; }
+#layerPanel .lyhd { display: flex; align-items: center; gap: 10px; padding: 10px 12px 6px; }
+#layerPanel .lyhd b { font: 600 14px var(--display); }
+#layerPanel .lyhint { color: var(--muted); font-size: 11px; flex: 1; }
+#layerPanel .lyx { background: transparent; border: 0; color: var(--muted); font-size: 18px; cursor: pointer; line-height: 1; }
+#layerPanel .lybar { display: flex; gap: 6px; padding: 0 12px 8px; flex-wrap: wrap; }
+#layerPanel .lybar button { font: 12px inherit; padding: 4px 9px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+#layerPanel .lybar button:disabled { opacity: .4; cursor: default; }
+#layerPanel .lyhead, #layerPanel .lyrow { display: grid; grid-template-columns: 34px 38px 46px 1fr 120px; align-items: center; gap: 2px; padding: 0 12px; }
+#layerPanel .lyhead { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+#layerPanel .lylist { overflow-y: auto; padding: 4px 0 8px; }
+#layerPanel .lyrow { padding-top: 2px; padding-bottom: 2px; cursor: default; user-select: none; }
+#layerPanel .lyrow:hover { background: var(--raise); }
+#layerPanel .lyrow.sel { background: rgba(242,200,75,.14); }
+#layerPanel .lyrow.isoff .lyn, #layerPanel .lyrow.isoff .lyd { opacity: .5; }
+#layerPanel .lyrow button { background: transparent; border: 0; padding: 3px; cursor: pointer; display: grid; place-items: center; border-radius: 5px; }
+#layerPanel .lyrow button:hover { background: rgba(255,255,255,.06); }
+#layerPanel .lyrow svg { width: 17px; height: 17px; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+#layerPanel svg.lon { fill: #ffd84a; stroke: #b88f14; }
+#layerPanel svg.loff { fill: none; stroke: #6b777d; }
+#layerPanel svg.lkon { fill: #f2c84b; stroke: #f2c84b; }
+#layerPanel svg.lkon path { stroke: #f2c84b; }
+#layerPanel svg.lkoff { fill: none; stroke: #6b777d; }
+#layerPanel .lysw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,.4); }
+#layerPanel .lyd { color: var(--muted); font-family: var(--mono); font-size: 11px; }
