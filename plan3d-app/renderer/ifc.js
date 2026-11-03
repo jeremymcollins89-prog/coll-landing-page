@@ -628,10 +628,13 @@ function toIfc(plan, opts) {
     put('IFCBEAM', 'Steel joist ' + Math.round(RS.depth * 12) + 'K, ' + V.fmtFt(j.len), 'Open-web steel joist', shape([seg(j.x1, j.z1, j.x2, j.z2, yT - 0.12, yT, 0.2, S.struct), seg(j.x1, j.z1, j.x2, j.z2, yB, yB + 0.12, 0.2, S.struct), seg(j.x1, j.z1, j.x2, j.z2, yB + 0.12, yT - 0.12, 0.03, S.struct)]), ',.JOIST.', S.struct);
   }
   // building columns
-  const colTop = A.shellTop || V.shellHeight(plan, null);
+  const colTop = V.deckHeight(plan, A);
   for (const c of plan.columns || []) {
-    const sz = c.size || 0.67, ht = c.h || colTop, r = sz / 2, conc = c.kind === 'concrete';
-    put('IFCCOLUMN', (conc ? 'Concrete column ' : 'Steel column ') + Math.round(sz * 12) + '″', conc ? 'Concrete column' : 'Steel wide-flange column', shape([box(c.x - r, c.y - r, c.x + r, c.y + r, 0, ht, conc ? S.concrete : S.struct)]), ',.COLUMN.', conc ? S.concrete : S.struct);
+    const D = V.colDims(c), ht = c.h || colTop, conc = c.kind === 'concrete', m = conc ? S.concrete : S.struct;
+    // a round column as a cylinder; a square or rectangular one as its box
+    const parts = D.round ? [disc(c.x, c.y, D.w / 2, 0, ht, m)]
+      : [box(c.x - D.w / 2, c.y - D.d / 2, c.x + D.w / 2, c.y + D.d / 2, 0, ht, m)];
+    put('IFCCOLUMN', (conc ? 'Concrete column ' : 'Steel column ') + V.colLabel(c), conc ? 'Concrete column' : D.round ? 'Steel pipe column' : c.kind === 'tube' ? 'Steel tube column' : 'Steel wide-flange column', shape(parts), ',.COLUMN.', m);
   }
   // steel beams (I-beams): flanges and web along the beam
   for (const bm of plan.beams || []) {

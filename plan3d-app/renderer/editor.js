@@ -51,7 +51,7 @@ function segProj(px, py, x1, y1, x2, y2) {
 const DEFAULT_W = { door: 3 + 4 / 12, door2: 6 + 4 / 12, glass: 4, open: 3, pass: 2, window: 3, overhead: 12, removable: 8 + 6 / 12 };
 // houses: 2′-8″ doors, 5′ pairs, 3′ windows, 6′-8″ heads
 const HOUSE_W = { door: 2 + 8 / 12, door2: 5, glass: 3, open: 3, pass: 2, overhead: 16, removable: 8 + 6 / 12 };
-const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'open', 'pass', 'overhead', 'removable']);
+const OPENING_TOOLS = new Set(['door', 'door2', 'glass', 'window', 'open', 'pass', 'overhead', 'removable']);
 const LISTS = { wall: 'walls', opening: 'openings', chase: 'chases', room: 'rooms', fixture: 'fixtures', insert: 'inserts', item: 'items', device: 'devices', column: 'columns', beam: 'beams', carea: 'ceilAreas', gzone: 'gridZones', tile: 'ceilTiles', deck: 'deckPieces', lstep: 'lidSteps', header: 'headers', grille: 'grilles' };
 const COL = {
   bg: '#1a2024', gridMinor: 'rgba(255,255,255,.035)', gridMajor: 'rgba(255,255,255,.08)', axis: 'rgba(255,255,255,.14)',
@@ -535,7 +535,7 @@ class Editor {
   }
   get house() { return this.plan.mode === 'house'; }
   openingPreview(x, y, type) {
-    const width = (this.house ? HOUSE_W : DEFAULT_W)[type];
+    const width = type === 'window' ? Math.max(0.5, this.winW || 3) : (this.house ? HOUSE_W : DEFAULT_W)[type];
     const hit = this.wallAt(x, y, 14);
     if (hit) {
       const w = hit.w, len = hit.p.len; if (len < 0.5) return null;
@@ -620,7 +620,7 @@ class Editor {
     for (let i = (P.headers || []).length - 1; i >= 0; i--) { const q = P.headers[i]; if (segProj(x, y, q.x1, q.y1, q.x2, q.y2).d < 0.25 + tol) return { kind: 'header', id: q.id }; }
     for (let i = (P.lidSteps || []).length - 1; i >= 0; i--) { const q = P.lidSteps[i]; if (segProj(x, y, q.x1, q.y1, q.x2, q.y2).d < 0.2 + tol) return { kind: 'lstep', id: q.id }; }
     for (let i = (P.beams || []).length - 1; i >= 0; i--) { const b = P.beams[i], bw = (global.Plan3DViewer ? global.Plan3DViewer.beamSize(b).bf / 12 : 0.5) / 2 + tol; if (segProj(x, y, b.x1, b.y1, b.x2, b.y2).d < bw) return { kind: 'beam', id: b.id }; }
-    for (let i = (P.columns || []).length - 1; i >= 0; i--) { const c = P.columns[i], r = (c.size || 0.67) / 2 + tol; if (Math.abs(x - c.x) < r && Math.abs(y - c.y) < r) return { kind: 'column', id: c.id }; }
+    for (let i = (P.columns || []).length - 1; i >= 0; i--) { const c = P.columns[i], D = global.Plan3DViewer.colDims(c); if (Math.abs(x - c.x) < D.w / 2 + tol && Math.abs(y - c.y) < D.d / 2 + tol) return { kind: 'column', id: c.id }; }
     for (let i = (P.devices || []).length - 1; i >= 0; i--) { const dv = P.devices[i], r = Math.max(5, Math.min(9, this.view.s * 0.35)) / this.view.s; if (Math.hypot(x - (dv.x + Math.cos(dv.a || 0) * r * 1.1), y - (dv.y + Math.sin(dv.a || 0) * r * 1.1)) < r * 1.3) return { kind: 'device', id: dv.id }; }
     for (let i = P.openings.length - 1; i >= 0; i--) { const o = P.openings[i]; if (segProj(x, y, o.x1, o.y1, o.x2, o.y2).d < (o.t || 0.25) / 2 + tol) return { kind: 'opening', id: o.id }; }
     const V = global.Plan3DViewer;
@@ -742,7 +742,12 @@ class Editor {
       const pv = this.openingPreview(p.x, p.y, T);
       if (!pv) { this.status('Click on a wall, or in the gap between two walls.'); return; }
       const o = { id: uid(), type: T, x1: pv.x1, y1: pv.y1, x2: pv.x2, y2: pv.y2, t: pv.t, swing: 1 };
-      if (this.house && T === 'glass') { o.type = 'window'; o.sill = 3; o.head = 6 + 8 / 12; }
+      if (T === 'window') {
+        // a window at the size and height set in its bar: a house window, or a cleanroom's flush glazed window
+        const sill = Math.max(0, this.winSill != null ? this.winSill : 3), hh = Math.max(0.5, this.winH || 4);
+        o.type = this.house ? 'window' : 'glass'; o.sill = sill; o.head = sill + hh; delete o.swing;
+      }
+      else if (this.house && T === 'glass') { o.type = 'window'; o.sill = 3; o.head = 6 + 8 / 12; }
       else if (this.house && (T === 'door' || T === 'door2' || T === 'open')) o.head = 6 + 8 / 12;
       else if (T === 'glass') { o.sill = 3; o.head = 7; }
       else if (T === 'pass') { o.sill = 3; o.head = 5; o.depth = 2; }
@@ -804,7 +809,7 @@ class Editor {
       this.render(); return;
     }
     if (T === 'column') {
-      const g = this.snapIn / 12 || 1 / 12, c = { id: uid(), x: Math.round(p.x / g) * g, y: Math.round(p.y / g) * g, size: this.columnSize || 0.67, kind: this.columnKind || 'steel' };
+      const g = this.snapIn / 12 || 1 / 12, rnd = this.columnShape === 'round', cw = this.columnSize || 0.67, c = { id: uid(), x: Math.round(p.x / g) * g, y: Math.round(p.y / g) * g, size: cw, w: cw, d: rnd ? cw : (this.columnD || cw), kind: this.columnKind || 'steel' }; if (rnd) c.shape = 'round';
       this.edit(P => { (P.columns = P.columns || []).push(c); }); return;
     }
     if (T === 'elec') {
@@ -1527,7 +1532,13 @@ class Editor {
       for (const f of P.fixtures || []) { const fw = (f.w || 2) - 0.1, fh = (f.h || 4) - 0.1; g.strokeStyle = f.type === 'ffu' ? 'rgba(127,211,227,.75)' : 'rgba(230,236,238,.7)'; g.fillStyle = f.type === 'ffu' ? 'rgba(127,211,227,.10)' : 'rgba(255,255,255,.07)'; g.fillRect(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2), fw * s, fh * s); g.strokeRect(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2), fw * s, fh * s); if (f.type !== 'ffu') { g.beginPath(); g.moveTo(this.sx(f.x - fw / 2), this.sy(f.y - fh / 2)); g.lineTo(this.sx(f.x + fw / 2), this.sy(f.y + fh / 2)); g.stroke(); if (f.em) this.emHatch(g, f.x, f.y, fw, fh); } else { g.beginPath(); g.arc(this.sx(f.x), this.sy(f.y), Math.min(fw, fh) * 0.34 * s, 0, Math.PI * 2); g.stroke(); } if (f.surprise && s > 5) { g.fillStyle = 'rgba(120,220,60,.9)'; g.beginPath(); g.arc(this.sx(f.x), this.sy(f.y), Math.max(3, s * 0.35), 0, Math.PI * 2); g.fill(); } }
       g.restore();
     }
-    for (const c of P.columns || []) { const r = (c.size || 0.67) / 2, X0 = this.sx(c.x - r), Y0 = this.sy(c.y - r), W = 2 * r * this.view.s; g.save(); g.fillStyle = c.kind === 'concrete' ? '#8d8a84' : '#6f777c'; g.strokeStyle = '#e8edef'; g.lineWidth = 1.2; g.fillRect(X0, Y0, W, W); g.strokeRect(X0, Y0, W, W); g.beginPath(); g.moveTo(X0, Y0); g.lineTo(X0 + W, Y0 + W); g.moveTo(X0 + W, Y0); g.lineTo(X0, Y0 + W); g.stroke(); g.restore(); }
+    for (const c of P.columns || []) {
+      const D = V2.colDims(c), X0 = this.sx(c.x - D.w / 2), Y0 = this.sy(c.y - D.d / 2), W = D.w * this.view.s, H = D.d * this.view.s;
+      g.save(); g.fillStyle = c.kind === 'concrete' ? '#8d8a84' : '#6f777c'; g.strokeStyle = '#e8edef'; g.lineWidth = 1.2; g.beginPath();
+      if (D.round) { const cx = this.sx(c.x), cy = this.sy(c.y), r = W / 2; g.arc(cx, cy, r, 0, Math.PI * 2); g.fill(); g.stroke(); g.beginPath(); g.moveTo(cx - r * 0.7, cy - r * 0.7); g.lineTo(cx + r * 0.7, cy + r * 0.7); g.moveTo(cx + r * 0.7, cy - r * 0.7); g.lineTo(cx - r * 0.7, cy + r * 0.7); g.stroke(); }
+      else { g.fillRect(X0, Y0, W, H); g.strokeRect(X0, Y0, W, H); g.moveTo(X0, Y0); g.lineTo(X0 + W, Y0 + H); g.moveTo(X0 + W, Y0); g.lineTo(X0, Y0 + H); g.stroke(); }
+      g.restore();
+    }
     if (V2 && V2.DEVICES) for (const dv of P.devices || []) this.drawDevice(dv, false);
     // fixture whips: box to box, square to the grid, dashed; a dot at each 12′ extension's joint
     if (V2 && V2.whipPorts && Array.isArray(P.whips) && P.whips.length) {

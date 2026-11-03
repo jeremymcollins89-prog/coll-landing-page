@@ -477,7 +477,7 @@ function partsList(plan) {
   }
 
   // --- Building structure: columns, roof joists, roof deck
-  for (const c of plan.columns || []) add('Structure', c.kind === 'concrete' ? 'Concrete column' : 'Steel column, wide flange, with base plate', Math.round((c.size || 0.67) * 12) + '″ × ' + ftin(c.h || A.shellTop || V.shellHeight(plan, null)), 1, 'ea', 6);
+  for (const c of plan.columns || []) add('Structure', c.kind === 'concrete' ? 'Concrete column' : c.shape === 'round' ? 'Steel pipe column, with base plate' : c.kind === 'tube' ? 'Steel tube column (HSS), with base plate' : 'Steel column, wide flange, with base plate', V.colLabel(c) + ', ' + ftin(c.h || V.deckHeight(plan, A)) + ' tall', 1, 'ea', 6);
   // steel beams by size: count, total length, weight
   if ((plan.beams || []).length && V.BEAMS) {
     const by = new Map(); for (const b of plan.beams) { const k = b.size && V.BEAMS[b.size] ? b.size : 'W12x26', q = V.beamSeat ? V.beamSeat(plan, A, b) : b, L = Math.hypot(q.x2 - q.x1, q.y2 - q.y1), e = by.get(k) || { n: 0, L: 0 }; e.n++; e.L += L; by.set(k, e); }

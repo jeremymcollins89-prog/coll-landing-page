@@ -415,6 +415,15 @@ function itemCorners(it) {
 /* floor finishes for houses (cleanrooms get the gray epoxy floor) */
 const FLOORS = { lvp: 'Luxury vinyl plank', hardwood: 'Hardwood', whiteoak: 'White oak', herringbone: 'Herringbone oak', carpet: 'Carpet', tile: 'Ceramic tile', marble: 'Marble tile', slate: 'Slate tile', concrete: 'Sealed concrete' };
 const shellHeight = (plan, w) => Math.max(6, (w && w.h) || (plan && plan.shellH) || 20);
+/* A building column's footprint: { w (along x), d (along y), round } in feet. Square or rectangular (8″ × 8″,
+   8″ × 12″) or round (8″ diameter). Older plans only have `size` (a square). */
+function colDims(c) {
+  const round = c.shape === 'round', w = Math.max(0.17, +c.w || +c.size || 0.67), d = round ? w : Math.max(0.17, +c.d || w);
+  return { w, d, round };
+}
+// the roof deck the columns run up to: the height set for it, else the building walls' top, else the building height
+const deckHeight = (plan, A) => Math.max(6, +(plan && plan.deckH) || (A && A.shellTop) || shellHeight(plan, null));
+const colLabel = (c) => { const D = colDims(c), i = (v) => Math.round(v * 12 * 4) / 4 + '″'; return D.round ? i(D.w) + ' dia.' : i(D.w) + ' × ' + i(D.d); };
 
 /* ---------- Buildings placed in a plan ----------
    plan.inserts = [{ id, name, libId, libSaved, x, y, rot (quarter turns, clockwise on the sheet), mirror, plan }].
@@ -887,7 +896,7 @@ function analyze(plan) {
   const boxes = chases.map(c => ({ x0: Math.min(c.x0, c.x1), x1: Math.max(c.x0, c.x1), z0: Math.min(c.y0, c.y1), z1: Math.max(c.y0, c.y1), grille: c.grille || '', c }));
   const hardAny = pieces.some(p => p.hard), frameAny = pieces.some(p => p.frame), shellTop = pieces.reduce((m, p) => p.hard || p.frame ? m : Math.max(m, p.h), 0);
   // building columns block walking
-  for (const c of plan.columns || []) { const r = (c.size || 0.67) / 2; obs.push({ x1: c.x - r, z1: c.y, x2: c.x + r, z2: c.y, r }); }
+  for (const c of plan.columns || []) { const D = colDims(c), r = Math.max(D.w, D.d) / 2; obs.push({ x1: c.x - r, z1: c.y, x2: c.x + r, z2: c.y, r }); }
   // house items block walking
   const items = (plan.items || []).filter(it => ITEMS[it.type]).map(it => ({ it, c: itemCorners(it) }));
   for (const q of items) for (let k = 0; k < 4; k++) { const a = q.c[k], b = q.c[(k + 1) % 4]; obs.push({ x1: a[0], z1: a[1], x2: b[0], z2: b[1], r: 0.05, item: true }); }
@@ -4632,16 +4641,26 @@ function buildScene(THREE, plan, A) {
     }
   }
   // building columns: steel wide-flange (or concrete) from the floor to the roof structure, with a base plate
-  const colTop = A.shellTop || shellHeight(plan, null);
+  const colTop = deckHeight(plan, A);
   for (const c of plan.columns || []) {
-    const sz = c.size || 0.67, ht = c.h || colTop, conc = c.kind === 'concrete', g = new THREE.Group();
+    // from the floor up through the ceiling and the plenum to the roof deck (or the height it was given)
+    const D = colDims(c), cw = D.w, cd = D.d, ht = c.h || colTop, conc = c.kind === 'concrete', g = new THREE.Group();
     curRef = c.id ? { kind: 'column', id: c.id } : null;
-    if (conc) { g.add(new THREE.Mesh(new THREE.BoxGeometry(sz, ht, sz), shellMat('concrete', sz, ht, 0))); g.children[0].position.y = ht / 2; }
-    else {
-      const stl = new THREE.MeshPhongMaterial({ color: 0x8a9297, specular: 0x444444, shininess: 30 }), tf = Math.max(0.04, sz * 0.07);
-      for (const z of [-sz / 2 + tf / 2, sz / 2 - tf / 2]) { const f = new THREE.Mesh(new THREE.BoxGeometry(sz, ht, tf), stl); f.position.set(0, ht / 2, z); g.add(f); }
-      const wb = new THREE.Mesh(new THREE.BoxGeometry(tf * 0.7, ht, sz - 2 * tf), stl); wb.position.y = ht / 2; g.add(wb);
-      const bp = new THREE.Mesh(new THREE.BoxGeometry(sz + 0.5, 0.06, sz + 0.5), stl); bp.position.y = 0.03; g.add(bp);
+    const stl = new THREE.MeshPhongMaterial({ color: 0x8a9297, specular: 0x444444, shininess: 30 });
+    if (D.round) {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(cw / 2, cw / 2, ht, 28), conc ? shellMat('concrete', cw, ht, 0) : stl); m.position.y = ht / 2; g.add(m);
+      if (!conc) { const bp = new THREE.Mesh(new THREE.BoxGeometry(cw + 0.5, 0.06, cw + 0.5), stl); bp.position.y = 0.03; g.add(bp); }
+    } else if (conc) { g.add(new THREE.Mesh(new THREE.BoxGeometry(cw, ht, cd), shellMat('concrete', Math.max(cw, cd), ht, 0))); g.children[0].position.y = ht / 2; }
+    else if (c.kind === 'tube') {
+      // square or rectangular steel tube (HSS)
+      const m = new THREE.Mesh(new THREE.BoxGeometry(cw, ht, cd), stl); m.position.y = ht / 2; g.add(m);
+      const bp = new THREE.Mesh(new THREE.BoxGeometry(cw + 0.5, 0.06, cd + 0.5), stl); bp.position.y = 0.03; g.add(bp);
+    } else {
+      // wide flange: flanges `cw` wide, `cd` deep overall
+      const tf = Math.max(0.04, Math.min(cw, cd) * 0.07);
+      for (const z of [-cd / 2 + tf / 2, cd / 2 - tf / 2]) { const f = new THREE.Mesh(new THREE.BoxGeometry(cw, ht, tf), stl); f.position.set(0, ht / 2, z); g.add(f); }
+      const wb = new THREE.Mesh(new THREE.BoxGeometry(tf * 0.7, ht, cd - 2 * tf), stl); wb.position.y = ht / 2; g.add(wb);
+      const bp = new THREE.Mesh(new THREE.BoxGeometry(cw + 0.5, 0.06, cd + 0.5), stl); bp.position.y = 0.03; g.add(bp);
     }
     g.position.set(c.x, 0, c.y); g.rotation.y = -(c.a || 0);
     g.traverse(o => { if (o.isMesh) { outline(o); pick.push(o); if (c.id) o.userData.ref = { kind: 'column', id: c.id }; } });
@@ -6945,5 +6964,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints };
+global.Plan3DViewer = { removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight };
 })(typeof window !== 'undefined' ? window : this);
