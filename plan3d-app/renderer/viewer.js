@@ -4623,7 +4623,11 @@ function buildScene(THREE, plan, A) {
     // it rests on the wall caps, or on the beams where beams sit on the walls
     const lidY = lidTop(plan, A);
     // one sheet over everything, a hair above the wall caps (level with them it flickered through as lines)
-    lid.add(new THREE.Mesh(rectsGeometry(THREE, up.length ? subtractRects(LR, up) : LR, lidY + 0.012, true, 4, 4, 0, 0), lm));
+    const LRm = up.length ? subtractRects(LR, up) : LR;
+    lid.add(new THREE.Mesh(rectsGeometry(THREE, LRm, lidY + 0.012, true, 4, 4, 0, 0), lm));
+    // a backing sheet just under it: where two of its rectangles meet, the hairline between them shows lid,
+    // not the white wall caps below (that read as lines where the rooms join)
+    lid.add(new THREE.Mesh(rectsGeometry(THREE, LRm, lidY + 0.006, true, 4, 4, 0, 0), lm));
     for (const a of up) {
       const T = a.h + A.PL;
       lid.add(new THREE.Mesh(rectsGeometry(THREE, clipRects(LR, a), T, true, 4, 4, 0, 0), lm));
