@@ -4623,14 +4623,29 @@ function buildScene(THREE, plan, A) {
     // it rests on the wall caps, or on the beams where beams sit on the walls
     const lidY = lidTop(plan, A);
     // one sheet over everything, a hair above the wall caps (level with them it flickered through as lines)
-    const LRm = up.length ? subtractRects(LR, up) : LR;
-    lid.add(new THREE.Mesh(rectsGeometry(THREE, LRm, lidY + 0.012, true, 4, 4, 0, 0), lm));
-    // a backing sheet just under it: where two of its rectangles meet, the hairline between them shows lid,
-    // not the white wall caps below (that read as lines where the rooms join)
-    lid.add(new THREE.Mesh(rectsGeometry(THREE, LRm, lidY + 0.006, true, 4, 4, 0, 0), lm));
+    // where the rooms' walls (and the beams on them) stand at different heights, the lid sits on each one:
+    // the same levels a drawn lid finds, so it never floats over a shorter room
+    let LV = null;
+    try {
+      let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; for (const r of LR) { x0 = Math.min(x0, r[0]); z0 = Math.min(z0, r[1]); x1 = Math.max(x1, r[2]); z1 = Math.max(z1, r[3]); }
+      if (x1 > x0 && z1 > z0) LV = deckLevels(plan, A, { outer: [[x0, z0], [x1, z0], [x1, z1], [x0, z1]], holes: [] }, WH);
+    } catch (e) { LV = null; }
+    const sheet = (R, y) => {
+      lid.add(new THREE.Mesh(rectsGeometry(THREE, R, y + 0.012, true, 4, 4, 0, 0), lm));
+      // a backing sheet just under it: where two of its rectangles meet, the hairline between them shows lid,
+      // not the white wall caps below (that read as lines where the rooms join)
+      lid.add(new THREE.Mesh(rectsGeometry(THREE, R, y + 0.006, true, 4, 4, 0, 0), lm));
+    };
+    const leveled = LV && LV.length > 1;
+    if (leveled) {
+      for (const l of LV) {
+        const R = []; for (const a of LR) for (const b of l.rects) { const q = [Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])]; if (q[2] - q[0] > 0.003 && q[3] - q[1] > 0.003) R.push(q); }
+        if (R.length) sheet(R, l.h);
+      }
+    } else sheet(up.length ? subtractRects(LR, up) : LR, lidY);
     for (const a of up) {
       const T = a.h + A.PL;
-      lid.add(new THREE.Mesh(rectsGeometry(THREE, clipRects(LR, a), T, true, 4, 4, 0, 0), lm));
+      if (!leveled) lid.add(new THREE.Mesh(rectsGeometry(THREE, clipRects(LR, a), T, true, 4, 4, 0, 0), lm));
       // the step from the lower top up to this one, along the area's edge where it isn't against a wall
       const st = 0.25, pos = [];
       for (const [ax, az, bx, bz, nx, nz] of [[a.x0, a.z0, a.x1, a.z0, 0, -1], [a.x0, a.z1, a.x1, a.z1, 0, 1], [a.x0, a.z0, a.x0, a.z1, -1, 0], [a.x1, a.z0, a.x1, a.z1, 1, 0]]) {
