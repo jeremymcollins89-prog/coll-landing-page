@@ -1257,6 +1257,20 @@ function drawingCover(own, walls) {
   }
   DRAWN_COVER.set(own, { key, out }); return out;
 }
+/* The cleanroom's own lid: over the rooms (the ceiling's rectangles) and on over the tops of the walls to their
+   outside faces, so it runs outside edge to outside edge with no gap at the walls. Rectangles [x0, z0, x1, z1]. */
+function lidRects(plan, FP, A) {
+  const LR = ceilingRects(plan, FP, A); let out = LR.slice();
+  for (const p of A.pieces || []) {
+    if (!p.hard) continue;
+    const h = (p.t || 0.25) / 2, dx = Math.abs(p.x2 - p.x1), dz = Math.abs(p.z2 - p.z1); let r = null;
+    if (dz < 0.02) r = [Math.min(p.x1, p.x2) - h, (p.z1 + p.z2) / 2 - h, Math.max(p.x1, p.x2) + h, (p.z1 + p.z2) / 2 + h];
+    else if (dx < 0.02) r = [(p.x1 + p.x2) / 2 - h, Math.min(p.z1, p.z2) - h, (p.x1 + p.x2) / 2 + h, Math.max(p.z1, p.z2) + h];
+    if (!r) continue;
+    out = out.concat(subtractRects([r], out.map(q => ({ x0: q[0], z0: q[1], x1: q[2], z1: q[3] }))).filter(q => q[2] - q[0] > 0.005 && q[3] - q[1] > 0.005));
+  }
+  return out;
+}
 function ceilingRects(plan, FP, A) {
   const res = ceilingRects0(plan, FP, A), H2 = hangRects(plan);
   if (!H2.length) return res;
@@ -4599,7 +4613,7 @@ function buildScene(THREE, plan, A) {
     // the cleanroom's own lid: the same galvanized steel deck as a drawn lid (its uv runs 4′ to a repeat here)
     const ltx = dtx.clone(); ltx.repeat.set(2, 2); ltx.needsUpdate = true;
     const lm = dm.clone(); lm.map = ltx; lm.name = 'Lid deck, galvanized';
-    const LR = ceilingRects(plan, FP, A);
+    const LR = lidRects(plan, FP, A);
     // a taller section (a ceiling area set to raise the walls): its own top, and panels closing the step
     const up = ceilAreas(plan, A).filter(a => a.raise && a.h + A.PL > WH + 0.05);
     // it rests on the wall caps, or on the beams where beams sit on the walls
@@ -6990,5 +7004,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight };
+global.Plan3DViewer = { removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight, lidRects };
 })(typeof window !== 'undefined' ? window : this);

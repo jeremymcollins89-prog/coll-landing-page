@@ -452,7 +452,9 @@ function partsList(plan) {
       }
       if (ch > 0) add('Ceiling', 'Lid step closure channel and cap', '', Math.ceil(ch * 1.05), 'lin ft', 67.2);
     }
-    if (!DKs.length && A.PL > 0) add('Ceiling', 'Plenum lid, galvanized steel deck 1½″ (top of the cleanroom)', ftin(A.PL) + ' plenum, sits at ' + ftin(V.lidTop ? V.lidTop(plan, A) : A.WH), Math.ceil(area * 1.05), 'sq ft', 67);
+    // the lid covers the rooms and the wall tops, outside face to outside face
+    const lidArea = V.lidRects && fpr ? V.lidRects(plan, fpr, A).reduce((t, r) => t + (r[2] - r[0]) * (r[3] - r[1]), 0) : area;
+    if (!DKs.length && A.PL > 0) add('Ceiling', 'Plenum lid, galvanized steel deck 1½″ (top of the cleanroom)', ftin(A.PL) + ' plenum, sits at ' + ftin(V.lidTop ? V.lidTop(plan, A) : A.WH) + ', to the walls\u2019 outside faces', Math.ceil(lidArea * 1.05), 'sq ft', 67);
     // the white cap over the top of every cleanroom wall, in 12′ lengths, notched round the beam flanges
     if (V.wallCaps) {
       const C = V.wallCaps(plan, A); let n = 0, ft = 0, notch = 0;
