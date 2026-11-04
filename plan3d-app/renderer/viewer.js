@@ -1261,8 +1261,9 @@ function drawingCover(own, walls) {
    outside faces, so it runs outside edge to outside edge with no gap at the walls. Rectangles [x0, z0, x1, z1]. */
 function lidRects(plan, FP, A) {
   const LR = ceilingRects(plan, FP, A); let out = LR.slice();
-  for (const p of A.pieces || []) {
-    if (!p.hard) continue;
+  // the wall pieces, and the headers over doors, glass and the other openings in those walls
+  const runs = (A.pieces || []).filter(p => p.hard).concat((A.opInfo || []).filter(i => i.hard).map(i => ({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, t: i.t })));
+  for (const p of runs) {
     const h = (p.t || 0.25) / 2, dx = Math.abs(p.x2 - p.x1), dz = Math.abs(p.z2 - p.z1); let r = null;
     if (dz < 0.02) r = [Math.min(p.x1, p.x2) - h, (p.z1 + p.z2) / 2 - h, Math.max(p.x1, p.x2) + h, (p.z1 + p.z2) / 2 + h];
     else if (dx < 0.02) r = [(p.x1 + p.x2) / 2 - h, Math.min(p.z1, p.z2) - h, (p.x1 + p.x2) / 2 + h, Math.max(p.z1, p.z2) + h];
@@ -4618,7 +4619,8 @@ function buildScene(THREE, plan, A) {
     const up = ceilAreas(plan, A).filter(a => a.raise && a.h + A.PL > WH + 0.05);
     // it rests on the wall caps, or on the beams where beams sit on the walls
     const lidY = lidTop(plan, A);
-    lid.add(new THREE.Mesh(rectsGeometry(THREE, up.length ? subtractRects(LR, up) : LR, lidY, true, 4, 4, 0, 0), lm));
+    // one sheet over everything, a hair above the wall caps (level with them it flickered through as lines)
+    lid.add(new THREE.Mesh(rectsGeometry(THREE, up.length ? subtractRects(LR, up) : LR, lidY + 0.012, true, 4, 4, 0, 0), lm));
     for (const a of up) {
       const T = a.h + A.PL;
       lid.add(new THREE.Mesh(rectsGeometry(THREE, clipRects(LR, a), T, true, 4, 4, 0, 0), lm));
