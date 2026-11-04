@@ -1260,7 +1260,10 @@ function drawingCover(own, walls) {
 /* The cleanroom's own lid: over the rooms (the ceiling's rectangles) and on over the tops of the walls to their
    outside faces, so it runs outside edge to outside edge with no gap at the walls. Rectangles [x0, z0, x1, z1]. */
 function lidRects(plan, FP, A) {
-  const LR = ceilingRects(plan, FP, A); let out = LR.slice();
+  // the whole inside of the cleanroom (whatever its ceiling is drawn as), plus any ceiling outside it
+  const add = (R) => { for (const r of R) out = out.concat(subtractRects([r], out.map(q => ({ x0: q[0], z0: q[1], x1: q[2], z1: q[3] }))).filter(q => q[2] - q[0] > 0.005 && q[3] - q[1] > 0.005)); };
+  let out = FP && FP.rects ? FP.rects.map(r => r.slice(0, 4)) : [];
+  add(ceilingRects(plan, FP, A));
   // the wall pieces, and the headers over doors, glass and the other openings in those walls
   const runs = (A.pieces || []).filter(p => p.hard).concat((A.opInfo || []).filter(i => i.hard).map(i => ({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, t: i.t })));
   for (const p of runs) {
