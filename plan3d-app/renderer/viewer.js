@@ -1297,8 +1297,34 @@ function ceilingRects0(plan, FP, A) {
   }
   if (!R) return FP ? FP.rects : [];
   const all = A ? footprint(A, true) : null, base = all ? all.rects : FP ? FP.rects : [], out = [];
-  for (const a of base) for (const b of R) { const r = [Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])]; if (r[0] < r[2] - 1e-6 && r[1] < r[3] - 1e-6) out.push(r); }
+  for (const a of base) for (const b of (A ? ceilToWalls(R, A) : R)) { const r = [Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])]; if (r[0] < r[2] - 1e-6 && r[1] < r[3] - 1e-6) out.push(r); }
   return out;
+}
+/* A laid-out ceiling's edges run on a quarter-foot layout, so against a wall they can stop up to a few inches
+   short of it (more with a thick wall) and leave a gap you can see through. Each edge that sits just inside a
+   wall running along it is carried out to the wall's face. */
+function ceilToWalls(R, A) {
+  const P = (A.pieces || []).filter(p => p && isFinite(p.x1) && isFinite(p.z1));
+  const V = P.filter(p => Math.abs(p.x2 - p.x1) < 0.02), H = P.filter(p => Math.abs(p.z2 - p.z1) < 0.02), G = 0.5;
+  const ov = (a0, a1, b0, b1) => Math.min(a1, b1) - Math.max(a0, b0);
+  return R.map(r => {
+    let [x0, z0, x1, z1] = r; const w = x1 - x0, d = z1 - z0;
+    for (const p of V) {
+      const cx = (p.x1 + p.x2) / 2, h = (p.t || 0.25) / 2, zz0 = Math.min(p.z1, p.z2), zz1 = Math.max(p.z1, p.z2);
+      if (ov(zz0, zz1, r[1], r[3]) < Math.min(0.5, d * 0.5)) continue;
+      const fl = cx + h, fr = cx - h;
+      if (fl <= r[0] + 0.01 && fl >= r[0] - G) x0 = Math.min(x0, fl - 0.01);
+      if (fr >= r[2] - 0.01 && fr <= r[2] + G) x1 = Math.max(x1, fr + 0.01);
+    }
+    for (const p of H) {
+      const cz = (p.z1 + p.z2) / 2, h = (p.t || 0.25) / 2, xx0 = Math.min(p.x1, p.x2), xx1 = Math.max(p.x1, p.x2);
+      if (ov(xx0, xx1, r[0], r[2]) < Math.min(0.5, w * 0.5)) continue;
+      const ft = cz + h, fb = cz - h;
+      if (ft <= r[1] + 0.01 && ft >= r[1] - G) z0 = Math.min(z0, ft - 0.01);
+      if (fb >= r[3] - 0.01 && fb <= r[3] + G) z1 = Math.max(z1, fb + 0.01);
+    }
+    return [x0, z0, x1, z1];
+  });
 }
 function inCeiling(plan, FP, x, z) {
   // a built ceiling keeps its outline in plan.ceilRects too (the editor sets it on every change)
