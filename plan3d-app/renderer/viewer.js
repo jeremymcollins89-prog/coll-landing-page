@@ -1304,7 +1304,8 @@ function ceilingRects0(plan, FP, A) {
    short of it (more with a thick wall) and leave a gap you can see through. Each edge that sits just inside a
    wall running along it is carried out to the wall's face. */
 function ceilToWalls(R, A) {
-  const P = (A.pieces || []).filter(p => p && isFinite(p.x1) && isFinite(p.z1));
+  // the wall pieces, and the headers over doors, glass and pass-thrus (the ceiling meets those too)
+  const P = (A.pieces || []).concat((A.opInfo || []).filter(i => i && i.o).map(i => ({ x1: i.o.x1, z1: i.o.y1, x2: i.o.x2, z2: i.o.y2, t: i.t || i.o.t }))).filter(p => p && isFinite(p.x1) && isFinite(p.z1));
   const V = P.filter(p => Math.abs(p.x2 - p.x1) < 0.02), H = P.filter(p => Math.abs(p.z2 - p.z1) < 0.02), G = 0.5;
   const ov = (a0, a1, b0, b1) => Math.min(a1, b1) - Math.max(a0, b0);
   return R.map(r => {
