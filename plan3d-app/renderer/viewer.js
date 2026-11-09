@@ -5251,6 +5251,25 @@ function airflowArrows(THREE, plan, A) {
 /* People and material flow (plan.flows = { people: [room id | 'out' …], material: […] }): a path on the floor
    from room to room in that order, through the door between each pair (straight across when there's none),
    with its stops (the rooms) for the guided tour. */
+/* The automatic walkthrough's route: in from outside through the way in, into every room it can reach through
+   doors (back out the way it came where a room is a dead end), and out again. [ids] for flowRoutes' path, plus
+   the route itself with a stop (and a look round) only the first time it enters each room. */
+function autoRoute(plan) {
+  let C; try { C = cleanroomCheck(plan); } catch (e) { return null; }
+  const R = (plan.rooms || []).filter(r => r && r.id), byObj = new Map(R.map(r => [r, r.id]));
+  const ds = C.doors.filter(q => q.o.type !== 'pass' && q.o.type !== 'removable');
+  const nbr = (r) => { const out = []; for (const q of ds) { if (q.a === r && q.b !== r) out.push(q.b); else if (q.b === r && q.a !== r) out.push(q.a); } return out; };
+  const outside = ds.find(q => !q.a || !q.b); const start = outside ? (outside.a || outside.b) : R[0];
+  if (!start) return null;
+  const ids = outside ? ['out'] : [], seen = new Set();
+  const visit = (r) => { seen.add(r); ids.push(byObj.get(r)); for (const n of nbr(r)) if (n && !seen.has(n) && byObj.has(n)) { visit(n); ids.push(byObj.get(r)); } };
+  visit(start); if (outside) ids.push('out');
+  if (ids.filter(k => k !== 'out').length < 1) return null;
+  const P = flowRoutes(Object.assign({}, plan, { flows: { people: ids } }));
+  const path = P && P.people; if (!path) return null;
+  const first = new Set(); path.stops = path.stops.filter(s => { if (first.has(s.room)) return false; first.add(s.room); return true; });
+  return { people: path, check: P.check, auto: true };
+}
 function flowRoutes(plan) {
   const F = plan.flows || {}; if (!((F.people || []).length > 1 || (F.material || []).length > 1)) return null;
   let C; try { C = cleanroomCheck(plan); } catch (e) { return null; }
@@ -5263,7 +5282,8 @@ function flowRoutes(plan) {
       if (i === 0 && cur) { pts.push([cur.x, cur.y]); stops.push({ room: cur, at: 0 }); }
       if (i + 1 >= ids.length) break;
       const nxt = ids[i + 1] === 'out' ? null : R.get(ids[i + 1]);
-      const d = C.doors.find(q => (q.a === cur && q.b === nxt) || (q.a === nxt && q.b === cur));
+      const through = (q) => (q.a === cur && q.b === nxt) || (q.a === nxt && q.b === cur);
+      const d = C.doors.find(q => through(q) && q.o.type !== 'pass') || C.doors.find(through);
       if (d) {
         const sg = d.a === cur ? 1 : -1, off = 1.8;
         if (i === 0 && !cur) pts.push([d.mx + d.nx * 6 * sg, d.my + d.ny * 6 * sg]);
@@ -6117,27 +6137,36 @@ function mount(container, plan, opts) {
 
   // ---- Guided tour: walk the people route (plan.flows.people), stopping in each room with its name and class
   const tourBtn = $('.p3v-tour'), capEl = $('.p3v-cap');
-  let tour = null;
-  function refreshTour() { let FR = null; try { FR = plan && flowRoutes(plan); } catch (e) { FR = null; } tourBtn.hidden = !(FR && FR.people); return FR; }
+  let tour = null, autoPlayed = false;
+  // the automatic walkthrough (plan.autoTour, made with Share → Automatic walkthrough) or the gowning tour
+  function refreshTour() {
+    let FR = null; const auto = !!(plan && plan.autoTour && plan.autoTour.on);
+    try { FR = plan && (auto ? autoRoute(plan) : flowRoutes(plan)); } catch (e) { FR = null; }
+    tourBtn.hidden = !(FR && FR.people);
+    if (!tour) tourBtn.textContent = auto ? '▶ Walkthrough' : '▶ Gowning tour';
+    tourBtn.title = auto ? 'An automatic walk through every room' : 'A guided walk along the gowning route, room by room';
+    return FR;
+  }
   function caption(r, q) {
     if (!r) { capEl.hidden = true; return; }
     const T = r.crType && ROOM_TYPES[r.crType], bits = [];
     if (T) bits.push(T.label); if (r.iso) bits.push('ISO ' + r.iso); if (r.pressure != null && r.pressure !== '') bits.push((r.pressure > 0 ? '+' : '') + r.pressure + ' Pa (' + (r.pressure * PA_TO_INWC).toFixed(3) + '″ w.c.)'); if (q && q.ach) bits.push(Math.round(q.ach) + ' air changes/hr');
     capEl.innerHTML = '<b>' + String(r.name || 'Room').replace(/[&<>]/g, '') + '</b><span>' + bits.join(' · ') + '</span>'; capEl.hidden = false;
   }
-  function stopTour() { if (!tour) return; tour = null; capEl.hidden = true; tourBtn.textContent = '▶ Gowning tour'; }
+  function stopTour() { if (!tour) return; tour = null; capEl.hidden = true; tourBtn.textContent = plan && plan.autoTour && plan.autoTour.on ? '▶ Walkthrough' : '▶ Gowning tour'; }
   function startTour() {
     const FR = refreshTour(); if (!FR || !FR.people) return;
     const P = FR.people, q0 = (r) => FR.check.rooms.find(x => x.room === r);
     const [x0, z0] = P.pts[0], [x1, z1] = P.pts[1];
     goWalk(x0, z0, Math.atan2(-(x1 - x0), -(z1 - z0)), 600);
-    tour = { P, i: 0, t: 0, pause: 1.6, q0, stopAt: new Map(P.stops.map(s2 => [s2.at, s2.room])) };
+    tour = { P, i: 0, t: 0, pause: 1.6, q0, stopAt: new Map(P.stops.map(s2 => [s2.at, s2.room])), look: !!FR.auto };
     caption(P.stops[0] && P.stops[0].at === 0 ? P.stops[0].room : null, P.stops[0] && q0(P.stops[0].room));
     tourBtn.textContent = '■ Stop tour';
   }
   function stepTour(dt) {
     const T = tour; if (!T || tween) return;
-    if (T.pause > 0) { T.pause -= dt; if (T.pause <= 0 && T.i >= T.P.pts.length - 1) { stopTour(); } return; }
+    // the automatic walkthrough looks once slowly round each room it stops in
+    if (T.pause > 0) { if (T.spin) st.yaw += dt * T.spin; T.pause -= dt; if (T.pause <= 0) T.spin = 0; if (T.pause <= 0 && T.i >= T.P.pts.length - 1) { stopTour(); } return; }
     const [x1, z1] = T.P.pts[T.i], [x2, z2] = T.P.pts[T.i + 1], L = Math.hypot(x2 - x1, z2 - z1) || 0.01;
     T.t += dt * 3.2 / L; const k = Math.min(1, T.t);
     st.x = x1 + (x2 - x1) * k; st.z = z1 + (z2 - z1) * k;
@@ -6145,7 +6174,7 @@ function mount(container, plan, opts) {
     let want = Math.atan2(-(x2 - x1), -(z2 - z1)), dy = want - st.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; st.yaw += dy * Math.min(1, dt * 4); st.pitch += (-0.04 - st.pitch) * Math.min(1, dt * 3);
     // doors open ahead of the tour
     if (built && built.doors) for (const dg of built.doors) { const p2 = dg.getWorldPosition ? dg.getWorldPosition(new THREE.Vector3()) : dg.position; if (Math.hypot(p2.x - st.x, p2.z - st.z) < 5 && dg.userData) dg.userData.isOpen = true; }
-    if (k >= 1) { T.i++; T.t = 0; const r = T.stopAt.get(T.i); if (r) { caption(r, T.q0(r)); T.pause = 2.6; } else if (T.i >= T.P.pts.length - 1) T.pause = 1.5; }
+    if (k >= 1) { T.i++; T.t = 0; const r = T.stopAt.get(T.i); if (r) { caption(r, T.q0(r)); T.pause = T.look ? 7 : 2.6; T.spin = T.look ? Math.PI * 2 / 6.5 : 0; } else if (T.i >= T.P.pts.length - 1) T.pause = 1.5; }
   }
   tourBtn.addEventListener('click', (e) => { e.stopPropagation(); if (tour) stopTour(); else startTour(); });
 
@@ -6855,6 +6884,8 @@ function mount(container, plan, opts) {
     try { refreshAir(); applySwitches(); } catch (e) { console.error(e); }
     try { applyLayers(); } catch (e) { console.error(e); }
     try { stopTour(); refreshTour(); } catch (e) { console.error(e); }
+    // a walkthrough sent to a customer can start its automatic tour by itself, once
+    if (!autoPlayed && opts.startOutside && plan && plan.autoTour && plan.autoTour.on && plan.autoTour.autoplay) { autoPlayed = true; setTimeout(() => { try { if (!tour) startTour(); } catch (e) { /* the viewer works without it */ } }, 2500); }
     try { upgradeScene(scene); let top = (A && A.H) || 10; try { const LP = levelPlans(p); top = LP[LP.length - 1].elev + 30; } catch (e) { } fitSun(A && A.bounds, top); } catch (e) { console.error(e); }
     if (typeof drawPins === 'function' && cList) { loadMine(); drawPins(); aSetup(); }
     emptyEl.hidden = !A.empty;
@@ -6983,6 +7014,7 @@ function mount(container, plan, opts) {
   raf = requestAnimationFrame(loop);
 
   return {
+    playTour: () => { try { refreshTour(); if (tour) stopTour(); startTour(); return !!tour; } catch (e) { return false; } },
     setLayers: (off) => { if (plan) plan.layersOff = off || {}; applyLayers(); },
     setPlan: (p) => setPlan(p, true),
     loadPlan: (p) => setPlan(p, false),
@@ -7068,5 +7100,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight, lidRects };
+global.Plan3DViewer = { removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight, lidRects, autoRoute };
 })(typeof window !== 'undefined' ? window : this);
