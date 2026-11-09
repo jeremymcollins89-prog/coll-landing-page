@@ -6156,10 +6156,12 @@ function mount(container, plan, opts) {
   function stopTour() { if (!tour) return; tour = null; capEl.hidden = true; tourBtn.textContent = plan && plan.autoTour && plan.autoTour.on ? '▶ Walkthrough' : '▶ Gowning tour'; }
   function startTour() {
     const FR = refreshTour(); if (!FR || !FR.people) return;
+    // it walks itself, so the walking tips (W A S D, tap the floor…) stay out of the way
+    walkHintLater = false; hintGone = true; hint.classList.add('gone');
     const P = FR.people, q0 = (r) => FR.check.rooms.find(x => x.room === r);
     const [x0, z0] = P.pts[0], [x1, z1] = P.pts[1];
     goWalk(x0, z0, Math.atan2(-(x1 - x0), -(z1 - z0)), 600);
-    tour = { P, i: 0, t: 0, pause: 1.6, q0, stopAt: new Map(P.stops.map(s2 => [s2.at, s2.room])), look: !!FR.auto };
+    tour = { P, i: 0, t: 0, pause: FR.auto ? 2.5 : 1.6, q0, stopAt: new Map(P.stops.map(s2 => [s2.at, s2.room])), look: !!FR.auto };
     caption(P.stops[0] && P.stops[0].at === 0 ? P.stops[0].room : null, P.stops[0] && q0(P.stops[0].room));
     tourBtn.textContent = '■ Stop tour';
   }
@@ -6168,13 +6170,13 @@ function mount(container, plan, opts) {
     // the automatic walkthrough looks once slowly round each room it stops in
     if (T.pause > 0) { if (T.spin) st.yaw += dt * T.spin; T.pause -= dt; if (T.pause <= 0) T.spin = 0; if (T.pause <= 0 && T.i >= T.P.pts.length - 1) { stopTour(); } return; }
     const [x1, z1] = T.P.pts[T.i], [x2, z2] = T.P.pts[T.i + 1], L = Math.hypot(x2 - x1, z2 - z1) || 0.01;
-    T.t += dt * 3.2 / L; const k = Math.min(1, T.t);
+    T.t += dt * (T.look ? 2.2 : 3.2) / L; const k = Math.min(1, T.t);
     st.x = x1 + (x2 - x1) * k; st.z = z1 + (z2 - z1) * k;
     // face the way it's walking, turning smoothly
-    let want = Math.atan2(-(x2 - x1), -(z2 - z1)), dy = want - st.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; st.yaw += dy * Math.min(1, dt * 4); st.pitch += (-0.04 - st.pitch) * Math.min(1, dt * 3);
+    let want = Math.atan2(-(x2 - x1), -(z2 - z1)), dy = want - st.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; st.yaw += dy * Math.min(1, dt * (T.look ? 2.5 : 4)); st.pitch += (-0.04 - st.pitch) * Math.min(1, dt * 3);
     // doors open ahead of the tour
     if (built && built.doors) for (const dg of built.doors) { const p2 = dg.getWorldPosition ? dg.getWorldPosition(new THREE.Vector3()) : dg.position; if (Math.hypot(p2.x - st.x, p2.z - st.z) < 5 && dg.userData) dg.userData.isOpen = true; }
-    if (k >= 1) { T.i++; T.t = 0; const r = T.stopAt.get(T.i); if (r) { caption(r, T.q0(r)); T.pause = T.look ? 7 : 2.6; T.spin = T.look ? Math.PI * 2 / 6.5 : 0; } else if (T.i >= T.P.pts.length - 1) T.pause = 1.5; }
+    if (k >= 1) { T.i++; T.t = 0; const r = T.stopAt.get(T.i); if (r) { caption(r, T.q0(r)); T.pause = T.look ? 10 : 2.6; T.spin = T.look ? Math.PI * 2 / 9.5 : 0; } else if (T.i >= T.P.pts.length - 1) T.pause = 1.5; }
   }
   tourBtn.addEventListener('click', (e) => { e.stopPropagation(); if (tour) stopTour(); else startTour(); });
 
