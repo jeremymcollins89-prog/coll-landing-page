@@ -3707,7 +3707,34 @@ document.addEventListener('keydown', (e) => { const o = openMenu(); if (e.key ==
   item('#bLibGroup', saveGroupDialog); item('#bLibCeil', saveCeilingDialog); item('#bLibMach', addMachineDialog);
   // Job and Share
   item('#bExportLink', linkDialog); item('#bExportHtml', exportHtml); item('#bSubm', submittalDialog); item('#bPOs', poDialog); item('#bSched', scheduleDialog); item('#bCert', certExport); item('#bSnaps', () => snapsDialog()); item('#bCO', () => changeOrderDialog()); item('#bApproved', () => markApproved('')); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
+  item('#bAutoTour', autoTourDialog);
   item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportTm', exportTwinmotion); item('#bExportParts', exportParts);
+}
+/* ---------- Automatic walkthrough: a guided walk through every room, in through the way in and out again,
+   stopping to look round each room. It goes with the walkthrough page and the share link, and can start by
+   itself when the customer opens it. ---------- */
+function autoTourDialog() {
+  closeMenus();
+  const P = ed.plan, cur = P.autoTour || {};
+  let R = null; try { R = Plan3DViewer.autoRoute(Object.assign({}, P, { autoTour: { on: true } })); } catch (e) { R = null; }
+  const names = new Map((P.rooms || []).map(r => [r.id, r.name || 'Room']));
+  const route = R && R.people ? R.people.ids.map(k => k === 'out' ? 'Outside' : names.get(k) || 'Room').join(' → ') : null;
+  dialogOpen({
+    title: 'Automatic walkthrough',
+    body: route ? `<p>A guided walk through the cleanroom: in through the way in, into every room through its doors, stopping in each one to look slowly round (its name and readings show at the bottom), then back out.</p>
+      <p style="margin:10px 0"><b>Route:</b> ${esc(route)}</p>
+      <label class="chk"><input type="checkbox" id="atAuto" ${cur.autoplay !== false ? 'checked' : ''}> Start it by itself when a customer opens the walkthrough</label>
+      <p class="note">It goes with the walkthrough page and the share link. Anyone can stop it with the ■ Stop tour button, or start it again with ▶ Walkthrough.</p>`
+      : `<p>There's no route to walk yet: the rooms need names (use the Room tool) and doors between them, with one door to the outside.</p>`,
+    buttons: route ? [{ label: cur.on ? 'Turn off' : 'Cancel', ret: cur.on ? 'off' : null }, { label: 'Play it now', ret: 'play' }, { label: cur.on ? 'Save' : 'Make the walkthrough', primary: true, ret: 'save' }] : [{ label: 'OK', primary: true, ret: null }]
+  }).then(a => {
+    if (a === 'off') { ed.edit(Pl => { delete Pl.autoTour; }); toast('Automatic walkthrough turned off.'); return; }
+    if (a !== 'save' && a !== 'play') return;
+    const auto = !!($('#atAuto') && $('#atAuto').checked);
+    ed.edit(Pl => { Pl.autoTour = { on: true, autoplay: auto }; });
+    if (a === 'play') { setView('3d'); setTimeout(() => { if (viewer && viewer.playTour && !viewer.playTour()) toast('Open the 3D view and press ▶ Walkthrough.'); }, 1200); }
+    else toast('Automatic walkthrough made. It goes with the walkthrough page and the share link' + (auto ? ', and starts by itself.' : '.'), { label: 'Play it', fn: () => { setView('3d'); setTimeout(() => viewer && viewer.playTour && viewer.playTour(), 1200); } });
+  });
 }
 /* ---------- Find (Ctrl+K): every menu command and tool, by what you type ---------- */
 function findDialog() {
