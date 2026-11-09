@@ -919,6 +919,7 @@ function renderProps(opt) {
           + fld('Wall paint', sel('fPaint', 'paint', FN.paint)) + fld('Cabinets', sel('fCab', 'cabinet', FN.cabinet)) + fld('Countertops', sel('fCtr', 'counter', FN.counter)); })()}
       <p class="note">Shown in 3D and named on the parts list (siding or brick, roofing, paint in gallons, cabinets and countertops).</p></div>` : ''}
     ${fld('Snap to', `<select id="pSnap">${[[0, 'Off'], [0.125, '⅛″'], [0.25, '¼″'], [1, '1″'], [6, '6″'], [12, '1′']].map(([v, l]) => `<option value="${v}" ${ed.snapIn === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
+    ${P.mode !== 'house' ? fld('Wall panels', `<select id="pPanLay"><option value="grid" ${P.studGrid !== false ? 'selected' : ''}>Line up across the building</option><option value="few" ${P.studGrid === false ? 'selected' : ''}>Full panels, fewest cuts</option></select>`) : ''}
     <div class="grp"><h3>Contents</h3><div class="stats">
       <span>Overall</span><span>${hasGeo ? fmt(ext.x1 - ext.x0) + ' × ' + fmt(ext.y1 - ext.y0) : '—'}</span>
       <span>Walls</span><span>${P.walls.length}</span>
@@ -997,6 +998,7 @@ function renderProps(opt) {
   $('#pNK').onchange = e => { const k = e.target.value, K = Plan3DViewer.WALL_KINDS[k]; ed.plan.newKind = k === 'hardwall' && !house ? undefined : k; ed.plan.wallT = k === 'hardwall' ? 0.25 : K.t; ed.dirty = true; renderProps(); msg(k === 'hardwall' ? 'New walls: hardwall cleanroom panels.' : 'New walls: ' + K.label + ', ' + fmtIn(K.t) + ' thick. Draw them with the Wall tool (W).'); };
   bindLen('pSH', 'ft', v => ed.edit(Pl => { Pl.shellH = Math.max(6, Math.min(80, v)); }));
   $('#pSnap').onchange = e => { ed.snapIn = +e.target.value; };
+  if ($('#pPanLay')) $('#pPanLay').onchange = e => ed.edit(Pl => { if (e.target.value === 'few') Pl.studGrid = false; else delete Pl.studGrid; });
   bindParts();
   bindComments(P); bindSnaps(P);
   if (!house) { bindFfuPanel(P); bindLightPanel(P); bindLoads(P); bindFlows(P); }

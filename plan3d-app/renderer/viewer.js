@@ -1491,12 +1491,22 @@ const WALL_CAP = { up: 0.03, down: 1 / 12, over: 0.015 };
    two equal ones of at least 24″ when the cut would be shorter than that), the cut panel put where it leaves the
    grilles on full panels, closest to where they are. */
 const WMOD = new WeakMap();
+const FEWCUT = new WeakMap();
 function wallModule(w, plan) {
   const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), def = () => { const o = []; for (let m = 4; m < L - 1e-6; m += 4) o.push(m); return o; };
   // square walls sit on one building-wide grid: studs 48″ on centre from the building's corner, so walls facing
   // each other have their studs (and panels) lined up across the room and a beam set on a stud lands on a stud on
   // both sides
   if (plan && plan.studGrid !== false && !w.piece) { const g = gridStuds(w, plan); if (g) return g; }
+  // "Fewest cuts" (plan.studGrid false): each wall on its own, full 4' panels wherever they fit and as few, and as
+  // little, cut as possible, the short ones at corners, the grilles still centred
+  if (plan && plan.studGrid === false && !w.piece && !(plan.studsUnderBeams === true && (plan.beams || []).length)) {
+    const cols = grilleCols(w, plan), ends = [wallEnd(w, plan, true), wallEnd(w, plan, false)], need = cols.length ? Math.max(...cols.map(c => c.w)) + 3.25 / 12 : 0;
+    const key = [w.x1, w.y1, w.x2, w.y2, cols.length, need, ends].join(','); let FC = FEWCUT.get(plan); if (!FC) { FC = new Map(); FEWCUT.set(plan, FC); }
+    if (FC.has(key)) return FC.get(key).slice();
+    let r; try { r = wallStuds(L, [], cols.length, need, ends); } catch (e) { r = def(); }
+    FC.set(key, r); return r.slice();
+  }
   if (!plan || plan.studsUnderBeams !== true || !(plan.beams || []).length || w.piece) return def();
   const sig = JSON.stringify([plan.beams, (plan.walls || []).map(q => [q.id, q.x1, q.y1, q.x2, q.y2, q.t, q.type]), plan.ceiling, plan.plenum]);
   let C = WMOD.get(plan); if (!C || C.sig !== sig) { C = { sig, fixed: beamStuds(plan) }; WMOD.set(plan, C); }
@@ -4603,7 +4613,7 @@ function buildScene(THREE, plan, A) {
       for (const sd of [1, -1]) { const a = [q[0] + nx * sd, y0, q[1] + nz * sd], b = [q[2] + nx * sd, y0, q[3] + nz * sd], c = [q[2] + nx * sd, y1, q[3] + nz * sd], d = [q[0] + nx * sd, y1, q[1] + nz * sd]; tp.push(...a, ...b, ...c, ...a, ...c, ...d); }
       const a = [q[0] + nx, y1, q[1] + nz], b = [q[2] + nx, y1, q[3] + nz], c = [q[2] - nx, y1, q[3] - nz], d = [q[0] - nx, y1, q[1] - nz]; tp.push(...a, ...b, ...c, ...a, ...c, ...d);
     }
-    if (tp.length) { const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3)); tg.computeVertexNormals(); ceiling.add(new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ color: GC.clone().lerp(new THREE.Color(0xffffff), 0.25), emissive: GC.clone().multiplyScalar(0.2), side: THREE.DoubleSide, name: 'Ceiling grid tees, top' }))); }
+    if (tp.length) { const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3)); tg.computeVertexNormals(); const teeM = new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ color: GC.clone().lerp(new THREE.Color(0xffffff), 0.25), emissive: GC.clone().multiplyScalar(0.2), side: THREE.DoubleSide, name: 'Ceiling grid tees, top' })); teeM.userData.tees = true; ceiling.add(teeM); }
   }
   // the roof (houses): gable, hip or flat, over the outside walls with an overhang
   const roof = new THREE.Group(); root.add(roof);
@@ -5902,7 +5912,10 @@ function mount(container, plan, opts) {
   }
   function applyVis(m) {
     if (!built) return;
-    built.ceiling.visible = m === 'walk' || m === 'fly' || m === 'plenum' || m === 'exterior';
+    // Dollhouse: the ceiling grid's tees show (the tiles don't), so you see the grid and still look down in
+    const doll = m === 'doll';
+    built.ceiling.visible = doll || m === 'walk' || m === 'fly' || m === 'plenum' || m === 'exterior';
+    built.ceiling.traverse(o => { if (o.isMesh || o.isLine || o.isLineSegments || o.isPoints) o.visible = !doll || !!o.userData.tees; });
     if (built.lid) built.lid.visible = lidOn || m === 'walk' || m === 'exterior';
     if (lidBtn) lidBtn.hidden = !(built.lid && built.lid.children.length);
     const RS = built.removable || []; if (remBtn) remBtn.hidden = !RS.length;
