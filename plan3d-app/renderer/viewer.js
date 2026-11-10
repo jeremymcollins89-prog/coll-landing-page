@@ -4136,6 +4136,8 @@ function buildScene(THREE, plan, A) {
   };
   // the wall panel's own face (as the wall around it, plain), for the panel a pass-thru is cut into
   const wallFacePlain = (WP) => M['wallFace' + WP.label] || (M['wallFace' + WP.label] = (() => { const tx = new THREE.CanvasTexture(seamPlain); tx.anisotropy = ANISO; const m = new THREE.MeshPhongMaterial({ map: tx, color: WP.face, emissive: WP.emissive, specular: 0x1c1c1c, shininess: 16 }); m.name = 'Wall panel, ' + WP.label.toLowerCase(); return m; })());
+  // the same as a box's six faces (its edges in the wall's edge colour): the panel under a window or over a door
+  const wallFaceBox = (WP) => { const f = wallFacePlain(WP); return [WP.edge, WP.edge, WP.edge, WP.edge, f, f]; };
   const studMat = (WP) => {
     const stud = M.studIns || (M.studIns = (() => { const tx = new THREE.CanvasTexture(cachedCanvas('studIns', () => makeCanvas(32, 64, (g, w, h) => {
         const ins = 0.6 * w / 3, cx = w / 2;
@@ -4362,7 +4364,7 @@ function buildScene(THREE, plan, A) {
       if (i.hard) {
         // header panels over a door or glass in a cleanroom wall: the same panels as the wall (its colour), equal
         // widths of up to 45″, with an H-stud and its insert between them (centred over a pair of doors)
-        const PWd = 45 / 12, SWd = 3 / 12, F = panelFace(IP), SC = studMat(IP), E4 = [IP.edge, IP.edge, IP.edge, IP.edge], at = (q) => [o.x1 + i.ux * q, o.y1 + i.uz * q];
+        const PWd = 45 / 12, SWd = 3 / 12, F = wallFacePlain(IP), SC = studMat(IP), E4 = [IP.edge, IP.edge, IP.edge, IP.edge], at = (q) => [o.x1 + i.ux * q, o.y1 + i.uz * q];
         const np = Math.max(1, Math.ceil((i.len + SWd - 1e-6) / (PWd + SWd))), pw = (i.len - (np - 1) * SWd) / np;
         for (let k = 0; k < np; k++) {
           const q0 = k * (pw + SWd), q1 = q0 + pw, [ax2, az2] = at(q0), [bx2, bz2] = at(q1);
@@ -4418,7 +4420,7 @@ function buildScene(THREE, plan, A) {
     } else if (o.type === 'window') {
       // house window: wall below, white vinyl frame with a meeting rail, glass, interior stool and casing
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill));
-      if (sill > 0.01) { const sw = segBox(ax, az, bx, bz, 0, sill, t, i.frame ? frameMats(ax, az, bx, bz, t, sill).mats : i.hard ? IP.trim : shellMat(i.kind, i.len, sill, 0)); outline(sw); pick.push(sw); }
+      if (sill > 0.01) { const sw = segBox(ax, az, bx, bz, 0, sill, t, i.frame ? frameMats(ax, az, bx, bz, t, sill).mats : i.hard ? wallFaceBox(IP) : shellMat(i.kind, i.len, sill, 0)); outline(sw); pick.push(sw); }
       const fw = 0.17, [p1x, p1z] = along(fw), [p2x, p2z] = along(i.len - fw);
       segBox(ax, az, bx, bz, sill, sill + fw, t * 0.7, M.frame); segBox(ax, az, bx, bz, head - fw, head, t * 0.7, M.frame);
       segBox(ax, az, p1x, p1z, sill, head, t * 0.7, M.frame); segBox(p2x, p2z, bx, bz, sill, head, t * 0.7, M.frame);
@@ -4434,7 +4436,7 @@ function buildScene(THREE, plan, A) {
       }
     } else if (o.type === 'glass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill));
-      if (sill > 0.01) { const s = segBox(ax, az, bx, bz, 0, sill, t, i.hard ? IP.trim : shellMat(i.kind, i.len, sill, 0)); outline(s); pick.push(s); if (i.hard) segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base); }
+      if (sill > 0.01) { const s = segBox(ax, az, bx, bz, 0, sill, t, i.hard ? wallFaceBox(IP) : shellMat(i.kind, i.len, sill, 0)); outline(s); pick.push(s); if (i.hard) segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base); }
       segBox(ax, az, bx, bz, sill, head, 0.05, M.glass);
       segBox(ax, az, bx, bz, sill, sill + 0.12, t + 0.06, M.frame);
       segBox(ax, az, bx, bz, head - 0.12, head, t + 0.06, M.frame);
@@ -4460,7 +4462,7 @@ function buildScene(THREE, plan, A) {
       if (S.mull > 0) { const [m1x, m1z] = along(i.len / 2 - S.mull / 2), [m2x, m2z] = along(i.len / 2 + S.mull / 2); const ms = segBox(m1x, m1z, m2x, m2z, 0, S.leafH, t + 0.02, fr); outline(ms); pick.push(ms); }
       const hb = segBox(ax, az, bx, bz, S.leafH, hd, t + 0.06, fr); outline(hb);
       // the header panel over the door, up to the head the opening was given (the wall above that is drawn already)
-      if (head > hd + 0.01) { const hp = segBox(ax, az, bx, bz, hd, head, t, i.hard ? IP.trim : hm); outline(hp); pick.push(hp); segBox(ax, az, bx, bz, hd, hd + 0.25, t + 0.012, M.white); }
+      if (head > hd + 0.01) { const hp = segBox(ax, az, bx, bz, hd, head, t, i.hard ? wallFaceBox(IP) : hm); outline(hp); pick.push(hp); segBox(ax, az, bx, bz, hd, hd + 0.25, t + 0.012, M.white); }
       for (const l of i.leaves) {
         const baseAngle = Math.atan2(-(l.z2 - l.z1), l.x2 - l.x1), ldx = l.x2 - l.x1, ldz = l.z2 - l.z1;
         const swingDir = (l.tx != null ? (ldz * l.tx - ldx * l.tz) : l.leafSw) >= 0 ? 1 : -1;
