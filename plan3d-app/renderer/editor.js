@@ -599,8 +599,14 @@ class Editor {
     const W = hit.w, L = hit.p.len, ux = (W.x2 - W.x1) / L, uy = (W.y2 - W.y1) / L, nx = -uy, ny = ux;
     const side = ((x - hit.p.x) * nx + (y - hit.p.y) * ny) >= 0 ? 1 : -1, g = 1 / 12;
     let sAlong = Math.round(hit.p.tc * L / g) * g; sAlong = Math.max(D.w / 2, Math.min(L - D.w / 2, sAlong));
-    const off = (W.t || 0.25) / 2;
-    return { type, x: W.x1 + ux * sAlong + nx * side * off, y: W.y1 + uy * sAlong + ny * side * off, a: Math.atan2(ny * side, nx * side), h: keep && keep.h != null ? keep.h : D.h };
+    // receptacles, switches and data jacks go in the H-studs at the panel joints (Alt, or a wall with no stud, places freely)
+    const off = (W.t || 0.25) / 2, hh = keep && keep.h != null ? keep.h : D.h;
+    let q = { type, x: W.x1 + ux * sAlong + nx * side * off, y: W.y1 + uy * sAlong + ny * side * off, a: Math.atan2(ny * side, nx * side), h: hh };
+    if (D.stud && !this.altDown && !W.sp && V.deviceOnStud) {
+      const taken = []; for (const d of this.plan.devices || []) if (!keep || d.id !== keep.id) V.deviceOnStud(this.plan, d, taken); // the studs the others are on
+      const st = V.deviceOnStud(this.plan, q, taken); if (st) { q.x = st.x; q.y = st.y; }
+    }
+    return q;
   }
   drawDevice(dv, ghost) {
     const V = global.Plan3DViewer, D = V && V.DEVICES[dv.type]; if (!D) return;
@@ -662,8 +668,8 @@ class Editor {
     const c = this.c;
     c.addEventListener('contextmenu', e => e.preventDefault());
     c.addEventListener('wheel', e => { e.preventDefault(); const r = c.getBoundingClientRect(); this.zoomAt(e.clientX - r.left, e.clientY - r.top, Math.pow(1.0015, -e.deltaY)); }, { passive: false });
-    c.addEventListener('pointerdown', e => this.down(e));
-    c.addEventListener('pointermove', e => this.move(e));
+    c.addEventListener('pointerdown', e => { this.altDown = !!e.altKey; this.down(e); });
+    c.addEventListener('pointermove', e => { this.altDown = !!e.altKey; this.move(e); });
     c.addEventListener('pointerup', e => this.up(e));
     c.addEventListener('dblclick', () => { if (this.tool === 'wall') this.endChain(); if (this.tool === 'draft' && this.dtool === 'pline' && global.Plan3DDraft) global.Plan3DDraft.finishPline(this, false); });
     c.addEventListener('pointerleave', () => { this.cursor = null; this.render(); });
