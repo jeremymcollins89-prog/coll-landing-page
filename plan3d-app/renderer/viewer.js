@@ -1484,6 +1484,9 @@ function studPoints(plan) {
 /* The white cap over the top of every cleanroom wall: it fits over both faces and runs down 1″ on each; its top
    stands `up` above the panels (beams and the lid rest on it). */
 const WALL_CAP = { up: 0.03, down: 1 / 12, over: 0.015 };
+/* What a generic fan filter unit looks like in 3D (no model picked): the Envirco MAC 10 LEDC, 600 mm grid fit, white. */
+const GENERIC_FFU_LOOK = (() => { const IN = 1 / 12, sz = (nominal, long, ebox) => ({ nominal, w: long * IN, d: 23.63 * IN, h: 9.47 * IN, overall: 14.32 * IN, hw: 20 * IN, hd: 20 * IN, ebox: ebox * IN });
+  return { id: 'generic', generic: true, finish: 'white', sizes: [sz('2x4', 47.63, 5.54), sz('2x3', 35.63, 5.54), sz('2x2', 23.63, 4.0)] }; })();
 /* Where a cleanroom wall's panels join (H-studs), as distances from the wall's start (its centreline end). A full
    panel is 45″ with a 3″ H-stud, so studs are 48″ on centre, the first one 48″ from the end (1½″ to the face of the
    end post, a 45″ panel, half the stud). With beams on the wall (plan.studsUnderBeams, on unless turned off) a stud
@@ -1502,9 +1505,11 @@ function wallModule(w, plan) {
   // little, cut as possible, the short ones at corners, the grilles still centred
   if (plan && plan.studGrid === false && !w.piece && !(plan.studsUnderBeams === true && (plan.beams || []).length)) {
     const cols = grilleCols(w, plan), ends = [wallEnd(w, plan, true), wallEnd(w, plan, false)], need = cols.length ? Math.max(...cols.map(c => c.w)) + 3.25 / 12 : 0;
-    const key = [w.x1, w.y1, w.x2, w.y2, cols.length, need, ends].join(','); let FC = FEWCUT.get(plan); if (!FC) { FC = new Map(); FEWCUT.set(plan, FC); }
+    // a pass-thru is cut into a panel: no joint (or its 3″ stud) inside one
+    const av = passSpans(w, plan);
+    const key = [w.x1, w.y1, w.x2, w.y2, cols.length, need, ends, av.join(';')].join(','); let FC = FEWCUT.get(plan); if (!FC) { FC = new Map(); FEWCUT.set(plan, FC); }
     if (FC.has(key)) return FC.get(key).slice();
-    let r; try { r = wallStuds(L, [], cols.length, need, ends); } catch (e) { r = def(); }
+    let r; try { r = wallStuds(L, [], cols.length, need, ends, av); } catch (e) { r = def(); }
     FC.set(key, r); return r.slice();
   }
   if (!plan || plan.studsUnderBeams !== true || !(plan.beams || []).length || w.piece) return def();
@@ -1534,7 +1539,17 @@ function wallEnd(w, plan, start) {
    (48″ on centre) wherever they fit; the fewest panels; a short panel (under 24″) put at a corner rather than in
    the middle of the wall, and two short ones combined into one where they can be; and at least K panels wide
    enough (`need`) for the grilles to sit centred on. Searched on a ¼″ step. */
-function wallStuds(L, F, K, need, ends) {
+// the pass-thrus in a wall, as [from, to] along it (feet from its start), widened by half a stud and a little
+function passSpans(w, plan) {
+  const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, e = (w.t || 0.25) / 2 + 0.05, out = [];
+  for (const o of plan.openings || []) {
+    if (!o || o.type !== 'pass' || segDist(o.x1, o.y1, w.x1, w.y1, w.x2, w.y2) > e || segDist(o.x2, o.y2, w.x1, w.y1, w.x2, w.y2) > e) continue;
+    const a = (o.x1 - w.x1) * ux + (o.y1 - w.y1) * uy, b = (o.x2 - w.x1) * ux + (o.y2 - w.y1) * uy;
+    out.push([Math.min(a, b) - 3 / 12, Math.max(a, b) + 3 / 12]);
+  }
+  return out;
+}
+function wallStuds(L, F, K, need, ends, avoid) {
   const P = [0]; for (let k = 1; k < Math.round(L * 48); k++) P.push(k / 48);
   const fixed = new Set(); for (const f of F) { let i = P.findIndex(x => Math.abs(x - f) < 0.125 / 12); if (i < 0) { P.push(f); P.sort((a, b) => a - b); i = P.indexOf(f); } else P[i] = f; fixed.add(i); }
   P.push(L); const N = P.length - 1, INF = 1e18;
@@ -1543,7 +1558,9 @@ function wallStuds(L, F, K, need, ends) {
   const E = ends || ['corner', 'corner'];
   const dp = Array.from({ length: N + 1 }, () => new Float64Array(K + 1).fill(INF)), fr = Array.from({ length: N + 1 }, () => new Int32Array(K + 1).fill(-1)), fc = Array.from({ length: N + 1 }, () => new Int16Array(K + 1));
   dp[0][0] = 0;
+  const AV = avoid || [], banned = (x) => AV.some(([a, b]) => x > a && x < b);
   for (let k = 1; k <= N; k++) {
+    if (k < N && banned(P[k])) continue;
     for (let j = k - 1; j >= 0; j--) {
       const wd = P[k] - P[j]; if (wd > 4 + (k === N ? 1.1 : 0.01) / 12) break;
       const big = need && wd >= need - 1e-6 ? 1 : 0, end = (j === 0 && E[0] === 'corner') || (k === N && E[1] === 'corner');
@@ -4025,6 +4042,25 @@ function buildScene(THREE, plan, A) {
   let capB = null;
   const capBeams = () => capB || (capB = A.PL > 0 ? (plan.beams || []).map(b => ({ q: beamSeat(plan, A, b), bf: beamSize(b).bf / 12 })).filter(o => o.q.onWalls) : []);
 
+  // a wall panel's face (its colour, plain: for header panels and removable panels) and an H-stud with its insert
+  const panelFace = (WP) => {
+    return M['remFace' + WP.label] || (M['remFace' + WP.label] = (() => { const m = new THREE.MeshPhongMaterial({ color: new THREE.Color(WP.face).multiplyScalar(0.955), emissive: WP.emissive, specular: 0x1c1c1c, shininess: 16 }); m.name = 'Wall panel, removable, ' + WP.label.toLowerCase(); return m; })());
+  };
+  // the wall panel's own face (as the wall around it, plain), for the panel a pass-thru is cut into
+  const wallFacePlain = (WP) => M['wallFace' + WP.label] || (M['wallFace' + WP.label] = (() => { const tx = new THREE.CanvasTexture(seamPlain); tx.anisotropy = ANISO; const m = new THREE.MeshPhongMaterial({ map: tx, color: WP.face, emissive: WP.emissive, specular: 0x1c1c1c, shininess: 16 }); m.name = 'Wall panel, ' + WP.label.toLowerCase(); return m; })());
+  const studMat = (WP) => {
+    const stud = M.studIns || (M.studIns = (() => { const tx = new THREE.CanvasTexture(cachedCanvas('studIns', () => makeCanvas(32, 64, (g, w, h) => {
+        const ins = 0.6 * w / 3, cx = w / 2;
+        g.fillStyle = '#fbfbfb'; g.fillRect(0, 0, w, h);
+        g.fillStyle = '#a3aaae'; g.fillRect(0, 0, 1.4, h); g.fillRect(w - 1.4, 0, 1.4, h);
+        g.fillStyle = '#ffffff'; g.fillRect(1.6, 0, 1, h);
+        const ig = g.createLinearGradient(cx - ins, 0, cx + ins, 0); ig.addColorStop(0, '#e9ecec'); ig.addColorStop(0.5, '#f6f7f7'); ig.addColorStop(1, '#e3e6e7');
+        g.fillStyle = ig; g.fillRect(cx - ins, 0, ins * 2, h);
+        g.fillStyle = '#b3babd'; g.fillRect(cx - ins - 1, 0, 1, h); g.fillRect(cx + ins, 0, 1, h);
+        g.fillStyle = '#ffffff'; g.fillRect(cx - ins, 0, 0.8, h);
+      }))); tx.anisotropy = ANISO; const m = new THREE.MeshPhongMaterial({ map: tx, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 }); m.name = 'H-stud with insert'; return m; })());
+    return WP.face === 0xffffff ? stud : (M['studIns' + WP.label] || (M['studIns' + WP.label] = (() => { const m = stud.clone(); m.color.set(WP.face); m.emissive.set(WP.emissive); return m; })()));
+  };
   for (const p of A.pieces) {
     curRef = p.id ? { kind: 'wall', id: p.id } : null;
     if (p.frame) {
@@ -4054,9 +4090,10 @@ function buildScene(THREE, plan, A) {
     tex.repeat.set(p.len / 4, 1); tex.offset.set((((p.s0 - m0) % 4) + 4) % 4 / 4, 0);
     const WP = wallPM(p.id);
     if (custom) {
-      const bm = M.batten || (M.batten = new THREE.MeshPhongMaterial({ color: 0xfbfbfb, specular: 0x222222, shininess: 20, name: 'H-stud batten' }));
+      // each joint gets the same H-stud with its insert as the headers and the textured walls (3″ wide, the base up)
+      const SCm = studMat(WP), E4m = [WP.edge, WP.edge, WP.edge, WP.edge];
       const L0 = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, ux = (p.x2 - p.x1) / L0, uz = (p.z2 - p.z1) / L0;
-      for (const m of pmod) { const k = m - p.s0; if (k < 0.05 || k > p.len - 0.05) continue; const x = p.x1 + ux * k, z = p.z1 + uz * k; outline(segBox(x - ux * 0.125, z - uz * 0.125, x + ux * 0.125, z + uz * 0.125, 0.333, p.h - 0.01, p.t + 0.016, bm)); }
+      for (const m of pmod) { const k = m - p.s0; if (k < 0.125 || k > p.len - 0.125) continue; const x = p.x1 + ux * k, z = p.z1 + uz * k; pick.push(segBox(x - ux * 0.125, z - uz * 0.125, x + ux * 0.125, z + uz * 0.125, 0.333, p.h - 0.01, p.t + 0.006, E4m.concat([SCm, SCm]))); }
     }
     const face = new THREE.MeshPhongMaterial({ map: tex, color: p.sp ? 0xf6dc80 : WP.face, emissive: p.sp ? 0x000000 : WP.emissive, specular: 0x1c1c1c, shininess: 16 }); face.name = p.sp ? 'Wall panel, S.P. yellow' : 'Wall panel, ' + WP.label.toLowerCase();
     // the other face runs its texture the other way along the wall: offset it so its seams land on the same
@@ -4223,30 +4260,16 @@ function buildScene(THREE, plan, A) {
     else { const pt = new THREE.Mesh(new THREE.BoxGeometry(e.t + 0.03, 0.17, e.t + 0.03), M.track); pt.position.set(e.x, H - 0.085, e.z); pt.rotation.y = e.ang; root.add(pt); }
   }
 
-  // a wall panel's face (its colour, plain: for header panels and removable panels) and an H-stud with its insert
-  const panelFace = (WP) => {
-    return M['remFace' + WP.label] || (M['remFace' + WP.label] = (() => { const m = new THREE.MeshPhongMaterial({ color: new THREE.Color(WP.face).multiplyScalar(0.955), emissive: WP.emissive, specular: 0x1c1c1c, shininess: 16 }); m.name = 'Wall panel, removable, ' + WP.label.toLowerCase(); return m; })());
-  };
-  const studMat = (WP) => {
-    const stud = M.studIns || (M.studIns = (() => { const tx = new THREE.CanvasTexture(cachedCanvas('studIns', () => makeCanvas(32, 64, (g, w, h) => {
-        const ins = 0.6 * w / 3, cx = w / 2;
-        g.fillStyle = '#fbfbfb'; g.fillRect(0, 0, w, h);
-        g.fillStyle = '#a3aaae'; g.fillRect(0, 0, 1.4, h); g.fillRect(w - 1.4, 0, 1.4, h);
-        g.fillStyle = '#ffffff'; g.fillRect(1.6, 0, 1, h);
-        const ig = g.createLinearGradient(cx - ins, 0, cx + ins, 0); ig.addColorStop(0, '#e9ecec'); ig.addColorStop(0.5, '#f6f7f7'); ig.addColorStop(1, '#e3e6e7');
-        g.fillStyle = ig; g.fillRect(cx - ins, 0, ins * 2, h);
-        g.fillStyle = '#b3babd'; g.fillRect(cx - ins - 1, 0, 1, h); g.fillRect(cx + ins, 0, 1, h);
-        g.fillStyle = '#ffffff'; g.fillRect(cx - ins, 0, 0.8, h);
-      }))); tx.anisotropy = ANISO; const m = new THREE.MeshPhongMaterial({ map: tx, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 }); m.name = 'H-stud with insert'; return m; })());
-    return WP.face === 0xffffff ? stud : (M['studIns' + WP.label] || (M['studIns' + WP.label] = (() => { const m = stud.clone(); m.color.set(WP.face); m.emissive.set(WP.emissive); return m; })()));
-  };
   for (const i of A.opInfo) {
     const o = i.o, t = i.t, nx = -i.uz, nz = i.ux;
     curRef = o.id ? { kind: 'opening', id: o.id } : null;
     const ceilHere = i.hard ? wallCeil(plan, A, { x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t }) : H;
     const head = Math.min(i.hard ? Math.min(ceilHere, i.wallH || ceilHere) : (i.wallH || H), o.head || 7);
     const IP = i.hard ? wallPM(i.host && i.host.id) : null, top = i.wallH || H, hm = i.hard ? IP.trim : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head, undefined, head).mats : shellMat(i.kind, i.len, top - head, 0);
-    if (top - head > 0.01 && o.type !== 'removable') {
+    const passCut = o.type === 'pass' && i.hard;
+    // a pass-thru is cut into a wall panel: the panel carries on over it in the wall's own face, no header seams
+    if (passCut && top - head > 0.01) { const pf = wallFacePlain(IP); pick.push(segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, [IP.edge, IP.edge, IP.edge, IP.edge, pf, pf])); }
+    if (top - head > 0.01 && o.type !== 'removable' && !passCut) {
       if (i.hard) {
         // header panels over a door or glass in a cleanroom wall: the same panels as the wall (its colour), equal
         // widths of up to 45″, with an H-stud and its insert between them (centred over a pair of doors)
@@ -4288,7 +4311,7 @@ function buildScene(THREE, plan, A) {
       shadow((ax + bx) / 2, (az + bz) / 2, i.len, t, Math.atan2(-i.uz, i.ux));
     } else if (o.type === 'pass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill)), D = Math.max(t + 0.1, o.depth || 2), ph = head - sill;
-      if (sill > 0.01) { const lw = segBox(ax, az, bx, bz, 0, sill, t, i.hard ? IP.trim : shellMat(i.kind, i.len, sill, 0)); outline(lw); pick.push(lw); if (i.hard) segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base); }
+      if (sill > 0.01) { if (i.hard) { const pf = wallFacePlain(IP); pick.push(segBox(ax, az, bx, bz, 0, sill, t, [IP.edge, IP.edge, IP.edge, IP.edge, pf, pf])); segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base); } else { const lw = segBox(ax, az, bx, bz, 0, sill, t, shellMat(i.kind, i.len, sill, 0)); outline(lw); pick.push(lw); } }
       const body = segBox(ax, az, bx, bz, sill, head, D, M.steel); outline(body); pick.push(body);
       const [f1x, f1z] = along(-0.1), [f2x, f2z] = along(i.len + 0.1);
       segBox(f1x, f1z, f2x, f2z, sill - 0.1, sill, t + 0.05, M.steel); segBox(f1x, f1z, f2x, f2z, head, head + 0.1, t + 0.05, M.steel);
@@ -4804,7 +4827,9 @@ function buildScene(THREE, plan, A) {
   }
   // A real fan filter unit model (plan.ffuModel: manufacturer sizes from a Revit family): the cabinet and blower
   // housing sit above the grid (seen in Dollhouse, where the ceiling is hidden); the perforated face shows from below.
-  const FM = plan.ffuModel && Array.isArray(plan.ffuModel.sizes) && plan.ffuModel.sizes.length ? plan.ffuModel : null;
+  // with no model picked, the generic FFU is drawn as the Envirco MAC 10 LEDC (white) looks: cabinet, blower
+  // housing and power box above the grid (the parts list and airflow still treat it as generic)
+  const FM = plan.ffuModel && Array.isArray(plan.ffuModel.sizes) && plan.ffuModel.sizes.length ? plan.ffuModel : GENERIC_FFU_LOOK;
   const ffuParts = {};
   const fin = FM ? ({ sst: M.steel, alum: new THREE.MeshPhongMaterial({ color: 0xc8ced2, specular: 0x8a8f93, shininess: 60 }) }[FM.finish] || new THREE.MeshPhongMaterial({ color: 0xf1f3f3, emissive: 0x101111, specular: 0x222222, shininess: 18 })) : null;
   const dark = FM ? new THREE.MeshPhongMaterial({ color: 0x3a3f42, specular: 0x222222, shininess: 10, name: 'FFU fan and electrical box' }) : null;
@@ -4856,7 +4881,9 @@ function buildScene(THREE, plan, A) {
   } catch (e) { /* drawn without the frames */ }
   const tagFrom = (grp, n0, k) => { for (let i = n0; i < grp.children.length; i++) if (!grp.children[i].userData.layer) grp.children[i].userData.layer = k; };
   for (const f of FXL) { const fx0 = fixtures.children.length; try {
-    if (FM && f.type === 'ffu') {
+    // the generic look only fits standard 2×2, 2×3 and 2×4 units; an odd size keeps the plain panel
+    const stdFfu = FM !== GENERIC_FFU_LOOK || (Math.abs(Math.min(f.w || 2, f.h || 4) - 2) < 0.1 && [2, 3, 4].some(n => Math.abs(Math.max(f.w || 2, f.h || 4) - n) < 0.1));
+    if (FM && f.type === 'ffu' && stdFfu) {
       const u = ffuUnit(ffuSize(f)); u.position.set(f.x, ceilingAt(CA, H, f.x, f.y), f.y);
       if ((f.w || 2) > (f.h || 4)) u.rotation.y = Math.PI / 2; // long side across the room
       if (f.id) u.traverse(o => { o.userData.ref = { kind: 'fixture', id: f.id }; });
