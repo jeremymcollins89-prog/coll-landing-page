@@ -5677,7 +5677,10 @@ function mount(container, plan, opts) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({ canvas, antialias: !COARSE || (global.devicePixelRatio || 1) < 2, preserveDrawingBuffer: !!opts.preserve, powerPreference: COARSE ? 'default' : 'high-performance' }); }
   catch (e) { container.insertAdjacentHTML('beforeend', '<div class="p3v-nogl">This browser can’t show 3D (WebGL is turned off or not supported). Try Safari, Chrome, Edge or Firefox, or turn on hardware acceleration.</div>'); throw e; }
-  renderer.setPixelRatio(Math.min(COARSE ? 1.5 : 2, global.devicePixelRatio || 1));
+  // Sharp for everyone: a computer draws at least 1.5x the screen's pixels (2x at most), so an ordinary 1080p monitor
+  // gets smooth edges and crisp lines instead of jaggies; a phone or tablet draws at its own sharpness, up to 1.5x
+  const DPR = global.devicePixelRatio || 1;
+  renderer.setPixelRatio(COARSE ? Math.min(1.5, DPR) : Math.min(2, Math.max(1.5, DPR)));
   ANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 4);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xdde4e8);
@@ -7053,8 +7056,9 @@ function mount(container, plan, opts) {
 
   const tmp = new THREE.Vector3(); let last = performance.now(), raf = 0, alive = true, turnHeld = 0, sweepN = 0, aoOff = false;
   /* Smooth on any machine: when a big plan draws slowly (steadily under ~24 frames a second for a few seconds),
-     the extras step down one at a time: the floor reflection, then the sharpness (pixel ratio 1), then the
-     corner shading. Hitches (a frame over half a second: loading, rebuilding) don't count. It never turns
+     the extras step down one at a time: the floor reflection, then the light effects, then the corner shading.
+     Sharpness goes last, only when it's really slow (under ~14 frames a second), and never below the screen's
+     own sharpness (it used to drop to a blurry 1x on any laptop that fell behind). Hitches (a frame over half a second: loading, rebuilding) don't count. It never turns
      anything back up on its own; turning Realistic off and on starts it over. */
   const PR0 = renderer.getPixelRatio();
   const gov = { ema: 1 / 60, slow: 0, level: 0 };
@@ -7063,11 +7067,13 @@ function mount(container, plan, opts) {
     if (rawDt <= 0 || rawDt > 0.5 || document.hidden || global.P3NOAUTO) return;
     gov.ema += (rawDt - gov.ema) * 0.08;
     if (gov.ema > 1 / 24) gov.slow += rawDt; else gov.slow = Math.max(0, gov.slow - rawDt * 0.5);
-    if (gov.slow < 3 || gov.level >= 3) return;
+    if (gov.slow < 3 || gov.level >= 4) return;
+    if (gov.level === 3 && gov.ema < 1 / 14) { gov.slow = 0; return; }
     gov.slow = 0; gov.level++;
     if (gov.level === 1) { if (real && gloss) { scene.remove(gloss); gloss.getRenderTarget().dispose(); gloss = null; } aoOff = true; }
-    else if (gov.level === 2) { if (renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); resize(); } scene.remove(fxGroup); fxOn = false; roomLights.children.forEach(l => { if (l.userData.i0 != null) l.intensity = l.userData.i0; }); }
+    else if (gov.level === 2) { scene.remove(fxGroup); fxOn = false; roomLights.children.forEach(l => { if (l.userData.i0 != null) l.intensity = l.userData.i0; }); }
     else if (gov.level === 3) { if (rSSAO && real) { rSSAO.enabled = false; rPlain.enabled = true; } }
+    else if (gov.level === 4) { const nat = Math.min(PR0, Math.max(1, Math.min(1.5, DPR))); if (renderer.getPixelRatio() > nat) { renderer.setPixelRatio(nat); resize(); } }
   }
   function loop(now) {
     if (!alive) return;

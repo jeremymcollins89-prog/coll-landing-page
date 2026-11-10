@@ -762,7 +762,37 @@ ipcMain.handle('install-update', () => {
   return true;
 });
 
+/* ---------- .plan3d files always show the Coll Plan3D icon and open in Coll Plan3D ----------
+   The icon a file shows comes from the computer looking at it, not from the file. So every time the app starts
+   (installed, on Windows) it puts its own file type back for this user: .plan3d -> Coll Plan3D, with its icon. If
+   someone's "Open with... always" choice has pointed .plan3d at another program (AutoCAD, Notepad), that choice is
+   cleared, for .plan3d only, so the files show and open as Coll Plan3D projects again. Nothing else is touched. */
+function keepPlan3dFileType() {
+  if (process.platform !== 'win32' || !app.isPackaged) return;
+  const exe = process.execPath, ID = 'CollPlan3D.Project', C = 'HKCU\\Software\\Classes\\';
+  const reg = (args) => new Promise(res => execFile('reg.exe', args, { windowsHide: true, timeout: 15000 }, (err, out) => res({ err, out: String(out || '') })));
+  const set = (key, name, val) => reg(['add', key, ...(name ? ['/v', name] : ['/ve']), '/t', 'REG_SZ', '/d', val, '/f']);
+  (async () => {
+    try {
+      const was = await reg(['query', C + ID + '\\DefaultIcon', '/ve']), cur = await reg(['query', C + '.plan3d', '/ve']);
+      const uc = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.plan3d\\UserChoice', pick = await reg(['query', uc, '/v', 'ProgId']);
+      const other = !pick.err && /ProgId/i.test(pick.out) && !pick.out.includes(ID) && !/Coll Plan3D/i.test(pick.out);
+      const ok = !was.err && was.out.includes(exe) && !cur.err && cur.out.includes(ID);
+      if (ok && !other) return;
+      await set(C + ID, null, 'Coll Plan3D project');
+      await set(C + ID + '\\DefaultIcon', null, '"' + exe + '",0');
+      await set(C + ID + '\\shell\\open\\command', null, '"' + exe + '" "%1"');
+      await set(C + '.plan3d', null, ID);
+      await set(C + '.plan3d\\OpenWithProgids', ID, '');
+      if (other) await reg(['delete', uc, '/f']);
+      // tell Windows the file types changed, so the icons refresh without signing out
+      execFile('ie4uinit.exe', ['-show'], { windowsHide: true, timeout: 15000 }, () => {});
+    } catch (e) { /* the app works without it */ }
+  })();
+}
+
 app.whenReady().then(() => {
+  keepPlan3dFileType();
   if (!app.hasSingleInstanceLock()) return;
   buildMenu();
   // File passed on the command line / "Open with"
