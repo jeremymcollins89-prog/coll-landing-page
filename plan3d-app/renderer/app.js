@@ -51,7 +51,7 @@ const HINTS = {
   overhead: 'Click on a wall to put an overhead sectional door there (12′ wide, head 2′ below the top of the wall). Change its size in its properties.',
   column: 'Set the column in the bar above: square / rectangle or round, its size (8x8, 8x12, or 8 for an 8″ round), steel or concrete, and how high it goes. Click to place it: it runs from the floor up through the ceiling to the top of the plenum, under the lid.',
   window: 'Set the window in the bar above: width, height and how high its bottom sits off the floor. Then click on a wall to put it in.',
-  elec: 'Pick a device (the list folds away; Tab or the ⚡ chip brings it back), then click on a wall: it goes on that face of the wall, facing the room you clicked in. Heights follow the usual mounting heights; change one in its properties.',
+  elec: 'Pick a device (the list folds away; Tab or the ⚡ chip brings it back), then click on a wall: it goes on that face of the wall, facing the room you clicked in. Receptacles, switches and data jacks snap into the nearest H-stud (hold Alt to place one anywhere). Heights follow the usual mounting heights; change one in its properties.',
   select: 'Click to select. Drag to move. Drag a wall end to stretch it. Drag empty space to pan. Delete removes.',
   build: 'Build mode: pick a piece and click to place it.',
   wall: 'Click corners to draw walls. Type a length (e.g. 23\'8-3/4) and press Enter. Hold Alt for free angles. Esc to finish.',

@@ -444,16 +444,16 @@ const FACE = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
    Each device: { id, type, x, y (plan feet, on the wall face), a (radians, the way it faces), h (feet,
    center above the floor) }. w × hh is the cover plate (feet); ifc is how it goes to Revit. */
 const DEVICES = {
-  outlet: { label: 'Receptacle, duplex 20A', short: 'R', group: 'Power', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
-  gfci: { label: 'Receptacle, GFCI 20A', short: 'GFI', group: 'Power', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
-  dedicated: { label: 'Receptacle, dedicated (equipment)', short: 'DR', group: 'Power', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
-  r208: { label: 'Receptacle, 208V 30A', short: '208', group: 'Power', h: 1.5, w: 4.5 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
+  outlet: { label: 'Receptacle, duplex 20A', short: 'R', group: 'Power', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, stud: true, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
+  gfci: { label: 'Receptacle, GFCI 20A', short: 'GFI', group: 'Power', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, stud: true, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
+  dedicated: { label: 'Receptacle, dedicated (equipment)', short: 'DR', group: 'Power', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, stud: true, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
+  r208: { label: 'Receptacle, 208V 30A', short: '208', group: 'Power', h: 1.5, w: 4.5 / 12, hh: 4.5 / 12, stud: true, ifc: ['IFCOUTLET', '.POWEROUTLET.'] },
   jbox: { label: 'Junction box (equipment hookup)', short: 'J', group: 'Power', h: 1.5, w: 4 / 12, hh: 4 / 12, ifc: ['IFCJUNCTIONBOX', '.POWER.'] },
-  switch: { label: 'Light switch', short: 'S', group: 'Controls', h: 4, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCSWITCHINGDEVICE', '.TOGGLESWITCH.'] },
+  switch: { label: 'Light switch', short: 'S', group: 'Controls', h: 4, w: 2.75 / 12, hh: 4.5 / 12, stud: true, ifc: ['IFCSWITCHINGDEVICE', '.TOGGLESWITCH.'] },
   ffuctl: { label: 'FFU speed controller', short: 'FC', group: 'Controls', h: 4.5, w: 4.5 / 12, hh: 4.5 / 12, ifc: ['IFCSWITCHINGDEVICE', '.SELECTORSWITCH.'] },
   interlock: { label: 'Door interlock controller (airlock)', short: 'IL', group: 'Controls', h: 5, w: 6 / 12, hh: 8 / 12, ifc: ['IFCCONTROLLER', '.PROGRAMMABLE.'] },
   monitor: { label: 'Room pressure monitor', short: 'PM', group: 'Controls', h: 5, w: 6 / 12, hh: 4.5 / 12, ifc: ['IFCSENSOR', '.PRESSURESENSOR.'] },
-  data: { label: 'Data jack', short: 'D', group: 'Data', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, ifc: ['IFCOUTLET', '.DATAOUTLET.'] },
+  data: { label: 'Data jack', short: 'D', group: 'Data', h: 1.5, w: 2.75 / 12, hh: 4.5 / 12, stud: true, ifc: ['IFCOUTLET', '.DATAOUTLET.'] },
   panel: { label: 'Electrical panel', short: 'EP', group: 'Power', h: 5, w: 20 / 12, hh: 40 / 12, d: 4 / 12, ifc: ['IFCELECTRICDISTRIBUTIONBOARD', '.DISTRIBUTIONBOARD.'] }
 };
 /* Which lights a switch works: dv.lights holds light keys, the fixture's id, or 'at:x,y' for a light from the
@@ -1540,6 +1540,58 @@ function wallEnd(w, plan, start) {
    the middle of the wall, and two short ones combined into one where they can be; and at least K panels wide
    enough (`need`) for the grilles to sit centred on. Searched on a ¼″ step. */
 // the pass-thrus in a wall, as [from, to] along it (feet from its start), widened by half a stud and a little
+// Where single-gang boxes (receptacles, switches, data) go in a cleanroom wall: the H-studs at its panel joints and
+// the posts either side of a door or window (where a light switch usually goes), never inside an opening or on the
+// edge of a pass-thru. Feet along the wall from its start.
+function studJoints(w, plan) {
+  let J; try { J = wallModule(w, plan) || []; } catch (e) { J = []; }
+  const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, e = (w.t || 0.25) / 2 + 0.05, spans = [], posts = [];
+  for (const o of plan.openings || []) {
+    if (!o || segDist(o.x1, o.y1, w.x1, w.y1, w.x2, w.y2) > e || segDist(o.x2, o.y2, w.x1, w.y1, w.x2, w.y2) > e) continue;
+    const a0 = (o.x1 - w.x1) * ux + (o.y1 - w.y1) * uy, b0 = (o.x2 - w.x1) * ux + (o.y2 - w.y1) * uy, a = Math.min(a0, b0), b = Math.max(a0, b0);
+    spans.push([a - 0.12, b + 0.12]);
+    if (o.type !== 'pass' && o.type !== 'removable' && o.type !== 'open') posts.push(a - 0.125, b + 0.125);
+  }
+  const all = J.filter(m => !posts.some(q => Math.abs(q - m) < 0.25)).concat(posts);
+  return all.filter(m => m > 0.2 && m < L - 0.2 && !spans.some(([a, b]) => m > a && m < b)).sort((a, b) => a - b);
+}
+// the posts where other walls meet this one (a corner or a T), on one face: [{s, from, to}] — the post either side of
+// the meeting wall, and the stretch that wall covers (no box behind it)
+function meetPosts(w, plan, side) {
+  const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, nx = -uy, ny = ux, e = (w.t || 0.25) / 2 + 0.05, out = [];
+  for (const o of plan.walls || []) {
+    if (o === w || o.sp) continue;
+    for (const [ex, ey, fx, fy] of [[o.x1, o.y1, o.x2, o.y2], [o.x2, o.y2, o.x1, o.y1]]) {
+      if (segDist(ex, ey, w.x1, w.y1, w.x2, w.y2) > e) continue;
+      const toward = (fx - ex) * nx + (fy - ey) * ny; if (Math.abs(toward) < 0.05 || Math.sign(toward) !== side) continue; // runs off the other face, or along it
+      const sj = (ex - w.x1) * ux + (ey - w.y1) * uy, h = (o.t || 0.25) / 2;
+      out.push({ s: sj, from: sj - h, to: sj + h, posts: [sj - h - 0.125, sj + h + 0.125] });
+    }
+  }
+  return out;
+}
+// a device moved onto the nearest free H-stud of the wall it's on, on its own face (null if it isn't on a wall or
+// there's no stud). taken: [{w, s, h0, h1}] boxes already placed, so two don't share a stud at the same height.
+function deviceOnStud(plan, dv, taken) {
+  const D = DEVICES[dv.type]; if (!D || !D.stud) return null;
+  let best = null;
+  for (const w of plan.walls || []) { if (w.sp) continue; const d = segDist(dv.x, dv.y, w.x1, w.y1, w.x2, w.y2); if (d < (w.t || 0.25) / 2 + 0.08 && (!best || d < best.d)) best = { w, d }; }
+  if (!best) return null;
+  const w = best.w, L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L;
+  const sA = (dv.x - w.x1) * ux + (dv.y - w.y1) * uy, side = ((dv.x - w.x1) * -uy + (dv.y - w.y1) * ux) >= 0 ? 1 : -1;
+  const MP = meetPosts(w, plan, side);
+  let J = studJoints(w, plan).concat(...MP.map(m => m.posts)).filter(m => m > 0.2 && m < L - 0.2 && !MP.some(q => m > q.from - 0.1 && m < q.to + 0.1));
+  J = J.filter((m, k) => !J.slice(0, k).some(q => Math.abs(q - m) < 0.2));
+  // a post the wall's own openings take (a meeting post can land in a door)
+  const e = (w.t || 0.25) / 2 + 0.05;
+  for (const o of plan.openings || []) { if (!o || segDist(o.x1, o.y1, w.x1, w.y1, w.x2, w.y2) > e || segDist(o.x2, o.y2, w.x1, w.y1, w.x2, w.y2) > e) continue; const a = (o.x1 - w.x1) * ux + (o.y1 - w.y1) * uy, b = (o.x2 - w.x1) * ux + (o.y2 - w.y1) * uy; J = J.filter(m => !(m > Math.min(a, b) - 0.12 && m < Math.max(a, b) + 0.12)); }
+  if (!J.length) return null;
+  const h = dv.h != null ? dv.h : D.h, h0 = h - D.hh / 2 - 0.05, h1 = h + D.hh / 2 + 0.05;
+  const free = (m) => !(taken || []).some(t => t.w === w && t.side === side && Math.abs(t.s - m) < 0.2 && t.h0 < h1 && h0 < t.h1);
+  const order = J.slice().sort((a, b) => Math.abs(a - sA) - Math.abs(b - sA)), m = order.find(free) ?? order[0];
+  if (taken) taken.push({ w, side, s: m, h0, h1 });
+  return { x: dv.x + ux * (m - sA), y: dv.y + uy * (m - sA), s: m, moved: Math.abs(m - sA) };
+}
 function passSpans(w, plan) {
   const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, e = (w.t || 0.25) / 2 + 0.05, out = [];
   for (const o of plan.openings || []) {
@@ -7145,5 +7197,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight, lidRects, autoRoute };
+global.Plan3DViewer = { removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight, lidRects, autoRoute, studJoints, deviceOnStud };
 })(typeof window !== 'undefined' ? window : this);
