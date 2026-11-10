@@ -603,8 +603,12 @@ class Editor {
     const off = (W.t || 0.25) / 2, hh = keep && keep.h != null ? keep.h : D.h;
     let q = { type, x: W.x1 + ux * sAlong + nx * side * off, y: W.y1 + uy * sAlong + ny * side * off, a: Math.atan2(ny * side, nx * side), h: hh };
     if (D.stud && !this.altDown && !W.sp && V.deviceOnStud) {
-      const taken = []; for (const d of this.plan.devices || []) if (!keep || d.id !== keep.id) V.deviceOnStud(this.plan, d, taken); // the studs the others are on
-      const st = V.deviceOnStud(this.plan, q, taken); if (st) { q.x = st.x; q.y = st.y; }
+      // (the plan without this one: with Full panels, fewest cuts each box gets its own stud, so it isn't held by its old one)
+      const P2 = keep ? Object.assign({}, this.plan, { devices: (this.plan.devices || []).filter(d => d.id !== keep.id) }) : this.plan;
+      const taken = []; for (const d of P2.devices || []) V.deviceOnStud(P2, d, taken); // the studs the others are on
+      const st = V.deviceOnStud(P2, q, taken);
+      // fewest cuts: onto a stud that's already near (within a foot), otherwise a stud goes in where it's put
+      if (st && (this.plan.studGrid !== false || st.moved <= 1)) { q.x = st.x; q.y = st.y; if (st.h != null) q.h = st.h; }
     }
     return q;
   }
@@ -1000,7 +1004,7 @@ class Editor {
       else if (D.sel.kind === 'column') { const g = this.snapIn / 12 || 1 / 12; o.x = Math.round((O.x + (p.x - D.sx)) / g) * g; o.y = Math.round((O.y + (p.y - D.sy)) / g) * g; }
       else if (D.sel.kind === 'device') {
         const q = this.devicePlace(O.x + (p.x - D.sx), O.y + (p.y - D.sy), o.type, o);
-        if (q) { o.x = q.x; o.y = q.y; o.a = q.a; }
+        if (q) { o.x = q.x; o.y = q.y; o.a = q.a; if (q.h != null) o.h = q.h; }
       }
       else if (D.sel.kind === 'grille') {
         // slides along its wall, or onto another wall; keeps its size and the way it faces
