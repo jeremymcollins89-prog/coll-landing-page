@@ -4016,6 +4016,17 @@ function buildScene(THREE, plan, A) {
   const wallPM = (id) => panelMats(panelColorOf(plan, wallById.get(id)));
   const aoGeo = new THREE.PlaneGeometry(1, 1);
   const outline = (m) => m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 25), M.line));
+  // a cleanroom wall's outline without the lines across its end where a pass-thru is cut into the same panel
+  // (the wall carries on over and under the pass-thru, so there's no joint there to draw)
+  const passEnds = []; for (const i of A.opInfo || []) if (i.o && i.o.type === 'pass' && i.hard) passEnds.push([i.o.x1, i.o.y1], [i.o.x2, i.o.y2]);
+  const outlineWall = (m) => {
+    if (!passEnds.length) return outline(m);
+    const eg = new THREE.EdgesGeometry(m.geometry, 25), pa = eg.attributes.position.array; m.updateMatrix();
+    const v = new THREE.Vector3(), w2 = (k) => { v.set(pa[k], pa[k + 1], pa[k + 2]).applyMatrix4(m.matrix); return [v.x, v.z]; };
+    const atPass = ([x, z]) => passEnds.some(([px, pz]) => Math.hypot(px - x, pz - z) < (0.4));
+    const keep = []; for (let k = 0; k < pa.length; k += 6) { const a = w2(k), b = w2(k + 3); if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.45 && atPass(a) && atPass(b)) continue; keep.push(pa[k], pa[k + 1], pa[k + 2], pa[k + 3], pa[k + 4], pa[k + 5]); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(keep, 3)); m.add(new THREE.LineSegments(g, M.line));
+  };
   function shadow(cx, cz, len, wid, ang, spread) {
     const s = spread || 0.9, g = new THREE.Group(), m = new THREE.Mesh(aoGeo, M.ao);
     m.rotation.x = -Math.PI / 2; m.scale.set(len + s * 2.4, wid + s * 2.4, 1); m.renderOrder = 1;
@@ -4101,7 +4112,7 @@ function buildScene(THREE, plan, A) {
     const tex2 = tex.clone(); tex2.offset.set((((m0 - p.len - p.s0) % 4) + 4) % 4 / 4, 0); tex2.needsUpdate = true;
     const face2 = face.clone(); face2.map = tex2;
     const m = segBox(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, [WP.edge, WP.edge, WP.edge, WP.edge, face, face2]);
-    outline(m); pick.push(m);
+    outlineWall(m); pick.push(m);
     segBox(p.x1, p.z1, p.x2, p.z2, 0, 0.333, p.t + 0.022, M.base);
     // the ceiling track: on the side with the ceiling (the room side), not across the outside face, which is one
     // smooth panel up to the top. Only drawn on a wall taller than one 12′ panel; a single panel shows no band.
@@ -4268,7 +4279,8 @@ function buildScene(THREE, plan, A) {
     const IP = i.hard ? wallPM(i.host && i.host.id) : null, top = i.wallH || H, hm = i.hard ? IP.trim : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head, undefined, head).mats : shellMat(i.kind, i.len, top - head, 0);
     const passCut = o.type === 'pass' && i.hard;
     // a pass-thru is cut into a wall panel: the panel carries on over it in the wall's own face, no header seams
-    if (passCut && top - head > 0.01) { const pf = wallFacePlain(IP); pick.push(segBox(o.x1, o.y1, o.x2, o.y2, head, top, t, [IP.edge, IP.edge, IP.edge, IP.edge, pf, pf])); }
+    // (one piece floor to top, the pass-thru's body round it, so its face shades exactly as the wall beside it)
+    if (passCut) { const pf = wallFacePlain(IP); pick.push(segBox(o.x1, o.y1, o.x2, o.y2, 0, top, t, [IP.edge, IP.edge, IP.edge, IP.edge, pf, pf])); }
     if (top - head > 0.01 && o.type !== 'removable' && !passCut) {
       if (i.hard) {
         // header panels over a door or glass in a cleanroom wall: the same panels as the wall (its colour), equal
@@ -4311,7 +4323,7 @@ function buildScene(THREE, plan, A) {
       shadow((ax + bx) / 2, (az + bz) / 2, i.len, t, Math.atan2(-i.uz, i.ux));
     } else if (o.type === 'pass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill)), D = Math.max(t + 0.1, o.depth || 2), ph = head - sill;
-      if (sill > 0.01) { if (i.hard) { const pf = wallFacePlain(IP); pick.push(segBox(ax, az, bx, bz, 0, sill, t, [IP.edge, IP.edge, IP.edge, IP.edge, pf, pf])); segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base); } else { const lw = segBox(ax, az, bx, bz, 0, sill, t, shellMat(i.kind, i.len, sill, 0)); outline(lw); pick.push(lw); } }
+      if (sill > 0.01) { if (i.hard) { segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base); } else { const lw = segBox(ax, az, bx, bz, 0, sill, t, shellMat(i.kind, i.len, sill, 0)); outline(lw); pick.push(lw); } }
       const body = segBox(ax, az, bx, bz, sill, head, D, M.steel); outline(body); pick.push(body);
       const [f1x, f1z] = along(-0.1), [f2x, f2z] = along(i.len + 0.1);
       segBox(f1x, f1z, f2x, f2z, sill - 0.1, sill, t + 0.05, M.steel); segBox(f1x, f1z, f2x, f2z, head, head + 0.1, t + 0.05, M.steel);
