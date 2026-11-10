@@ -1507,9 +1507,12 @@ function wallModule(w, plan) {
     const cols = grilleCols(w, plan), ends = [wallEnd(w, plan, true), wallEnd(w, plan, false)], need = cols.length ? Math.max(...cols.map(c => c.w)) + 3.25 / 12 : 0;
     // a pass-thru is cut into a panel: no joint (or its 3″ stud) inside one
     const av = passSpans(w, plan);
-    const key = [w.x1, w.y1, w.x2, w.y2, cols.length, need, ends, av.join(';')].join(','); let FC = FEWCUT.get(plan); if (!FC) { FC = new Map(); FEWCUT.set(plan, FC); }
+    // and a stud wherever a receptacle, switch or data jack goes, so each one sits centred on its post
+    const ds = deviceSpots(w, plan, av);
+    const key = [w.x1, w.y1, w.x2, w.y2, cols.length, need, ends, av.join(';'), ds.join(';')].join(','); let FC = FEWCUT.get(plan); if (!FC) { FC = new Map(); FEWCUT.set(plan, FC); }
     if (FC.has(key)) return FC.get(key).slice();
-    let r; try { r = wallStuds(L, [], cols.length, need, ends, av); } catch (e) { r = def(); }
+    // (each box moves at most 9″ onto its stud, when that saves cutting a panel)
+    let r; try { r = wallStuds(L, [], cols.length, need, ends, av, ds); } catch (e) { r = def(); }
     FC.set(key, r); return r.slice();
   }
   if (!plan || plan.studsUnderBeams !== true || !(plan.beams || []).length || w.piece) return def();
@@ -1539,10 +1542,24 @@ function wallEnd(w, plan, start) {
    (48″ on centre) wherever they fit; the fewest panels; a short panel (under 24″) put at a corner rather than in
    the middle of the wall, and two short ones combined into one where they can be; and at least K panels wide
    enough (`need`) for the grilles to sit centred on. Searched on a ¼″ step. */
+// where the wall's single-gang boxes are (receptacles, switches, data jacks), as places along it for a stud: boxes
+// within 4″ of each other share one, none inside an opening or right at a wall end
+function deviceSpots(w, plan, av) {
+  const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, e = (w.t || 0.25) / 2 + 0.08, ee = (w.t || 0.25) / 2 + 0.05, spans = (av || []).slice(), S = [];
+  for (const o of plan.openings || []) { if (!o || segDist(o.x1, o.y1, w.x1, w.y1, w.x2, w.y2) > ee || segDist(o.x2, o.y2, w.x1, w.y1, w.x2, w.y2) > ee) continue; const a = (o.x1 - w.x1) * ux + (o.y1 - w.y1) * uy, b = (o.x2 - w.x1) * ux + (o.y2 - w.y1) * uy; spans.push([Math.min(a, b) - 0.12, Math.max(a, b) + 0.12]); }
+  for (const d of plan.devices || []) {
+    const D = DEVICES[d.type]; if (!D || !D.stud || segDist(d.x, d.y, w.x1, w.y1, w.x2, w.y2) > e) continue;
+    const sA = (d.x - w.x1) * ux + (d.y - w.y1) * uy; if (sA < 0.35 || sA > L - 0.35 || spans.some(([a, b]) => sA > a && sA < b)) continue;
+    S.push(sA);
+  }
+  S.sort((a, b) => a - b); const G = [];
+  for (const v of S) { const g = G[G.length - 1]; if (g && v - g[g.length - 1] < 4 / 12) g.push(v); else G.push([v]); }
+  return G.map(g => Math.round((g.reduce((a, b) => a + b, 0) / g.length) * 192) / 192);
+}
 // the pass-thrus in a wall, as [from, to] along it (feet from its start), widened by half a stud and a little
-// Where single-gang boxes (receptacles, switches, data) go in a cleanroom wall: the H-studs at its panel joints and
-// the posts either side of a door or window (where a light switch usually goes), never inside an opening or on the
-// edge of a pass-thru. Feet along the wall from its start.
+// Where single-gang boxes (receptacles, switches, data) go in a cleanroom wall: centred on the H-studs at its panel
+// joints (the stud posts drawn on the wall), never inside an opening or on the edge of a pass-thru. Feet along the
+// wall from its start.
 function studJoints(w, plan) {
   let J; try { J = wallModule(w, plan) || []; } catch (e) { J = []; }
   const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, e = (w.t || 0.25) / 2 + 0.05, spans = [], posts = [];
@@ -1550,10 +1567,8 @@ function studJoints(w, plan) {
     if (!o || segDist(o.x1, o.y1, w.x1, w.y1, w.x2, w.y2) > e || segDist(o.x2, o.y2, w.x1, w.y1, w.x2, w.y2) > e) continue;
     const a0 = (o.x1 - w.x1) * ux + (o.y1 - w.y1) * uy, b0 = (o.x2 - w.x1) * ux + (o.y2 - w.y1) * uy, a = Math.min(a0, b0), b = Math.max(a0, b0);
     spans.push([a - 0.12, b + 0.12]);
-    if (o.type !== 'pass' && o.type !== 'removable' && o.type !== 'open') posts.push(a - 0.125, b + 0.125);
   }
-  const all = J.filter(m => !posts.some(q => Math.abs(q - m) < 0.25)).concat(posts);
-  return all.filter(m => m > 0.2 && m < L - 0.2 && !spans.some(([a, b]) => m > a && m < b)).sort((a, b) => a - b);
+  return J.filter(m => m > 0.2 && m < L - 0.2 && !spans.some(([a, b]) => m > a && m < b)).sort((a, b) => a - b);
 }
 // the posts where other walls meet this one (a corner or a T), on one face: [{s, from, to}] — the post either side of
 // the meeting wall, and the stretch that wall covers (no box behind it)
@@ -1580,17 +1595,22 @@ function deviceOnStud(plan, dv, taken) {
   const w = best.w, L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L;
   const sA = (dv.x - w.x1) * ux + (dv.y - w.y1) * uy, side = ((dv.x - w.x1) * -uy + (dv.y - w.y1) * ux) >= 0 ? 1 : -1;
   const MP = meetPosts(w, plan, side);
-  let J = studJoints(w, plan).concat(...MP.map(m => m.posts)).filter(m => m > 0.2 && m < L - 0.2 && !MP.some(q => m > q.from - 0.1 && m < q.to + 0.1));
+  // only the studs in the same room: between the walls that meet this face either side of the device
+  let lo = -1, hi = L + 1; for (const q of MP) { if (q.to <= sA + 0.05) lo = Math.max(lo, q.to); else if (q.from >= sA - 0.05) hi = Math.min(hi, q.from); }
+  let J = studJoints(w, plan).filter(m => m > 0.2 && m < L - 0.2 && m > lo + 0.1 && m < hi - 0.1 && !MP.some(q => m > q.from - 0.1 && m < q.to + 0.1));
   J = J.filter((m, k) => !J.slice(0, k).some(q => Math.abs(q - m) < 0.2));
   // a post the wall's own openings take (a meeting post can land in a door)
   const e = (w.t || 0.25) / 2 + 0.05;
   for (const o of plan.openings || []) { if (!o || segDist(o.x1, o.y1, w.x1, w.y1, w.x2, w.y2) > e || segDist(o.x2, o.y2, w.x1, w.y1, w.x2, w.y2) > e) continue; const a = (o.x1 - w.x1) * ux + (o.y1 - w.y1) * uy, b = (o.x2 - w.x1) * ux + (o.y2 - w.y1) * uy; J = J.filter(m => !(m > Math.min(a, b) - 0.12 && m < Math.max(a, b) + 0.12)); }
   if (!J.length) return null;
-  const h = dv.h != null ? dv.h : D.h, h0 = h - D.hh / 2 - 0.05, h1 = h + D.hh / 2 + 0.05;
-  const free = (m) => !(taken || []).some(t => t.w === w && t.side === side && Math.abs(t.s - m) < 0.2 && t.h0 < h1 && h0 < t.h1);
-  const order = J.slice().sort((a, b) => Math.abs(a - sA) - Math.abs(b - sA)), m = order.find(free) ?? order[0];
-  if (taken) taken.push({ w, side, s: m, h0, h1 });
-  return { x: dv.x + ux * (m - sA), y: dv.y + uy * (m - sA), s: m, moved: Math.abs(m - sA) };
+  const h = dv.h != null ? dv.h : D.h, span = (hc) => [hc - D.hh / 2 - 0.05, hc + D.hh / 2 + 0.05];
+  const free = (m, hc) => { const [h0, h1] = span(hc); return !(taken || []).some(t => t.w === w && t.side === side && Math.abs(t.s - m) < 0.2 && t.h0 < h1 && h0 < t.h1); };
+  const order = J.slice().sort((a, b) => Math.abs(a - sA) - Math.abs(b - sA));
+  let m = order.find(q => free(q, h)), hNew = h;
+  // every stud in the room has a box at this height: it shares the nearest stud, just above (or below) the one there
+  if (m == null) { m = order[0]; for (let k = 1; k < 8; k++) { const up = h + k * 8 / 12, dn = h - k * 8 / 12; if (up < 6.5 && free(m, up)) { hNew = up; break; } if (dn > 1 && free(m, dn)) { hNew = dn; break; } } }
+  const [h0, h1] = span(hNew); if (taken) taken.push({ w, side, s: m, h0, h1 });
+  return { x: dv.x + ux * (m - sA), y: dv.y + uy * (m - sA), s: m, moved: Math.abs(m - sA), h: hNew !== h ? hNew : undefined };
 }
 function passSpans(w, plan) {
   const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, e = (w.t || 0.25) / 2 + 0.05, out = [];
@@ -1601,7 +1621,9 @@ function passSpans(w, plan) {
   }
   return out;
 }
-function wallStuds(L, F, K, need, ends, avoid) {
+// want: places a stud must land within 9″ of (receptacles, switches, data jacks), the nearer the better
+function wallStuds(L, F, K, need, ends, avoid, want) {
+  const WT = (want || []).slice().sort((a, b) => a - b), WR = 9 / 12;
   const P = [0]; for (let k = 1; k < Math.round(L * 48); k++) P.push(k / 48);
   const fixed = new Set(); for (const f of F) { let i = P.findIndex(x => Math.abs(x - f) < 0.125 / 12); if (i < 0) { P.push(f); P.sort((a, b) => a - b); i = P.indexOf(f); } else P[i] = f; fixed.add(i); }
   P.push(L); const N = P.length - 1, INF = 1e18;
@@ -1616,7 +1638,10 @@ function wallStuds(L, F, K, need, ends, avoid) {
     for (let j = k - 1; j >= 0; j--) {
       const wd = P[k] - P[j]; if (wd > 4 + (k === N ? 1.1 : 0.01) / 12) break;
       const big = need && wd >= need - 1e-6 ? 1 : 0, end = (j === 0 && E[0] === 'corner') || (k === N && E[1] === 'corner');
-      for (let c = 0; c <= K; c++) { if (dp[j][c] >= INF) continue; const c2 = Math.min(K, c + big), v = dp[j][c] + cost(wd, end); if (v < dp[k][c2] - 1e-9) { dp[k][c2] = v; fr[k][c2] = j; fc[k][c2] = c; } }
+      // a box between these two studs must be near one of them (a wall end isn't a stud)
+      let wc = 0, wok = true; for (const v of WT) { if (v <= P[j] || v >= P[k]) continue; const dj = j > 0 ? v - P[j] : 1e9, dk = k < N ? P[k] - v : 1e9, dm = Math.min(dj, dk); if (dm > WR) { wok = false; break; } wc += dm * 2.5; }
+      if (!wok) continue;
+      for (let c = 0; c <= K; c++) { if (dp[j][c] >= INF) continue; const c2 = Math.min(K, c + big), v = dp[j][c] + cost(wd, end) + wc; if (v < dp[k][c2] - 1e-9) { dp[k][c2] = v; fr[k][c2] = j; fc[k][c2] = c; } }
       if (fixed.has(j)) break; // a stud under a beam can't be skipped
     }
   }
