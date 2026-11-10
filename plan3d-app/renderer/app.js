@@ -3621,7 +3621,7 @@ async function exportHtml() {
 <script>${safe(a.post || '')}</script>
 <script>${safe(a.exporter || '')}</script>
 <script>${safe(a.viewer)}</script>
-<script>try { Plan3DViewer.mount(document.getElementById('v'), ${safe(JSON.stringify(plan))}, { joystick: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches), comments: true, startOutside: true, startMode: 'doll', views: ['doll', 'plenum', 'walk'], airflow: false, measure: false }); document.getElementById('p3fb').remove(); } catch (e) { var f = document.getElementById('p3fb'); if (f) f.querySelector('p').textContent = 'This browser couldn\u2019t start the 3D. Try Safari, Chrome, Edge or Firefox' + ('${online ? ', or the online link below.' : '.'}'); console.error(e); }</script>
+<script>try { Plan3DViewer.mount(document.getElementById('v'), ${safe(JSON.stringify(plan))}, { joystick: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches), comments: true, startOutside: true, startMode: 'doll', views: ['doll', 'plenum', 'walk'], airflow: 'none', measure: false }); document.getElementById('p3fb').remove(); } catch (e) { var f = document.getElementById('p3fb'); if (f) f.querySelector('p').textContent = 'This browser couldn\u2019t start the 3D. Try Safari, Chrome, Edge or Firefox' + ('${online ? ', or the online link below.' : '.'}'); console.error(e); }</script>
 <!-- Made with Coll Plan3D · Coll Business Solutions LLC -->
 </body></html>`;
   const p = await api.exportFile(html, plan.name + ' walkthrough', 'html');

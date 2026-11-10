@@ -5540,11 +5540,12 @@ function mount(container, plan, opts) {
   const modeBtns = [...container.querySelectorAll('.p3v-modes button')];
   const lookBtn = container.querySelector('.p3v-look');
   // Airflow arrows: shown until turned off; the button only shows when there are arrows to show
-  const airBtn = container.querySelector('.p3v-air'); let airOn = opts.airflow !== false; // a customer link starts with it off
+  const airBtn = container.querySelector('.p3v-air'); let airOn = opts.airflow !== false && opts.airflow !== 'none'; // a customer link starts with it off
+  const noAir = opts.airflow === 'none'; // a walkthrough sent to a customer has no airflow at all
   function refreshAir() {
     const G = []; if (built) built.root.traverse(o => { if (o.userData && o.userData.airflow) G.push(o); });
     G.forEach(o => { o.visible = airOn; });
-    if (airBtn) { airBtn.hidden = !G.some(o => o.children.length); airBtn.setAttribute('aria-pressed', String(airOn)); }
+    if (airBtn) { airBtn.hidden = noAir || !G.some(o => o.children.length); airBtn.setAttribute('aria-pressed', String(airOn)); }
   }
   if (airBtn) airBtn.addEventListener('click', (e) => { e.stopPropagation(); airOn = !airOn; refreshAir(); });
   // the lid on in every view (Dollhouse and Plan too), or back to each view's own
@@ -6189,8 +6190,10 @@ function mount(container, plan, opts) {
   function caption(r, q) {
     if (!r) { capEl.hidden = true; return; }
     const T = r.crType && ROOM_TYPES[r.crType], bits = [];
-    if (T) bits.push(T.label); if (r.iso) bits.push('ISO ' + r.iso); if (r.pressure != null && r.pressure !== '') bits.push((r.pressure > 0 ? '+' : '') + r.pressure + ' Pa (' + (r.pressure * PA_TO_INWC).toFixed(3) + '″ w.c.)'); if (q && q.ach) bits.push(Math.round(q.ach) + ' air changes/hr');
-    capEl.innerHTML = '<b>' + String(r.name || 'Room').replace(/[&<>]/g, '') + '</b><span>' + bits.join(' · ') + '</span>'; capEl.hidden = false;
+    if (T) bits.push(T.label); if (r.iso) bits.push('ISO ' + r.iso); if (r.pressure != null && r.pressure !== '') bits.push((r.pressure > 0 ? '+' : '') + r.pressure + ' Pa (' + (r.pressure * PA_TO_INWC).toFixed(3) + '″ w.c.)');
+    // the automatic walkthrough shows just the room's name, for a clear view
+    if (tour && tour.look) bits.length = 0;
+    capEl.innerHTML = '<b>' + String(r.name || 'Room').replace(/[&<>]/g, '') + '</b>' + (bits.length ? '<span>' + bits.join(' · ') + '</span>' : ''); capEl.hidden = false;
   }
   function stopTour() { if (!tour) return; tour = null; capEl.hidden = true; tourBtn.textContent = plan && plan.autoTour && plan.autoTour.on ? '▶ Walkthrough' : '▶ Gowning tour'; }
   function startTour() {
@@ -6201,6 +6204,7 @@ function mount(container, plan, opts) {
     const [x0, z0] = P.pts[0], [x1, z1] = P.pts[1];
     goWalk(x0, z0, Math.atan2(-(x1 - x0), -(z1 - z0)), 600);
     tour = { P, i: 0, t: 0, pause: FR.auto ? 2.5 : 1.6, q0, stopAt: new Map(P.stops.map(s2 => [s2.at, s2.room])), look: !!FR.auto };
+    if (FR.auto && airOn) { airOn = false; refreshAir(); } // the airflow arrows off for the automatic walkthrough's clear view
     caption(P.stops[0] && P.stops[0].at === 0 ? P.stops[0].room : null, P.stops[0] && q0(P.stops[0].room));
     tourBtn.textContent = '■ Stop tour';
   }
