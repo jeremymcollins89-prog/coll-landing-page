@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('api', {
   loadSample: (which) => ipcRenderer.invoke('load-sample', which),
   pathForFile: (f) => { try { return webUtils.getPathForFile(f); } catch (e) { return null; } },
   saveProject: (json, current, suggested) => ipcRenderer.invoke('save-project', json, current, suggested),
+  listBackups: (p) => ipcRenderer.invoke('list-backups', p),
+  readBackup: (p, file) => ipcRenderer.invoke('read-backup', p, file),
   exportFile: (data, name, ext) => ipcRenderer.invoke('export-file', { data, name, ext }),
   exportPDF: (html, name, w, h) => ipcRenderer.invoke('export-pdf', { html, name, w, h }),
   getAssets: () => ipcRenderer.invoke('get-assets'),

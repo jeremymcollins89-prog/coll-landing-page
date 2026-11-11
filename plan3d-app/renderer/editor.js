@@ -81,6 +81,7 @@ class Editor {
     this.plan = Object.assign(Editor.blank(), p);
     this.sel = null; this.draft = null; this.hist = []; this.fut = []; this.dirty = false;
     this.loadBg();
+    try { this.devRemember(); } catch (e) { this._devSig = undefined; }
     if (!keepView) this.fit();
     this.emit('select'); this.emit('change', { reset: true }); this.render();
   }
@@ -91,8 +92,40 @@ class Editor {
     const im = new Image(); im.onload = () => { this.render(); this.emit('bgload'); }; im.src = b.src; this.bgImg = im;
   }
   snapshot() { return JSON.stringify(this.plan); }
+  /* Receptacles, switches and data jacks follow their wall and their stud: when a wall moves, or the panel layout
+     changes (a wall stretched, a door added, Wall panels switched), each one stays on its wall at the same place
+     along it, and one that sat on a stud goes back onto the nearest stud. */
+  devSig() { const P = this.plan; return (P.walls || []).map(w => [w.id, w.x1, w.y1, w.x2, w.y2, w.t].join(',')).join(';') + '|' + (P.openings || []).map(o => [o.x1, o.y1, o.x2, o.y2].join(',')).join(';') + '|' + P.studGrid; }
+  devRemember() {
+    const V = global.Plan3DViewer, P = this.plan, M = new Map(); this._devSig = this.devSig(); this._devHost = M;
+    if (!V || !V.DEVICES || !V.deviceOnStud) return;
+    for (const d of P.devices || []) {
+      const D = V.DEVICES[d.type]; if (!D || !D.stud) continue;
+      let best = null; for (const w of P.walls || []) { if (w.sp) continue; const q = V.segDist ? V.segDist(d.x, d.y, w.x1, w.y1, w.x2, w.y2) : null; const dd = q != null ? q : this.segD(d.x, d.y, w); if (dd < (w.t || 0.25) / 2 + 0.08 && (!best || dd < best.dd)) best = { w, dd }; }
+      if (!best) continue;
+      const w = best.w, L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L;
+      let on = false; try { const q = V.deviceOnStud(P, d); on = !!q && q.moved < 0.03; } catch (e) { on = false; }
+      M.set(d.id, { wall: w.id, s: (d.x - w.x1) * ux + (d.y - w.y1) * uy, fromEnd: L - ((d.x - w.x1) * ux + (d.y - w.y1) * uy), side: ((d.x - w.x1) * -uy + (d.y - w.y1) * ux) >= 0 ? 1 : -1, on, x: d.x, y: d.y });
+    }
+  }
+  segD(px, py, w) { const dx = w.x2 - w.x1, dy = w.y2 - w.y1, L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((px - w.x1) * dx + (py - w.y1) * dy) / L)); return Math.hypot(px - w.x1 - t * dx, py - w.y1 - t * dy); }
+  devFollow() {
+    const V = global.Plan3DViewer, P = this.plan, M = this._devHost; if (!V || !M || !M.size) return;
+    const taken = [], todo = [];
+    for (const d of P.devices || []) {
+      const h = M.get(d.id); if (!h) continue;
+      if (Math.abs(d.x - h.x) > 1e-6 || Math.abs(d.y - h.y) > 1e-6) continue;   // this edit moved the device itself
+      const w = (P.walls || []).find(q => q.id === h.wall); if (!w) continue;
+      const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, off = (w.t || 0.25) / 2;
+      const s = Math.max(0.2, Math.min(L - 0.2, h.s));
+      d.x = w.x1 + ux * s - uy * h.side * off; d.y = w.y1 + uy * s + ux * h.side * off; d.a = Math.atan2(ux * h.side, -uy * h.side);
+      if (h.on) todo.push(d);
+    }
+    for (const d of todo) { try { const q = V.deviceOnStud(P, d, taken); if (q) { d.x = q.x; d.y = q.y; if (q.h != null) d.h = q.h; } } catch (e) { /* stays where the wall put it */ } }
+  }
   commit(before) {
     this.hist.push(before); if (this.hist.length > 200) this.hist.shift(); this.fut = []; this.dirty = true;
+    try { if ((this.plan.devices || []).length && this._devSig !== undefined && this.devSig() !== this._devSig) this.devFollow(); this.devRemember(); } catch (e) { /* the plan is fine without it */ }
     // a built ceiling's outline is its pieces
     const V0 = global.Plan3DViewer; if (V0 && V0.isBuilt && V0.isBuilt(this.plan)) this.plan.ceilRects = V0.builtRects(this.plan);
     this._chk = undefined; this._flows = undefined; this._seats = null; this._lights = null; this._gridKey = null; this.emit('change'); this.render();
@@ -371,7 +404,7 @@ class Editor {
   edit(fn) { const b = this.snapshot(); fn(this.plan); this.commit(b); }
   undo() { if (!this.hist.length) return; this.fut.push(this.snapshot()); this.plan = JSON.parse(this.hist.pop()); this.afterRestore(); }
   redo() { if (!this.fut.length) return; this.hist.push(this.snapshot()); this.plan = JSON.parse(this.fut.pop()); this.afterRestore(); }
-  afterRestore() { this._chk = undefined; this._flows = undefined; this._seats = null; this._lights = null; this.dirty = true; this.loadBg(); if (this.sel && !this.find(this.sel)) this.sel = null; if (this.multi) { this.multi = this.multi.filter(r => this.find(r)); if (this.multi.length < 2) this.multi = null; } this.emit('select'); this.emit('change'); this.render(); }
+  afterRestore() { try { this.devRemember(); } catch (e) { this._devSig = undefined; } this._chk = undefined; this._flows = undefined; this._seats = null; this._lights = null; this.dirty = true; this.loadBg(); if (this.sel && !this.find(this.sel)) this.sel = null; if (this.multi) { this.multi = this.multi.filter(r => this.find(r)); if (this.multi.length < 2) this.multi = null; } this.emit('select'); this.emit('change'); this.render(); }
   emit(ev, d) { const f = this.o['on' + ev[0].toUpperCase() + ev.slice(1)]; if (f) f(d); }
   find(sel) {
     if (!sel) return null;

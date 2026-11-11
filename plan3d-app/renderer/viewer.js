@@ -25,7 +25,7 @@ const CSS = `
 .p3v-ud{position:absolute;right:18px;bottom:150px;display:flex;flex-direction:column;gap:8px;pointer-events:auto}.p3v-ud button{width:54px;height:54px;border-radius:50%;border:0;background:rgba(20,26,29,.8);color:#fff;font-size:20px}
 .p3v-snapdlg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,90%);padding:14px;border-radius:14px;display:flex;flex-direction:column;gap:10px;pointer-events:auto;z-index:5}.p3v-snapdlg b{color:#fff;font-size:15px}.p3v-snapdlg img{width:100%;border-radius:8px}.p3v-snapdlg textarea{background:#11171a;color:#e8edef;border:1px solid #3a464c;border-radius:8px;padding:8px;font:13px system-ui,sans-serif;resize:vertical}.p3v-snapdlg div{display:flex;justify-content:flex-end;gap:8px}.p3v-snapdlg button{border:0;border-radius:8px;padding:8px 14px;font:600 13px system-ui,sans-serif;background:#2b353a;color:#e8edef;cursor:pointer}.p3v-snapdlg button.pri{background:#f2c84b;color:#1a1606}
 .p3v-meas[aria-pressed=true]{background:#ff9a1f;color:#1a1206}
-.p3v-cap{position:absolute;left:50%;bottom:86px;transform:translateX(-50%);padding:12px 18px;border-radius:12px;text-align:center;pointer-events:none;max-width:80%}.p3v-cap b{display:block;font-size:17px;color:#fff;margin-bottom:2px}.p3v-cap span{font-size:12.5px;color:#cfd8dc}
+.p3v-title{position:absolute;top:0;right:0;bottom:0;left:0;z-index:30;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(14,19,21,.72);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);text-align:center;color:#e8edef;font:16px/1.45 -apple-system,system-ui,'Segoe UI',Arial,sans-serif}.p3v-title .bx{max-width:520px}.p3v-title small{display:block;letter-spacing:.14em;text-transform:uppercase;color:#f2c84b;font-weight:700;font-size:13px;margin-bottom:10px}.p3v-title h1{font-size:34px;line-height:1.15;margin:0 0 8px;color:#fff}.p3v-title p{margin:0 0 22px;color:#aab5ba}.p3v-title button{display:block;width:100%;max-width:320px;margin:10px auto 0;padding:14px 20px;border-radius:14px;border:0;font:700 17px/1 inherit;cursor:pointer;background:#f2c84b;color:#1a1f22}.p3v-title button.sec{background:transparent;color:#e8edef;border:1px solid rgba(255,255,255,.35);font-weight:600}.p3v-cap{position:absolute;left:50%;bottom:86px;transform:translateX(-50%);padding:12px 18px;border-radius:12px;text-align:center;pointer-events:none;max-width:80%}.p3v-cap b{display:block;font-size:17px;color:#fff;margin-bottom:2px}.p3v-cap span{font-size:12.5px;color:#cfd8dc}
 .p3v-look{font-family:inherit;font-size:12.5px;font-weight:600;color:#cfd8dc;border-radius:999px;padding:6px 12px;cursor:pointer}
 .p3v-look kbd{font:11px Consolas,ui-monospace,monospace;color:#9aa7ad;margin-left:4px;border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:0 4px}
 .p3v-look[aria-pressed=true]{background:#f2c84b;color:#121719;border-color:#f2c84b}
@@ -2789,6 +2789,25 @@ function generateCeiling(plan, opts) {
     const reach = (vert, at, lo, hi, dir) => { let best = null; for (const p of sp.A.pieces) { if (vert ? Math.abs(p.x1 - p.x2) > 1e-3 : Math.abs(p.z1 - p.z2) > 1e-3) continue; const cc = vert ? p.x1 : p.z1, a = vert ? Math.min(p.z1, p.z2) : Math.min(p.x1, p.x2), bb = vert ? Math.max(p.z1, p.z2) : Math.max(p.x1, p.x2); const d = (cc - at) * dir; if (d >= -0.05 && d <= 1.25 && bb > lo + 0.5 && a < hi - 0.5 && (best === null || d < (best - at) * dir)) best = cc; } return best === null ? at : best; };
     [x0, x1, z0, z1] = [reach(true, x0, z0, z1, -1), reach(true, x1, z0, z1, 1), reach(false, z0, x0, x1, -1), reach(false, z1, x0, x1, 1)];
     const L = c.L; autoZones.push({ id: uid(), x0, y0: z0, x1, y1: z1, swap: L.sw, ox: x0 + mdv(L.zx - x0, L.zw), oy: z0 + mdv(L.zz - z0, L.zl), auto: true });
+  }
+  // a new ceiling (nothing kept): every room that's a plain box of its own gets its grid centred in that room, so
+  // the cut tiles at its two walls match, the same as the biggest room; opts.perRoom === false keeps one grid
+  // running through every room
+  if (!keep && opts.perRoom !== false) {
+    for (const sp of spaces) {
+      if (sp === big || sp.hallway) continue;
+      const bx = spBox(sp); if (bx.x1 - bx.x0 < 3 || bx.z1 - bx.z0 < 3) continue;
+      if (userZones.some(q => Math.min(q.x1, bx.x1) > Math.max(q.x0, bx.x0) && Math.min(q.y1, bx.z1) > Math.max(q.y0, bx.z0))) continue;
+      let intr = 0; for (const s2 of spaces) if (s2 !== sp) for (const k of s2.cells) { const i = k % s2.G.nx, j = (k - i) / s2.G.nx, x = s2.G.x0 + (i + 0.5) * s2.G.cell, z = s2.G.z0 + (j + 0.5) * s2.G.cell; if (x > bx.x0 && x < bx.x1 && z > bx.z0 && z < bx.z1) intr++; }
+      if (intr > 0.05 * sp.cells.length) continue;   // it wraps a neighbour: it stays on the main grid
+      // centred the way that leaves the most whole tiles across the room (a small room centred on a line can end
+      // up with none), and the bigger cut tiles when that's a tie
+      const fit = (lo, hi, sp2) => { const c = (lo + hi) / 2, whole = (o) => { const first = lo + mdv(o - lo, sp2); return Math.max(0, Math.floor((hi - first) / sp2 + 1e-6)); }, a2 = whole(c), b2 = whole(c + sp2 / 2); return a2 === b2 ? centre(lo, hi, sp2) : (a2 > b2 ? c : c + sp2 / 2); };
+      const zx = fit(bx.x0, bx.x1, cw), zz = fit(bx.z0, bx.z1, cl);
+      if (sameLine(mdv(zx, cw), mdv(ox, cw), cw) && sameLine(mdv(zz, cl), mdv(oz, cl), cl)) continue;
+      const x0 = bx.x0 - 0.3, z0 = bx.z0 - 0.3;
+      autoZones.push({ id: uid(), x0, y0: z0, x1: bx.x1 + 0.3, y1: bx.z1 + 0.3, swap, ox: x0 + mdv(zx - x0, cw), oy: z0 + mdv(zz - z0, cl), auto: true });
+    }
   }
   const gridZones = userZones.concat(autoZones);
   const PZ = Object.assign({}, plan, { gridZones, ceilRects: [[0, 0, 0, 0]] });
@@ -6264,7 +6283,19 @@ function mount(container, plan, opts) {
 
   // ---- Guided tour: walk the people route (plan.flows.people), stopping in each room with its name and class
   const tourBtn = $('.p3v-tour'), capEl = $('.p3v-cap');
-  let tour = null, autoPlayed = false;
+  let tour = null, autoPlayed = false, titleShown = false;
+  // A walkthrough sent to a customer opens on a title screen: who it's from, the job's name and a button to start
+  // (the automatic walkthrough, when the plan has one, or looking round on their own).
+  function showTitle() {
+    if (titleShown || !opts.titleScreen || !plan || !(plan.walls || []).length) return; titleShown = true;
+    const T = opts.titleScreen === true ? {} : opts.titleScreen, esc2 = (t) => String(t || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    const auto = !!(plan.autoTour && plan.autoTour.on), el = document.createElement('div'); el.className = 'p3v-title';
+    el.innerHTML = '<div class="bx">' + (T.company ? '<small>' + esc2(T.company) + '</small>' : '') + '<h1>' + esc2(plan.name || 'Cleanroom') + '</h1><p>3D walkthrough</p>'
+      + (auto ? '<button type="button" data-a="tour">▶ Start walkthrough</button><button type="button" class="sec" data-a="look">Look around myself</button>' : '<button type="button" data-a="look">▶ Start</button>') + '</div>';
+    container.appendChild(el);
+    el.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; e.stopPropagation(); el.remove(); if (b.dataset.a === 'tour') { autoPlayed = true; try { startTour(); } catch (err) { /* the viewer works without it */ } } });
+    for (const ev of ['pointerdown', 'wheel', 'touchstart']) el.addEventListener(ev, (e) => e.stopPropagation());
+  }
   // the automatic walkthrough (plan.autoTour, made with Share → Automatic walkthrough) or the gowning tour
   function refreshTour() {
     let FR = null; const auto = !!(plan && plan.autoTour && plan.autoTour.on);
@@ -6282,6 +6313,7 @@ function mount(container, plan, opts) {
     if (tour && tour.look) bits.length = 0;
     capEl.innerHTML = '<b>' + String(r.name || 'Room').replace(/[&<>]/g, '') + '</b>' + (bits.length ? '<span>' + bits.join(' · ') + '</span>' : ''); capEl.hidden = false;
   }
+  const capText = (t) => { if (!t) { capEl.hidden = true; return; } capEl.innerHTML = '<b>' + String(t).replace(/[&<>]/g, '') + '</b>'; capEl.hidden = false; };
   function stopTour() { if (!tour) return; tour = null; capEl.hidden = true; tourBtn.textContent = plan && plan.autoTour && plan.autoTour.on ? '▶ Walkthrough' : '▶ Gowning tour'; }
   function startTour() {
     const FR = refreshTour(); if (!FR || !FR.people) return;
@@ -6291,12 +6323,34 @@ function mount(container, plan, opts) {
     const [x0, z0] = P.pts[0], [x1, z1] = P.pts[1];
     goWalk(x0, z0, Math.atan2(-(x1 - x0), -(z1 - z0)), 600);
     tour = { P, i: 0, t: 0, pause: FR.auto ? 2.5 : 1.6, q0, stopAt: new Map(P.stops.map(s2 => [s2.at, s2.room])), look: !!FR.auto };
+    // the stops you saved for the automatic walkthrough (Share → Automatic walkthrough → Add a stop), by the room each is in:
+    // in that room it walks to each one, looks where you looked and shows your caption, instead of the look round
+    if (FR.auto) {
+      const mine = (plan.autoTour.stops || []).filter(s2 => s2 && isFinite(s2.x) && isFinite(s2.y));
+      tour.custom = new Map(P.stops.map(s2 => [s2.at, mine.filter(c => { const r = roomAt(c.x, c.y); return r && r !== outside && (r === s2.room || (r.id && r.id === s2.room.id)); })]).filter(q => q[1].length));
+    }
     if (FR.auto && airOn) { airOn = false; refreshAir(); } // the airflow arrows off for the automatic walkthrough's clear view
     caption(P.stops[0] && P.stops[0].at === 0 ? P.stops[0].room : null, P.stops[0] && q0(P.stops[0].room));
     tourBtn.textContent = '■ Stop tour';
   }
   function stepTour(dt) {
     const T = tour; if (!T || tween) return;
+    // visiting your saved stops in this room: walk to each, turn to its view, hold on its caption, then back to the route
+    if (T.sub) {
+      const S = T.sub, c = S.j < S.list.length ? S.list[S.j] : null, tx = c ? c.x : S.home[0], tz = c ? c.y : S.home[1];
+      if (S.hold > 0) {
+        let dy = (c.yaw || 0) - st.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI;
+        st.yaw += dy * Math.min(1, dt * 2.5); st.pitch += ((c.pitch || 0) - st.pitch) * Math.min(1, dt * 2.5);
+        S.hold -= dt; if (S.hold <= 0) { S.j++; capEl.hidden = true; }
+        return;
+      }
+      const dx = tx - st.x, dz = tz - st.z, L = Math.hypot(dx, dz);
+      if (L < 0.08) { if (c) { S.hold = 6; capText(c.text); } else { T.sub = null; T.pause = 0.4; } return; }
+      const step = Math.min(L, dt * 2.2); st.x += dx / L * step; st.z += dz / L * step;
+      let dy = Math.atan2(-dx, -dz) - st.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI;
+      if (L > 0.6) st.yaw += dy * Math.min(1, dt * 2.5); st.pitch += (-0.04 - st.pitch) * Math.min(1, dt * 3);
+      return;
+    }
     // the automatic walkthrough looks once slowly round each room it stops in
     if (T.pause > 0) { if (T.spin) st.yaw += dt * T.spin; T.pause -= dt; if (T.pause <= 0) T.spin = 0; if (T.pause <= 0 && T.i >= T.P.pts.length - 1) { stopTour(); } return; }
     const [x1, z1] = T.P.pts[T.i], [x2, z2] = T.P.pts[T.i + 1], L = Math.hypot(x2 - x1, z2 - z1) || 0.01;
@@ -6306,7 +6360,7 @@ function mount(container, plan, opts) {
     let want = Math.atan2(-(x2 - x1), -(z2 - z1)), dy = want - st.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; st.yaw += dy * Math.min(1, dt * (T.look ? 2.5 : 4)); st.pitch += (-0.04 - st.pitch) * Math.min(1, dt * 3);
     // doors open ahead of the tour
     if (built && built.doors) for (const dg of built.doors) { const p2 = dg.getWorldPosition ? dg.getWorldPosition(new THREE.Vector3()) : dg.position; if (Math.hypot(p2.x - st.x, p2.z - st.z) < 5 && dg.userData) dg.userData.isOpen = true; }
-    if (k >= 1) { T.i++; T.t = 0; const r = T.stopAt.get(T.i); if (r) { caption(r, T.q0(r)); T.pause = T.look ? 10 : 2.6; T.spin = T.look ? Math.PI * 2 / 9.5 : 0; } else if (T.i >= T.P.pts.length - 1) T.pause = 1.5; }
+    if (k >= 1) { T.i++; T.t = 0; const r = T.stopAt.get(T.i); if (r) { caption(r, T.q0(r)); const mine = T.custom && T.custom.get(T.i); if (mine) { T.pause = 2; T.spin = 0; T.sub = { list: mine, j: 0, hold: 0, home: [st.x, st.z] }; } else { T.pause = T.look ? 10 : 2.6; T.spin = T.look ? Math.PI * 2 / 9.5 : 0; } } else if (T.i >= T.P.pts.length - 1) T.pause = 1.5; }
   }
   tourBtn.addEventListener('click', (e) => { e.stopPropagation(); if (tour) stopTour(); else startTour(); });
 
@@ -7017,7 +7071,8 @@ function mount(container, plan, opts) {
     try { applyLayers(); } catch (e) { console.error(e); }
     try { stopTour(); refreshTour(); } catch (e) { console.error(e); }
     // a walkthrough sent to a customer can start its automatic tour by itself, once
-    if (!autoPlayed && opts.startOutside && plan && plan.autoTour && plan.autoTour.on && plan.autoTour.autoplay) { autoPlayed = true; setTimeout(() => { try { if (!tour) startTour(); } catch (e) { /* the viewer works without it */ } }, 2500); }
+    try { showTitle(); } catch (e) { /* the viewer works without it */ }
+    if (!autoPlayed && !opts.titleScreen && opts.startOutside && plan && plan.autoTour && plan.autoTour.on && plan.autoTour.autoplay) { autoPlayed = true; setTimeout(() => { try { if (!tour) startTour(); } catch (e) { /* the viewer works without it */ } }, 2500); }
     try { upgradeScene(scene); let top = (A && A.H) || 10; try { const LP = levelPlans(p); top = LP[LP.length - 1].elev + 30; } catch (e) { } fitSun(A && A.bounds, top); } catch (e) { console.error(e); }
     if (typeof drawPins === 'function' && cList) { loadMine(); drawPins(); aSetup(); }
     emptyEl.hidden = !A.empty;
@@ -7149,6 +7204,7 @@ function mount(container, plan, opts) {
   raf = requestAnimationFrame(loop);
 
   return {
+    get touring() { return !!tour; },
     playTour: () => { try { refreshTour(); if (tour) stopTour(); startTour(); return !!tour; } catch (e) { return false; } },
     setLayers: (off) => { if (plan) plan.layersOff = off || {}; applyLayers(); },
     setPlan: (p) => setPlan(p, true),
