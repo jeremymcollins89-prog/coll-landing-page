@@ -4589,10 +4589,11 @@ function buildScene(THREE, plan, A) {
       if (f === 'W' || f === 'E') { gm = new THREE.Mesh(new THREE.BoxGeometry(gt, gh, glen), M.grille); gm.position.set(f === 'W' ? b.x0 - gt / 2 : b.x1 + gt / 2, gy, m.position.z); }
       else { gm = new THREE.Mesh(new THREE.BoxGeometry(glen, gh, gt), M.grille); gm.position.set(m.position.x, gy, f === 'N' ? b.z0 - gt / 2 : b.z1 + gt / 2); }
       root.add(gm);
-      const tg = new THREE.BoxGeometry(0.14, H - 0.503, 0.14), corners = [];
+      // the corner angles run from the base up to the ceiling (to the ceiling track, where the chase has one)
+      const tgH = H - 0.333 - (trackOK(WH) ? 0.17 : 0), tg = new THREE.BoxGeometry(0.14, tgH, 0.14), corners = [];
       if (f === 'W') corners.push([b.x0, b.z0], [b.x0, b.z1]); else if (f === 'E') corners.push([b.x1, b.z0], [b.x1, b.z1]);
       else if (f === 'N') corners.push([b.x0, b.z0], [b.x1, b.z0]); else corners.push([b.x0, b.z1], [b.x1, b.z1]);
-      corners.forEach(([x, z]) => { const t = new THREE.Mesh(tg, M.frame); t.position.set(x, 0.333 + (H - 0.503) / 2, z); root.add(t); outline(t); });
+      corners.forEach(([x, z]) => { const t = new THREE.Mesh(tg, M.frame); t.position.set(x, 0.333 + tgH / 2, z); root.add(t); outline(t); });
     }
   }
 
