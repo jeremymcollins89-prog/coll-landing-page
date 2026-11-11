@@ -4575,11 +4575,15 @@ function buildScene(THREE, plan, A) {
   curRef = null;
   for (const b of A.boxes) {
     const w = b.x1 - b.x0, d = b.z1 - b.z0; if (w < 0.02 || d < 0.02) continue;
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, H, d), M.white);
+    // an air chase is a shaft open at the top (the air goes up into the plenum): four sides, seen from inside too,
+    // and no cap
+    const openTop = (g) => { g.groups = g.groups.filter(q => q.materialIndex !== 2 && q.materialIndex !== 3); return g; };
+    const cIn = M.chaseSide || (M.chaseSide = (() => { const q = M.white.clone(); q.side = THREE.DoubleSide; q.name = M.white.name || 'Air chase panel'; return q; })());
+    const m = new THREE.Mesh(openTop(new THREE.BoxGeometry(w, H, d)), [cIn, cIn, cIn, cIn, cIn, cIn]);
     m.position.set((b.x0 + b.x1) / 2, H / 2, (b.z0 + b.z1) / 2); root.add(m); outline(m); pick.push(m);
     if (b.c && b.c.id) m.userData.ref = { kind: 'chase', id: b.c.id };
     const cv = new THREE.Mesh(new THREE.BoxGeometry(w + 0.022, 0.333, d + 0.022), M.base); cv.position.set(m.position.x, 0.1665, m.position.z); root.add(cv);
-    if (trackOK(WH)) { const ct = new THREE.Mesh(new THREE.BoxGeometry(w + 0.03, 0.17, d + 0.03), M.track); ct.position.set(m.position.x, H - 0.085, m.position.z); root.add(ct); }
+    if (trackOK(WH)) { const tIn = M.trackOpen || (M.trackOpen = (() => { const q = M.track.clone(); q.side = THREE.DoubleSide; return q; })()); const ct = new THREE.Mesh(openTop(new THREE.BoxGeometry(w + 0.03, 0.17, d + 0.03)), [tIn, tIn, tIn, tIn, tIn, tIn]); ct.position.set(m.position.x, H - 0.085, m.position.z); root.add(ct); }
     shadow(m.position.x, m.position.z, w, d, 0, 1.0);
     const f = b.grille;
     if (f) {
