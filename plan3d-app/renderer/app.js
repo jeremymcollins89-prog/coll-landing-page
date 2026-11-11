@@ -269,7 +269,7 @@ function ensureViewer() {
 }
 // the 3D view doesn't need the background drawing or the snapshot pictures (big), so they stay out of its copy
 // a copy for the customer: no prices, markup, purchase orders or the app's own records
-function linkPlan() { const p = clonePlan(); for (const k of ['quote', 'pos', 'baseline', 'changeOrders', 'published', 'approvals', 'submittal', 'install', 'layersOff', 'layersLock']) delete p[k]; return p; }
+function linkPlan() { const p = clonePlan(); for (const k of ['quote', 'pos', 'baseline', 'changeOrders', 'published', 'approvals', 'submittal', 'install', 'layersOff', 'layersLock']) delete p[k]; try { p.brandName = (QS.get('company', {}) || {}).name || 'Coll Business Solutions LLC'; } catch (e) { p.brandName = 'Coll Business Solutions LLC'; } return p; }
 function clonePlan() { const sn = ed.plan.snaps; if (sn) delete ed.plan.snaps; let p; try { p = JSON.parse(JSON.stringify(ed.plan)); } finally { if (sn) ed.plan.snaps = sn; } delete p.background; return p; }
 function queue3D() {
   if (view === '2d' || !viewer) return;
@@ -1821,19 +1821,23 @@ async function cadDialog() {
   const hasOda = !!(conv && conv.oda), hasDwg = hasOda || !!(conv && conv.builtin);
   // without ODA File Converter, the built-in converter saves the AutoCAD 2000 DWG format (every AutoCAD version opens it)
   const vers = hasOda ? DWG_VERS : [['ACAD2000', 'AutoCAD 2000 format (opens in every AutoCAD version)']];
+  // DWG is only offered when ODA File Converter is installed: the built-in converter's DWGs can crash or need Recover
+  // in AutoCAD and come in wrong, so without ODA the choices are DXF (opens cleanly) and IFC
+  if (!hasOda && cadFmt === 'dwg') cadFmt = 'dxf';
   const o = await dialogOpen({
     title: 'Save for AutoCAD or Revit',
     body: `<p>DWG and DXF save the floor plan 1:1 in inches on standard layers (A-WALL, A-DOOR, A-GLAZ, A-CHASE, A-DIMS …). IFC saves the whole room as a 3D model for Revit.</p>
-      ${fld('File type', `<select id="cadFmt"><option value="dwg" ${cadFmt === 'dwg' ? 'selected' : ''}>DWG – AutoCAD drawing</option><option value="dxf" ${cadFmt === 'dxf' ? 'selected' : ''}>DXF – works in any CAD program</option><option value="ifc" ${cadFmt === 'ifc' ? 'selected' : ''}>Revit 3D model (IFC) – opens in Revit, save it there as .rvt</option></select>`)}
+      ${fld('File type', `<select id="cadFmt">${hasOda ? `<option value="dwg" ${cadFmt === 'dwg' ? 'selected' : ''}>DWG – AutoCAD drawing</option>` : ''}<option value="dxf" ${cadFmt === 'dxf' ? 'selected' : ''}>DXF – works in any CAD program</option><option value="ifc" ${cadFmt === 'ifc' ? 'selected' : ''}>Revit 3D model (IFC) – opens in Revit, save it there as .rvt</option></select>`)}
       <div id="cadVerRow">${fld('Version', `<select id="cadVer">${vers.map(([v, l]) => `<option value="${v}" ${v === cadVer ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}</div>
       <label class="chk"><input type="checkbox" id="cadDims" ${cadDims ? 'checked' : ''}> Dimension strings</label>
       <label class="chk"><input type="checkbox" id="cadFix" ${cadFix ? 'checked' : ''}> Ceiling lights and fan filter units</label>
       <p class="sizeline" id="cadNote"></p>
       <p>Opening the file in Coll Plan3D again brings back the doors, glass, chases and rooms exactly.</p>`,
-    buttons: [{ label: 'Cancel', ret: null }, { label: 'Save', primary: true, value: () => ({ format: $('#cadFmt').value, version: $('#cadVer').value, dims: $('#cadDims').checked, fixtures: $('#cadFix').checked }) }],
+    buttons: [{ label: 'Cancel', ret: null }, ...(hasOda ? [] : [{ label: 'Get ODA File Converter (for DWG)', ret: 'oda' }]), { label: 'Save', primary: true, value: () => ({ format: $('#cadFmt').value, version: $('#cadVer').value, dims: $('#cadDims').checked, fixtures: $('#cadFix').checked }) }],
     onOpen: () => {
       const upd = () => {
         const dwg = $('#cadFmt').value === 'dwg';
+        if (!hasOda && $('#cadFmt').value === 'dxf') { $('#cadVerRow').hidden = true; $('#cadNote').textContent = 'DXF opens cleanly in AutoCAD with everything on its layers (to keep a DWG, use Save As → DWG there). Saving DWG straight from Coll Plan3D turns on once the free ODA File Converter is installed on this computer.'; return; }
         $('#cadVerRow').hidden = !dwg;
         if ($('#cadFmt').value === 'ifc') { $('#cadNote').textContent = 'A full 3D model: walls, posts, doors, glass, pass-thrus, chases, ceiling, lights and FFUs. In Revit: File → Open → IFC, then File → Save As → Project to keep it as an .rvt. Or Insert → Link IFC to drop it into a building model.'; return; }
         $('#cadNote').textContent = dwg ? (hasOda ? 'DWG files are made with ODA File Converter, found on this computer.' : hasDwg ? 'ODA File Converter isn’t on this computer. The built-in DWG converter can make files AutoCAD has to recover, with parts missing; DXF opens in AutoCAD cleanly (Save As DWG there), or install ODA File Converter (free) for real DWGs.' : 'DWG isn’t available on this computer. Save a DXF; AutoCAD opens DXF files too.') : 'DXF opens in AutoCAD, DraftSight, LibreCAD, SketchUp and most CAD programs.';
@@ -1841,6 +1845,7 @@ async function cadDialog() {
       $('#cadFmt').onchange = upd; upd();
     }
   });
+  if (o === 'oda') { if (api.openUrl) api.openUrl('https://www.opendesign.com/guestfiles/oda_file_converter'); toast('Install ODA File Converter with the normal settings, then open Save for AutoCAD again: DWG will be there.'); return; }
   if (!o) return;
   cadFmt = o.format; cadVer = o.version; cadDims = o.dims; cadFix = o.fixtures;
   if (o.format === 'ifc') { exportIfc(o.fixtures); return; }
@@ -1987,10 +1992,11 @@ async function generateCeilingDialog() {
       ${fld('Class for rooms without one', `<select id="gcIso">${[5, 6, 7, 8, 9].map(n => `<option value="${n}" ${n === 7 ? 'selected' : ''}>ISO ${n} (${Plan3DViewer.ISO_TARGETS[n].ach} air changes, ${Plan3DViewer.ISO_TARGETS[n].cov}% FFU coverage)</option>`).join('')}</select>`)}
       ${fld('Lights', `<select id="gcLt"><option value="48">Bright: one per 48 sq ft</option><option value="64" selected>Standard: one per 64 sq ft</option><option value="80">One per 80 sq ft</option><option value="100">Low: one per 100 sq ft</option></select>`)}
       ${fld('Grid', `<select id="gcSw"><option value="0" ${!G0.swap ? 'selected' : ''}>4′ side of the tiles runs up and down the plan</option><option value="1" ${G0.swap ? 'selected' : ''}>4′ side of the tiles runs across the plan</option></select>`)}
+      ${fld('Each room', `<select id="gcPr"><option value="1" selected>Its own grid, centred in the room (matching cut tiles at its walls)</option><option value="0">One grid running through every room</option></select>`)}
       <p class="note">FFU airflow: ${FM ? esc(FM.name) + ', ' + ((FM.sizes.find(q => q.nominal === '2x4') || FM.sizes[0]).cfm || '?') + ' CFM per 2×4 (pick another model in the Plan panel)' : 'no FFU model picked, so 720 CFM per 2×4 (90 fpm); pick a model in the Plan panel for its real airflow'}. A room's own class (set on its room label) wins over the one above. A room label's <b>Generated ceiling</b> setting can also give a room a ceiling no matter what, lights but no FFUs, or no ceiling. Gaps of up to 20′ between cleanroom wall ends count as closed. Afterwards, the <b>Grid</b> tool (T) takes ceiling off a space or puts it back with a click, and makes grid sections you can turn or shift; generating again keeps those choices.</p>
       ${nF0 ? `<p class="note">Keeping them: the grid runs the way most of your FFUs face and sits on the edges most of them are on. A room whose FFUs face the other way, or sit on other lines, gets its own grid section lined up with them, so the tiles between them stay whole. Any room with one of them gets a ceiling. Nothing you placed is moved, removed or added to (the Grid choice above is set by your FFUs).</p>` : ''}
       ${has ? `<p class="note" style="color:var(--warn)">This replaces the current ceiling${P.ceilingSource ? ' from ' + esc(P.ceilingSource) : ''} (${nF0} FFUs, ${nL0} lights). Ctrl+Z puts it back.</p>` : ''}`,
-    buttons: [{ label: 'Cancel', ret: null }, { label: 'Generate', primary: true, value: () => { const k = $('#gcKeep') ? $('#gcKeep').value : 'new'; return { iso: +$('#gcIso').value, sqftPerLight: +$('#gcLt').value, swap: $('#gcSw').value === '1', keep: k !== 'new', addLights: k === 'keepL' }; } }]
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Generate', primary: true, value: () => { const k = $('#gcKeep') ? $('#gcKeep').value : 'new'; return { iso: +$('#gcIso').value, sqftPerLight: +$('#gcLt').value, swap: $('#gcSw').value === '1', keep: k !== 'new', addLights: k === 'keepL', perRoom: !$('#gcPr') || $('#gcPr').value !== '0' }; } }]
   });
   if (!opts) return;
   const R = Plan3DViewer.generateCeiling(P, opts);
@@ -3314,8 +3320,9 @@ async function openPlanPdf(r) {
     try {
       const V = await pdfVector(lib, page);
       if (V && V.segs.length + V.arcs.length >= 20) {
-        const sc = await pdfScaleDialog(V.scale, V.scales);
-        if (sc && sc !== 'picture') { msg(''); const dd = pdfAsDrawing(V, sc, r.name + (doc.numPages > 1 ? ' p' + pageNo : '')); dxfDialog(dd, { unit: 2, layers: dd.wallLayers }); return; }
+        let sc = await pdfScaleDialog(V.scale, V.scales), Vuse = V;
+        if (sc === 'pick') { const pk = await pdfPickDialog(V, V.scale != null ? V.scale : 0.25); if (!pk) { msg(''); return; } sc = pk.sc; Vuse = pk.V; }
+        if (sc && sc !== 'picture') { msg(''); const dd = pdfAsDrawing(Vuse, sc, r.name + (doc.numPages > 1 ? ' p' + pageNo : '')); dxfDialog(dd, { unit: 2, layers: dd.wallLayers }); return; }
         if (!sc) { msg(''); return; }
       }
     } catch (e) { console.error(e); }
@@ -3420,9 +3427,61 @@ function pdfScaleDialog(found, all) {
   return dialogOpen({
     title: 'This PDF has real drawing lines',
     body: `<p>Coll Plan3D can read its lines exactly, like an AutoCAD file: walls, door swings and room names land right where they are drawn.</p>
-      ${found != null ? `<p>The sheet says <b>${esc(pdfScaleLabel(found))}</b>${(all || []).length > 1 ? ' (other scales on the sheet: ' + all.filter(v => v !== found).map(v => esc(pdfScaleLabel(v))).join(', ') + ')' : ''}.</p>` : '<p>No scale was found on the sheet. Pick the scale the plan was drawn at; you can fix the size afterwards with Set scale.</p>'}
+      ${found != null ? `<p>The sheet says <b>${esc(pdfScaleLabel(found))}</b>${(all || []).length > 1 ? ' (other scales on the sheet: ' + all.filter(v => v !== found).map(v => esc(pdfScaleLabel(v))).join(', ') + ')' : ''}.</p>` : '<p>No scale was found on the sheet. Pick the scale the plan was drawn at, or use <b>Pick a view / measure the scale</b> to set it from two points you know the distance between; you can fix the size afterwards with Set scale.</p>'}
       ${fld('Drawing scale', `<select id="pdfSc">${opts.map(([v, l]) => `<option value="${v}" ${Math.abs(v - pick) < 1e-6 ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`)}`,
-    buttons: [{ label: 'Cancel', ret: null }, { label: 'Open as a picture', ret: 'picture' }, { label: 'Read the lines', primary: true, value: () => +$('#pdfSc').value }]
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Open as a picture', ret: 'picture' }, { label: 'Pick a view / measure the scale…', ret: 'pick' }, { label: 'Read the lines', primary: true, value: () => +$('#pdfSc').value }]
+  });
+}
+/* A sheet with several views on it, or with no scale written on it: box the one view to bring in, and set the scale
+   by clicking two points and typing the real distance between them (a wall's length, a 4′ ceiling tile). Returns
+   { V: the drawing cut down to the box, sc: the scale for pdfAsDrawing }, or null. */
+function pdfPickDialog(V, sc0) {
+  let box = null, pts = [], mode = 'box', drag = null;
+  const all = V.segs; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const q of all) { x0 = Math.min(x0, q[0], q[2]); x1 = Math.max(x1, q[0], q[2]); y0 = Math.min(y0, q[1], q[3]); y1 = Math.max(y1, q[1], q[3]); }
+  const CW = 620, CH = Math.max(260, Math.min(460, Math.round(CW * (y1 - y0) / Math.max(1, x1 - x0)))), k = Math.min((CW - 16) / Math.max(1, x1 - x0), (CH - 16) / Math.max(1, y1 - y0));
+  const sx = (x) => 8 + (x - x0) * k, sy = (y) => CH - 8 - (y - y0) * k, ux = (px) => x0 + (px - 8) / k, uy = (py) => y0 + (CH - 8 - py) / k;
+  return dialogOpen({
+    title: 'Pick the view and set the scale', wide: true,
+    body: `<p><b>1.</b> Drag a box round the one view you want (skip this to bring in the whole sheet). <b>2.</b> Click two points you know the distance between, and type it.</p>
+      <div class="row" style="display:flex;gap:8px;margin-bottom:6px"><div class="seg" id="ppMode"><button type="button" data-m="box" class="on">1. Box the view</button><button type="button" data-m="pts">2. Two points</button></div><button type="button" class="btn" id="ppClear">Start over</button></div>
+      <canvas id="ppCv" width="${CW}" height="${CH}" style="width:100%;background:#fff;border-radius:8px;cursor:crosshair;touch-action:none"></canvas>
+      <div class="row" style="display:flex;gap:8px;align-items:center;margin-top:8px"><span>The two points are</span><input type="number" id="ppFt" min="0" step="1" style="width:80px" placeholder="feet"><span>ft</span><input type="number" id="ppIn" min="0" max="11.99" step="0.125" style="width:80px" placeholder="inches"><span>in apart</span></div>
+      <p class="note" id="ppNote">No two points yet: the scale picked before is used.</p>`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Read the lines', primary: true, value: () => {
+      const d = (+$('#ppFt').value || 0) + (+$('#ppIn').value || 0) / 12; let sc = sc0;
+      if (pts.length === 2) { if (!(d > 0)) { toast('Type the real distance between the two points.'); return false; } const L = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]); if (L < 1) { toast('Pick two points further apart.'); return false; } sc = L / (72 * d); }
+      let W = V;
+      if (box) {
+        const inb = (x, y) => x >= box[0] && x <= box[2] && y >= box[1] && y <= box[3];
+        const segs = V.segs.filter(q => inb(q[0], q[1]) && inb(q[2], q[3])), arcs = V.arcs.filter(a => inb(a.x, a.y)), texts = V.texts.filter(t => inb(t.x, t.y)), layers = {};
+        for (const q of segs) layers[q[4]] = (layers[q[4]] || 0) + 1; for (const a of arcs) if (a.layer != null) layers[a.layer] = (layers[a.layer] || 0) + 1;
+        if (segs.length < 4) { toast('That box has almost no lines in it. Drag it round the whole view.'); return false; }
+        W = { ...V, segs, arcs, texts, layers };
+      }
+      return { V: W, sc };
+    } }],
+    onOpen: () => {
+      const cv = $('#ppCv'), g = cv.getContext('2d');
+      const draw = () => {
+        g.clearRect(0, 0, CW, CH); g.strokeStyle = '#27323a'; g.lineWidth = 0.6; g.beginPath();
+        for (const q of all) { g.moveTo(sx(q[0]), sy(q[1])); g.lineTo(sx(q[2]), sy(q[3])); } g.stroke();
+        const b = drag || box; if (b) { g.fillStyle = 'rgba(242,200,75,.18)'; g.strokeStyle = '#c9971a'; g.lineWidth = 2; const X = sx(Math.min(b[0], b[2])), Y = sy(Math.max(b[1], b[3])), Wd = Math.abs(b[2] - b[0]) * k, Hd = Math.abs(b[3] - b[1]) * k; g.fillRect(X, Y, Wd, Hd); g.strokeRect(X, Y, Wd, Hd); }
+        g.fillStyle = '#d23b3b'; g.strokeStyle = '#d23b3b'; g.lineWidth = 2; pts.forEach(q => { g.beginPath(); g.arc(sx(q[0]), sy(q[1]), 5, 0, 7); g.fill(); });
+        if (pts.length === 2) { g.beginPath(); g.moveTo(sx(pts[0][0]), sy(pts[0][1])); g.lineTo(sx(pts[1][0]), sy(pts[1][1])); g.stroke(); }
+        $('#ppNote').textContent = pts.length === 2 ? 'Two points picked: type how far apart they really are.' : pts.length === 1 ? 'Now click the second point.' : 'No two points yet: the scale picked before is used.';
+      };
+      const at = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * CW / r.width, (e.clientY - r.top) * CH / r.height]; };
+      // a click lands on the nearest line end (within a few pixels), so the two points are exact
+      const snap = (px, py) => { let best = null, bd = 9; for (const q of all) for (const [x, y] of [[q[0], q[1]], [q[2], q[3]]]) { const d = Math.hypot(sx(x) - px, sy(y) - py); if (d < bd) { bd = d; best = [x, y]; } } return best || [ux(px), uy(py)]; };
+      const setMode = (m) => { mode = m; $$('#ppMode button').forEach(b => b.classList.toggle('on', b.dataset.m === m)); };
+      $$('#ppMode button').forEach(b => b.onclick = () => setMode(b.dataset.m));
+      $('#ppClear').onclick = () => { box = null; pts = []; setMode('box'); draw(); };
+      cv.onpointerdown = (e) => { const [px, py] = at(e); if (mode === 'box') { drag = [ux(px), uy(py), ux(px), uy(py)]; cv.setPointerCapture(e.pointerId); } else { if (pts.length >= 2) pts = []; pts.push(snap(px, py)); } draw(); };
+      cv.onpointermove = (e) => { if (!drag) return; const [px, py] = at(e); drag[2] = ux(px); drag[3] = uy(py); draw(); };
+      cv.onpointerup = () => { if (!drag) return; const b = [Math.min(drag[0], drag[2]), Math.min(drag[1], drag[3]), Math.max(drag[0], drag[2]), Math.max(drag[1], drag[3])]; drag = null; if ((b[2] - b[0]) * k > 12 && (b[3] - b[1]) * k > 12) { box = b; setMode('pts'); } draw(); };
+      draw();
+    }
   });
 }
 /* A PDF page's drawing as the importer's DXF data, in feet at the chosen scale. */
@@ -3530,6 +3589,29 @@ async function openProject() {
   if (!(await guardUnsaved())) return;
   handleLoaded(await api.openFile('project'));
 }
+/* ---------- Restore an earlier save: the last 10 saves of this project file (kept by the app on every save) ---------- */
+async function backupsDialog() {
+  closeMenus();
+  if (!api.listBackups) return;
+  if (!projectPath) { toast('Save this project first. From then on, every save keeps a copy you can come back to.'); return; }
+  const L = await api.listBackups(projectPath);
+  if (!L.length) { toast('No earlier saves of this project yet. Every save from now on keeps a copy (the last 10).'); return; }
+  const when = (t) => new Date(t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const a = await dialogOpen({
+    title: 'Restore an earlier save',
+    body: `<p>Every time you save, Coll Plan3D keeps a copy: the last 10 saves of this project. Pick one to open it. It opens as a copy, so the file you have now isn’t changed until you save over it.</p>
+      <div class="seg" style="flex-direction:column;align-items:stretch;gap:6px">${L.map((b, i) => `<label class="chk"><input type="radio" name="bk" value="${i}" ${i === (L.length > 1 ? 1 : 0) ? 'checked' : ''}> ${esc(when(b.at))}${i === 0 ? ' <small>(the latest save)</small>' : ''}</label>`).join('')}</div>`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Open that save', primary: true, value: () => { const r = document.querySelector('input[name="bk"]:checked'); return r ? +r.value : null; } }]
+  });
+  if (a == null || !L[a]) return;
+  if (!(await guardUnsaved())) return;
+  const json = await api.readBackup(projectPath, L[a].file);
+  if (!json) { toast('Couldn’t read that save.'); return; }
+  const name = (ed.plan.name || 'Project') + ' (restored ' + when(L[a].at) + ')';
+  await handleLoaded({ kind: 'project', name, path: null, json });
+  projectPath = null; ed.dirty = true; updateChrome();
+  toast('Opened the save from ' + when(L[a].at) + ' as a copy. Use Save as to keep it (pick the original file to put it back).');
+}
 async function openSample() {
   if (!(await guardUnsaved())) return;
   handleLoaded(await api.loadSample(ed.plan.mode === 'house' ? 'house' : 'cleanroom'));
@@ -3621,7 +3703,7 @@ async function exportHtml() {
 <script>${safe(a.post || '')}</script>
 <script>${safe(a.exporter || '')}</script>
 <script>${safe(a.viewer)}</script>
-<script>try { Plan3DViewer.mount(document.getElementById('v'), ${safe(JSON.stringify(plan))}, { joystick: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches), comments: true, startOutside: true, startMode: 'doll', views: ['doll', 'plenum', 'walk'], airflow: 'none', measure: false }); document.getElementById('p3fb').remove(); } catch (e) { var f = document.getElementById('p3fb'); if (f) f.querySelector('p').textContent = 'This browser couldn\u2019t start the 3D. Try Safari, Chrome, Edge or Firefox' + ('${online ? ', or the online link below.' : '.'}'); console.error(e); }</script>
+<script>try { Plan3DViewer.mount(document.getElementById('v'), ${safe(JSON.stringify(plan))}, { joystick: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches), comments: true, startOutside: true, startMode: 'doll', views: ['doll', 'plenum', 'walk'], airflow: 'none', measure: false, titleScreen: { company: ${JSON.stringify(plan.brandName || '')} } }); document.getElementById('p3fb').remove(); } catch (e) { var f = document.getElementById('p3fb'); if (f) f.querySelector('p').textContent = 'This browser couldn\u2019t start the 3D. Try Safari, Chrome, Edge or Firefox' + ('${online ? ', or the online link below.' : '.'}'); console.error(e); }</script>
 <!-- Made with Coll Plan3D · Coll Business Solutions LLC -->
 </body></html>`;
   const p = await api.exportFile(html, plan.name + ' walkthrough', 'html');
@@ -3699,7 +3781,7 @@ document.addEventListener('keydown', (e) => { const o = openMenu(); if (e.key ==
 {
   const item = (id, fn) => { const b = $(id); if (b) b.onclick = (e) => { closeMenus(); fn(e); }; };
   // File
-  item('#bOpen', openProject); item('#bImport', importPlan); item('#bOpenSample', openSample); item('#bSave2', () => save(false)); item('#bSaveAs', () => save(true)); item('#bNewPlan', newPlan); item('#bNewWin', () => { if (api.newWindow) api.newWindow(); });
+  item('#bOpen', openProject); item('#bBackups', backupsDialog); item('#bImport', importPlan); item('#bOpenSample', openSample); item('#bSave2', () => save(false)); item('#bSaveAs', () => save(true)); item('#bNewPlan', newPlan); item('#bNewWin', () => { if (api.newWindow) api.newWindow(); });
   // Ceiling
   item('#bCeiling', (e) => ceilingMenu(e)); item('#bGenCeil', generateCeilingDialog); item('#bLightsDwg', lightsDrawingDialog); item('#bLid', lidMenu);
   // Library
@@ -3707,7 +3789,8 @@ document.addEventListener('keydown', (e) => { const o = openMenu(); if (e.key ==
   item('#bLibGroup', saveGroupDialog); item('#bLibCeil', saveCeilingDialog); item('#bLibMach', addMachineDialog);
   // Job and Share
   item('#bExportLink', linkDialog); item('#bExportHtml', exportHtml); item('#bSubm', submittalDialog); item('#bPOs', poDialog); item('#bSched', scheduleDialog); item('#bCert', certExport); item('#bSnaps', () => snapsDialog()); item('#bCO', () => changeOrderDialog()); item('#bApproved', () => markApproved('')); item('#bSheet', sheetDialog); item('#bQuote', quoteDialog); item('#bFab', fabSheets); item('#bExportCad', () => { cadFmt = cadFmt === 'ifc' ? 'dwg' : cadFmt; cadDialog(); });
-  item('#bAutoTour', autoTourDialog);
+  item('#bCheckPlan', checkPlanDialog);
+  item('#bAutoTour', autoTourDialog); item('#bTourVideo', tourVideo);
   item('#bExportIfc', () => exportIfc(true)); item('#bExportGlb', exportGlb); item('#bExportTm', exportTwinmotion); item('#bExportParts', exportParts);
 }
 /* ---------- Automatic walkthrough: a guided walk through every room, in through the way in and out again,
@@ -3719,22 +3802,168 @@ function autoTourDialog() {
   let R = null; try { R = Plan3DViewer.autoRoute(Object.assign({}, P, { autoTour: { on: true } })); } catch (e) { R = null; }
   const names = new Map((P.rooms || []).map(r => [r.id, r.name || 'Room']));
   const route = R && R.people ? R.people.ids.map(k => k === 'out' ? 'Outside' : names.get(k) || 'Room').join(' → ') : null;
+  // your own stops: where you stood and looked in the 3D view, each with a caption; in a room with stops the
+  // walkthrough goes to each one in turn instead of the look round
+  let stops = (cur.stops || []).map(q => ({ ...q }));
+  const vs = view !== '2d' && viewer && viewer.state && (viewer.state.mode === 'walk' || viewer.state.mode === 'fly') ? viewer.state : null;
+  const stopList = () => stops.length ? stops.map((q, i) => `<div class="row" style="display:flex;gap:8px;align-items:center;margin:4px 0"><input type="text" data-st="${i}" value="${esc(q.text || '')}" placeholder="Caption (what they’re looking at)" style="flex:1"><button type="button" class="btn" data-rm="${i}" title="Remove this stop">✕</button></div>`).join('') : '<p class="note">No stops of your own yet: it looks slowly round each room.</p>';
   dialogOpen({
     title: 'Automatic walkthrough',
-    body: route ? `<p>A guided walk through the cleanroom: in through the way in, into every room through its doors, stopping in each one to look slowly round (its name and readings show at the bottom), then back out.</p>
+    body: route ? `<p>A guided walk through the cleanroom: in through the way in, into every room through its doors, then back out. In each room it looks slowly round, or goes to the stops you saved there.</p>
       <p style="margin:10px 0"><b>Route:</b> ${esc(route)}</p>
       <label class="chk"><input type="checkbox" id="atAuto" ${cur.autoplay !== false ? 'checked' : ''}> Start it by itself when a customer opens the walkthrough</label>
+      <div class="mhead" style="margin-top:14px">Your stops</div>
+      <div id="atStops">${stopList()}</div>
+      <button type="button" class="btn" id="atAdd" ${vs ? '' : 'disabled'}>＋ Add a stop where I’m standing now</button>
+      <p class="note">${vs ? 'The stop is where you are in the 3D view right now, looking the way you’re looking.' : 'To add a stop: open the 3D view, Walk to the spot and look at what you want to show (a hood, a pass-thru), then open this again.'}</p>
       <p class="note">It goes with the walkthrough page and the share link. Anyone can stop it with the ■ Stop tour button, or start it again with ▶ Walkthrough.</p>`
       : `<p>There's no route to walk yet: the rooms need names (use the Room tool) and doors between them, with one door to the outside.</p>`,
-    buttons: route ? [{ label: cur.on ? 'Turn off' : 'Cancel', ret: cur.on ? 'off' : null }, { label: 'Play it now', ret: 'play' }, { label: cur.on ? 'Save' : 'Make the walkthrough', primary: true, ret: 'save' }] : [{ label: 'OK', primary: true, ret: null }]
+    buttons: route ? [{ label: cur.on ? 'Turn off' : 'Cancel', ret: cur.on ? 'off' : null }, { label: 'Play it now', ret: 'play' }, { label: cur.on ? 'Save' : 'Make the walkthrough', primary: true, ret: 'save' }] : [{ label: 'OK', primary: true, ret: null }],
+    onOpen: () => {
+      const box = $('#atStops'); if (!box) return;
+      const keep = () => { box.querySelectorAll('input[data-st]').forEach(i => { if (stops[+i.dataset.st]) stops[+i.dataset.st].text = i.value.trim(); }); };
+      const draw = () => { box.innerHTML = stopList(); };
+      box.addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (!b) return; keep(); stops.splice(+b.dataset.rm, 1); draw(); });
+      box.addEventListener('input', keep);
+      if ($('#atAdd')) $('#atAdd').onclick = () => { if (!vs) return; keep(); stops.push({ id: uid(), x: +vs.x.toFixed(3), y: +vs.z.toFixed(3), yaw: +vs.yaw.toFixed(4), pitch: +Math.max(-0.6, Math.min(0.6, vs.pitch || 0)).toFixed(4), text: '' }); draw(); const L = box.querySelectorAll('input[data-st]'); if (L.length) L[L.length - 1].focus(); };
+    }
   }).then(a => {
     if (a === 'off') { ed.edit(Pl => { delete Pl.autoTour; }); toast('Automatic walkthrough turned off.'); return; }
     if (a !== 'save' && a !== 'play') return;
     const auto = !!($('#atAuto') && $('#atAuto').checked);
-    ed.edit(Pl => { Pl.autoTour = { on: true, autoplay: auto }; });
+    ed.edit(Pl => { Pl.autoTour = { on: true, autoplay: auto }; if (stops.length) Pl.autoTour.stops = stops; });
     if (a === 'play') { setView('3d'); setTimeout(() => { if (viewer && viewer.playTour && !viewer.playTour()) toast('Open the 3D view and press ▶ Walkthrough.'); }, 1200); }
     else toast('Automatic walkthrough made. It goes with the walkthrough page and the share link' + (auto ? ', and starts by itself.' : '.'), { label: 'Play it', fn: () => { setView('3d'); setTimeout(() => viewer && viewer.playTour && viewer.playTour(), 1200); } });
   });
+}
+/* ---------- Walkthrough video: the automatic walkthrough recorded to a video file to email or text. The 3D picture
+   only (no buttons or captions), at the size of the 3D view. MP4 where this computer can make one, WebM otherwise. ---------- */
+let tourRec = null;
+async function tourVideo() {
+  closeMenus();
+  if (tourRec) { toast('Already recording the walkthrough.'); return; }
+  if (!ed.plan.walls.length) { toast('Add some walls first.'); return; }
+  let R = null; try { R = Plan3DViewer.autoRoute(Object.assign({}, ed.plan, { autoTour: { on: true } })); } catch (e) { R = null; }
+  if (!R || !R.people) { toast('There’s no route to walk yet: the rooms need names and doors between them, with one door to the outside.'); return; }
+  if (!window.MediaRecorder) { toast('This computer can’t record video.'); return; }
+  const types = ['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
+  const type = types.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch (e) { return false; } }); if (!type) { toast('This computer can’t record video.'); return; }
+  const ext = type.startsWith('video/mp4') ? 'mp4' : 'webm';
+  const ok = await dialogOpen({
+    title: 'Walkthrough video',
+    body: `<p>Coll Plan3D plays the automatic walkthrough and records it to a video file (${ext.toUpperCase()}) you can email or text.</p>
+      <ul class="help"><li>It takes as long as the walkthrough does. Leave the window open and in front while it records.</li><li>The video is the 3D picture only, at the size of the 3D view: make the window big first for a sharper video.</li><li>When it finishes, you pick where to save it.</li></ul>`,
+    buttons: [{ label: 'Cancel', ret: null }, { label: 'Record it', primary: true, ret: true }]
+  });
+  if (!ok) return;
+  const had = ed.plan.autoTour; if (!had || !had.on) ed.plan.autoTour = Object.assign({ autoplay: false }, had || {}, { on: true });
+  setView('3d'); await new Promise(r => setTimeout(r, 1500));
+  if (viewer && had !== ed.plan.autoTour) viewer.setPlan(clonePlan());
+  await new Promise(r => setTimeout(r, 800));
+  const cv = document.querySelector('#view3d canvas');
+  if (!viewer || !cv || !cv.captureStream) { if (had !== ed.plan.autoTour) { if (had) ed.plan.autoTour = had; else delete ed.plan.autoTour; } toast('Couldn’t start recording.'); return; }
+  const chunks = [], stream = cv.captureStream(30);
+  let rec; try { rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 12000000 }); } catch (e) { toast('Couldn’t start recording: ' + e.message); return; }
+  rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+  const done = new Promise(res => { rec.onstop = res; });
+  tourRec = rec; rec.start(1000);
+  msg('Recording the walkthrough… leave this window open. Press ■ Stop tour to finish early.');
+  if (!viewer.playTour()) { rec.stop(); tourRec = null; msg(''); toast('Couldn’t start the walkthrough.'); return; }
+  await new Promise(res => { const t0 = Date.now(), iv = setInterval(() => { if (!viewer || !viewer.touring || Date.now() - t0 > 30 * 60000) { clearInterval(iv); res(); } }, 300); });
+  await new Promise(r => setTimeout(r, 600));
+  try { rec.stop(); } catch (e) { /* already stopped */ }
+  await done; stream.getTracks().forEach(t => t.stop()); tourRec = null; msg('');
+  if (had !== ed.plan.autoTour) { if (had) ed.plan.autoTour = had; else delete ed.plan.autoTour; if (viewer) viewer.setPlan(clonePlan()); }
+  const buf = new Uint8Array(await new Blob(chunks, { type }).arrayBuffer());
+  if (buf.length < 1000) { toast('The recording came out empty. Try again with the 3D view showing.'); return; }
+  const p = await api.exportFile(buf, (ed.plan.name || 'Walkthrough') + ' walkthrough', ext);
+  if (p) toast('Walkthrough video saved.', { label: 'Show in folder', fn: () => api.showInFolder(p) });
+}
+/* ---------- Check the plan: the things worth catching before it goes to a customer, each with its fix ----------
+   Receptacles and switches off their stud, a sink over a stud, equipment through a wall or outside the room, an FFU
+   or light on top of another, and ceiling that doesn't reach. */
+function planProblems(P) {
+  const V = Plan3DViewer, out = [];
+  // 1. receptacles, switches and data jacks not centred on a stud
+  try {
+    const taken = [], off = [];
+    for (const d of P.devices || []) { const q = V.deviceOnStud(P, d, taken); if (q && q.moved > 0.03) off.push({ d, q }); }
+    if (off.length) out.push({ key: 'studs', text: `${off.length} outlet${off.length === 1 ? '' : 's'}, switch${off.length === 1 ? '' : 'es'} or data jack${off.length === 1 ? '' : 's'} not centred on a stud (up to ${Math.round(Math.max(...off.map(o => o.q.moved)) * 12)}″ off).`, fixLabel: 'Move them onto studs',
+      fix: () => ed.edit(Q => { const tk = [], P0 = JSON.parse(JSON.stringify(Q)); for (const d of Q.devices || []) { const q = V.deviceOnStud(P0, d, tk); if (q && q.moved > 0.03) { d.x = q.x; d.y = q.y; if (q.h != null) d.h = q.h; } } }) });
+  } catch (e) { /* skip this check */ }
+  // 2. a hand sink over a stud
+  try {
+    for (const it of P.items || []) {
+      if (it.type !== 'handsink') continue;
+      const D = V.ITEMS[it.type] || {}, w = it.w || D.w || 2, dp = it.d || D.d || 1.67;
+      let best = null; for (const wl of P.walls || []) { if (wl.sp) continue; const dd = V.segDist(it.x, it.y, wl.x1, wl.y1, wl.x2, wl.y2); if (dd < dp / 2 + (wl.t || 0.25) / 2 + 0.4 && (!best || dd < best.dd)) best = { wl, dd }; }
+      if (!best) continue;
+      const wl = best.wl, L = Math.hypot(wl.x2 - wl.x1, wl.y2 - wl.y1) || 1, ux = (wl.x2 - wl.x1) / L, uy = (wl.y2 - wl.y1) / L, sc = (it.x - wl.x1) * ux + (it.y - wl.y1) * uy, half = w / 2 + 0.125 + 0.02;
+      const J = V.studJoints(wl, P), hit = J.filter(m => Math.abs(m - sc) < half - 0.02); if (!hit.length) continue;
+      // the shortest slide along the wall that clears every stud and stays between the wall's ends
+      const cands = []; for (const m of J) cands.push(m - half, m + half);
+      const ok = cands.filter(c => c - w / 2 > 0.3 && c + w / 2 < L - 0.3 && !J.some(m => Math.abs(m - c) < half - 0.021)).sort((a, b) => Math.abs(a - sc) - Math.abs(b - sc))[0];
+      out.push({ key: 'sink' + it.id, text: `${it.label || 'Hand sink'} sits over a stud post.`, sel: { kind: 'item', id: it.id }, fixLabel: ok != null ? `Slide it ${Math.round(Math.abs(ok - sc) * 12)}″ clear` : null,
+        fix: ok != null ? () => ed.edit(Q => { const o = (Q.items || []).find(q => q.id === it.id); if (o) { o.x += ux * (ok - sc); o.y += uy * (ok - sc); } }) : null });
+    }
+  } catch (e) { /* skip this check */ }
+  // 3. equipment through a wall, or outside the building
+  try {
+    const A = V.analyze(P), FPa = V.footprint(A, true);
+    const cross = (a, b, c, d) => { const o = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]); const d1 = o(c, d, a), d2 = o(c, d, b), d3 = o(a, b, c), d4 = o(a, b, d); return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0)); };
+    for (const it of P.items || []) {
+      const c0 = V.itemCorners(it), k = 0.92, c = c0.map(([x, y]) => [it.x + (x - it.x) * k, it.y + (y - it.y) * k]); // a little inside its edges: touching a wall is fine
+      let bad = '';
+      for (const wl of P.walls || []) { if (wl.sp) continue; if (c.some((q, i) => cross(q, c[(i + 1) % 4], [wl.x1, wl.y1], [wl.x2, wl.y2]))) { bad = 'goes through a wall'; break; } }
+      if (!bad && FPa && FPa.has && A.hardAny && !FPa.has(it.x, it.y)) bad = 'is outside the walls';
+      if (bad) out.push({ key: 'item' + it.id, text: `${it.label || (V.ITEMS[it.type] || {}).label || 'A piece of equipment'} ${bad}.`, sel: { kind: 'item', id: it.id }, fixLabel: 'Remove it', fix: () => ed.edit(Q => { Q.items = (Q.items || []).filter(q => q.id !== it.id); }) });
+    }
+  } catch (e) { /* skip this check */ }
+  // 4. an FFU or light on top of another
+  try {
+    const F = P.fixtures || [], r = (f) => [f.x - f.w / 2, f.y - f.h / 2, f.x + f.w / 2, f.y + f.h / 2]; let n = 0, first = null;
+    for (let i = 0; i < F.length; i++) for (let j = i + 1; j < F.length; j++) { const a = r(F[i]), b = r(F[j]); if (Math.min(a[2], b[2]) - Math.max(a[0], b[0]) > 0.15 && Math.min(a[3], b[3]) - Math.max(a[1], b[1]) > 0.15) { n++; first = first || F[j]; } }
+    if (n) out.push({ key: 'fx', text: `${n} place${n === 1 ? '' : 's'} where an FFU or light sits on top of another.`, sel: { kind: 'fixture', id: first.id }, fixLabel: null, fix: null });
+  } catch (e) { /* skip this check */ }
+  // 5. ceiling that doesn't reach: floor inside the cleanroom walls with no grid ceiling over it
+  try {
+    if (P.mode !== 'house' && Array.isArray(P.ceilRects) && P.ceilRects.length) {
+      const A = V.analyze(P), FP = V.footprint(A); let miss = 0;
+      if (FP && FP.has) {
+        const B = A.bounds, R = P.ceilRects, ch = (P.chases || []).map(k => [Math.min(k.x0, k.x1), Math.min(k.y0, k.y1), Math.max(k.x0, k.x1), Math.max(k.y0, k.y1)]), g = 0.5, m = 0.75;
+        for (let z = B.minZ + g / 2; z < B.maxZ; z += g) for (let x = B.minX + g / 2; x < B.maxX; x += g) {
+          if (!FP.has(x, z) || ch.some(q => x > q[0] - 0.3 && x < q[2] + 0.3 && z > q[1] - 0.3 && z < q[3] + 0.3)) continue;
+          if (!R.some(q => x >= q[0] - m && x <= q[2] + m && z >= q[1] - m && z <= q[3] + m) && !V.inCeiling(P, FP, x, z)) miss++;
+        }
+      }
+      const sq = miss * 0.25;
+      if (sq >= 4) out.push({ key: 'ceil', text: `About ${Math.round(sq)} sq ft inside the cleanroom walls has no ceiling over it.`, fixLabel: 'Lay the ceiling again…', fix: () => { setTimeout(() => generateCeilingDialog(), 150); return 'close'; } });
+    }
+  } catch (e) { /* skip this check */ }
+  return out;
+}
+async function checkPlanDialog() {
+  closeMenus();
+  if (!ed.plan.walls.length) { toast('Add some walls first.'); return; }
+  for (;;) {
+    const L = planProblems(ed.plan);
+    const a = await dialogOpen({
+      title: 'Check the plan', wide: true,
+      body: L.length ? `<p>${L.length} thing${L.length === 1 ? '' : 's'} to look at before this goes out:</p>
+        <div class="layers">${L.map((q, i) => `<label style="grid-template-columns:1fr auto auto;cursor:default;gap:8px"><span>${esc(q.text)}</span>${q.sel ? `<button type="button" class="btn" data-show="${i}">Show me</button>` : '<span></span>'}${q.fix ? `<button type="button" class="btn" data-fix="${i}">${esc(q.fixLabel)}</button>` : '<span></span>'}</label>`).join('')}</div>
+        <p class="note">Every fix can be undone with Ctrl+Z.</p>`
+        : `<p><b>Nothing to fix.</b> Outlets and switches are on their studs, no sink is over a stud, no equipment goes through a wall, no FFUs or lights overlap, and the ceiling covers the rooms.</p>`,
+      buttons: L.some(q => q.fix && q.key !== 'ceil' && !/^item/.test(q.key)) ? [{ label: 'Close', ret: null }, { label: 'Fix what can be fixed', primary: true, ret: 'all' }] : [{ label: 'Close', primary: true, ret: null }],
+      onOpen: () => {
+        const d = $('#dlgBody');
+        d.querySelectorAll('[data-fix]').forEach(b => b.onclick = () => { const r = L[+b.dataset.fix].fix(); $('#dlg').close(r === 'close' ? 'stop' : 'again'); });
+        d.querySelectorAll('[data-show]').forEach(b => b.onclick = () => { const q = L[+b.dataset.show]; $('#dlg').close('stop'); setView('2d'); ed.sel = q.sel; ed.multi = null; ed.emit('select'); const o = ed.selected(); if (o && isFinite(o.x) && ed.centerOn) ed.centerOn(o.x, o.y); ed.render(); renderProps(); });
+      }
+    });
+    if (a === 'all') { for (const q of planProblems(ed.plan)) if (q.fix && q.key !== 'ceil' && !/^item/.test(q.key)) q.fix(); continue; }
+    if ($('#dlg').returnValue === 'again') { $('#dlg').returnValue = ''; continue; }
+    $('#dlg').returnValue = ''; return;
+  }
 }
 /* ---------- Find (Ctrl+K): every menu command and tool, by what you type ---------- */
 function findDialog() {

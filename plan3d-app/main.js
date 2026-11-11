@@ -613,13 +613,41 @@ ipcMain.handle('save-project', async (e, json, current, suggested) => {
     p = r.filePath;
   }
   fs.writeFileSync(p, json, 'utf8');
+  keepBackup(p, json);
   return p;
+});
+
+/* ---------- Earlier saves: every save also keeps a copy (the last 10 per project file), so a project that was
+   changed or saved over by mistake can be brought back with File → Restore an earlier save. They live in the app's
+   own data folder, one folder per project file. ---------- */
+function backupDir(p) {
+  const key = require('crypto').createHash('sha1').update(path.resolve(p).toLowerCase()).digest('hex').slice(0, 12);
+  return path.join(app.getPath('userData'), 'backups', path.basename(p).replace(/\.[^.]+$/, '').replace(/[^\w .-]+/g, '_').slice(0, 60) + '-' + key);
+}
+function listBackups(p) {
+  try { const d = backupDir(p); return fs.readdirSync(d).filter(f => /\.plan3d$/.test(f)).sort().reverse().map(f => { const st = fs.statSync(path.join(d, f)); return { file: path.join(d, f), at: st.mtimeMs, size: st.size }; }); }
+  catch (e) { return []; }
+}
+function keepBackup(p, json) {
+  try {
+    const d = backupDir(p); fs.mkdirSync(d, { recursive: true });
+    const L = listBackups(p);
+    if (L.length && L[0].size === Buffer.byteLength(json, 'utf8') && fs.readFileSync(L[0].file, 'utf8') === json) return; // nothing changed since the last one
+    fs.writeFileSync(path.join(d, new Date().toISOString().replace(/[:.]/g, '-') + '.plan3d'), json, 'utf8');
+    for (const old of listBackups(p).slice(10)) { try { fs.unlinkSync(old.file); } catch (e) { /* next time */ } }
+  } catch (e) { /* saving the project itself worked; the copy is a bonus */ }
+}
+ipcMain.handle('list-backups', (e, p) => p ? listBackups(p).map(b => ({ file: b.file, at: b.at, size: b.size })) : []);
+ipcMain.handle('read-backup', (e, p, file) => {
+  // only a file this app made for this project
+  const ok = p && listBackups(p).some(b => b.file === file); if (!ok) return null;
+  try { return fs.readFileSync(file, 'utf8'); } catch (err) { return null; }
 });
 
 ipcMain.handle('export-file', async (e, { data, name, ext }) => {
   const r = await dialog.showSaveDialog(ownerOf(e), {
     defaultPath: path.join(app.getPath('documents'), (name || 'Walkthrough') + '.' + ext),
-    filters: [{ name: ext === 'html' ? 'Web page' : ext === 'csv' ? 'Spreadsheet (CSV)' : ext === 'ifc' ? 'IFC for Revit / BIM' : ext === 'jpg' ? 'Picture (JPEG)' : '3D model (glTF binary)', extensions: [ext] }]
+    filters: [{ name: ext === 'html' ? 'Web page' : ext === 'csv' ? 'Spreadsheet (CSV)' : ext === 'ifc' ? 'IFC for Revit / BIM' : ext === 'jpg' ? 'Picture (JPEG)' : ext === 'mp4' || ext === 'webm' ? 'Video' : '3D model (glTF binary)', extensions: [ext] }]
   });
   if (r.canceled || !r.filePath) return null;
   if (typeof data === 'string') fs.writeFileSync(r.filePath, data, 'utf8');
