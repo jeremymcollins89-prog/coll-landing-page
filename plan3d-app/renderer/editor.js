@@ -790,8 +790,19 @@ class Editor {
       return;
     }
     if (T === 'grille') {
+      // on an air chase: the grille goes in the chase's face nearest the click, at the tool's size
+      const kc = (this.plan.chases || []).slice().reverse().find(k => p.x >= Math.min(k.x0, k.x1) - 0.35 && p.x <= Math.max(k.x0, k.x1) + 0.35 && p.y >= Math.min(k.y0, k.y1) - 0.35 && p.y <= Math.max(k.y0, k.y1) + 0.35);
+      if (kc) {
+        const x0 = Math.min(kc.x0, kc.x1), x1 = Math.max(kc.x0, kc.x1), y0 = Math.min(kc.y0, kc.y1), y1 = Math.max(kc.y0, kc.y1);
+        const f = [['N', Math.abs(p.y - y0)], ['S', Math.abs(p.y - y1)], ['W', Math.abs(p.x - x0)], ['E', Math.abs(p.x - x1)]].sort((a, b) => a[1] - b[1])[0][0];
+        const face = (f === 'N' || f === 'S') ? x1 - x0 : y1 - y0, gw = (this.grW || 20) / 12, gh = (this.grH || 20) / 12;
+        this.edit(P => { const k = P.chases.find(q => q.id === kc.id); k.grille = f; k.grW = gw; k.grH = gh; k.grSill = this.grSill != null ? this.grSill : 0.5; k.damper = !!this.grDamper; });
+        this.emit('grille');
+        this.status('Return grille ' + Math.round(Math.min(gw, face - 0.1) * 12) + '″ × ' + Math.round(gh * 12) + '″ on the chase’s ' + ({ N: 'top', S: 'bottom', W: 'left', E: 'right' })[f] + ' face' + (gw > face - 0.1 ? ' (the face is narrower than the grille, so it’s fitted to it)' : '') + '. Click another face to move it there.');
+        this.render(); return;
+      }
       const w = (this.grW || 20) / 12, q = this.grillePlace(p.x, p.y, w);
-      if (!q) { this.status('Click on a wall panel to put a return grille in it.'); return; }
+      if (!q) { this.status('Click on a wall panel or an air chase to put a return grille in it.'); return; }
       const o = { id: uid(), ...q, w, h: (this.grH || 20) / 12, sill: this.grSill != null ? this.grSill : 0.5, damper: !!this.grDamper };
       this.edit(P => { (P.grilles = P.grilles || []).push(o); }); this.emit('grille');
       this.status('Return grille ' + Math.round(o.w * 12) + '″ × ' + Math.round(o.h * 12) + '″' + (o.damper ? ' with damper' : '') + ' placed, facing the side you clicked. Click to add another, Esc when done.');

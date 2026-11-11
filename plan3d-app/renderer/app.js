@@ -44,7 +44,7 @@ function pickMode(m) {
 }
 function msg(t) { $('#sMsg').textContent = t || 'Ready'; }
 const HINTS = {
-  grille: 'Pick a size in the bar above (20×20, 36×36 or your own) and whether it has a damper, then click on a wall panel: the return grille goes in the panel, facing the side you clicked (air flows into it from that side). Drag it to slide it along the wall.',
+  grille: 'Pick a size in the bar above (20×20, 36×36 or your own) and whether it has a damper, then click on a wall panel or an air chase (it goes in the chase face nearest your click): the return grille goes in the panel, facing the side you clicked (air flows into it from that side). Drag it to slide it along the wall.',
   header: 'Header panels close the plenum over an open passage between walls. The orange dashes are open gaps: click one to fill it, or press F to fill them all. Or click one end and then the other (ends catch on wall ends and faces). They run from the ceiling up to the top of the walls, with H-studs at 48″ on center.',
   draft: 'Drafting: pick Line, Polyline, Rectangle, Circle, Arc, Text or Dimension in the bar. It snaps to endpoints, midpoints, centers and crossings; type lengths, @x,y or length<angle and Enter. Select a drawn piece to edit it exactly, move, copy, rotate, mirror, scale, offset or array it.',
   removable: 'Click on a wall to put a removable wall section there (8′-6″ wide, 8′ clear opening under the header): wall panels in a 3″ × 3″ steel tube frame that come out to bring equipment in. Change its width and header in its properties; in 3D, Show removed takes the panels out.',
