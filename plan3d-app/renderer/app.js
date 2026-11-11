@@ -1142,6 +1142,8 @@ async function registerShare() {
 // a customer's decision on a walkthrough link (Approve / Request changes) arrives as a comment marked
 // ref.kind 'approval', ref.id the version of the link they looked at
 const isApproval = (c) => !!(c && c.ref && c.ref.kind === 'approval');
+// a customer opening the walkthrough (the viewer sends one of these per browser per day): shown on the bell, never a comment
+const isOpened = (c) => !!(c && c.ref && c.ref.kind === 'opened');
 function mergeApprovals(list) {
   const got = [];
   for (const c of list) {
@@ -1161,7 +1163,7 @@ function mergeApprovals(list) {
 }
 function mergeComments(list) {
   let n = 0; const who = new Set();
-  n += mergeApprovals(list); list = list.filter(c => !isApproval(c));
+  list = list.filter(c => !isOpened(c)); n += mergeApprovals(list); list = list.filter(c => !isApproval(c));
   ed.edit(Pl => { Pl.comments = Pl.comments || []; for (const c of list) { if (!c || !c.text || !isFinite(c.x) || !isFinite(c.y)) continue; const old = Pl.comments.find(q => q.id === String(c.id)); if (old) { if (old.text !== c.text) { old.text = String(c.text).slice(0, 2000); n++; } continue; } Pl.comments.push({ id: String(c.id || Plan3DEditor.uid()), x: +c.x, y: +c.y, h: +c.h || 0, text: String(c.text).slice(0, 2000), by: String(c.by || '').slice(0, 60), at: String(c.at || ''), ref: c.ref || null }); n++; if (c.by) who.add(c.by); } });
   return { n, who: [...who] };
 }
@@ -1200,14 +1202,14 @@ function trackJob() {
 }
 const ago = (iso) => { const t = Date.parse(iso || ''); if (!isFinite(t)) return ''; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' hr ago' : Math.round(m / 1440) + ' days ago'; };
 function refreshBell() {
-  const J = Object.values(JOBS.get()), n = J.reduce((t, o) => t + (o.unread || 0), 0), badge = $('#bBell .badge');
+  const J = Object.values(JOBS.get()), n = J.reduce((t, o) => t + (o.unread || 0) + (o.openNew || 0), 0), badge = $('#bBell .badge');
   if (badge) { badge.hidden = !n; badge.textContent = n > 99 ? '99+' : String(n); }
-  $('#bBell') && $('#bBell').setAttribute('title', n ? `${n} new customer comment${n === 1 ? '' : 's'}` : 'Customer comments: new ones on any of your jobs');
+  $('#bBell') && $('#bBell').setAttribute('title', n ? `${n} new from your customers (comments and walkthroughs opened)` : 'Customer comments and walkthroughs opened, on any of your jobs');
   const P2 = $('#bellPanel'); if (!P2 || P2.hidden) return;
-  const L = J.filter(o => o.lastAt || o.unread).sort((a, b) => (b.unread || 0) - (a.unread || 0) || (b.newAt || 0) - (a.newAt || 0));
-  P2.innerHTML = `<h4>Customer comments ${L.some(o => o.unread) ? '<button id="bellAll">Mark all read</button>' : ''}</h4>` + (L.length ? L.map(o => `<button class="bjob${o.unread ? '' : ' read'}" data-job="${esc(o.id)}"><b>${esc(o.name || 'Untitled plan')}${o.unread ? `<span>${o.unread} new</span>` : ''}</b><small>${esc(o.path ? o.path.split(/[\\/]/).pop() : 'not saved to a file yet')}${o.lastAt ? ' · ' + esc(ago(o.lastAt)) : ''}</small>${o.lastText ? `<q>${esc(o.lastText)}</q>${o.lastBy ? `<small>— ${esc(o.lastBy)}</small>` : ''}` : ''}</button>`).join('') : `<div class="empty">No comments yet. When a customer sends comments from a walkthrough or the phone viewer, the job shows up here${J.length ? ` (watching ${J.length} job${J.length === 1 ? '' : 's'})` : ''}.</div>`);
+  const L = J.filter(o => o.lastAt || o.unread || o.opens).sort((a, b) => ((b.unread || 0) + (b.openNew || 0)) - ((a.unread || 0) + (a.openNew || 0)) || (b.newAt || 0) - (a.newAt || 0));
+  P2.innerHTML = `<h4>Your customers ${L.some(o => o.unread || o.openNew) ? '<button id="bellAll">Mark all read</button>' : ''}</h4>` + (L.length ? L.map(o => `<button class="bjob${o.unread || o.openNew ? '' : ' read'}" data-job="${esc(o.id)}"><b>${esc(o.name || 'Untitled plan')}${o.unread ? `<span>${o.unread} new</span>` : o.openNew ? '<span>opened</span>' : ''}</b>${o.opens ? `<small>👁 Walkthrough opened ${o.opens} time${o.opens === 1 ? '' : 's'}${o.openAt ? ' · last ' + esc(ago(o.openAt)) : ''}</small>` : ''}<small>${esc(o.path ? o.path.split(/[\\/]/).pop() : 'not saved to a file yet')}${o.lastAt ? ' · ' + esc(ago(o.lastAt)) : ''}</small>${o.lastText ? `<q>${esc(o.lastText)}</q>${o.lastBy ? `<small>— ${esc(o.lastBy)}</small>` : ''}` : ''}</button>`).join('') : `<div class="empty">Nothing yet. When a customer opens a walkthrough or sends comments, the job shows up here${J.length ? ` (watching ${J.length} job${J.length === 1 ? '' : 's'})` : ''}.</div>`);
   $$('#bellPanel [data-job]').forEach(b => b.onclick = () => openJob(b.dataset.job));
-  if ($('#bellAll')) $('#bellAll').onclick = (e) => { e.stopPropagation(); const J2 = JOBS.get(); for (const o of Object.values(J2)) o.unread = 0; JOBS.set(J2); refreshBell(); };
+  if ($('#bellAll')) $('#bellAll').onclick = (e) => { e.stopPropagation(); const J2 = JOBS.get(); for (const o of Object.values(J2)) { o.unread = 0; o.openNew = 0; } JOBS.set(J2); refreshBell(); };
 }
 function showCommentsPanel() {
   ed.sel = null; ed.multi = null; renderProps();
@@ -1224,7 +1226,7 @@ async function openJob(id) {
     if (!r || r.kind === 'error') { toast(`Couldn’t open ${o.path.split(/[\\/]/).pop()}. It may have been moved or renamed.`); return; }
     await handleLoaded(r);
   }
-  const J2 = JOBS.get(); if (J2[id]) { J2[id].unread = 0; JOBS.set(J2); } refreshBell();
+  const J2 = JOBS.get(); if (J2[id]) { J2[id].unread = 0; J2[id].openNew = 0; JOBS.set(J2); } refreshBell();
   await checkComments(false);
   showCommentsPanel();
 }
@@ -1236,11 +1238,19 @@ function desktopNotify(o, n) {
     if (Notification.permission === 'granted') go(); else if (Notification.permission !== 'denied') Notification.requestPermission().then(p => { if (p === 'granted') go(); });
   } catch (e) { /* no notifications here */ }
 }
+function openedNotify(o, n) {
+  try {
+    toast(`“${o.name || 'A job'}” walkthrough was opened${n > 1 ? ' ' + n + ' times' : ''}.`);
+    if (!('Notification' in window)) return;
+    const go = () => { const nt = new Notification(`${o.name || 'A job'}: walkthrough opened`, { body: `Your customer opened the walkthrough${n > 1 ? ' ' + n + ' times' : ''}. Opened ${o.opens} time${o.opens === 1 ? '' : 's'} in all.`, silent: true }); nt.onclick = () => { window.focus(); }; };
+    if (Notification.permission === 'granted') go(); else if (Notification.permission !== 'denied') Notification.requestPermission().then(p => { if (p === 'granted') go(); });
+  } catch (e) { /* no notifications here */ }
+}
 let jobsBusy = false;
 async function pollJobs() {
   if (jobsBusy || !navigator.onLine) return; jobsBusy = true;
   try {
-    const J = JOBS.get(); let changed = false; const fresh = [];
+    const J = JOBS.get(); let changed = false; const fresh = [], opened = [];
     for (const o of Object.values(J)) {
       if (!o || !o.id || !o.key) continue;
       try {
@@ -1252,8 +1262,10 @@ async function pollJobs() {
           if (g.ok) r = await ask();
         }
         if (!r.ok) continue;
-        const d = await r.json(), list = (d.comments || []).filter(c => c && c.text);
+        const d = await r.json(), all = (d.comments || []).filter(c => c && c.text), list = all.filter(c => !isOpened(c)), opens = all.filter(isOpened);
         if (d.last > (o.notified || 0)) { o.notified = d.last; changed = true; }
+        // the customer opened the walkthrough: counted on the job, with a notification, so you know when to follow up
+        if (opens.length) { o.opens = (o.opens || 0) + opens.length; o.openNew = (o.openNew || 0) + opens.length; o.openAt = opens[opens.length - 1].at || new Date().toISOString(); o.newAt = Date.now(); changed = true; opened.push([o, opens.length]); }
         if (list.length) {
           const c = list[list.length - 1]; o.lastText = String(c.text).slice(0, 160); o.lastDecision = isApproval(c) ? (c.target === 'approve' ? 'approve' : 'changes') : ''; o.lastBy = String(c.by || '').slice(0, 60); o.lastAt = c.at || new Date().toISOString(); o.newAt = Date.now();
           // the job that's open and on screen gets them straight into its comments (checkComments); still listed
@@ -1266,6 +1278,7 @@ async function pollJobs() {
     if (changed) JOBS.set(J);
     refreshBell();
     for (const [o, n] of fresh) desktopNotify(o, n);
+    for (const [o, n] of opened) if (!fresh.some(q => q[0] === o)) openedNotify(o, n);
   } finally { jobsBusy = false; }
 }
 setInterval(pollJobs, 90000); setTimeout(pollJobs, 5000); window.addEventListener('focus', () => pollJobs());

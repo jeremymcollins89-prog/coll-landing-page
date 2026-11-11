@@ -6823,7 +6823,17 @@ function mount(container, plan, opts) {
     setNote('<small>Not sent yet: ' + esc3(why) + ' Your comments are kept here and will send on their own when it can. </small><button class="p3v-cfile">Save as a file instead</button>');
     retryT = setTimeout(() => sendComments(true), 30000);
   }
+  // Tell the designer the walkthrough was opened (the bell in Coll Plan3D shows it): once per browser per day for
+  // this plan, a few seconds in, only from a walkthrough sent to a customer. Nothing about the person is sent.
+  function reportOpen() {
+    const sid = plan && plan.share && plan.share.id; if (!sid || !opts.startOutside || !opts.comments) return;
+    const day = new Date().toISOString().slice(0, 10), k = 'p3.open.' + sid;
+    try { if (localStorage.getItem(k) === day) return; localStorage.setItem(k, day); } catch (e) { /* private window: it still reports, once per visit */ }
+    const c = { id: 'open-' + Math.random().toString(36).slice(2, 12) + Date.now().toString(36), text: 'Opened the walkthrough', target: 'opened', ref: { kind: 'opened', id: day }, at: new Date().toISOString(), by: '' };
+    try { fetch(COMMENTS_URL + encodeURIComponent(sid), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ comments: [c], project: (plan && plan.name) || '' }) }).catch(() => { try { localStorage.removeItem(k); } catch (e) { /* next visit */ } }); } catch (e) { /* the walkthrough works without it */ }
+  }
   if (opts.comments) {
+    setTimeout(reportOpen, 8000);
     global.addEventListener('online', () => sendComments(true));
     setTimeout(() => sendComments(true), 4000);  // anything left unsent from last time
   }
