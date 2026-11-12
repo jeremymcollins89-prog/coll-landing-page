@@ -4423,6 +4423,25 @@ function buildScene(THREE, plan, A) {
 
   const M0door = { leaf: M.leaf, frame: M.frame, kick: M.kick };
   const bioLeaf = () => M.bioLeaf || (M.bioLeaf = (() => { const m = bioAc().clone(); m.opacity = 0.3; m.name = 'Door leaf, clear acrylic in aluminum'; return m; })());
+  const bioDoorLeaf = (leafMesh, LL, top, swingDir) => {
+// a Bio-Clean door, as built: an aluminum storefront door. 3½″ stiles and top rail, a 10″ bottom rail, clear
+          // between; a chrome pull on the side it opens toward with a push bar across the other side, a lock
+          // cylinder under the pull, and a pivot hinge top and bottom on the hinge edge
+          const AL = bioAl(), st = 3.5 / 12, br = 10 / 12, bx2 = (u0, u1, a, b, th, mt) => { const m = localSegBox(leafMesh, u0, 0, u1, 0, a, b, th, mt); pick.push(m); return m; };
+          for (const m of [bx2(0, st, 0.05, top, 0.146, AL), bx2(LL - st, LL, 0.05, top, 0.146, AL), bx2(st, LL - st, 0.05, 0.05 + br, 0.146, AL), bx2(st, LL - st, top - st, top, 0.146, AL)]) outline(m);
+          const gl = bx2(st, LL - st, 0.05 + br, top - st, 0.02, bioLeaf()); gl.renderOrder = 2;
+          const CH = M.bioChrome || (M.bioChrome = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xd4d9dd, specular: 0xffffff, shininess: 120 }); m.name = 'Door hardware, chrome'; return m; })());
+          const rod = (x0, y0, z0, x1, y1, z1, r) => { const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0, len = Math.hypot(dx, dy, dz), m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 12), CH); m.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx / len, dy / len, dz / len)); leafMesh.add(m); return m; };
+          const pz = -swingDir, f0 = 0.073, so = 0.21, hx = LL - st / 2, hy0 = 3.0, hy1 = 4.0, rr = 0.04;
+          // the pull: an offset bar on two standoffs
+          rod(hx, hy0, pz * (f0 + so), hx, hy1, pz * (f0 + so), rr); rod(hx, hy0, pz * f0, hx, hy0, pz * (f0 + so + rr), rr); rod(hx, hy1, pz * f0, hx, hy1, pz * (f0 + so + rr), rr);
+          // the push bar across the other face, stile to stile
+          rod(st / 2, hy1, -pz * (f0 + so * 0.7), hx, hy1, -pz * (f0 + so * 0.7), rr * 0.8); rod(st / 2, hy1, -pz * f0, st / 2, hy1, -pz * (f0 + so * 0.7 + rr), rr * 0.8); rod(hx, hy1, -pz * f0, hx, hy1, -pz * (f0 + so * 0.7 + rr), rr * 0.8);
+          // lock cylinder, both faces
+          rod(hx, 3.5, -(f0 + 0.02), hx, 3.5, f0 + 0.02, 0.05);
+          // pivot hinges
+          for (const hy of [0.05, top - 0.3]) { const hg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.3, 0.2), CH); hg.position.set(-0.03, hy + 0.15, 0); leafMesh.add(hg); }
+  };
   for (const i of A.opInfo) {
     // a door in a Bio-Clean wall: an aluminum frame and a clear acrylic leaf
     M.leaf = i.bio ? bioLeaf() : M0door.leaf; M.frame = i.bio ? bioAl() : M0door.frame; M.kick = i.bio ? bioAl() : M0door.kick;
@@ -4548,6 +4567,7 @@ function buildScene(THREE, plan, A) {
         doorGroup.userData = { isDoor: true, isOpen: false, baseRotation: baseAngle, openAngle: 0, swingDir, side: [l.tx, l.tz] };
         root.add(doorGroup); doors.push(doorGroup); doorObs.push({ x1: l.x1, z1: l.z1, x2: l.x2, z2: l.z2, r: 0.07, doorGroup });
         const L = Math.hypot(ldx, ldz) || 1, top = S.leafH - 0.02, lm = new THREE.Group(); doorGroup.add(lm);
+        if (i.bio) { bioDoorLeaf(lm, L, top, swingDir); shadow((l.x1 + l.x2) / 2, (l.z1 + l.z2) / 2, l.w, 0.14, Math.atan2(-(l.z2 - l.z1), l.x2 - l.x1), 0.3); continue; }
         const g0 = (L - S.vis.w) / 2, g1 = g0 + S.vis.w, v0 = S.vis.y0, v1 = v0 + S.vis.h, gl = 1 / 12;
         const parts = [[0, L, 0.03, v0], [0, L, v1, top], [0, g0, v0, v1], [g1, L, v0, v1]].map(([u0, u1, y0, y1]) => localSegBox(lm, u0, 0, u1, 0, y0, y1, 0.145, M.leaf));
         // one outline round the whole leaf (the leaf is built in four pieces round the glass; outlining each piece
@@ -4621,11 +4641,7 @@ function buildScene(THREE, plan, A) {
         }
 
         if (i.bio) {
-          // a Bio-Clean door: a narrow-stile aluminum door, clear from the 10″ bottom rail up, a pull handle each side
-          const AL = bioAl(), st = 0.21, br = 10 / 12, LL = leafLen, bx2 = (u0, u1, a, b, th, mt) => { const m = localSegBox(leafMesh, u0, 0, u1, 0, a, b, th, mt); pick.push(m); return m; };
-          for (const m of [bx2(0, st, 0.05, top, 0.146, AL), bx2(LL - st, LL, 0.05, top, 0.146, AL), bx2(st, LL - st, 0.05, 0.05 + br, 0.146, AL), bx2(st, LL - st, top - st, top, 0.146, AL)]) outline(m);
-          const gl = bx2(st, LL - st, 0.05 + br, top - st, 0.02, bioLeaf()); gl.renderOrder = 2;
-          for (const sd of [1, -1]) { const hm = new THREE.Mesh(new THREE.BoxGeometry(0.09, 1.0, 0.07), M.closer); hm.position.set(LL - st / 2, 3.5, sd * 0.16); leafMesh.add(hm); }
+          bioDoorLeaf(leafMesh, leafLen, top, swingDir);
           shadow((l.x1 + l.x2) / 2, (l.z1 + l.z2) / 2, l.w, 0.14, Math.atan2(-(l.z2 - l.z1), l.x2 - l.x1), 0.3);
           continue;
         }
