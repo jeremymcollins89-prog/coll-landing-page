@@ -102,6 +102,9 @@ function fmtFt(ft) {
    ceiling track, and don't make a cleanroom ceiling. */
 const WALL_KINDS = {
   hardwall: { label: 'Hardwall cleanroom panel', short: 'Hardwall', t: 0.25, color: 0xf7f8f8, plan: '#e9eef0' },
+  // Aluminum Bio-Clean: clear acrylic panels sealed in a 1¾″ clear-anodized aluminum frame. A cleanroom wall like the
+  // hardwall for everything else (rooms, ceiling, doors, returns); only how it's built and drawn differs.
+  bioclean: { label: 'Aluminum Bio-Clean (acrylic in an aluminum frame)', short: 'Bio-Clean', t: 1.75 / 12, color: 0xd9eef3, plan: '#bfe3ee', bio: true },
   concrete: { label: 'Concrete (tilt-up / poured)', short: 'Concrete', t: 8 / 12, color: 0xb9b6ae, plan: '#a9a59c' },
   cmu: { label: 'Concrete block (CMU)', short: 'Block', t: 8 / 12, color: 0xc9c5bb, plan: '#bdb7aa' },
   metal: { label: 'Metal building panel', short: 'Metal panel', t: 6 / 12, color: 0xdfe3e5, plan: '#b6c3ca' },
@@ -110,7 +113,8 @@ const WALL_KINDS = {
   wood: { label: 'Wood stud wall (house)', short: 'Wood stud', t: 4.5 / 12, color: 0xf2efe9, plan: '#e6d3b3', frame: true },
   steel: { label: 'Steel stud wall (house)', short: 'Steel stud', t: 4.5 / 12, color: 0xf2efe9, plan: '#c9d3da', frame: true }
 };
-const isHard = (w) => !w || !w.kind || w.kind === 'hardwall' || !WALL_KINDS[w.kind];
+const isHard = (w) => !w || !w.kind || w.kind === 'hardwall' || w.kind === 'bioclean' || !WALL_KINDS[w.kind];
+const isBio = (w) => !!(w && w.kind === 'bioclean');
 const isFrame = (w) => !!(w && w.kind && WALL_KINDS[w.kind] && WALL_KINDS[w.kind].frame);
 
 /* ---------- House items: kitchen, bath, laundry, utility ----------
@@ -832,7 +836,7 @@ function analyze(plan) {
       bk.sort((p, q) => p - q);
       for (let k = 0; k + 1 < bk.length; k++) {
         const a = bk[k], b = bk[k + 1]; if (b - a < 0.004) continue;
-        pieces.push({ id: w.id, piece: w.piece || null, x1: w.x1 + ux * a, z1: w.y1 + uz * a, x2: w.x1 + ux * b, z2: w.y1 + uz * b, t, sp: !!w.sp && hard, s0: a, len: b - a, kind, hard, frame, ceilw: hard || frame, h: secs ? topAt((a + b) / 2, wh) : wh, ext: w.ext });
+        pieces.push({ id: w.id, piece: w.piece || null, x1: w.x1 + ux * a, z1: w.y1 + uz * a, x2: w.x1 + ux * b, z2: w.y1 + uz * b, t, sp: !!w.sp && hard, s0: a, len: b - a, kind, hard, frame, bio: isBio(w), ceilw: hard || frame, h: secs ? topAt((a + b) / 2, wh) : wh, ext: w.ext });
       }
     }
     ends.push({ x: w.x1, z: w.y1, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[0] < 0.01), w, h: hard ? topAt(0, wh) : wh });
@@ -876,7 +880,7 @@ function analyze(plan) {
     if (best > 1.5) host = null;
     if (!t) t = host && host.t ? host.t : 0.25;
     const opTop = (hh, oo, tt) => opTopFor(plan, hh, oo, tt, WH, PL);
-    const hard = isHard(host), frame = isFrame(host), i = { host, o, len, ux: dx / len, uz: dz / len, t, hard, frame, ceilw: hard || frame, kind: hard ? 'hardwall' : host.kind, wallH: hard ? opTop(host, o, t) : frame ? Math.max(6, host.h || H) : shellHeight(plan, host) };
+    const hard = isHard(host), frame = isFrame(host), i = { host, o, len, ux: dx / len, uz: dz / len, t, hard, frame, bio: isBio(host), ceilw: hard || frame, kind: hard ? 'hardwall' : host.kind, wallH: hard ? opTop(host, o, t) : frame ? Math.max(6, host.h || H) : shellHeight(plan, host) };
     i.leaves = leavesFor(i);
     opInfo.push(i);
   }
@@ -1790,11 +1794,11 @@ function wallCapSolids(c) {
 function wallCaps(plan, A) {
   A = A || analyze(plan);
   const beams = A.PL > 0 ? (plan.beams || []).map(b => ({ q: beamSeat(plan, A, b), bf: beamSize(b).bf / 12 })).filter(o => o.q.onWalls) : [];
-  const caps = (A.pieces || []).filter(p => p.hard && !p.frame).map(p => capPiece(p, beams));
+  const caps = (A.pieces || []).filter(p => p.hard && !p.frame && !p.bio).map(p => capPiece(p, beams));
   // the cap carries on over doors, glass and removable sections in cleanroom walls (their headers run up to the
   // top of the wall)
   for (const i of A.opInfo || []) {
-    if (!i.o || !i.hard || i.frame) continue;
+    if (!i.o || !i.hard || i.frame || i.bio) continue;
     const o = i.o; caps.push(capPiece({ id: 'rem', x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t || 0.25, h: i.wallH || A.WH || A.H, len: i.len, hard: true }, beams));
   }
   return caps;
@@ -4170,8 +4174,35 @@ function buildScene(THREE, plan, A) {
       }))); tx.anisotropy = ANISO; const m = new THREE.MeshPhongMaterial({ map: tx, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 }); m.name = 'H-stud with insert'; return m; })());
     return WP.face === 0xffffff ? stud : (M['studIns' + WP.label] || (M['studIns' + WP.label] = (() => { const m = stud.clone(); m.color.set(WP.face); m.emissive.set(WP.emissive); return m; })()));
   };
+  /* Aluminum Bio-Clean walls: a 1¾″ clear-anodized aluminum frame (floor base, posts, a rail at 42″, a 4½″ head
+     rail) with clear acrylic sealed in it. */
+  const BIO = { post: 1.75 / 12, base: 1.75 / 12, head: 4.5 / 12, rail: 42 / 12, pane: 0.177 / 12 };
+  const bioWalls = (plan.walls || []).filter(isBio);
+  const bioAt = (x, z) => bioWalls.some(w => segDist(x, z, w.x1, w.y1, w.x2, w.y2) < 0.4);
+  const bioAl = () => M.bioAl || (M.bioAl = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xc4cace, emissive: 0x15171a, specular: 0xd0d4d8, shininess: 70 }); m.name = 'Aluminum frame, clear anodized'; return m; })());
+  const bioAc = () => M.bioAc || (M.bioAc = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xd3eef5, specular: 0xffffff, shininess: 95, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }); m.name = 'Acrylic panel, clear'; return m; })());
+  // one framed stretch of wall from (x1,z1) to (x2,z2), y0 up to y1: posts at both ends and at each of `joints`
+  // (feet along it), the rails, and the acrylic between
+  const bioWall = (x1, z1, x2, z2, y0, y1, t, joints, o2) => {
+    o2 = o2 || {}; const L = Math.hypot(x2 - x1, z2 - z1); if (L < 0.02 || y1 - y0 < 0.05) return;
+    const ux = (x2 - x1) / L, uz = (z2 - z1) / L, al = bioAl(), at = (q) => [x1 + ux * q, z1 + uz * q], hp = BIO.post / 2;
+    const bar = (q0, q1, a, b, th) => { if (q1 - q0 < 0.01 || b - a < 0.01) return; const [ax, az] = at(q0), [bx, bz] = at(q1); const m = segBox(ax, az, bx, bz, a, b, th || t, al); outline(m); pick.push(m); };
+    const hd = Math.min(BIO.head, (y1 - y0) / 3), bs = o2.noBase ? 0 : BIO.base;
+    if (bs) bar(0, L, y0, y0 + bs); bar(0, L, y1 - hd, y1);
+    if (!o2.noRail && y0 < 0.5 && y1 - y0 > BIO.rail + 2) bar(0, L, BIO.rail - hp, BIO.rail + hp);
+    const P = [...new Set([o2.noEnds ? null : hp, ...(joints || []).filter(q => q > BIO.post * 1.5 && q < L - BIO.post * 1.5), o2.noEnds ? null : L - hp].filter(q => q != null).map(q => Math.round(q * 1000) / 1000))];
+    for (const q of P) bar(q - hp, q + hp, y0 + bs, y1 - hd, t + 0.004);
+    // the acrylic: one sheet behind the frame lines (it's the same pane to look through)
+    const g = segBox(x1, z1, x2, z2, y0 + bs, y1 - hd, BIO.pane, bioAc()); g.renderOrder = 2; pick.push(g);
+  };
   for (const p of A.pieces) {
     curRef = p.id ? { kind: 'wall', id: p.id } : null;
+    if (p.bio) {
+      const pw = (plan.walls || []).find(q => q.id === p.id); let J = []; try { J = pw ? wallModule(pw, plan).map(m => m - p.s0) : []; } catch (e) { J = []; }
+      bioWall(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, J);
+      shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1), 0.35);
+      continue;
+    }
     if (p.frame) {
       // a house wall: drywall on room sides, siding outside, white baseboard inside
       const F = frameMats(p.x1, p.z1, p.x2, p.z2, p.t, p.h, p.ext), m = segBox(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, F.mats);
@@ -4238,7 +4269,7 @@ function buildScene(THREE, plan, A) {
   {
     const cm = M.wallCap || (M.wallCap = new THREE.MeshLambertMaterial({ color: 0xf6f7f7, emissive: 0x2a2a2a, name: 'Wall cap, white' }));
     for (const i of A.opInfo || []) {
-      if (!i.o || !i.hard || i.frame) continue;
+      if (!i.o || !i.hard || i.frame || i.bio) continue;
       const o = i.o, piece = { id: 'op', x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t || 0.25, h: i.wallH || A.WH || A.H, len: i.len, hard: true };
       for (const q of wallCapSolids(capPiece(piece, capBeams()))) { const cpm = segBox(q.x1, q.z1, q.x2, q.z2, q.y0, q.y1, q.t, cm); cpm.userData.layer = 'caps'; outline(cpm); }
     }
@@ -4350,6 +4381,7 @@ function buildScene(THREE, plan, A) {
   };
   for (const c of A.corners) {
     const legs = [[c.a, c.b], [c.b, c.a]];
+    if (bioAt(c.x, c.z)) { const hc = c.h || WH, m = new THREE.Mesh(new THREE.BoxGeometry(c.wt + 0.006, hc, c.wt + 0.006), bioAl()); m.position.set(c.x, hc / 2, c.z); root.add(m); outline(m); pick.push(m); continue; }
     for (const [u, v] of legs) {
       const x1 = c.x + v[0] * c.wt / 2, z1 = c.z + v[1] * c.wt / 2, x2 = x1 + u[0] * c.size, z2 = z1 + u[1] * c.size;
       const m = segBox(x1, z1, x2, z2, 0, c.h || WH, c.wt + 0.006, M.white); outline(m); pick.push(m);
@@ -4361,25 +4393,33 @@ function buildScene(THREE, plan, A) {
   for (const e of A.ends) {
     if (e.cut || e.joined || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue;
     seen.push(e);
-    const eh = e.h || WH, m = new THREE.Mesh(new THREE.BoxGeometry(e.t, eh, e.t), M.white);
+    const eBio = bioAt(e.x, e.z), eh = e.h || WH, m = new THREE.Mesh(new THREE.BoxGeometry(e.t, eh, e.t), eBio ? bioAl() : M.white);
     m.position.set(e.x, eh / 2, e.z); m.rotation.y = e.ang; root.add(m); pick.push(m);
+    if (eBio) { outline(m); continue; }
     const pb = new THREE.Mesh(new THREE.BoxGeometry(e.t + 0.022, 0.333, e.t + 0.022), M.base); pb.position.set(e.x, 0.1665, e.z); pb.rotation.y = e.ang; root.add(pb);
     if (!trackOK(eh)) { /* one panel: no ceiling track */ }
     else if (eh > H + 0.05) { const ux = Math.cos(e.ang), uz = -Math.sin(e.ang), h2 = e.t / 2; trackFaces(e.x - ux * h2, e.z - uz * h2, e.x + ux * h2, e.z + uz * h2, e.t, H); trackFaces(e.x + uz * h2, e.z - ux * h2, e.x - uz * h2, e.z + ux * h2, e.t, H); }
     else { const pt = new THREE.Mesh(new THREE.BoxGeometry(e.t + 0.03, 0.17, e.t + 0.03), M.track); pt.position.set(e.x, H - 0.085, e.z); pt.rotation.y = e.ang; root.add(pt); }
   }
 
+  const M0door = { leaf: M.leaf, frame: M.frame, kick: M.kick };
+  const bioLeaf = () => M.bioLeaf || (M.bioLeaf = (() => { const m = bioAc().clone(); m.opacity = 0.3; m.name = 'Door leaf, clear acrylic in aluminum'; return m; })());
   for (const i of A.opInfo) {
+    // a door in a Bio-Clean wall: an aluminum frame and a clear acrylic leaf
+    M.leaf = i.bio ? bioLeaf() : M0door.leaf; M.frame = i.bio ? bioAl() : M0door.frame; M.kick = i.bio ? bioAl() : M0door.kick;
     const o = i.o, t = i.t, nx = -i.uz, nz = i.ux;
     curRef = o.id ? { kind: 'opening', id: o.id } : null;
     const ceilHere = i.hard ? wallCeil(plan, A, { x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t }) : H;
     const head = Math.min(i.hard ? Math.min(ceilHere, i.wallH || ceilHere) : (i.wallH || H), o.head || 7);
     const IP = i.hard ? wallPM(i.host && i.host.id) : null, top = i.wallH || H, hm = i.hard ? IP.trim : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head, undefined, head).mats : shellMat(i.kind, i.len, top - head, 0);
-    const passCut = o.type === 'pass' && i.hard;
+    const passCut = o.type === 'pass' && i.hard && !i.bio;
+    // in a Bio-Clean wall: the frame and acrylic carry on over a door, and round a pass-thru
+    if (i.bio && o.type === 'pass') { const sl = o.sill != null ? o.sill : 3; bioWall(o.x1, o.y1, o.x2, o.y2, 0, sl, t, [], { noRail: true }); bioWall(o.x1, o.y1, o.x2, o.y2, head, top, t, [], { noBase: true }); }
+    else if (i.bio && top - head > 0.05 && o.type !== 'removable') bioWall(o.x1, o.y1, o.x2, o.y2, head, top, t, [], { noBase: true });
     // a pass-thru is cut into a wall panel: the panel carries on over it in the wall's own face, no header seams
     // (one piece floor to top, the pass-thru's body round it, so its face shades exactly as the wall beside it)
     if (passCut) { const pf = wallFacePlain(IP); pick.push(segBox(o.x1, o.y1, o.x2, o.y2, 0, top, t, [IP.edge, IP.edge, IP.edge, IP.edge, pf, pf])); }
-    if (top - head > 0.01 && o.type !== 'removable' && !passCut) {
+    if (top - head > 0.01 && o.type !== 'removable' && !passCut && !i.bio) {
       if (i.hard) {
         // header panels over a door or glass in a cleanroom wall: the same panels as the wall (its colour), equal
         // widths of up to 45″, with an H-stud and its insert between them (centred over a pair of doors)
@@ -4421,7 +4461,7 @@ function buildScene(THREE, plan, A) {
       shadow((ax + bx) / 2, (az + bz) / 2, i.len, t, Math.atan2(-i.uz, i.ux));
     } else if (o.type === 'pass') {
       const sill = Math.max(0, Math.min(head - 0.5, o.sill == null ? 3 : o.sill)), D = Math.max(t + 0.1, o.depth || 2), ph = head - sill;
-      if (sill > 0.01) { if (i.hard) { segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base); } else { const lw = segBox(ax, az, bx, bz, 0, sill, t, shellMat(i.kind, i.len, sill, 0)); outline(lw); pick.push(lw); } }
+      if (sill > 0.01) { if (i.bio) { /* drawn with the wall */ } else if (i.hard) { segBox(ax, az, bx, bz, 0, 0.333, t + 0.022, M.base); } else { const lw = segBox(ax, az, bx, bz, 0, sill, t, shellMat(i.kind, i.len, sill, 0)); outline(lw); pick.push(lw); } }
       const body = segBox(ax, az, bx, bz, sill, head, D, M.steel); outline(body); pick.push(body);
       const [f1x, f1z] = along(-0.1), [f2x, f2z] = along(i.len + 0.1);
       segBox(f1x, f1z, f2x, f2z, sill - 0.1, sill, t + 0.05, M.steel); segBox(f1x, f1z, f2x, f2z, head, head + 0.1, t + 0.05, M.steel);
@@ -4590,6 +4630,7 @@ function buildScene(THREE, plan, A) {
       }
     }
   }
+  M.leaf = M0door.leaf; M.frame = M0door.frame; M.kick = M0door.kick;
 
   curRef = null;
   for (const b of A.boxes) {
@@ -4597,11 +4638,14 @@ function buildScene(THREE, plan, A) {
     // an air chase is a shaft open at the top (the air goes up into the plenum): four sides, seen from inside too,
     // and no cap
     const openTop = (g) => { g.groups = g.groups.filter(q => q.materialIndex !== 2 && q.materialIndex !== 3); return g; };
-    const cIn = M.chaseSide || (M.chaseSide = (() => { const q = M.white.clone(); q.side = THREE.DoubleSide; q.name = M.white.name || 'Air chase panel'; return q; })());
+    // (in a Bio-Clean room: clear acrylic sides in aluminum angles, on an aluminum base)
+    const chBio = bioWalls.length > 0 && [[b.x0, b.z0], [b.x1, b.z0], [b.x0, b.z1], [b.x1, b.z1]].some(([x, z]) => bioAt(x, z));
+    const cIn = chBio ? (M.bioChase || (M.bioChase = (() => { const q = bioAc().clone(); q.opacity = 0.26; q.name = 'Air chase panel, clear acrylic'; return q; })())) : M.chaseSide || (M.chaseSide = (() => { const q = M.white.clone(); q.side = THREE.DoubleSide; q.name = M.white.name || 'Air chase panel'; return q; })());
     const m = new THREE.Mesh(openTop(new THREE.BoxGeometry(w, H, d)), [cIn, cIn, cIn, cIn, cIn, cIn]);
     m.position.set((b.x0 + b.x1) / 2, H / 2, (b.z0 + b.z1) / 2); root.add(m); outline(m); pick.push(m);
     if (b.c && b.c.id) m.userData.ref = { kind: 'chase', id: b.c.id };
-    const cv = new THREE.Mesh(new THREE.BoxGeometry(w + 0.022, 0.333, d + 0.022), M.base); cv.position.set(m.position.x, 0.1665, m.position.z); root.add(cv);
+    const cv = chBio ? new THREE.Mesh(new THREE.BoxGeometry(w + 0.012, BIO.base, d + 0.012), bioAl()) : new THREE.Mesh(new THREE.BoxGeometry(w + 0.022, 0.333, d + 0.022), M.base); cv.position.set(m.position.x, chBio ? BIO.base / 2 : 0.1665, m.position.z); root.add(cv);
+    if (chBio) { const tgB = new THREE.BoxGeometry(0.1, H - BIO.base, 0.1); for (const [x, z] of [[b.x0, b.z0], [b.x1, b.z0], [b.x0, b.z1], [b.x1, b.z1]]) { const t2 = new THREE.Mesh(tgB, bioAl()); t2.position.set(x, BIO.base + (H - BIO.base) / 2, z); root.add(t2); } }
     if (trackOK(WH)) { const tIn = M.trackOpen || (M.trackOpen = (() => { const q = M.track.clone(); q.side = THREE.DoubleSide; return q; })()); const ct = new THREE.Mesh(openTop(new THREE.BoxGeometry(w + 0.03, 0.17, d + 0.03)), [tIn, tIn, tIn, tIn, tIn, tIn]); ct.position.set(m.position.x, H - 0.085, m.position.z); root.add(ct); }
     shadow(m.position.x, m.position.z, w, d, 0, 1.0);
     const f = b.grille;
@@ -4616,7 +4660,7 @@ function buildScene(THREE, plan, A) {
       const tgH = H - 0.333 - (trackOK(WH) ? 0.17 : 0), tg = new THREE.BoxGeometry(0.14, tgH, 0.14), corners = [];
       if (f === 'W') corners.push([b.x0, b.z0], [b.x0, b.z1]); else if (f === 'E') corners.push([b.x1, b.z0], [b.x1, b.z1]);
       else if (f === 'N') corners.push([b.x0, b.z0], [b.x1, b.z0]); else corners.push([b.x0, b.z1], [b.x1, b.z1]);
-      corners.forEach(([x, z]) => { const t = new THREE.Mesh(tg, M.frame); t.position.set(x, 0.333 + tgH / 2, z); root.add(t); outline(t); });
+      if (!chBio) corners.forEach(([x, z]) => { const t = new THREE.Mesh(tg, M.frame); t.position.set(x, 0.333 + tgH / 2, z); root.add(t); outline(t); });
     }
   }
 
@@ -7301,5 +7345,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight, lidRects, autoRoute, studJoints, deviceOnStud };
+global.Plan3DViewer = { isBio, removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight, lidRects, autoRoute, studJoints, deviceOnStud };
 })(typeof window !== 'undefined' ? window : this);
