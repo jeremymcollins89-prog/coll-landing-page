@@ -935,7 +935,7 @@ body.hd-asleep .hd-zzz{display:block;position:absolute;right:6%;top:0;color:#fff
 @keyframes pname{from{transform:translateY(60px) scale(.2);opacity:0}}
 @keyframes pbob{50%{transform:translateY(-12px)}}
 .party-dinos{position:absolute;left:0;right:0;bottom:2%;height:22vmin}
-.party-dinos svg{position:absolute;bottom:0;left:-25vmin;width:22vmin;animation:march 3.2s linear forwards,pbob .4s ease-in-out infinite}
+.party-dinos svg{position:absolute;bottom:0;left:calc(var(--dw, 22vmin) * -1.15);width:var(--dw, 22vmin);animation:march 3.2s linear forwards,pbob .4s ease-in-out infinite}
 @keyframes march{to{left:110%}}
 .sing{position:relative;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;--beat:600ms;--sc:#ff8fc2}
 .disco{position:absolute;inset:0;pointer-events:none;opacity:.5}
@@ -7953,6 +7953,9 @@ function party(withName = true) {
   const letters = [...word].map((ch, i) => `<b style="color:${LETTER_COLORS[i % LETTER_COLORS.length]};animation-delay:${(i * .08).toFixed(2)}s">${esc0(ch)}</b>`).join('');
   ov.innerHTML = `<div class="party-conf">${conf}</div><div class="party-name">${letters}</div><div class="party-dinos">${dinos}</div>`;
   document.body.appendChild(ov);
+  /* march just above the room buttons on the home screen so they stay clear */
+  const row = onHub() ? $('.portals') : null;
+  if (row) { const r = row.getBoundingClientRect(), pd = $('.party-dinos', ov), h = Math.max(60, Math.min(r.top - 10, innerHeight * .22)); pd.style.bottom = (innerHeight - r.top + 6) + 'px'; pd.style.height = h + 'px'; pd.style.setProperty('--dw', (h * 1.15) + 'px'); }
   [0, 4, 7, 12].forEach((n, i) => tone(SCALE[Math.min(10, n)] || SCALE[10], .2 + i * .14, .5, .06, 'triangle'));
   setTimeout(() => ov.classList.add('out'), 3000); setTimeout(() => ov.remove(), 3600);
 }
