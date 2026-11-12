@@ -19,8 +19,8 @@ const PIECE_NAMES = { panel: 'Wall panel', sp: 'S.P. panel', glass: 'Glass panel
 function floorTrackFt(plan, A) {
   A = A || global.Plan3DViewer.analyze(plan);
   let ft = 0;
-  for (const p of A.pieces) if (p.hard !== false) ft += p.len;
-  for (const i of A.opInfo) if (i.hard !== false && (i.o.type === 'glass' || i.o.type === 'pass')) ft += i.len;
+  for (const p of A.pieces) if (p.hard !== false && !p.bio) ft += p.len;
+  for (const i of A.opInfo) if (i.hard !== false && !i.bio && (i.o.type === 'glass' || i.o.type === 'pass')) ft += i.len;
   for (const b of A.boxes) ft += 2 * ((b.x1 - b.x0) + (b.z1 - b.z0));
   return ft;
 }
@@ -200,7 +200,7 @@ function partsList(plan) {
     add(D.group, D.label + (opts.length ? ', ' + opts.join(', ') : ''), size, 1, 'ea', ({ 'Cleanroom furniture': 186, 'Workstations and storage': 186.5, 'IV and compounding': 187, 'Sinks and gowning': 188, 'Air showers and ceiling': 188.5 })[D.group] || 189);
   }
   // hardwall (cleanroom) walls get panels, studs, posts, track and base; building walls get their own lines
-  const walls = A.walls.filter(w => V.isHard(w)), built = new Set(walls.filter(w => w.piece).map(w => w.id));
+  const walls = A.walls.filter(w => V.isHard(w) && !(V.isBio && V.isBio(w))), built = new Set(walls.filter(w => w.piece).map(w => w.id));
   // panels and posts run the full wall height: up through the plenum when there is one
   const WH = A.WH || H, hgt = ' × ' + ftin(WH);
 
@@ -219,7 +219,7 @@ function partsList(plan) {
   // Walls drawn as long runs: panels fall on a 48″ module from the wall's start (as on the plan sheet);
   // a door or glass cut leaves a cut panel on each side. Slivers under 1″ are trim, not panels.
   for (const p of A.pieces) {
-    if (built.has(p.id) || p.hard === false) continue;
+    if (built.has(p.id) || p.hard === false || p.bio) continue;
     const a = p.s0, b = p.s0 + p.len, cuts = [a], pw = (plan.walls || []).find(q => q.id === p.id);
     for (const m of V.wallModule && pw ? V.wallModule(pw, plan) : []) if (m > a + 1e-6 && m < b - 1e-6) cuts.push(m);
     cuts.push(b);
@@ -331,7 +331,7 @@ function partsList(plan) {
     else if (o.type === 'open') add('Doors & glass', 'Cased opening frame', inch(W) + ' × ' + ftin(o.head || 7), 1, 'ea', 34);
     else if (o.type === 'overhead') add('Doors & glass', 'Overhead door, sectional steel (with tracks, opener)', ftin(W) + ' × ' + ftin(o.head || 12), 1, 'ea', 35);
     // the header panels over a door, glass or pass-thru in a cleanroom wall: panels up to 45″ wide, an H-stud between
-    if (i.hard && o.type !== 'removable') {
+    if (i.hard && !i.bio && o.type !== 'removable') {
       const ceilHere = V.wallCeil ? V.wallCeil(plan, A, { x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t }) : H, top = i.wallH || WH, head = Math.min(Math.min(ceilHere, i.wallH || ceilHere), o.head || 7);
       if (top - head > 0.01) { const np = Math.max(1, Math.ceil((W + 3 / 12 - 1e-6) / (48 / 12))), pw = (W - (np - 1) * 3 / 12) / np, ns = np - 1; add('Wall panels', 'Header panel over door / glass', inch(pw) + ' × ' + ftin(top - head), np, 'ea', 10.7); if (ns) add('Studs & posts', 'H-stud, 3″ with insert (header panel over door / glass)', '3″ × ' + ftin(top - head), ns, 'ea', 20.7); }
     }
@@ -364,14 +364,41 @@ function partsList(plan) {
     }
   }
 
+  // --- Aluminum Bio-Clean walls: the 1¾″ × 4½″ clear-anodized frame (floor base, head rail, posts, a rail at 42″),
+  // the clear acrylic panels sealed in it, and the vinyl seal strip round both sides of every panel
+  {
+    const BP = A.pieces.filter(p => p.bio), BO = A.opInfo.filter(i => i.bio);
+    if (BP.length) {
+      const POST = 1.75 / 12, BASE = 1.75 / 12, HEAD = 4.5 / 12, RAIL = 42 / 12, G = 'Bio-Clean walls';
+      let baseFt2 = 0, headFt = 0, railFt = 0, posts = 0, seal = 0, postH = 0;
+      const pane = (w, h) => { if (w < 1 / 12 || h < 1 / 12) return; add(G, 'Acrylic panel, clear, 0.177″ (Plexiglas)', inch(w) + ' × ' + inch(h), 1, 'ea', 12.3); seal += 2 * (w + h) * 2; };
+      for (const p of BP) {
+        const h = p.h || WH, pw = (plan.walls || []).find(q => q.id === p.id);
+        let J = []; try { J = pw && V.wallModule ? V.wallModule(pw, plan).map(m => m - p.s0).filter(q => q > POST * 1.5 && q < p.len - POST * 1.5) : []; } catch (e) { J = []; }
+        const C = [POST / 2, ...J, p.len - POST / 2].sort((a, b) => a - b), mid = h > RAIL + 2;
+        baseFt2 += p.len; headFt += p.len; if (mid) railFt += p.len; posts += C.length; postH = Math.max(postH, h - BASE - HEAD);
+        for (let k = 0; k + 1 < C.length; k++) { const w = C[k + 1] - C[k] - POST; if (mid) { pane(w, RAIL - POST / 2 - BASE); pane(w, h - HEAD - RAIL - POST / 2); } else pane(w, h - BASE - HEAD); }
+      }
+      for (const i of BO) {
+        const o = i.o, top = i.wallH || WH, head = Math.min(top, o.head || 7), w = i.len - 2 * POST; headFt += i.len;
+        if (o.type === 'pass') { const sl = o.sill != null ? o.sill : 3; baseFt2 += i.len; pane(w, sl - BASE - HEAD / 3); pane(w, top - head - HEAD); }
+        else if (o.type !== 'removable' && top - head > 0.4) pane(w, top - head - HEAD);
+      }
+      add(G, 'Aluminum frame, 1¾″ × 4½″ clear anodized: floor base', '', Math.ceil(baseFt2), 'lin ft', 12.0);
+      add(G, 'Aluminum frame, 1¾″ × 4½″ clear anodized: head rail', '', Math.ceil(headFt), 'lin ft', 12.05);
+      if (railFt) add(G, 'Aluminum frame, 1¾″ clear anodized: rail at 42″', '', Math.ceil(railFt), 'lin ft', 12.1);
+      add(G, 'Aluminum frame post, 1¾″ clear anodized', ftin(postH), posts, 'ea', 12.2);
+      add(G, 'Vinyl seal strip (both sides of every panel)', '', Math.ceil(seal), 'lin ft', 12.4);
+    }
+  }
   // --- Hardwall floor track and trim (linear feet; base and ceiling track on both faces)
   const floorFt = floorTrackFt(plan, A);
   if (hJoint > 0.1) add('Wall panels', 'Horizontal H-channel (joint between stacked panels, walls over 12′)', '', Math.ceil(hJoint), 'lin ft', 14.5);
   if (floorFt) add('Wall panels', 'Floor track, hardwall (under all wall panels)', ftin(floorFt) + ' total', Math.ceil(floorFt), 'lin ft', 15);
   let baseFt = 0, trackFt = 0;
-  for (const p of A.pieces) if (p.hard !== false) { baseFt += p.len * 2; trackFt += p.len * 2; }
+  for (const p of A.pieces) if (p.hard !== false && !p.bio) { baseFt += p.len * 2; trackFt += p.len * 2; }
   for (const i of A.opInfo) {
-    if (i.hard === false) continue;
+    if (i.hard === false || i.bio) continue;
     if (i.o.type === 'glass' || i.o.type === 'pass' || i.o.type === 'removable') baseFt += i.len * 2;
     trackFt += i.len * 2;
   }
