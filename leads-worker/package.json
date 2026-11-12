@@ -1,0 +1,15 @@
+{
+  "name": "coll-leads",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Website request form handler for collbusinesssolutions.com: checks each request and emails it through Resend. Cloudflare Workers free plan. Coll Business Solutions LLC.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.149.0"
+  }
+}

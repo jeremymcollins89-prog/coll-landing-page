@@ -1,0 +1,19 @@
+# Website request form handler — Cloudflare Worker settings (free plan).
+# Deployed by .github/workflows/leads-worker.yml with the same Cloudflare secrets as the Academy server.
+name = "coll-leads"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+# Who gets the request emails.
+LEAD_TO = "collbusinesssolutions@gmail.com"
+# The sender. onboarding@resend.dev works right away, but Resend only delivers it to the email address
+# your Resend account was made with. To send from your own domain, verify collbusinesssolutions.com in
+# Resend (Domains) and change this to "Coll Website <requests@collbusinesssolutions.com>".
+LEAD_FROM = "Coll Website <onboarding@resend.dev>"
+# Extra browser origins allowed to post the form, comma-separated (the website and localhost are always allowed).
+ALLOWED_ORIGINS = ""
+
+# Secret (set by the workflow with `wrangler secret put`, never stored here):
+#   RESEND_API_KEY   from resend.com -> API Keys
