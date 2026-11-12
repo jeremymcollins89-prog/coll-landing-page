@@ -115,6 +115,10 @@ const WALL_KINDS = {
 };
 const isHard = (w) => !w || !w.kind || w.kind === 'hardwall' || w.kind === 'bioclean' || !WALL_KINDS[w.kind];
 const isBio = (w) => !!(w && w.kind === 'bioclean');
+// the Bio-Clean frame (feet): 4½″ faces on the posts, floor base and head rail, 1¾″ deep; 2½″ rails; 0.177″ acrylic
+const BIO_DIMS = { post: 4.5 / 12, base: 4.5 / 12, head: 4.5 / 12, rail: 2.5 / 12, pane: 0.177 / 12 };
+// a wall over 9′-6″ gets a rail at 8′ (a row of panels above it); a shorter wall is one panel floor to top
+const bioRail = (h) => (h > 9.5 ? 8 : 0);
 const isFrame = (w) => !!(w && w.kind && WALL_KINDS[w.kind] && WALL_KINDS[w.kind].frame);
 
 /* ---------- House items: kitchen, bath, laundry, utility ----------
@@ -4174,32 +4178,47 @@ function buildScene(THREE, plan, A) {
       }))); tx.anisotropy = ANISO; const m = new THREE.MeshPhongMaterial({ map: tx, color: 0xffffff, emissive: 0x141515, specular: 0x1c1c1c, shininess: 16 }); m.name = 'H-stud with insert'; return m; })());
     return WP.face === 0xffffff ? stud : (M['studIns' + WP.label] || (M['studIns' + WP.label] = (() => { const m = stud.clone(); m.color.set(WP.face); m.emissive.set(WP.emissive); return m; })()));
   };
-  /* Aluminum Bio-Clean walls: a 1¾″ clear-anodized aluminum frame (floor base, posts, a rail at 42″, a 4½″ head
-     rail) with clear acrylic sealed in it. */
-  const BIO = { post: 1.75 / 12, base: 1.75 / 12, head: 4.5 / 12, rail: 42 / 12, pane: 0.177 / 12 };
+  /* Aluminum Bio-Clean walls, as built: a satin aluminum frame 1¾″ deep with 4½″ faces (floor base, posts, head
+     rail), clear acrylic floor to top in each bay with a black gasket round it, and on a tall wall (over 9′-6″) a
+     rail at 8′ with a row of panels above. A return grille sits low in a narrow bay of its own: a post either
+     side of it and a rail over it, acrylic above. */
+  const BIO = BIO_DIMS;
   const bioWalls = (plan.walls || []).filter(isBio);
   const bioAt = (x, z) => bioWalls.some(w => segDist(x, z, w.x1, w.y1, w.x2, w.y2) < 0.4);
-  const bioAl = () => M.bioAl || (M.bioAl = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xc4cace, emissive: 0x15171a, specular: 0xd0d4d8, shininess: 70 }); m.name = 'Aluminum frame, clear anodized'; return m; })());
-  const bioAc = () => M.bioAc || (M.bioAc = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xd3eef5, specular: 0xffffff, shininess: 95, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }); m.name = 'Acrylic panel, clear'; return m; })());
+  const bioAl = () => M.bioAl || (M.bioAl = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xbfc4c7, emissive: 0x1a1c1e, specular: 0x9aa0a4, shininess: 42 }); m.name = 'Aluminum frame, clear anodized'; return m; })());
+  const bioAc = () => M.bioAc || (M.bioAc = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xd3eef5, specular: 0xffffff, shininess: 95, transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide }); m.name = 'Acrylic panel, clear'; return m; })());
+  const bioGasket = () => M.bioGk || (M.bioGk = new THREE.LineBasicMaterial({ color: 0x15171a }));
   // one framed stretch of wall from (x1,z1) to (x2,z2), y0 up to y1: posts at both ends and at each of `joints`
-  // (feet along it), the rails, and the acrylic between
+  // (feet along it), the rails, and an acrylic panel in every bay. o2.grilles: [{ c, w, top }] return grilles in it.
   const bioWall = (x1, z1, x2, z2, y0, y1, t, joints, o2) => {
     o2 = o2 || {}; const L = Math.hypot(x2 - x1, z2 - z1); if (L < 0.02 || y1 - y0 < 0.05) return;
     const ux = (x2 - x1) / L, uz = (z2 - z1) / L, al = bioAl(), at = (q) => [x1 + ux * q, z1 + uz * q], hp = BIO.post / 2;
-    const bar = (q0, q1, a, b, th) => { if (q1 - q0 < 0.01 || b - a < 0.01) return; const [ax, az] = at(q0), [bx, bz] = at(q1); const m = segBox(ax, az, bx, bz, a, b, th || t, al); outline(m); pick.push(m); };
-    const hd = Math.min(BIO.head, (y1 - y0) / 3), bs = o2.noBase ? 0 : BIO.base;
+    const bar = (q0, q1, a, b, th) => { q0 = Math.max(0, q0); q1 = Math.min(L, q1); if (q1 - q0 < 0.01 || b - a < 0.01) return; const [ax, az] = at(q0), [bx, bz] = at(q1); const m = segBox(ax, az, bx, bz, a, b, th || t, al); outline(m); pick.push(m); };
+    const pane = (q0, q1, a, b) => { if (q1 - q0 < 0.04 || b - a < 0.04) return; const [ax, az] = at(q0), [bx, bz] = at(q1); const g = segBox(ax, az, bx, bz, a, b, BIO.pane, bioAc()); g.renderOrder = 2; g.add(new THREE.LineSegments(new THREE.EdgesGeometry(g.geometry, 25), bioGasket())); pick.push(g); };
+    const hd = Math.min(BIO.head, (y1 - y0) / 3), bs = o2.noBase ? 0 : Math.min(BIO.base, (y1 - y0) / 3), GR = (o2.grilles || []).filter(g => g.c > hp && g.c < L - hp);
     if (bs) bar(0, L, y0, y0 + bs); bar(0, L, y1 - hd, y1);
-    if (!o2.noRail && y0 < 0.5 && y1 - y0 > BIO.rail + 2) bar(0, L, BIO.rail - hp, BIO.rail + hp);
-    const P = [...new Set([o2.noEnds ? null : hp, ...(joints || []).filter(q => q > BIO.post * 1.5 && q < L - BIO.post * 1.5), o2.noEnds ? null : L - hp].filter(q => q != null).map(q => Math.round(q * 1000) / 1000))];
+    const rail = !o2.noRail && y0 < 0.5 ? bioRail(y1 - y0) : 0;
+    if (rail) bar(0, L, y0 + rail - BIO.rail / 2, y0 + rail + BIO.rail / 2);
+    // posts: the ends, the panel joints (not inside a grille's bay), and one either side of each grille
+    const gsp = GR.map(g => [g.c - g.w / 2 - BIO.post, g.c + g.w / 2 + BIO.post]);
+    let P = [o2.noEnds ? null : hp, ...(joints || []).filter(q => q > BIO.post * 1.2 && q < L - BIO.post * 1.2 && !gsp.some(([a, b]) => q > a - hp && q < b + hp)), o2.noEnds ? null : L - hp].filter(q => q != null);
+    for (const [a, b] of gsp) P.push(a + hp, b - hp);
+    P = [...new Set(P.map(q => Math.round(Math.max(hp, Math.min(L - hp, q)) * 1000) / 1000))].sort((a, b) => a - b).filter((q, k, arr) => k === 0 || q - arr[k - 1] > BIO.post * 0.6);
     for (const q of P) bar(q - hp, q + hp, y0 + bs, y1 - hd, t + 0.004);
-    // the acrylic: one sheet behind the frame lines (it's the same pane to look through)
-    const g = segBox(x1, z1, x2, z2, y0 + bs, y1 - hd, BIO.pane, bioAc()); g.renderOrder = 2; pick.push(g);
+    const E = o2.noEnds ? [0, ...P, L] : P;
+    for (let k = 0; k + 1 < E.length; k++) {
+      const q0 = E[k] + (o2.noEnds && k === 0 ? 0 : hp), q1 = E[k + 1] - (o2.noEnds && k === E.length - 2 ? 0 : hp), g = GR.find(g2 => g2.c > q0 && g2.c < q1);
+      let lo = y0 + bs; const hi = y1 - hd;
+      if (g) { bar(q0, q1, g.top, g.top + BIO.rail); lo = g.top + BIO.rail; }
+      if (rail && y0 + rail > lo + 0.3 && y0 + rail < hi - 0.3) { pane(q0, q1, lo, y0 + rail - BIO.rail / 2); pane(q0, q1, y0 + rail + BIO.rail / 2, hi); } else pane(q0, q1, lo, hi);
+    }
   };
   for (const p of A.pieces) {
     curRef = p.id ? { kind: 'wall', id: p.id } : null;
     if (p.bio) {
       const pw = (plan.walls || []).find(q => q.id === p.id); let J = []; try { J = pw ? wallModule(pw, plan).map(m => m - p.s0) : []; } catch (e) { J = []; }
-      bioWall(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, J);
+      const L0 = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, GRp = (plan.grilles || []).filter(g => g.wall === p.id && !g.plenum).map(g => ({ c: (g.x - p.x1) * (p.x2 - p.x1) / L0 + (g.y - p.z1) * (p.z2 - p.z1) / L0, w: +g.w || 20 / 12, top: (g.sill != null ? +g.sill : 0.5) + (+g.h || 20 / 12) }));
+      bioWall(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, J, { grilles: GRp });
       shadow((p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2, p.len, p.t, Math.atan2(-(p.z2 - p.z1), p.x2 - p.x1), 0.35);
       continue;
     }
@@ -4601,6 +4620,15 @@ function buildScene(THREE, plan, A) {
           continue;
         }
 
+        if (i.bio) {
+          // a Bio-Clean door: a narrow-stile aluminum door, clear from the 10″ bottom rail up, a pull handle each side
+          const AL = bioAl(), st = 0.21, br = 10 / 12, LL = leafLen, bx2 = (u0, u1, a, b, th, mt) => { const m = localSegBox(leafMesh, u0, 0, u1, 0, a, b, th, mt); pick.push(m); return m; };
+          for (const m of [bx2(0, st, 0.05, top, 0.146, AL), bx2(LL - st, LL, 0.05, top, 0.146, AL), bx2(st, LL - st, 0.05, 0.05 + br, 0.146, AL), bx2(st, LL - st, top - st, top, 0.146, AL)]) outline(m);
+          const gl = bx2(st, LL - st, 0.05 + br, top - st, 0.02, bioLeaf()); gl.renderOrder = 2;
+          for (const sd of [1, -1]) { const hm = new THREE.Mesh(new THREE.BoxGeometry(0.09, 1.0, 0.07), M.closer); hm.position.set(LL - st / 2, 3.5, sd * 0.16); leafMesh.add(hm); }
+          shadow((l.x1 + l.x2) / 2, (l.z1 + l.z2) / 2, l.w, 0.14, Math.atan2(-(l.z2 - l.z1), l.x2 - l.x1), 0.3);
+          continue;
+        }
         const m1 = localSegBox(leafMesh, a0x, a0z, a1x, a1z, 0.05, v0, 0.14, M.leaf);
         const m2 = localSegBox(leafMesh, a0x, a0z, a1x, a1z, v1, top, 0.14, M.leaf);
         const m3 = localSegBox(leafMesh, a0x, a0z, b0x, b0z, v0, v1, 0.14, M.leaf);
@@ -7345,5 +7373,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { isBio, removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight, lidRects, autoRoute, studJoints, deviceOnStud };
+global.Plan3DViewer = { isBio, BIO_DIMS, bioRail, removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight, lidRects, autoRoute, studJoints, deviceOnStud };
 })(typeof window !== 'undefined' ? window : this);

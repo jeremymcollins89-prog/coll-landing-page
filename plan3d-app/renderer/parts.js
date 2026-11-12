@@ -364,31 +364,40 @@ function partsList(plan) {
     }
   }
 
-  // --- Aluminum Bio-Clean walls: the 1¾″ × 4½″ clear-anodized frame (floor base, head rail, posts, a rail at 42″),
-  // the clear acrylic panels sealed in it, and the vinyl seal strip round both sides of every panel
+  // --- Aluminum Bio-Clean walls, as built: the satin aluminum frame (4½″ faces, 1¾″ deep: floor base, head rail,
+  // posts; a 2½″ rail at 8′ on walls over 9′-6″ and over each return grille), a clear acrylic panel in every bay,
+  // and the black gasket round both sides of every panel
   {
     const BP = A.pieces.filter(p => p.bio), BO = A.opInfo.filter(i => i.bio);
     if (BP.length) {
-      const POST = 1.75 / 12, BASE = 1.75 / 12, HEAD = 4.5 / 12, RAIL = 42 / 12, G = 'Bio-Clean walls';
+      const B = V.BIO_DIMS, POST = B.post, BASE = B.base, HEAD = B.head, RAIL = B.rail, G = 'Bio-Clean walls';
       let baseFt2 = 0, headFt = 0, railFt = 0, posts = 0, seal = 0, postH = 0;
       const pane = (w, h) => { if (w < 1 / 12 || h < 1 / 12) return; add(G, 'Acrylic panel, clear, 0.177″ (Plexiglas)', inch(w) + ' × ' + inch(h), 1, 'ea', 12.3); seal += 2 * (w + h) * 2; };
       for (const p of BP) {
-        const h = p.h || WH, pw = (plan.walls || []).find(q => q.id === p.id);
-        let J = []; try { J = pw && V.wallModule ? V.wallModule(pw, plan).map(m => m - p.s0).filter(q => q > POST * 1.5 && q < p.len - POST * 1.5) : []; } catch (e) { J = []; }
-        const C = [POST / 2, ...J, p.len - POST / 2].sort((a, b) => a - b), mid = h > RAIL + 2;
-        baseFt2 += p.len; headFt += p.len; if (mid) railFt += p.len; posts += C.length; postH = Math.max(postH, h - BASE - HEAD);
-        for (let k = 0; k + 1 < C.length; k++) { const w = C[k + 1] - C[k] - POST; if (mid) { pane(w, RAIL - POST / 2 - BASE); pane(w, h - HEAD - RAIL - POST / 2); } else pane(w, h - BASE - HEAD); }
+        const h = p.h || WH, pw = (plan.walls || []).find(q => q.id === p.id), L0 = p.len || 1, ux = (p.x2 - p.x1) / L0, uz = (p.z2 - p.z1) / L0, hp = POST / 2;
+        const GR = (plan.grilles || []).filter(g => g.wall === p.id && !g.plenum).map(g => ({ c: (g.x - p.x1) * ux + (g.y - p.z1) * uz, w: +g.w || 20 / 12, top: (g.sill != null ? +g.sill : 0.5) + (+g.h || 20 / 12) })).filter(g => g.c > hp && g.c < p.len - hp);
+        const gsp = GR.map(g => [g.c - g.w / 2 - POST, g.c + g.w / 2 + POST]);
+        let J = []; try { J = pw && V.wallModule ? V.wallModule(pw, plan).map(m => m - p.s0).filter(q => q > POST * 1.2 && q < p.len - POST * 1.2 && !gsp.some(([a, b]) => q > a - hp && q < b + hp)) : []; } catch (e) { J = []; }
+        let C = [hp, ...J, p.len - hp]; for (const [a, b] of gsp) C.push(a + hp, b - hp);
+        C = [...new Set(C.map(q => Math.round(Math.max(hp, Math.min(p.len - hp, q)) * 1000) / 1000))].sort((a, b) => a - b).filter((q, k, arr) => k === 0 || q - arr[k - 1] > POST * 0.6);
+        const rail = V.bioRail(h);
+        baseFt2 += p.len; headFt += p.len; if (rail) railFt += p.len; posts += C.length; postH = Math.max(postH, h - BASE - HEAD);
+        for (let k = 0; k + 1 < C.length; k++) {
+          const q0 = C[k] + hp, q1 = C[k + 1] - hp, w = q1 - q0, g = GR.find(g2 => g2.c > q0 && g2.c < q1); let lo = BASE; const hi = h - HEAD;
+          if (g) { railFt += w; lo = g.top + RAIL; }
+          if (rail && rail > lo + 0.3 && rail < hi - 0.3) { pane(w, rail - RAIL / 2 - lo); pane(w, hi - rail - RAIL / 2); } else pane(w, hi - lo);
+        }
       }
       for (const i of BO) {
         const o = i.o, top = i.wallH || WH, head = Math.min(top, o.head || 7), w = i.len - 2 * POST; headFt += i.len;
         if (o.type === 'pass') { const sl = o.sill != null ? o.sill : 3; baseFt2 += i.len; pane(w, sl - BASE - HEAD / 3); pane(w, top - head - HEAD); }
-        else if (o.type !== 'removable' && top - head > 0.4) pane(w, top - head - HEAD);
+        else if (o.type !== 'removable' && top - head > 0.4) pane(w, top - head - Math.min(HEAD, (top - head) / 3));
       }
-      add(G, 'Aluminum frame, 1¾″ × 4½″ clear anodized: floor base', '', Math.ceil(baseFt2), 'lin ft', 12.0);
-      add(G, 'Aluminum frame, 1¾″ × 4½″ clear anodized: head rail', '', Math.ceil(headFt), 'lin ft', 12.05);
-      if (railFt) add(G, 'Aluminum frame, 1¾″ clear anodized: rail at 42″', '', Math.ceil(railFt), 'lin ft', 12.1);
-      add(G, 'Aluminum frame post, 1¾″ clear anodized', ftin(postH), posts, 'ea', 12.2);
-      add(G, 'Vinyl seal strip (both sides of every panel)', '', Math.ceil(seal), 'lin ft', 12.4);
+      add(G, 'Aluminum frame, 4½″ × 1¾″ clear anodized: floor base', '', Math.ceil(baseFt2), 'lin ft', 12.0);
+      add(G, 'Aluminum frame, 4½″ × 1¾″ clear anodized: head rail', '', Math.ceil(headFt), 'lin ft', 12.05);
+      if (railFt) add(G, 'Aluminum frame rail, 2½″ clear anodized (at 8′ on tall walls, and over return grilles)', '', Math.ceil(railFt), 'lin ft', 12.1);
+      add(G, 'Aluminum frame post, 4½″ × 1¾″ clear anodized', ftin(postH), posts, 'ea', 12.2);
+      add(G, 'Gasket, black (both sides of every panel)', '', Math.ceil(seal), 'lin ft', 12.4);
     }
   }
   // --- Hardwall floor track and trim (linear feet; base and ceiling track on both faces)
