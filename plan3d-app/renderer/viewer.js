@@ -4134,7 +4134,7 @@ function buildScene(THREE, plan, A) {
   function shadow(cx, cz, len, wid, ang, spread) {
     const s = spread || 0.9, g = new THREE.Group(), m = new THREE.Mesh(aoGeo, M.ao);
     m.rotation.x = -Math.PI / 2; m.scale.set(len + s * 2.4, wid + s * 2.4, 1); m.renderOrder = 1;
-    g.add(m); g.position.set(cx, 0.018, cz); g.rotation.y = ang || 0; root.add(g);
+    g.add(m); g.position.set(cx, 0.018, cz); g.rotation.y = ang || 0; g.userData.ao = true; root.add(g);
   }
   function segBox(x1, z1, x2, z2, y0, y1, th, mat, ext) {
     const len = Math.hypot(x2 - x1, z2 - z1) + (ext || 0);
@@ -5706,6 +5706,7 @@ function mount(container, plan, opts) {
       <button class="p3v-panel p3v-look" aria-pressed="false" title="Turn by moving the mouse, no button needed (L). Esc to stop.">Mouse look <kbd>L</kbd></button>
       <button class="p3v-panel p3v-look p3v-lidb" aria-pressed="false" hidden title="Show the lid (the top of the cleanroom, or a roof deck you placed) in every view, or take it off again">Lid</button>
       <button class="p3v-panel p3v-look p3v-remb" aria-pressed="false" hidden title="Take the removable wall sections out, to see the opening (and walk through it) when equipment comes in">Show removed</button>
+      <button class="p3v-panel p3v-look p3v-exb" aria-pressed="false" title="Exploded view (E): the walls pull out and the ceiling lifts off; the floor and everything in the rooms stays put. E again puts it back.">Explode <kbd>E</kbd></button>
       
       <button class="p3v-panel p3v-look p3v-air" aria-pressed="true" hidden title="Show or hide the airflow: air down out of the FFUs, into the return grilles, and along the floor out through the doors and out of the building">Airflow</button>
       <button class="p3v-panel p3v-look p3v-meas" aria-pressed="false" title="Measure: click two points for the distance between them. It snaps to corners, edges, the top of a filter, the ceiling grid and tiles, floors and walls (green dot = snapped). Shift: straight up/down from the first point; Ctrl: level with it. M turns it on and off, Esc drops a half-done measurement">📏 Measure <kbd>M</kbd></button><button class="p3v-panel p3v-look p3v-mclear" hidden title="Take all the measurements off">✕ Clear</button>
@@ -6093,8 +6094,9 @@ function mount(container, plan, opts) {
     const b = A.bounds;
     if (x < b.minX - 30 || x > b.maxX + 30 || z < b.minZ - 30 || z > b.maxZ + 30) return true;
     // on a phone or tablet the walk goes straight through doors and furniture (only walls and glass stop it)
-    for (const o of A.obs) if (!(touchy && o.item) && segDist(x, z, o.x1, o.z1, o.x2, o.z2) < o.r + R) return true;
-    if (built && built.doorObs && !touchy) {
+    const exd = exK > 0.5;
+    for (const o of A.obs) if (!(touchy && o.item) && !(exd && !o.item) && segDist(x, z, o.x1, o.z1, o.x2, o.z2) < o.r + R) return true;
+    if (built && built.doorObs && !touchy && !exd) {
       for (const d of built.doorObs) {
         if (d.doorGroup && d.doorGroup.userData.isOpen) continue;
         if (segDist(x, z, d.x1, d.z1, d.x2, d.z2) < d.r + R) return true;
@@ -6258,6 +6260,70 @@ function mount(container, plan, opts) {
     q.ob.doorGroup.userData.isOpen = q.open || remOpen;
     return true;
   }
+  /* ---- Exploded view (E, or the Explode button): the walls pull straight out from the room (doors, glass, grilles,
+     outlets and chases with them) and the ceiling lifts off in layers (grid and tiles, then the FFUs and lights,
+     then the lid and roof). The floor and everything standing on it (hoods, tables, columns) stays where it is.
+     E again puts it back together. */
+  let exOn = false, exK = 0, exList = null, exShown = -1;
+  const exBtn = container.querySelector('.p3v-exb');
+  function exBuild() {
+    exList = [];
+    if (!built || !plan || built.levelObjs) return;
+    const W = (plan.walls || []).filter(w => Math.hypot(w.x2 - w.x1, w.y2 - w.y1) > 0.05);
+    if (!W.length) return;
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const w of W) { x0 = Math.min(x0, w.x1, w.x2); x1 = Math.max(x1, w.x1, w.x2); z0 = Math.min(z0, w.y1, w.y2); z1 = Math.max(z1, w.y1, w.y2); }
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, D = Math.max(7, Math.min(16, Math.max(x1 - x0, z1 - z0) * 0.45)), H = (A && A.H) || 9;
+    const vecOf = (w) => { const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1), nx = -(w.y2 - w.y1) / L, nz = (w.x2 - w.x1) / L, sg = ((w.x1 + w.x2) / 2 - cx) * nx + ((w.y1 + w.y2) / 2 - cz) * nz >= -0.01 ? 1 : -1; return [nx * sg * D, nz * sg * D]; };
+    const byId = new Map(W.filter(w => w.id).map(w => [w.id, w]));
+    const nearAll = (x, z, tol) => W.map(w => [segDist(x, z, w.x1, w.y1, w.x2, w.y2) - (w.t || 0.25) / 2, w]).filter(q => q[0] < tol).sort((a, b) => a[0] - b[0]);
+    const box = new THREE.Box3(), c = new THREE.Vector3(), sz = new THREE.Vector3();
+    const refOf = (o) => { let r = null; o.traverse(q => { if (!r && q.userData.ref) r = q.userData.ref; }); return r; };
+    const add = (o, x, y, z) => exList.push({ o, home: o.position.clone(), off: new THREE.Vector3(x, y, z) });
+    const upCeil = H * 0.5 + 2, upFix = H * 0.5 + 6, upLid = H * 0.5 + 10, upRoof = H * 0.5 + 14;
+    const groups = new Set([built.floor, built.ground, built.ceiling, built.lid, built.roof, built.fixtures, built.ceilPlane].concat(built.floors || []));
+    if (built.ceiling) add(built.ceiling, 0, upCeil, 0); if (built.lid) add(built.lid, 0, upLid, 0); if (built.roof) add(built.roof, 0, upRoof, 0);
+    built.root.updateMatrixWorld(true);
+    const withWalls = (o, ws) => {
+      // one wall: straight out along it; a corner post (two walls meeting): out along both
+      let vx = 0, vz = 0; const seen = [];
+      for (const w of ws) { const v = vecOf(w); if (seen.some(q => Math.abs(q[0] * v[0] + q[1] * v[1]) > D * D * 0.5)) continue; seen.push(v); vx += v[0]; vz += v[1]; if (seen.length === 2) break; }
+      add(o, vx, 0, vz);
+    };
+    const one = (o, inFix) => {
+      if (groups.has(o) || o.userData.ao) return;
+      const r = refOf(o); box.setFromObject(o); if (box.isEmpty()) return; box.getCenter(c); box.getSize(sz);
+      const k = r && r.kind;
+      if (k === 'item' || k === 'column') return;
+      if (k === 'beam' || k === 'deck' || k === 'lstep') return add(o, 0, upLid, 0);
+      if (k === 'carea') return add(o, 0, upCeil, 0);
+      if (k === 'fixture') return add(o, 0, upFix, 0);
+      if (o.userData.isDoor) { const n = nearAll(o.position.x, o.position.z, 1.5); if (n.length) withWalls(o, [n[0][1]]); return; }
+      if (k === 'wall' && byId.has(r.id)) return withWalls(o, [byId.get(r.id)]);
+      if (k) { const n = nearAll(c.x, c.z, 2.5); if (n.length) return withWalls(o, [n[0][1]]); const dx = c.x - cx, dz = c.z - cz, d = Math.hypot(dx, dz) || 1; return add(o, dx / d * D, 0, dz / d * D); }
+      // nothing says what it is: up at the ceiling it lifts with the fixtures; flat on the floor it stays; on a wall
+      // (track, base, a corner post) it goes with the wall
+      if (inFix) { if (c.y > H * 0.55) add(o, 0, upFix, 0); return; }
+      if (sz.y < 0.1 && c.y < 0.3) return;
+      const n = nearAll(c.x, c.z, 0.5); if (!n.length) return;
+      withWalls(o, sz.x < 1 && sz.z < 1 ? n.map(q => q[1]) : [n[0][1]]);
+    };
+    for (const o of built.root.children.slice()) one(o, false);
+    if (built.fixtures) for (const o of built.fixtures.children.slice()) one(o, true);
+  }
+  function setExplode(on) {
+    exOn = !!on; if (exBtn) exBtn.setAttribute('aria-pressed', String(exOn));
+    if (exOn && built && built.levelObjs) { exOn = false; if (exBtn) exBtn.setAttribute('aria-pressed', 'false'); }
+  }
+  function stepExplode(dt) {
+    if (!exOn && exK <= 0 && exShown <= 0) return;
+    if (!exList) { exBuild(); exShown = -1; }
+    const goal = exOn ? 1 : 0; exK += Math.sign(goal - exK) * Math.min(Math.abs(goal - exK), dt / 1.6);
+    if (exK === exShown) return; exShown = exK;
+    const e = exK * exK * (3 - 2 * exK);
+    for (const q of exList) q.o.position.copy(q.home).addScaledVector(q.off, e);
+  }
+  if (exBtn) exBtn.addEventListener('click', (ev) => { ev.stopPropagation(); setExplode(!exOn); });
   function stepRemovable(dt) {
     const RS = built && built.removable; if (!RS) return;
     const now = performance.now() / 1000, ease = (x) => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x), back = (x) => { if (x <= 0) return 0; if (x >= 1) return 1; const c = 1.4; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
@@ -6550,7 +6616,7 @@ function mount(container, plan, opts) {
     if (keys.has('d')) s2 += 1; if (keys.has('a')) s2 -= 1;
     lookKeys(dt);
     if (keys.has(' ') || keys.has('r')) u += 1; if (keys.has('c') || keys.has('f')) u -= 1;
-    if (keys.has('arrowleft') || keys.has('q')) turn += 1; if (keys.has('arrowright') || keys.has('e')) turn -= 1;
+    if (keys.has('arrowleft') || keys.has('q')) turn += 1; if (keys.has('arrowright')) turn -= 1;
     if (turn) { turnHeld = Math.min(1, turnHeld + dt * 2.5); st.yaw += turn * (1.4 + 1.4 * turnHeld) * dt; } else turnHeld = 0;
     if (joy.id != null && Math.hypot(joy.f, joy.s) > 0.12) { f += joy.f; s2 += joy.s; }
     u += flyUD;
@@ -7001,7 +7067,7 @@ function mount(container, plan, opts) {
   canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') ring.visible = false; });
   canvas.addEventListener('wheel', e => { if (mode !== 'walk' && mode !== 'fly') return; e.preventDefault(); fov = Math.max(12, Math.min(85, fov + e.deltaY * 0.03 * (fov / 60))); camera.fov = fov; camera.updateProjectionMatrix(); }, { passive: false });
   const keys = new Set();
-  const MOVE_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'q', 'e', 'shift', ' ', 'r', 'f', 'c'];
+  const MOVE_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'q', 'shift', ' ', 'r', 'f', 'c'];
   const typing = (t) => t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName || ''));
   // Keys reach the walkthrough whenever it's on screen and you're not typing in a box,
   // so you don't have to click the 3D view first.
@@ -7012,7 +7078,7 @@ function mount(container, plan, opts) {
     const k = e.key.toLowerCase();
     if (game && game.key(k, e, true)) { e.preventDefault(); return; }
     if (k === 'g' && !e.repeat && mode === 'fly' && !tween && global.P3Game && A) { startGame(); e.preventDefault(); return; }
-    if (tour && /^(w|a|s|d|q|e|arrow\w+|escape)$/.test(k)) stopTour();
+    if (tour && /^(w|a|s|d|q|arrow\w+|escape)$/.test(k)) stopTour();
     if (k === 'l' && !e.repeat) { toggleLook(); e.preventDefault(); return; }
     if (k === 'm' && opts.measure !== false && !e.repeat && (container.contains(e.target) || container.clientWidth > global.innerWidth * 0.6)) { setMeasure(!measureOn); e.preventDefault(); return; }
     if (k === 'p' && !e.shiftKey && !e.repeat && (container.contains(e.target) || container.clientWidth > global.innerWidth * 0.6)) { takeSnapshot(); e.preventDefault(); return; }
@@ -7023,6 +7089,7 @@ function mount(container, plan, opts) {
     const inView = container.contains(e.target), big = container.clientWidth > global.innerWidth * 0.6;
     if (!inView && !big) return;
     if (mode !== 'walk' && mode !== 'fly' && !inView) return;
+    if (k === 'e' && !e.shiftKey) { if (!e.repeat) setExplode(!exOn); e.preventDefault(); return; }
     running = e.shiftKey;
     if (MOVE_KEYS.includes(k)) { keys.add(k); dismissHint(); if (k !== 'shift') e.preventDefault(); }
   };
@@ -7160,7 +7227,7 @@ function mount(container, plan, opts) {
     plan = p;
     A = analyzeAll(p);
     if (built) { scene.remove(built.root); built.root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
-    built = buildStack(THREE, p, A);
+    built = buildStack(THREE, p, A); exList = null; exShown = -1; if (built.levelObjs) { exOn = false; exK = 0; }
     EYE = EYE0; try { if ((p.levels || []).length > 1) { const L = levelPlans(p).find(q => q.k === (p.level || 0)); if (L) EYE = EYE0 + L.elev; } } catch (e) { }
     for (const extra of [() => pressureArrows(THREE, built.root, p), () => floorFlow(THREE, built.root, p), () => flowArrows(THREE, built.root, p)]) { try { extra(); } catch (e) { console.error(e); } }
     scene.add(built.root);
@@ -7245,7 +7312,7 @@ function mount(container, plan, opts) {
         let f = 0, s = 0, turn = 0;
         if (keys.has('w')) f += 1; if (keys.has('s')) f -= 1;
         if (keys.has('d')) s += 1; if (keys.has('a')) s -= 1;
-        if (keys.has('arrowleft') || keys.has('q')) turn += 1; if (keys.has('arrowright') || keys.has('e')) turn -= 1;
+        if (keys.has('arrowleft') || keys.has('q')) turn += 1; if (keys.has('arrowright')) turn -= 1;
         lookKeys(dt);
         // turning starts gentle for small corrections and speeds up while held
         if (turn) { turnHeld = Math.min(1, turnHeld + dt * 2.5); st.yaw += turn * (1.6 + 1.6 * turnHeld) * dt; } else turnHeld = 0;
@@ -7265,7 +7332,7 @@ function mount(container, plan, opts) {
       else controls.update();   // orbit views only (Dollhouse, Plenum, Exterior, Plan); never in Walk or Drone
       if (game && mode !== 'fly') game.stop();
 
-      stepRemovable(dt);
+      stepRemovable(dt); stepExplode(Math.min(0.5, rawDt));
       if (built && built.doors) {
         built.doors.forEach(doorGroup => {
           const targetOpenAngle = doorGroup.userData.isOpen ? (Math.PI / 2) * doorGroup.userData.swingDir : 0;
@@ -7303,6 +7370,7 @@ function mount(container, plan, opts) {
 
   return {
     get touring() { return !!tour; },
+    explode: (on) => { setExplode(on == null ? !exOn : on); return exOn; },
     playTour: () => { try { refreshTour(); if (tour) stopTour(); startTour(); return !!tour; } catch (e) { return false; } },
     setLayers: (off) => { if (plan) plan.layersOff = off || {}; applyLayers(); },
     setPlan: (p) => setPlan(p, true),
