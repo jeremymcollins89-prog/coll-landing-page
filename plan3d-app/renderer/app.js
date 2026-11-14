@@ -3286,6 +3286,8 @@ async function handleLoaded(r) {
     let p; try { p = JSON.parse(r.json); } catch (e) { toast('That project file is damaged.'); return; }
     if (adoptImported(p)) return;
     projectPath = r.path; modePicked = true; ed.setPlan(p); hideBanner(); updateChrome(); if (view !== '2d' && viewer) viewer.loadPlan(clonePlan());
+    // a plan that opens straight into play (plan.play) goes to the 3D view by itself
+    if (p.play && view === '2d') setTimeout(() => { try { setView('3d'); } catch (e) { console.error(e); } }, 50);
     toast('Opened ' + (p.name || r.name)); trackJob(); setTimeout(() => checkComments(false), 1500); return;
   }
   if (r.kind === 'dxf') { if (await openCadProject(r)) return; dxfDialog(r); return; }
