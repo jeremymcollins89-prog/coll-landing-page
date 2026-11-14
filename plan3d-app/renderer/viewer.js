@@ -105,6 +105,9 @@ const WALL_KINDS = {
   // Aluminum Bio-Clean: clear acrylic panels sealed in a 1¾″ clear-anodized aluminum frame. A cleanroom wall like the
   // hardwall for everything else (rooms, ceiling, doors, returns); only how it's built and drawn differs.
   bioclean: { label: 'Aluminum Bio-Clean (acrylic in an aluminum frame)', short: 'Bio-Clean', t: 1.75 / 12, color: 0xd9eef3, plan: '#bfe3ee', bio: true },
+  // Softwall: clear vinyl curtains on a white tubular steel frame, with a strip door. A cleanroom wall like the others
+  // for rooms and the ceiling; only how it's built and drawn differs.
+  softwall: { label: 'Softwall (clear vinyl curtains on a steel frame)', short: 'Softwall', t: 2 / 12, color: 0xe3f3ee, plan: '#cdeadf', soft: true },
   concrete: { label: 'Concrete (tilt-up / poured)', short: 'Concrete', t: 8 / 12, color: 0xb9b6ae, plan: '#a9a59c' },
   cmu: { label: 'Concrete block (CMU)', short: 'Block', t: 8 / 12, color: 0xc9c5bb, plan: '#bdb7aa' },
   metal: { label: 'Metal building panel', short: 'Metal panel', t: 6 / 12, color: 0xdfe3e5, plan: '#b6c3ca' },
@@ -113,8 +116,21 @@ const WALL_KINDS = {
   wood: { label: 'Wood stud wall (house)', short: 'Wood stud', t: 4.5 / 12, color: 0xf2efe9, plan: '#e6d3b3', frame: true },
   steel: { label: 'Steel stud wall (house)', short: 'Steel stud', t: 4.5 / 12, color: 0xf2efe9, plan: '#c9d3da', frame: true }
 };
-const isHard = (w) => !w || !w.kind || w.kind === 'hardwall' || w.kind === 'bioclean' || !WALL_KINDS[w.kind];
+const isHard = (w) => !w || !w.kind || w.kind === 'hardwall' || w.kind === 'bioclean' || w.kind === 'softwall' || !WALL_KINDS[w.kind];
 const isBio = (w) => !!(w && w.kind === 'bioclean');
+const isSoft = (w) => !!(w && w.kind === 'softwall');
+// the softwall's pieces, in feet: the 2″ × 4″ post (4″ along the wall) and top beam, the gap under the curtain, the
+// strip door's strip and how far each laps the next
+const SOFT_DIMS = { post: 4 / 12, beam: 4 / 12, gap: 2 / 12, strip: 8 / 12, lap: 2 / 12, span: 15 };
+// where a softwall's connector posts stand, in feet along the wall: none on a side under 15′ (just the corner posts);
+// a side of 15′ or more gets posts in between, evenly, so no span reaches 15′
+function softPosts(w, plan) {
+  const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1, ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, n = Math.floor(L / SOFT_DIMS.span + 1e-6) + 1, out = [];
+  // a post never stands in a doorway: it moves to the nearer side of it
+  const ops = ((plan && plan.openings) || []).filter(o => segDist((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, w.x1, w.y1, w.x2, w.y2) < 0.3).map(o => [(o.x1 - w.x1) * ux + (o.y1 - w.y1) * uy, (o.x2 - w.x1) * ux + (o.y2 - w.y1) * uy].sort((p, q) => p - q));
+  for (let k = 1; k < n; k++) { let q = L * k / n; for (const [a, b] of ops) if (q > a - 0.2 && q < b + 0.2) q = q - a < b - q ? a - SOFT_DIMS.post / 2 : b + SOFT_DIMS.post / 2; if (q > 0.5 && q < L - 0.5) out.push(q); }
+  return out;
+}
 // the Bio-Clean frame (feet): 4½″ faces on the posts, floor base and head rail, 1¾″ deep; 2½″ rails; 0.177″ acrylic
 const BIO_DIMS = { post: 4.5 / 12, base: 4.5 / 12, head: 4.5 / 12, rail: 2.5 / 12, pane: 0.177 / 12 };
 // a wall over 9′-6″ gets a rail at 8′ (a row of panels above it); a shorter wall is one panel floor to top
@@ -840,7 +856,7 @@ function analyze(plan) {
       bk.sort((p, q) => p - q);
       for (let k = 0; k + 1 < bk.length; k++) {
         const a = bk[k], b = bk[k + 1]; if (b - a < 0.004) continue;
-        pieces.push({ id: w.id, piece: w.piece || null, x1: w.x1 + ux * a, z1: w.y1 + uz * a, x2: w.x1 + ux * b, z2: w.y1 + uz * b, t, sp: !!w.sp && hard, s0: a, len: b - a, kind, hard, frame, bio: isBio(w), ceilw: hard || frame, h: secs ? topAt((a + b) / 2, wh) : wh, ext: w.ext });
+        pieces.push({ id: w.id, piece: w.piece || null, x1: w.x1 + ux * a, z1: w.y1 + uz * a, x2: w.x1 + ux * b, z2: w.y1 + uz * b, t, sp: !!w.sp && hard, s0: a, len: b - a, kind, hard, frame, bio: isBio(w) || isSoft(w), soft: isSoft(w), ceilw: hard || frame, h: secs ? topAt((a + b) / 2, wh) : wh, ext: w.ext });
       }
     }
     ends.push({ x: w.x1, z: w.y1, t, ang: Math.atan2(-uz, ux), cut: cuts.some(k => k[0] < 0.01), w, h: hard ? topAt(0, wh) : wh });
@@ -884,7 +900,7 @@ function analyze(plan) {
     if (best > 1.5) host = null;
     if (!t) t = host && host.t ? host.t : 0.25;
     const opTop = (hh, oo, tt) => opTopFor(plan, hh, oo, tt, WH, PL);
-    const hard = isHard(host), frame = isFrame(host), i = { host, o, len, ux: dx / len, uz: dz / len, t, hard, frame, bio: isBio(host), ceilw: hard || frame, kind: hard ? 'hardwall' : host.kind, wallH: hard ? opTop(host, o, t) : frame ? Math.max(6, host.h || H) : shellHeight(plan, host) };
+    const hard = isHard(host), frame = isFrame(host), i = { host, o, len, ux: dx / len, uz: dz / len, t, hard, frame, bio: isBio(host) || isSoft(host), soft: isSoft(host), ceilw: hard || frame, kind: hard ? 'hardwall' : host.kind, wallH: hard ? opTop(host, o, t) : frame ? Math.max(6, host.h || H) : shellHeight(plan, host) };
     i.leaves = leavesFor(i);
     opInfo.push(i);
   }
@@ -4213,8 +4229,48 @@ function buildScene(THREE, plan, A) {
       if (rail && y0 + rail > lo + 0.3 && y0 + rail < hi - 0.3) { pane(q0, q1, lo, y0 + rail - BIO.rail / 2); pane(q0, q1, y0 + rail + BIO.rail / 2, hi); } else pane(q0, q1, lo, hi);
     }
   };
+  // ---- Softwall, as on modularcleanrooms.com: a white powder-coated tubular steel frame (2″ × 4″ posts on foot
+  // plates, a 2″ × 4″ top beam), 20 mil clear vinyl hung in every bay to 2″ off the floor (the room's air leaves
+  // under it), and a 40 mil clear vinyl strip door wherever a door is drawn.
+  const SOFT = SOFT_DIMS;
+  const softWalls = (plan.walls || []).filter(isSoft);
+  const softAt = (x, z) => softWalls.some(w => segDist(x, z, w.x1, w.y1, w.x2, w.y2) < 0.4);
+  const softSt = () => M.softSt || (M.softSt = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xf6f7f7, emissive: 0x202122, specular: 0x666a6c, shininess: 30 }); m.name = 'Steel frame, white powder coat'; return m; })());
+  const softVy = () => M.softVy || (M.softVy = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xd9f1ee, specular: 0xffffff, shininess: 110, transparent: true, opacity: 0.27, depthWrite: false, side: THREE.DoubleSide }); m.name = 'Vinyl curtain, clear 20 mil'; return m; })());
+  const softSp = () => M.softSp || (M.softSp = (() => { const m = softVy().clone(); m.opacity = 0.3; m.name = 'Vinyl strip door, clear 40 mil'; return m; })());
+  const softEdge = () => M.softEd || (M.softEd = new THREE.LineBasicMaterial({ color: 0x8fb3bb, transparent: true, opacity: 0.7 }));
+  const softFoot = (x, z, ang) => { const f = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.5), softSt()); f.position.set(x, 0.02, z); f.rotation.y = ang || 0; root.add(f); };
+  // one stretch from (x1,z1) to (x2,z2), y0 up to y1: posts at both ends and at each of `joints`, the top beam, and
+  // a curtain in every bay; o2.strips hangs a strip door in it instead
+  const softWall = (x1, z1, x2, z2, y0, y1, t, joints, o2) => {
+    o2 = o2 || {}; const L = Math.hypot(x2 - x1, z2 - z1); if (L < 0.02 || y1 - y0 < 0.05) return;
+    const ux = (x2 - x1) / L, uz = (z2 - z1) / L, nx = -uz, nz = ux, st = softSt(), at = (q, off) => [x1 + ux * q + nx * (off || 0), z1 + uz * q + nz * (off || 0)], hp = SOFT.post / 2, ang = Math.atan2(-(z2 - z1), x2 - x1);
+    const bar = (q0, q1, a, b, th) => { q0 = Math.max(0, q0); q1 = Math.min(L, q1); if (q1 - q0 < 0.01 || b - a < 0.01) return; const [ax, az] = at(q0), [bx, bz] = at(q1); const m = segBox(ax, az, bx, bz, a, b, th || t, st); outline(m); pick.push(m); };
+    const sheet = (q0, q1, a, b, off, mt) => { if (q1 - q0 < 0.04 || b - a < 0.04) return; const [ax, az] = at(q0, off), [bx, bz] = at(q1, off); const g = segBox(ax, az, bx, bz, a, b, 0.012, mt); g.renderOrder = 2; g.add(new THREE.LineSegments(new THREE.EdgesGeometry(g.geometry, 25), softEdge())); pick.push(g); };
+    const bm = Math.min(SOFT.beam, (y1 - y0) / 3);
+    bar(0, L, y1 - bm, y1);
+    const n0 = o2.noEnds || o2.no0, n1 = o2.noEnds || o2.no1;
+    let P = [n0 ? null : hp, ...(joints || []).filter(q => q > SOFT.post * 1.5 && q < L - SOFT.post * 1.5), n1 ? null : L - hp].filter(q => q != null);
+    P = [...new Set(P.map(q => Math.round(q * 1000) / 1000))].sort((a, b) => a - b);
+    for (const q of P) { bar(q - hp, q + hp, y0, y1 - bm); if (y0 < 0.1) { const [fx, fz] = at(q); softFoot(fx, fz, ang); } }
+    const E = [n0 ? 0 : null, ...P, n1 ? L : null].filter(q => q != null);
+    for (let k = 0; k + 1 < E.length; k++) {
+      const q0 = E[k] + (n0 && k === 0 ? 0 : hp), q1 = E[k + 1] - (n1 && k === E.length - 2 ? 0 : hp), hi = y1 - bm;
+      if (!o2.strips) { sheet(q0, q1, y0 + (y0 < 0.1 ? SOFT.gap : 0), hi, 0, softVy()); continue; }
+      // the strip door: its mounting rail under the beam, then 8″ strips lapping 2″, every other one a hair behind
+      const [ax, az] = at(q0), [bx, bz] = at(q1); const rl = segBox(ax, az, bx, bz, hi - 0.125, hi, t * 0.6, M.track || st); pick.push(rl);
+      const pitch = SOFT.strip - SOFT.lap, n = Math.max(1, Math.ceil((q1 - q0 - SOFT.lap) / pitch));
+      for (let j = 0; j < n; j++) { const a = q0 + j * pitch, b = Math.min(q1, a + SOFT.strip); sheet(a, b, y0 + 1 / 12, hi - 0.125, j % 2 ? 0.018 : -0.018, softSp()); }
+    }
+  };
   for (const p of A.pieces) {
     curRef = p.id ? { kind: 'wall', id: p.id } : null;
+    if (p.soft) {
+      const pw = (plan.walls || []).find(q => q.id === p.id), J = pw ? softPosts(pw, plan).map(m => m - p.s0) : [];
+      const freeEnd = (x, z) => (A.ends || []).some(e => !e.cut && !e.joined && Math.hypot(e.x - x, e.z - z) < 0.3) && !A.corners.some(c => Math.hypot(c.x - x, c.z - z) < 0.6);
+      softWall(p.x1, p.z1, p.x2, p.z2, 0, p.h, p.t, J, { no0: !freeEnd(p.x1, p.z1), no1: !freeEnd(p.x2, p.z2) });
+      continue;
+    }
     if (p.bio) {
       const pw = (plan.walls || []).find(q => q.id === p.id); let J = []; try { J = pw ? wallModule(pw, plan).map(m => m - p.s0) : []; } catch (e) { J = []; }
       const L0 = Math.hypot(p.x2 - p.x1, p.z2 - p.z1) || 1, GRp = (plan.grilles || []).filter(g => g.wall === p.id && !g.plenum).map(g => ({ c: (g.x - p.x1) * (p.x2 - p.x1) / L0 + (g.y - p.z1) * (p.z2 - p.z1) / L0, w: +g.w || 20 / 12, top: (g.sill != null ? +g.sill : 0.5) + (+g.h || 20 / 12) }));
@@ -4400,6 +4456,8 @@ function buildScene(THREE, plan, A) {
   };
   for (const c of A.corners) {
     const legs = [[c.a, c.b], [c.b, c.a]];
+    // a softwall corner: the two tubes welded square, on one foot plate
+    if (softAt(c.x, c.z)) { const hc = c.h || WH; for (const [u, v] of legs) { const x1 = c.x + v[0] * c.wt / 2, z1 = c.z + v[1] * c.wt / 2, m = segBox(x1, z1, x1 + u[0] * c.size, z1 + u[1] * c.size, 0, hc, c.wt + 0.004, softSt()); outline(m); pick.push(m); } softFoot(c.x + (c.a[0] + c.b[0]) * c.wt / 2, c.z + (c.a[1] + c.b[1]) * c.wt / 2, c.ang); continue; }
     if (bioAt(c.x, c.z)) { const hc = c.h || WH, m = new THREE.Mesh(new THREE.BoxGeometry(c.wt + 0.006, hc, c.wt + 0.006), bioAl()); m.position.set(c.x, hc / 2, c.z); root.add(m); outline(m); pick.push(m); continue; }
     for (const [u, v] of legs) {
       const x1 = c.x + v[0] * c.wt / 2, z1 = c.z + v[1] * c.wt / 2, x2 = x1 + u[0] * c.size, z2 = z1 + u[1] * c.size;
@@ -4412,7 +4470,7 @@ function buildScene(THREE, plan, A) {
   for (const e of A.ends) {
     if (e.cut || e.joined || seen.some(s => Math.hypot(s.x - e.x, s.z - e.z) < 0.02) || A.corners.some(c => Math.hypot(c.x - e.x, c.z - e.z) < 0.35)) continue;
     seen.push(e);
-    const eBio = bioAt(e.x, e.z), eh = e.h || WH, m = new THREE.Mesh(new THREE.BoxGeometry(e.t, eh, e.t), eBio ? bioAl() : M.white);
+    const eSoft = softAt(e.x, e.z), eBio = eSoft || bioAt(e.x, e.z), eh = e.h || WH, m = new THREE.Mesh(new THREE.BoxGeometry(e.t, eh, e.t), eSoft ? softSt() : eBio ? bioAl() : M.white);
     m.position.set(e.x, eh / 2, e.z); m.rotation.y = e.ang; root.add(m); pick.push(m);
     if (eBio) { outline(m); continue; }
     const pb = new THREE.Mesh(new THREE.BoxGeometry(e.t + 0.022, 0.333, e.t + 0.022), M.base); pb.position.set(e.x, 0.1665, e.z); pb.rotation.y = e.ang; root.add(pb);
@@ -4450,6 +4508,8 @@ function buildScene(THREE, plan, A) {
     const ceilHere = i.hard ? wallCeil(plan, A, { x1: o.x1, z1: o.y1, x2: o.x2, z2: o.y2, t: i.t }) : H;
     const head = Math.min(i.hard ? Math.min(ceilHere, i.wallH || ceilHere) : (i.wallH || H), o.head || 7);
     const IP = i.hard ? wallPM(i.host && i.host.id) : null, top = i.wallH || H, hm = i.hard ? IP.trim : i.frame ? frameMats(o.x1, o.y1, o.x2, o.y2, t, top - head, undefined, head).mats : shellMat(i.kind, i.len, top - head, 0);
+    // in a softwall: a door is a strip door hung in the frame; anything else drawn there is just more curtain
+    if (i.soft) { const door = o.type !== 'glass' && o.type !== 'pass' && o.type !== 'removable'; softWall(o.x1, o.y1, o.x2, o.y2, 0, top, t, [], door ? { strips: true, noEnds: true } : { noEnds: true }); continue; }
     const passCut = o.type === 'pass' && i.hard && !i.bio;
     // in a Bio-Clean wall: the frame and acrylic carry on over a door, and round a pass-thru
     if (i.bio && o.type === 'pass') { const sl = o.sill != null ? o.sill : 3; bioWall(o.x1, o.y1, o.x2, o.y2, 0, sl, t, [], { noRail: true }); bioWall(o.x1, o.y1, o.x2, o.y2, head, top, t, [], { noBase: true }); }
@@ -7457,5 +7517,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { isBio, BIO_DIMS, bioRail, removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight, lidRects, autoRoute, studJoints, deviceOnStud };
+global.Plan3DViewer = { isBio, isSoft, SOFT_DIMS, softPosts, BIO_DIMS, bioRail, removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight, lidRects, autoRoute, studJoints, deviceOnStud };
 })(typeof window !== 'undefined' ? window : this);

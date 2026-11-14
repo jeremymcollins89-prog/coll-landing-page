@@ -368,7 +368,7 @@ function partsList(plan) {
   // posts; a 2½″ rail at 8′ on walls over 9′-6″ and over each return grille), a clear acrylic panel in every bay,
   // and the black gasket round both sides of every panel
   {
-    const BP = A.pieces.filter(p => p.bio), BO = A.opInfo.filter(i => i.bio);
+    const BP = A.pieces.filter(p => p.bio && !p.soft), BO = A.opInfo.filter(i => i.bio && !i.soft);
     if (BP.length) {
       const B = V.BIO_DIMS, POST = B.post, BASE = B.base, HEAD = B.head, RAIL = B.rail, G = 'Bio-Clean walls';
       let baseFt2 = 0, headFt = 0, railFt = 0, posts = 0, seal = 0, postH = 0;
@@ -398,6 +398,33 @@ function partsList(plan) {
       if (railFt) add(G, 'Aluminum frame rail, 2½″ clear anodized (at 8′ on tall walls, and over return grilles)', '', Math.ceil(railFt), 'lin ft', 12.1);
       add(G, 'Aluminum frame post, 4½″ × 1¾″ clear anodized', ftin(postH), posts, 'ea', 12.2);
       add(G, 'Gasket, black (both sides of every panel)', '', Math.ceil(seal), 'lin ft', 12.4);
+    }
+  }
+  // --- Softwall: the white tubular steel frame (posts on foot plates, the top beam), the 20 mil clear vinyl curtain
+  // in every bay (held on with 3M Dual-Lock along the top and both sides), and a 40 mil strip door at each door
+  {
+    const SP = A.pieces.filter(p => p.soft), SO = A.opInfo.filter(i => i.soft);
+    if (SP.length) {
+      const D = V.SOFT_DIMS, G = 'Softwall', hp = D.post / 2;
+      let beamFt = 0, posts = 0, postH = 0, lock = 0; const corners = (A.corners || []).filter(c => SP.some(p => Math.hypot(p.x1 - c.x, p.z1 - c.z) < 1 || Math.hypot(p.x2 - c.x, p.z2 - c.z) < 1)).length;
+      const curtain = (w, h) => { if (w < 1 / 12 || h < 1 / 12) return; add(G, 'Vinyl curtain, clear, 20 mil', inch(w) + ' × ' + inch(h), 1, 'ea', 12.63); lock += w + 2 * h; };
+      for (const p of SP) {
+        const h = p.h || WH, pw = (plan.walls || []).find(q => q.id === p.id);
+        // connector posts only (a side of 15′ or more); the curtain runs corner post to connector post
+        const J = pw ? V.softPosts(pw, plan).map(m => m - p.s0).filter(q => q > D.post && q < p.len - D.post) : [], C = [0, ...J, p.len];
+        beamFt += p.len; posts += J.length; postH = Math.max(postH, h - D.beam);
+        for (let k = 0; k + 1 < C.length; k++) curtain(C[k + 1] - C[k] - (k > 0 ? hp : 0) - (k + 2 < C.length ? hp : 0), h - D.beam - D.gap);
+      }
+      for (const i of SO) {
+        const o = i.o, top = i.wallH || WH; beamFt += i.len;
+        if (o.type !== 'glass' && o.type !== 'pass' && o.type !== 'removable') { const w = i.len; add(G, 'Strip door, clear vinyl 40 mil, 8″ strips lapped 2″, with mounting rail', inch(w) + ' × ' + inch(top - D.beam), 1, 'ea', 12.64); add(G, 'Strip door strips, 8″ × ' + inch(top - D.beam), '', Math.max(1, Math.ceil((w - D.lap) / (D.strip - D.lap))), 'ea', 12.65); }
+        else curtain(i.len, top - D.beam - D.gap);
+      }
+      if (posts) add(G, 'Steel tube connector post, 2″ × 4″ 11 ga, white powder coat (sides of 15′ or more)', ftin(postH), posts, 'ea', 12.6);
+      if (corners) add(G, 'Steel tube corner post (two 2″ × 4″ tubes welded square), white powder coat', ftin(postH + D.beam), corners, 'ea', 12.605);
+      add(G, 'Steel tube top beam, 2″ × 4″ 11 ga, white powder coat', '', Math.ceil(beamFt), 'lin ft', 12.61);
+      add(G, 'Foot plate with leg leveler', '', posts + corners, 'ea', 12.62);
+      add(G, '3M Dual-Lock fastener (top and both sides of every curtain)', '', Math.ceil(lock), 'lin ft', 12.66);
     }
   }
   // --- Hardwall floor track and trim (linear feet; base and ceiling track on both faces)
