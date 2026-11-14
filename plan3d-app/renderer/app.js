@@ -493,7 +493,7 @@ function renderProps(opt) {
   }
   if (s && o && s.kind === 'wall') {
     const len = Math.hypot(o.x2 - o.x1, o.y2 - o.y1);
-    const KINDS = Plan3DViewer.WALL_KINDS, kind = Plan3DViewer.isBio(o) ? 'bioclean' : Plan3DViewer.isHard(o) ? 'hardwall' : o.kind, hard = kind === 'hardwall' || kind === 'bioclean';
+    const KINDS = Plan3DViewer.WALL_KINDS, kind = Plan3DViewer.isBio(o) ? 'bioclean' : Plan3DViewer.isSoft(o) ? 'softwall' : Plan3DViewer.isHard(o) ? 'hardwall' : o.kind, hard = kind === 'hardwall' || kind === 'bioclean' || kind === 'softwall', special = kind === 'bioclean' || kind === 'softwall';
     const kindOrder = Object.entries(KINDS).sort((a, b) => P.mode === 'house' ? (!!b[1].frame - !!a[1].frame) : 0);
     h = `<div class="hd"><span class="kind">${kind === 'hardwall' ? 'Wall' : esc(KINDS[kind].short) + ' wall'}</span><button class="btn small danger" id="pDel">Delete</button></div>
       ${fld('Wall type', `<select id="pKind">${kindOrder.map(([k, v]) => `<option value="${k}" ${k === kind ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select>`)}
@@ -510,16 +510,17 @@ function renderProps(opt) {
         <p class="note">${secs.length ? 'From and to are measured along the wall from its first end; height is floor to top. ' : ''}The rest of the wall is ${esc(fmt(def))} tall. Where the height steps, the panels split and the step gets an end cap; a section not at the cleanroom's top gets a top cap. Both go on the parts list.</p></div>`;
       })() : ''}
       <div class="row"><button class="btn small" id="pSplit">Split in half</button><button class="btn small" id="pAllT">Use this thickness on all walls</button></div>
-      ${hard && kind !== 'bioclean' ? '<div class="row"><button class="btn small" id="pAllBio">Make every cleanroom wall Bio-Clean</button></div>' : hard ? '<div class="row"><button class="btn small" id="pAllHard">Make every Bio-Clean wall hardwall</button></div>' : '<div class="row"><button class="btn small" id="pAllK">Make every connected wall this type</button></div>'}
-      <p class="note">${kind === 'bioclean' ? 'Aluminum Bio-Clean: clear acrylic panels, floor to top, in a satin aluminum frame (4½″ posts, floor base and head rail; a rail at 8′ on walls over 9′-6″). Returns are grilles low in the wall: use the Grille tool. Doors are narrow-stile aluminum with clear panels.' : hard ? 'Hardwall panels are cleanroom walls: panels, studs, floor track, base and the grid ceiling.' : KINDS[kind].frame ? 'House wall: studs at 16″, plates and headers; drywall inside; sheathing, wrap and siding on outside walls.' : 'Building walls run to their own height, have no cleanroom ceiling, and go on the parts list by length and area.'} Length changes move the second end.</p>`;
+      ${hard && !special ? '<div class="row"><button class="btn small" id="pAllBio">Make every cleanroom wall Bio-Clean</button></div><div class="row"><button class="btn small" id="pAllSoft">Make every cleanroom wall Softwall</button></div>' : hard ? '<div class="row"><button class="btn small" id="pAllHard">Make every ' + (kind === 'softwall' ? 'Softwall' : 'Bio-Clean') + ' wall hardwall</button></div>' : '<div class="row"><button class="btn small" id="pAllK">Make every connected wall this type</button></div>'}
+      <p class="note">${kind === 'softwall' ? 'Softwall: 20 mil clear vinyl curtains on a white steel tube frame (a post at each corner, a connector post in between on any side of 15′ or more, and a top beam), hung to 2″ off the floor so the air leaves under them. Every door you place in it is a 40 mil clear strip door. The grid ceiling, filters and lights are the same as any cleanroom.' : kind === 'bioclean' ? 'Aluminum Bio-Clean: clear acrylic panels, floor to top, in a satin aluminum frame (4½″ posts, floor base and head rail; a rail at 8′ on walls over 9′-6″). Returns are grilles low in the wall: use the Grille tool. Doors are narrow-stile aluminum with clear panels.' : hard ? 'Hardwall panels are cleanroom walls: panels, studs, floor track, base and the grid ceiling.' : KINDS[kind].frame ? 'House wall: studs at 16″, plates and headers; drywall inside; sheathing, wrap and siding on outside walls.' : 'Building walls run to their own height, have no cleanroom ceiling, and go on the parts list by length and area.'} Length changes move the second end.</p>`;
     box.innerHTML = h;
-    const toKind = (from, to) => ed.edit(Pl => { const KD = Plan3DViewer.WALL_KINDS; for (const w of Pl.walls) { if (!Plan3DViewer.isHard(w) || (w.kind || 'hardwall') !== from) continue; const t0 = w.t; if (to === 'hardwall') { delete w.kind; w.t = Pl.wallT && Pl.wallT > 0.2 && Pl.wallT < 0.4 ? Pl.wallT : 0.25; } else { w.kind = to; w.sp = false; w.t = KD[to].t; } for (const q of Pl.openings || []) if (Math.abs((q.t || 0) - t0) < 1e-6 && Plan3DViewer.segDist((q.x1 + q.x2) / 2, (q.y1 + q.y2) / 2, w.x1, w.y1, w.x2, w.y2) < 0.2) q.t = w.t; } if (to === 'bioclean') { Pl.newKind = 'bioclean'; Pl.wallT = KD.bioclean.t; } else if (Pl.newKind === 'bioclean') { delete Pl.newKind; Pl.wallT = 0.25; } });
+    const toKind = (from, to) => ed.edit(Pl => { const KD = Plan3DViewer.WALL_KINDS; for (const w of Pl.walls) { if (!Plan3DViewer.isHard(w) || (w.kind || 'hardwall') !== from) continue; const t0 = w.t; if (to === 'hardwall') { delete w.kind; w.t = Pl.wallT && Pl.wallT > 0.2 && Pl.wallT < 0.4 ? Pl.wallT : 0.25; } else { w.kind = to; w.sp = false; w.t = KD[to].t; } for (const q of Pl.openings || []) if (Math.abs((q.t || 0) - t0) < 1e-6 && Plan3DViewer.segDist((q.x1 + q.x2) / 2, (q.y1 + q.y2) / 2, w.x1, w.y1, w.x2, w.y2) < 0.2) q.t = w.t; } if (to !== 'hardwall') { Pl.newKind = to; Pl.wallT = KD[to].t; } else if (Pl.newKind === from) { delete Pl.newKind; Pl.wallT = 0.25; } });
     if ($('#pAllBio')) $('#pAllBio').onclick = () => { toKind('hardwall', 'bioclean'); renderProps(); toast('Every cleanroom wall is now Aluminum Bio-Clean.'); };
-    if ($('#pAllHard')) $('#pAllHard').onclick = () => { toKind('bioclean', 'hardwall'); renderProps(); toast('Every Bio-Clean wall is now hardwall.'); };
+    if ($('#pAllSoft')) $('#pAllSoft').onclick = () => { toKind('hardwall', 'softwall'); renderProps(); toast('Every cleanroom wall is now Softwall.'); };
+    if ($('#pAllHard')) $('#pAllHard').onclick = () => { toKind(kind, 'hardwall'); renderProps(); toast('Every ' + (kind === 'softwall' ? 'Softwall' : 'Bio-Clean') + ' wall is now hardwall.'); };
     $('#pKind').onchange = e => ed.edit(() => {
       const k = e.target.value;
       if (k === 'hardwall') { delete o.kind; delete o.h; if ((o.t || 0) > 0.4) o.t = P.wallT && P.wallT < 0.4 ? P.wallT : 0.25; }
-      else { o.kind = k; o.sp = false; o.t = KINDS[k].t; if (k === 'bioclean') delete o.h; }
+      else { o.kind = k; o.sp = false; o.t = KINDS[k].t; if (k === 'bioclean' || k === 'softwall') delete o.h; }
     });
     bindLen('pWH', 'ft', v => { ed.edit(() => setWallHeight(P, o, v)); renderProps(); });
     if ($('#pStud')) $('#pStud').onchange = e => ed.edit(() => { if (e.target.value) o.stud = e.target.value; else delete o.stud; });
@@ -881,7 +882,7 @@ function renderProps(opt) {
   const partsHtml = partsGroup();
   const ext = ed.extents(), hasGeo = P.walls.length > 0, house = P.mode === 'house', R = P.roof || {};
   const kindList = Object.entries(Plan3DViewer.WALL_KINDS).sort((a, b) => house ? (!!b[1].frame - !!a[1].frame) : 0);
-  const shellNew = P.newKind && P.newKind !== 'hardwall' && P.newKind !== 'bioclean' && !(Plan3DViewer.WALL_KINDS[P.newKind] || {}).frame;
+  const shellNew = P.newKind && P.newKind !== 'hardwall' && P.newKind !== 'bioclean' && P.newKind !== 'softwall' && !(Plan3DViewer.WALL_KINDS[P.newKind] || {}).frame;
   h = `<div class="hd"><span class="kind">${house ? 'Project' : 'Plan'}</span></div>
     ${fld('Name', txt('pPName', P.name))}
     ${fld(house ? 'Wall height' : 'Ceiling', txt('pCeil', fmt(P.ceiling)))}
