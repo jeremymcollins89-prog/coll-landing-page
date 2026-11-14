@@ -6796,6 +6796,7 @@ function mount(container, plan, opts) {
     try { setHerd(); } catch (e) { console.error(e); }
     const fb = modeBtns && modeBtns.find(b => b.dataset.m === 'fly'); if (fb) fb.textContent = u ? 'Unicorn' : 'Drone';
   }
+  let flyTop = 150;
   let pilot = false, droneTilt = 0, droneRoll = 0, propSpin = 0, flyBoost = 1, game = null;
   const camOff = new THREE.Vector3(); let camYaw = null, camYawT = 0;
   function applyFlyCam() {
@@ -6849,7 +6850,7 @@ function mount(container, plan, opts) {
     if (drone.userData.uni) { const fast = running || keys.has('shift'), mv = Math.min(1, n); uniGo += ((mv > 0.05 ? (fast ? 1.35 : 0.8) : 0) - uniGo) * Math.min(1, dt * 5); uniPh += dt * (2.5 + uniGo * 11); poseUnicorn(uni, uniPh, uniGo, 0, uniT); uni.userData.u.sh.position.y = -st.y + 0.05; uni.userData.u.sh.visible = st.y < UNI_GROUND + 12; }
     else if (drone.userData.strobe) drone.userData.strobe.visible = (propSpin % 60) < 4;
     drone.position.y = st.y + (drone.userData.uni ? 0 : Math.sin(propSpin * 0.05) * 0.02);
-    const b = A.bounds; st.x = Math.max(b.minX - 120, Math.min(b.maxX + 120, st.x)); st.z = Math.max(b.minZ - 120, Math.min(b.maxZ + 120, st.z)); st.y = Math.max(drone.userData.uni ? UNI_GROUND : 0.3, Math.min(150, st.y));
+    const b = A.bounds; st.x = Math.max(b.minX - 120, Math.min(b.maxX + 120, st.x)); st.z = Math.max(b.minZ - 120, Math.min(b.maxZ + 120, st.z)); st.y = Math.max(drone.userData.uni ? UNI_GROUND : 0.3, Math.min(flyTop, st.y));
     applyFlyCam();
   }
 
@@ -7447,6 +7448,8 @@ function mount(container, plan, opts) {
     plan = p;
     A = analyzeAll(p);
     if (built) { scene.remove(built.root); built.root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+    // a very tall room (over about 115′): the haze starts farther off and you can fly higher, so its ceiling is in view
+    { const TH = Math.max((A && A.H) || 0, (A && A.WH) || 0); scene.fog.near = Math.max(140, TH * 1.2); scene.fog.far = Math.max(360, TH * 3); camera.far = Math.max(900, scene.fog.far + 150); camera.updateProjectionMatrix(); flyTop = Math.max(150, TH + 60); }
     built = buildStack(THREE, p, A); try { setFlyAs(); } catch (e) { console.error(e); }
     if (keep === false) playKey = null;
     if (p && p.play === 'unicorn' && playKey !== (p.name || '')) { playKey = p.name || ''; setTimeout(() => { try { startPlay(); } catch (e) { console.error(e); } }, 500); }
