@@ -121,6 +121,9 @@ const isBio = (w) => !!(w && w.kind === 'bioclean');
 const isSoft = (w) => !!(w && w.kind === 'softwall');
 // the softwall's pieces, in feet: the 2″ × 4″ post (4″ along the wall) and top beam, the gap under the curtain, the
 // strip door's strip and how far each laps the next
+// the curtain's colour (plan.softColor): clear unless the plan says otherwise
+const SOFT_COLORS = { clear: { name: 'clear', c: 0xd9f1ee, o: 0.27 }, pink: { name: 'pink', c: 0xff5cb8, o: 0.5 }, amber: { name: 'amber, UV-tinted', c: 0xffb62e, o: 0.48 }, blue: { name: 'blue', c: 0x4aa8ff, o: 0.45 }, white: { name: 'white, opaque', c: 0xffffff, o: 0.94 } };
+const softColor = (plan) => SOFT_COLORS[plan && plan.softColor] || SOFT_COLORS.clear;
 const SOFT_DIMS = { post: 4 / 12, beam: 4 / 12, gap: 2 / 12, strip: 8 / 12, lap: 2 / 12, span: 15 };
 // where a softwall's connector posts stand, in feet along the wall: none on a side under 15′ (just the corner posts);
 // a side of 15′ or more gets posts in between, evenly, so no span reaches 15′
@@ -4236,8 +4239,9 @@ function buildScene(THREE, plan, A) {
   const softWalls = (plan.walls || []).filter(isSoft);
   const softAt = (x, z) => softWalls.some(w => segDist(x, z, w.x1, w.y1, w.x2, w.y2) < 0.4);
   const softSt = () => M.softSt || (M.softSt = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xf6f7f7, emissive: 0x202122, specular: 0x666a6c, shininess: 30 }); m.name = 'Steel frame, white powder coat'; return m; })());
-  const softVy = () => M.softVy || (M.softVy = (() => { const m = new THREE.MeshPhongMaterial({ color: 0xd9f1ee, specular: 0xffffff, shininess: 110, transparent: true, opacity: 0.27, depthWrite: false, side: THREE.DoubleSide }); m.name = 'Vinyl curtain, clear 20 mil'; return m; })());
-  const softSp = () => M.softSp || (M.softSp = (() => { const m = softVy().clone(); m.opacity = 0.3; m.name = 'Vinyl strip door, clear 40 mil'; return m; })());
+  const SC = softColor(plan), scK = (plan && SOFT_COLORS[plan.softColor] ? plan.softColor : 'clear');
+  const softVy = () => M['softVy' + scK] || (M['softVy' + scK] = (() => { const m = new THREE.MeshPhongMaterial({ color: SC.c, specular: 0xffffff, shininess: 110, transparent: true, opacity: SC.o, depthWrite: false, side: THREE.DoubleSide }); m.name = 'Vinyl curtain, ' + SC.name + ' 20 mil'; return m; })());
+  const softSp = () => M['softSp' + scK] || (M['softSp' + scK] = (() => { const m = softVy().clone(); m.opacity = Math.min(0.96, SC.o + 0.05); m.name = 'Vinyl strip door, ' + SC.name + ' 40 mil'; return m; })());
   const softEdge = () => M.softEd || (M.softEd = new THREE.LineBasicMaterial({ color: 0x8fb3bb, transparent: true, opacity: 0.7 }));
   const softFoot = (x, z, ang) => { const f = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.5), softSt()); f.position.set(x, 0.02, z); f.rotation.y = ang || 0; root.add(f); };
   // one stretch from (x1,z1) to (x2,z2), y0 up to y1: posts at both ends and at each of `joints`, the top beam, and
@@ -6638,6 +6642,44 @@ function mount(container, plan, opts) {
     for (const sd of [1, -1]) { const d = add(new THREE.PlaneGeometry(0.4, 0.125), dm, sd * 0.2225, 0.005, 0); d.lookAt(sd * 2, 0.005, 0); d.renderOrder = 5; }
     drone.traverse(o => { if (o.renderOrder < 4) o.renderOrder = 4; });
   }
+  // the unicorn: a plan can say `flyAs: 'unicorn'`, and then you fly through it as one instead of the drone (same
+  // controls, same camera). White, a gold horn and hooves, a rainbow mane and tail; it gallops as it goes.
+  const uni = new THREE.Group(); uni.visible = false; drone.add(uni);
+  {
+    const ph = (c, ex) => new THREE.MeshPhongMaterial(Object.assign({ color: c, specular: 0xffffff, shininess: 60 }, ex || {}));
+    const white = ph(0xffffff, { emissive: 0x3a3338 }), gold = ph(0xffd24a, { emissive: 0x5a4208, shininess: 120 }), pink = ph(0xff8ccf, { emissive: 0x401c30 }), dark = ph(0x1a1420);
+    const RB = [0xff4d6d, 0xff9f1c, 0xffe74c, 0x4cd964, 0x4aa8ff, 0xb16cff].map(c => ph(c, { emissive: (c >> 2) & 0x3f3f3f }));
+    const add = (par, geo, mat, x, y, z, sx, sy, sz) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); if (sx) m.scale.set(sx, sy, sz); par.add(m); return m; };
+    const S = new THREE.SphereGeometry(1, 24, 16);
+    // body (nose toward -z, the way the drone faces), chest and rump
+    add(uni, S, white, 0, 0, 0.05, 0.3, 0.3, 0.56); add(uni, S, white, 0, 0.03, -0.38, 0.27, 0.3, 0.3); add(uni, S, white, 0, 0.02, 0.45, 0.28, 0.29, 0.28);
+    // neck and head
+    const neck = add(uni, new THREE.CylinderGeometry(0.13, 0.19, 0.62, 16), white, 0, 0.42, -0.6); neck.rotation.x = -0.55;
+    const head = new THREE.Group(); head.position.set(0, 0.74, -0.84); head.rotation.x = 0.35; uni.add(head);
+    add(head, S, white, 0, 0, 0, 0.15, 0.16, 0.22); add(head, S, white, 0, -0.05, -0.22, 0.1, 0.1, 0.16); add(head, S, pink, 0, -0.06, -0.35, 0.085, 0.08, 0.06);
+    for (const sd of [1, -1]) { add(head, S, dark, sd * 0.125, 0.03, -0.08, 0.03, 0.04, 0.04); const ear = add(head, new THREE.ConeGeometry(0.045, 0.14, 10), white, sd * 0.09, 0.2, 0.08); ear.rotation.z = -sd * 0.25; add(head, S, dark, sd * 0.04, -0.07, -0.385, 0.012, 0.012, 0.012); }
+    // the horn: a gold spiral cone
+    const horn = add(head, new THREE.ConeGeometry(0.045, 0.42, 14), gold, 0, 0.33, -0.1); horn.rotation.x = -0.3;
+    for (let k = 0; k < 5; k++) { const r = add(head, new THREE.TorusGeometry(0.04 - k * 0.006, 0.008, 6, 14), gold, 0, 0.17 + k * 0.065, -0.05 - k * 0.02); r.rotation.x = Math.PI / 2 - 0.3; }
+    // rainbow mane down the neck, and the tail
+    for (let k = 0; k < 9; k++) add(uni, S, RB[k % 6], 0, 0.84 - k * 0.075, -0.66 + k * 0.075, 0.05, 0.09, 0.08);
+    for (let k = 0; k < 4; k++) add(head, S, RB[k % 6], 0, 0.16 - k * 0.02, -0.02 - k * 0.05, 0.04, 0.05, 0.05);
+    const tail = new THREE.Group(); tail.position.set(0, 0.16, 0.7); uni.add(tail); uni.userData.tail = tail;
+    RB.forEach((m, k) => { const t = add(tail, S, m, (k - 2.5) * 0.035, -0.22, 0.14, 0.035, 0.34, 0.07); t.rotation.x = 0.5; });
+    // legs on hip pivots (so they can gallop), gold hooves
+    uni.userData.legs = [];
+    for (const [x, z, ph0] of [[0.15, -0.42, 0], [-0.15, -0.42, 0.6], [0.15, 0.42, Math.PI], [-0.15, 0.42, Math.PI + 0.6]]) {
+      const hip = new THREE.Group(); hip.position.set(x, -0.12, z); uni.add(hip); hip.userData.ph = ph0; uni.userData.legs.push(hip);
+      add(hip, new THREE.CylinderGeometry(0.075, 0.055, 0.58, 12), white, 0, -0.3, 0); add(hip, new THREE.CylinderGeometry(0.065, 0.075, 0.1, 12), gold, 0, -0.62, 0);
+    }
+    uni.traverse(o => { if (o.renderOrder < 4) o.renderOrder = 4; });
+  }
+  // which one you fly as, from the plan
+  function setFlyAs() {
+    const u = !!(plan && plan.flyAs === 'unicorn'); drone.userData.uni = u;
+    for (const c of drone.children) c.visible = c === uni ? u : !u;
+    const fb = modeBtns && modeBtns.find(b => b.dataset.m === 'fly'); if (fb) fb.textContent = u ? 'Unicorn' : 'Drone';
+  }
   let pilot = false, droneTilt = 0, droneRoll = 0, propSpin = 0, flyBoost = 1, game = null;
   const camOff = new THREE.Vector3(); let camYaw = null, camYawT = 0;
   function applyFlyCam() {
@@ -6657,7 +6699,7 @@ function mount(container, plan, opts) {
     { const cp = Math.cos(st.pitch); st.x -= Math.sin(st.yaw) * cp * 3.2; st.z -= Math.cos(st.yaw) * cp * 3.2; st.y = Math.max(1.5, st.y - 0.95 + Math.sin(st.pitch) * 3.2); }
     controls.enabled = false; labelsEl.hidden = true; mode = 'fly';
     applyVis('fly'); setModeUI(); applyFlyCam();
-    hint.textContent = touchy ? 'Drone: joystick flies the way it looks · ▲ ▼ up and down · drag to look' : 'Drone: W forward · S back · A / D slide · arrows aim the camera · Space / R up · C / F down · Shift faster · V drone camera · M measure · P snapshot';
+    hint.textContent = (touchy ? 'Drone: joystick flies the way it looks · ▲ ▼ up and down · drag to look' : 'Drone: W forward · S back · A / D slide · arrows aim the camera · Space / R up · C / F down · Shift faster · V drone camera · M measure · P snapshot').replace(/Drone:/, drone.userData.uni ? 'Unicorn:' : 'Drone:').replace('V drone camera', drone.userData.uni ? "V unicorn's eyes" : 'V drone camera');
     hint.classList.remove('gone'); hintGone = false; setTimeout(dismissHint, 6000);
   }
   // fly to a saved pose (a snapshot's camera)
@@ -6687,7 +6729,8 @@ function mount(container, plan, opts) {
     const lean = Math.min(1, Math.abs(f)) * Math.sign(f) * (running || keys.has('shift') ? 0.32 : 0.2), roll = -Math.max(-1, Math.min(1, s2 + turn * 0.6)) * 0.22;
     droneTilt += (-lean - droneTilt) * Math.min(1, dt * 5); droneRoll += (roll - droneRoll) * Math.min(1, dt * 5);
     propSpin += dt * 60; drone.userData.props.forEach((b, i) => { b.rotation.y = propSpin * (i % 2 ? 1 : -1); });
-    if (drone.userData.strobe) drone.userData.strobe.visible = (propSpin % 60) < 4;
+    if (drone.userData.uni) { const go = Math.min(1, n) * (running || keys.has('shift') ? 1.5 : 1), g = propSpin * 0.16; uni.userData.legs.forEach(h => { h.rotation.x = Math.sin(g + h.userData.ph) * (0.25 + 0.55 * go); }); uni.userData.tail.rotation.x = Math.sin(g * 0.5) * 0.25 + 0.2 * go; uni.position.y = Math.abs(Math.sin(g)) * 0.07 * (0.3 + go) - 0.15; }
+    else if (drone.userData.strobe) drone.userData.strobe.visible = (propSpin % 60) < 4;
     drone.position.y = st.y + Math.sin(propSpin * 0.05) * 0.02;
     const b = A.bounds; st.x = Math.max(b.minX - 120, Math.min(b.maxX + 120, st.x)); st.z = Math.max(b.minZ - 120, Math.min(b.maxZ + 120, st.z)); st.y = Math.max(0.3, Math.min(150, st.y));
     applyFlyCam();
@@ -7287,6 +7330,7 @@ function mount(container, plan, opts) {
     plan = p;
     A = analyzeAll(p);
     if (built) { scene.remove(built.root); built.root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+    try { setFlyAs(); } catch (e) { /* the drone, then */ }
     built = buildStack(THREE, p, A); exList = null; exShown = -1; if (built.levelObjs) { exOn = false; exK = 0; }
     EYE = EYE0; try { if ((p.levels || []).length > 1) { const L = levelPlans(p).find(q => q.k === (p.level || 0)); if (L) EYE = EYE0 + L.elev; } } catch (e) { }
     for (const extra of [() => pressureArrows(THREE, built.root, p), () => floorFlow(THREE, built.root, p), () => flowArrows(THREE, built.root, p)]) { try { extra(); } catch (e) { console.error(e); } }
@@ -7517,5 +7561,5 @@ function mount(container, plan, opts) {
   };
 }
 
-global.Plan3DViewer = { isBio, isSoft, SOFT_DIMS, softPosts, BIO_DIMS, bioRail, removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight, lidRects, autoRoute, studJoints, deviceOnStud };
+global.Plan3DViewer = { isBio, isSoft, SOFT_COLORS, softColor, SOFT_DIMS, softPosts, BIO_DIMS, bioRail, removableGrilles, plenumFit, grilleBlocked, dropBlocked, fitGrilles, wallModule, whipLines, WALL_CAP, wallCaps, wallCapSolids, lidTop, WHIP, whipPorts, whipRun, whipExt, wireFixtures, LIGHT_HH, LIGHT_BOX, removableLayout, removableOf, REM, TILE_TYPES, tileTypeOf, tileColorOf, tileName, GRID_COLORS, gridColorOf, PANEL_COLORS, panelColorOf, hangRects, subtractRects, clipRects, flowRoutes, ROOM_TYPES, RET_FPM, PA_TO_INWC, fixtureFrames, rectsMinus, gridAt, gridZoneAt, zoneGrid, gridPieces, generatedGridLines, ceilingSpaceAt, FINISH, finishOf, ceilingRects, inCeiling, generateCeiling, ISO_TARGETS, fixtureTurned, turnedOpenHalf, ceilAreas, ceilingAt, areaBulkheads, sectionTop, lightKey, BEAMS, beamSize, beamBottom, beamSeat, roofStructure, DEVICES, cleanroomCheck, gridTakeoff, studPoints, tileTakeoff, tileOpenings, isBuilt, builtLines, builtRects, splitByCeiling, roomKey, mount, analyze, analyzeAll, buildAll: (THREE, plan) => buildAll(THREE, plan), buildStack: (THREE, plan) => buildStack(THREE, plan), zones, flatten, transformPlan, insertXform, insertBox, centredCopy, WALL_KINDS, isHard, isFrame, ITEMS, itemCorners, FLOORS, roomRegions, roofField, shellHeight, footprint, grilleSize, ceilingGrid, ceilingLines, smartZoom, snapFixture, fmtFt, buildScene: (THREE, plan, A) => buildScene(THREE, plan, A || analyze(plan)), ceilingFixtures, segDist, snapToDrawn, placeFixture, doorSpec, panelStack, wallCeil, LEVEL_KEYS, levelData, levelPlans, stairRise, floorDepthOf, FOUNDATIONS, foundationOf, houseExtWalls, foundationTakeoff, deckShapes, deckBase, deckLevels, deckParts, deckSteps, headerSegs, headerGaps, wallJoints, colDims, colLabel, deckHeight, lidRects, autoRoute, studJoints, deviceOnStud };
 })(typeof window !== 'undefined' ? window : this);
