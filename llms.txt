@@ -13,9 +13,20 @@
 - [Coll Plan3D](https://collbusinesssolutions.com/projects.html): Windows app that turns an AutoCAD drawing (DXF or DWG) or a photo of a plan sheet into a 3D model you can walk through: modular cleanrooms, warehouses and houses, with plan sheets and parts lists.
 - [Coll Ledger](https://collbusinesssolutions.com/projects.html): Windows bookkeeping software for independent bookkeepers who look after several small businesses: bank, Square and QuickBooks imports, reconciling, month-end close, client reports and tax-time packages. Books stay on the bookkeeper's computer.
 - [Coll Ledger Academy](https://collbusinesssolutions.com/academy.html): bookkeeping courses with exams and certificates (Professional Bookkeeping; Advanced Accounting & Tax). [Verify a certificate](https://collbusinesssolutions.com/verify.html).
+- [TV Remote](https://collbusinesssolutions.com/projects.html#tv-remote): a free Android phone remote for Samsung, LG, Roku, Vizio, Google TV, Android TV and Fire TV, with typing, voice, a sleep timer and a TV guide.
+
+## Games
+
+- [All games](https://collbusinesssolutions.com/games.html)
+- [Confetti Cats](https://play.google.com/store/apps/details?id=com.collbusinesssolutions.confetticats): cat sort puzzle on Google Play (Android).
+- [Golden Gobblers](https://play.google.com/store/apps/details?id=com.collbusinesssolutions.goldengobblers): keep the trash away from two hungry golden retrievers, on Google Play (Android).
+- [Drop Zone Tree Co.](https://play.google.com/store/apps/details?id=com.collbusinesssolutions.dropzone): idle tycoon about running a Colorado tree service, on Google Play (Android).
+- [Silkbound](https://claude.ai/artifact/Xt7QAsFydnLBgRobgGLDMx): raise, breed and battle pet spiders, free in the browser.
+- [Flutterby Garden](https://claude.ai/artifact/UMowVgsNW3qa7B4xTLDg6P): raise caterpillars into 100 real butterfly species, free in the browser.
+- [Regatta Rush](https://claude.ai/artifact/Khrt3NRYFk9qSmD1mK7uxU): sailboat racing with boat upgrades, free in the browser.
+- [Rift-Forged: Card Rush](https://jeremymcollins89-prog.github.io/Rift-Forged/): dark fantasy card battler, free in the browser.
 - [Dino Garden](https://collbusinesssolutions.com/dino-garden/): a calm learning and creativity game for toddlers and preschoolers. No accounts, no ads, works offline.
 - [Marble Atelier](https://collbusinesssolutions.com/marble-atelier/): a calm 3D marble-run game for grown-ups.
-- [TV Remote](https://collbusinesssolutions.com/projects.html#tv-remote): a free Android phone remote for Samsung, LG, Roku, Vizio, Google TV, Android TV and Fire TV, with typing, voice, a sleep timer and a TV guide.
 
 ## Cleanroom Control facts
 
