@@ -15,6 +15,7 @@
 - [Coll Ledger Academy](https://collbusinesssolutions.com/academy.html): bookkeeping courses with exams and certificates (Professional Bookkeeping; Advanced Accounting & Tax). [Verify a certificate](https://collbusinesssolutions.com/verify.html).
 - [Dino Garden](https://collbusinesssolutions.com/dino-garden/): a calm learning and creativity game for toddlers and preschoolers. No accounts, no ads, works offline.
 - [Marble Atelier](https://collbusinesssolutions.com/marble-atelier/): a calm 3D marble-run game for grown-ups.
+- [TV Remote](https://collbusinesssolutions.com/projects.html#tv-remote): a free Android phone remote for Samsung, LG, Roku, Vizio, Google TV, Android TV and Fire TV, with typing, voice, a sleep timer and a TV guide.
 
 ## Cleanroom Control facts
 
