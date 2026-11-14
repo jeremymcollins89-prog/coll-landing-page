@@ -6738,8 +6738,10 @@ function mount(container, plan, opts) {
     const W = plan.walls || [];
     roomIn = (x, z) => fp.has(x, z); herdIn = (x, z) => fp.has(x, z) && !W.some(w => segDist(x, z, w.x1, w.y1, w.x2, w.y2) < 4);
     const b = A.bounds, TINT = [0xffffff, 0xffe6f2, 0xe8f1ff, 0xfff6dc, 0xecffee, 0xf3eaff], rnd = (a, c) => a + Math.random() * (c - a);
+    // in a big room they start near where you come in (not scattered out of sight), so they're with you from the start
+    const sp = playSpot(), near = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) > 160;
     for (let k = 0; k < n; k++) {
-      let x = 0, z = 0, tries = 0; do { x = rnd(b.minX, b.maxX); z = rnd(b.minZ, b.maxZ); } while (!herdIn(x, z) && ++tries < 300); if (tries >= 300) break;
+      let x = 0, z = 0, tries = 0; do { if (near) { const a = rnd(0, 6.283), r = rnd(12, 110); x = sp.x + Math.cos(a) * r; z = sp.z + Math.sin(a) * r; } else { x = rnd(b.minX, b.maxX); z = rnd(b.minZ, b.maxZ); } } while (!herdIn(x, z) && ++tries < 300); if (tries >= 300) break;
       const sc = rnd(0.72, 1.05), u = makeUnicorn(TINT[k % TINT.length]); u.scale.setScalar(sc); herd.add(u);
       herdList.push({ u, x, z, sc, yaw: rnd(-Math.PI, Math.PI), state: 'graze', t: rnd(1, 9), tx: x, tz: z, ph: rnd(0, 6), go: 0, gz: 1, off: [rnd(-1.35, 1.35), rnd(6, 20)] });
     }
@@ -6751,7 +6753,7 @@ function mount(container, plan, opts) {
     if (lastP) { const v = Math.hypot(px - lastP[0], pz - lastP[1]) / Math.max(dt, 1e-3); pSpeed += (Math.min(60, v) - pSpeed) * Math.min(1, dt * 4); } lastP = [px, pz];
     const lead = play && roomIn(px, pz) && pSpeed > 2.5;
     for (const h of herdList) {
-      if (lead && Math.hypot(px - h.x, pz - h.z) < 70) h.state = 'follow'; else if (h.state === 'follow') { h.state = 'graze'; h.t = rnd(3, 9); }
+      if (lead && Math.hypot(px - h.x, pz - h.z) < 170) h.state = 'follow'; else if (h.state === 'follow') { h.state = 'graze'; h.t = rnd(3, 9); }
       let tx = h.x, tz = h.z, spd = 0;
       if (h.state === 'follow') { tx = px + Math.sin(st.yaw + h.off[0]) * h.off[1]; tz = pz + Math.cos(st.yaw + h.off[0]) * h.off[1]; const d = Math.hypot(tx - h.x, tz - h.z); spd = d < 1.5 ? 0 : Math.min(Math.max(pSpeed * 1.1, 7), 4 + d * 1.6, 30); }
       else if (h.state === 'graze') { h.t -= dt; if (h.t <= 0) { for (let k = 0; k < 12; k++) { const a = rnd(0, 6.283), r = rnd(8, 34), x = h.x + Math.cos(a) * r, z = h.z + Math.sin(a) * r; if (herdIn(x, z)) { h.tx = x; h.tz = z; h.state = 'wander'; break; } } if (h.state === 'graze') h.t = rnd(2, 5); } }
@@ -6771,11 +6773,16 @@ function mount(container, plan, opts) {
   }
   // a plan with `play: 'unicorn'` opens straight into it: you're the unicorn, just inside the door, facing the room
   let playKey = null;
-  function startPlay() {
-    if (!plan || plan.play !== 'unicorn' || plan.flyAs !== 'unicorn' || !A || A.empty || tween) return;
+  // where you come in: just inside the first door, toward the middle of the room
+  function playSpot() {
     const b = A.bounds, cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2; let x = cx, z = cz + 12;
     const o = (plan.openings || []).find(q => q.type !== 'glass' && q.type !== 'pass' && q.type !== 'removable');
     if (o) { const mx = (o.x1 + o.x2) / 2, mz = (o.y1 + o.y2) / 2, d = Math.hypot(cx - mx, cz - mz) || 1; x = mx + (cx - mx) / d * 16; z = mz + (cz - mz) / d * 16; }
+    return { x, z, cx, cz };
+  }
+  function startPlay() {
+    if (!plan || plan.play !== 'unicorn' || plan.flyAs !== 'unicorn' || !A || A.empty || tween) return;
+    const { x, z, cx, cz } = playSpot();
     stopTour(); target = null; pilot = false; camYaw = null; controls.enabled = false; labelsEl.hidden = true;
     st.x = x; st.z = z; st.y = UNI_GROUND; st.yaw = Math.atan2(-(cx - x), -(cz - z)); st.pitch = 0; if (Math.hypot(cx - x, cz - z) < 0.5) st.yaw = 0;
     mode = 'fly'; applyVis('fly'); setModeUI(); applyFlyCam();
