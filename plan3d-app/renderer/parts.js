@@ -407,7 +407,7 @@ function partsList(plan) {
     if (SP.length) {
       const D = V.SOFT_DIMS, G = 'Softwall', hp = D.post / 2;
       let beamFt = 0, posts = 0, postH = 0, lock = 0; const corners = (A.corners || []).filter(c => SP.some(p => Math.hypot(p.x1 - c.x, p.z1 - c.z) < 1 || Math.hypot(p.x2 - c.x, p.z2 - c.z) < 1)).length;
-      const curtain = (w, h) => { if (w < 1 / 12 || h < 1 / 12) return; add(G, 'Vinyl curtain, clear, 20 mil', inch(w) + ' × ' + inch(h), 1, 'ea', 12.63); lock += w + 2 * h; };
+      const curtain = (w, h) => { if (w < 1 / 12 || h < 1 / 12) return; add(G, 'Vinyl curtain, ' + V.softColor(plan).name + ', 20 mil', inch(w) + ' × ' + inch(h), 1, 'ea', 12.63); lock += w + 2 * h; };
       for (const p of SP) {
         const h = p.h || WH, pw = (plan.walls || []).find(q => q.id === p.id);
         // connector posts only (a side of 15′ or more); the curtain runs corner post to connector post
@@ -417,7 +417,7 @@ function partsList(plan) {
       }
       for (const i of SO) {
         const o = i.o, top = i.wallH || WH; beamFt += i.len;
-        if (o.type !== 'glass' && o.type !== 'pass' && o.type !== 'removable') { const w = i.len; add(G, 'Strip door, clear vinyl 40 mil, 8″ strips lapped 2″, with mounting rail', inch(w) + ' × ' + inch(top - D.beam), 1, 'ea', 12.64); add(G, 'Strip door strips, 8″ × ' + inch(top - D.beam), '', Math.max(1, Math.ceil((w - D.lap) / (D.strip - D.lap))), 'ea', 12.65); }
+        if (o.type !== 'glass' && o.type !== 'pass' && o.type !== 'removable') { const w = i.len; add(G, 'Strip door, ' + V.softColor(plan).name + ' vinyl 40 mil, 8″ strips lapped 2″, with mounting rail', inch(w) + ' × ' + inch(top - D.beam), 1, 'ea', 12.64); add(G, 'Strip door strips, 8″ × ' + inch(top - D.beam), '', Math.max(1, Math.ceil((w - D.lap) / (D.strip - D.lap))), 'ea', 12.65); }
         else curtain(i.len, top - D.beam - D.gap);
       }
       if (posts) add(G, 'Steel tube connector post, 2″ × 4″ 11 ga, white powder coat (sides of 15′ or more)', ftin(postH), posts, 'ea', 12.6);
