@@ -3392,6 +3392,13 @@ function floorMat(THREE, kind) {
     herringbone: [256, 256, 3, 3, (g, w, h) => { g.fillStyle = '#b08a5e'; g.fillRect(0, 0, w, h); const tones = ['#b9905f', '#a57d52', '#c49a6a', '#9c7449']; const L = 64, W2 = 16; for (let y = -L; y < h + L; y += W2 * 2) for (let x = -L; x < w + L; x += L) { for (const [dx, rot] of [[0, Math.PI / 4], [L / 2, -Math.PI / 4]]) { g.save(); g.translate(x + dx, y); g.rotate(rot); g.fillStyle = tones[(Math.random() * 4) | 0]; g.fillRect(0, 0, L * 0.7, W2); g.strokeStyle = 'rgba(60,40,20,.35)'; g.strokeRect(0, 0, L * 0.7, W2); g.restore(); } } }],
     marble: [256, 256, 4, 4, (g, w, h) => { g.fillStyle = '#eeece8'; g.fillRect(0, 0, w, h); for (let k = 0; k < 14; k++) { g.strokeStyle = `rgba(120,120,125,${0.08 + Math.random() * .15})`; g.lineWidth = 0.6 + Math.random() * 1.6; g.beginPath(); let x = Math.random() * w, y = 0; g.moveTo(x, y); while (y < h) { x += (Math.random() - .5) * 30; y += 10 + Math.random() * 20; g.lineTo(x, y); } g.stroke(); } g.fillStyle = 'rgba(160,160,160,.6)'; g.fillRect(0, 0, w, 1.5); g.fillRect(0, 0, 1.5, h); g.fillRect(0, h / 2, w, 1.5); g.fillRect(w / 2, 0, 1.5, h); }],
     slate: [128, 128, 3, 3, (g, w, h) => { const tones = ['#4f5357', '#5b5f62', '#464a4d', '#585653']; for (let y = 0; y < h; y += h / 2) for (let x = 0; x < w; x += w / 2) { g.fillStyle = tones[(Math.random() * 4) | 0]; g.fillRect(x, y, w / 2, h / 2); for (let i = 0; i < 300; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * .05})`; g.fillRect(x + Math.random() * w / 2, y + Math.random() * h / 2, 3, 1); } } g.fillStyle = '#2b2d2f'; for (const v of [0, h / 2]) { g.fillRect(0, v, w, 2); g.fillRect(v, 0, 2, h); } }],
+    grass: [512, 512, 14, 14, (g, w, h) => {
+      g.fillStyle = '#4c9a3d'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 260; i++) { const x = Math.random() * w, y = Math.random() * h, r = 14 + Math.random() * 40; g.fillStyle = Math.random() < .5 ? 'rgba(40,110,40,.16)' : 'rgba(150,205,90,.14)'; for (const [ox, oy] of [[0, 0], [w, 0], [-w, 0], [0, h], [0, -h]]) { g.beginPath(); g.arc(x + ox, y + oy, r, 0, 6.3); g.fill(); } }
+      const greens = ['#2f7d32', '#3f9142', '#58ab4a', '#79c257', '#9ad66b', '#2a6e2f'];
+      for (let i = 0; i < 9000; i++) { const x = Math.random() * w, y = Math.random() * h, L = 3 + Math.random() * 7, a = -Math.PI / 2 + (Math.random() - .5) * 1.1; g.strokeStyle = greens[(Math.random() * greens.length) | 0]; g.lineWidth = 0.7 + Math.random() * 0.9; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * L, y + Math.sin(a) * L); g.stroke(); }
+      for (let i = 0; i < 46; i++) { const x = 6 + Math.random() * (w - 12), y = 6 + Math.random() * (h - 12), c = ['#ffffff', '#ffd6ec', '#fff3a6', '#d9c8ff'][(Math.random() * 4) | 0]; g.fillStyle = c; for (let p = 0; p < 5; p++) { const a = p * 1.2566; g.beginPath(); g.arc(x + Math.cos(a) * 2.1, y + Math.sin(a) * 2.1, 1.5, 0, 6.3); g.fill(); } g.fillStyle = '#ffcf33'; g.beginPath(); g.arc(x, y, 1.3, 0, 6.3); g.fill(); }
+    }],
     concrete: [128, 128, 8, 8, (g, w, h) => { g.fillStyle = '#b7b4ad'; g.fillRect(0, 0, w, h); for (let i = 0; i < 3000; i++) { const v = Math.random() < .5 ? '0,0,0' : '255,255,255'; g.fillStyle = `rgba(${v},${Math.random() * .05})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } }]
   }[kind] || null;
   if (!draw) return floorMat(THREE, 'lvp');
@@ -4779,7 +4786,7 @@ function buildScene(THREE, plan, A) {
   const fMat = new THREE.MeshPhongMaterial({ map: fTex, color: A.hardAny ? 0x9ea2a3 : 0xb7b4ad, specular: 0x101010, shininess: A.hardAny ? 22 : 8, name: A.hardAny ? 'Floor, cleanroom coating' : 'Floor, concrete' });
   let floor;
   // houses: a floor finish for the whole house (plan.floorType), and per room where a room label sets one
-  const fl = A.house ? floorMat(THREE, plan.floorType || 'lvp') : null;
+  const fl = plan.floorType === 'grass' ? floorMat(THREE, 'grass') : A.house ? floorMat(THREE, plan.floorType || 'lvp') : null;
   const fRects = FPall ? (plan.__floorHoles && plan.__floorHoles.length ? subtractRects(FPall.rects, plan.__floorHoles) : FPall.rects) : null;
   if (FPall) floor = fl ? new THREE.Mesh(rectsGeometry(THREE, fRects, 0.01, false, fl.su, fl.sv, 0, 0), fl.mat) : new THREE.Mesh(rectsGeometry(THREE, fRects, 0.01, false, 12, 12, 0, 0), fMat);
   else { fTex.repeat.set(B.w / 12, B.d / 12); floor = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.d), fMat); floor.rotation.x = -Math.PI / 2; floor.position.set(B.cx, 0.01, B.cz); }
@@ -6642,42 +6649,144 @@ function mount(container, plan, opts) {
     for (const sd of [1, -1]) { const d = add(new THREE.PlaneGeometry(0.4, 0.125), dm, sd * 0.2225, 0.005, 0); d.lookAt(sd * 2, 0.005, 0); d.renderOrder = 5; }
     drone.traverse(o => { if (o.renderOrder < 4) o.renderOrder = 4; });
   }
-  // the unicorn: a plan can say `flyAs: 'unicorn'`, and then you fly through it as one instead of the drone (same
-  // controls, same camera). White, a gold horn and hooves, a rainbow mane and tail; it gallops as it goes.
-  const uni = new THREE.Group(); uni.visible = false; drone.add(uni);
-  {
-    const ph = (c, ex) => new THREE.MeshPhongMaterial(Object.assign({ color: c, specular: 0xffffff, shininess: 60 }, ex || {}));
-    const white = ph(0xffffff, { emissive: 0x3a3338 }), gold = ph(0xffd24a, { emissive: 0x5a4208, shininess: 120 }), pink = ph(0xff8ccf, { emissive: 0x401c30 }), dark = ph(0x1a1420);
-    const RB = [0xff4d6d, 0xff9f1c, 0xffe74c, 0x4cd964, 0x4aa8ff, 0xb16cff].map(c => ph(c, { emissive: (c >> 2) & 0x3f3f3f }));
-    const add = (par, geo, mat, x, y, z, sx, sy, sz) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); if (sx) m.scale.set(sx, sy, sz); par.add(m); return m; };
-    const S = new THREE.SphereGeometry(1, 24, 16);
-    // body (nose toward -z, the way the drone faces), chest and rump
-    add(uni, S, white, 0, 0, 0.05, 0.3, 0.3, 0.56); add(uni, S, white, 0, 0.03, -0.38, 0.27, 0.3, 0.3); add(uni, S, white, 0, 0.02, 0.45, 0.28, 0.29, 0.28);
-    // neck and head
-    const neck = add(uni, new THREE.CylinderGeometry(0.13, 0.19, 0.62, 16), white, 0, 0.42, -0.6); neck.rotation.x = -0.55;
-    const head = new THREE.Group(); head.position.set(0, 0.74, -0.84); head.rotation.x = 0.35; uni.add(head);
-    add(head, S, white, 0, 0, 0, 0.15, 0.16, 0.22); add(head, S, white, 0, -0.05, -0.22, 0.1, 0.1, 0.16); add(head, S, pink, 0, -0.06, -0.35, 0.085, 0.08, 0.06);
-    for (const sd of [1, -1]) { add(head, S, dark, sd * 0.125, 0.03, -0.08, 0.03, 0.04, 0.04); const ear = add(head, new THREE.ConeGeometry(0.045, 0.14, 10), white, sd * 0.09, 0.2, 0.08); ear.rotation.z = -sd * 0.25; add(head, S, dark, sd * 0.04, -0.07, -0.385, 0.012, 0.012, 0.012); }
-    // the horn: a gold spiral cone
-    const horn = add(head, new THREE.ConeGeometry(0.045, 0.42, 14), gold, 0, 0.33, -0.1); horn.rotation.x = -0.3;
-    for (let k = 0; k < 5; k++) { const r = add(head, new THREE.TorusGeometry(0.04 - k * 0.006, 0.008, 6, 14), gold, 0, 0.17 + k * 0.065, -0.05 - k * 0.02); r.rotation.x = Math.PI / 2 - 0.3; }
-    // rainbow mane down the neck, and the tail
-    for (let k = 0; k < 9; k++) add(uni, S, RB[k % 6], 0, 0.84 - k * 0.075, -0.66 + k * 0.075, 0.05, 0.09, 0.08);
-    for (let k = 0; k < 4; k++) add(head, S, RB[k % 6], 0, 0.16 - k * 0.02, -0.02 - k * 0.05, 0.04, 0.05, 0.05);
-    const tail = new THREE.Group(); tail.position.set(0, 0.16, 0.7); uni.add(tail); uni.userData.tail = tail;
-    RB.forEach((m, k) => { const t = add(tail, S, m, (k - 2.5) * 0.035, -0.22, 0.14, 0.035, 0.34, 0.07); t.rotation.x = 0.5; });
-    // legs on hip pivots (so they can gallop), gold hooves
-    uni.userData.legs = [];
-    for (const [x, z, ph0] of [[0.15, -0.42, 0], [-0.15, -0.42, 0.6], [0.15, 0.42, Math.PI], [-0.15, 0.42, Math.PI + 0.6]]) {
-      const hip = new THREE.Group(); hip.position.set(x, -0.12, z); uni.add(hip); hip.userData.ph = ph0; uni.userData.legs.push(hip);
-      add(hip, new THREE.CylinderGeometry(0.075, 0.055, 0.58, 12), white, 0, -0.3, 0); add(hip, new THREE.CylinderGeometry(0.065, 0.075, 0.1, 12), gold, 0, -0.62, 0);
+  // ---- Unicorns. A plan can say `flyAs: 'unicorn'`, and then you go through it as one instead of the drone (same
+  // controls, same camera, hooves on the floor until you fly). `herd: n` puts n more in the room: they graze, wander
+  // and run along with you, and never leave the room. White (the herd in soft tints), a pearl-gold spiral horn, gold
+  // hooves, a rainbow mane and tail.
+  const UNI_S = 3, UNI_GROUND = 0.84 * UNI_S;   // model units to feet (about 5′ to the ears); body centre above the floor
+  let UG = null;
+  function uniGeo() {
+    if (UG) return UG;
+    const V = (x, y, z) => new THREE.Vector3(x, y, z), tube = (pts, r) => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 14, r, 7, false);
+    const helix = []; for (let k = 0; k <= 40; k++) { const t = k / 40, a = t * Math.PI * 8, r = 0.043 * (1 - t) + 0.004; helix.push(V(Math.cos(a) * r, -0.21 + t * 0.42, Math.sin(a) * r)); }
+    UG = {
+      S: new THREE.SphereGeometry(1, 28, 18), neck: new THREE.CylinderGeometry(0.105, 0.18, 0.66, 18), muzzle: new THREE.CylinderGeometry(0.1, 0.07, 0.26, 16),
+      ear: new THREE.ConeGeometry(0.045, 0.15, 10), horn: new THREE.ConeGeometry(0.045, 0.42, 16), twist: new THREE.TubeGeometry(new THREE.CatmullRomCurve3(helix), 60, 0.007, 5, false),
+      thigh: new THREE.CylinderGeometry(0.085, 0.058, 0.36, 12), shin: new THREE.CylinderGeometry(0.052, 0.04, 0.3, 12), hoof: new THREE.CylinderGeometry(0.052, 0.07, 0.1, 12), tuft: new THREE.SphereGeometry(0.062, 10, 8),
+      shadow: new THREE.CircleGeometry(0.62, 24),
+      // a lock of mane: out from the crest, over to one side and down
+      lock: tube([V(0, 0.01, 0), V(0.05, 0.02, 0.01), V(0.1, -0.08, 0.04), V(0.115, -0.26, 0.08), V(0.1, -0.42, 0.13), V(0.075, -0.52, 0.17)], 0.036),
+      fore: tube([V(0, 0, 0), V(0, 0.03, -0.08), V(0.02, -0.04, -0.17), V(0.03, -0.14, -0.2)], 0.035),
+      tail: [0, 1, 2, 3, 4, 5].map(k => { const d = (k - 2.5) * 0.03; return tube([V(d * 0.4, 0, 0), V(d, 0.06, 0.16), V(d * 1.8, -0.12, 0.34), V(d * 2.4, -0.45, 0.42), V(d * 2.1, -0.72, 0.38), V(d * 1.4, -0.9, 0.3)], 0.045); })
+    };
+    return UG;
+  }
+  const UM = {};
+  function uniMat(tint) {
+    const ph = (c, ex) => new THREE.MeshPhongMaterial(Object.assign({ color: c, specular: 0xffffff, shininess: 70 }, ex || {}));
+    if (!UM.gold) {
+      UM.gold = ph(0xffd65a, { emissive: 0x6a4c0a, shininess: 140 }); UM.pearl = ph(0xfff3c4, { emissive: 0x6b5a2a, shininess: 160 }); UM.pink = ph(0xff9fd0, { emissive: 0x4a2238 });
+      UM.dark = ph(0x1c1524, { shininess: 150 }); UM.glint = new THREE.MeshBasicMaterial({ color: 0xffffff }); UM.blush = new THREE.MeshBasicMaterial({ color: 0xff9ec7, transparent: true, opacity: 0.55, depthWrite: false });
+      UM.shadow = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2, depthWrite: false });
+      UM.rb = [0xff5d8f, 0xff9f43, 0xffe066, 0x5bd67a, 0x4dabf7, 0xb388ff].map(c => ph(c, { emissive: ((c >> 2) & 0x3f3f3f), shininess: 50 }));
     }
-    uni.traverse(o => { if (o.renderOrder < 4) o.renderOrder = 4; });
+    const k = 'c' + (tint || 0xffffff); return UM[k] || (UM[k] = ph(tint || 0xffffff, { emissive: 0x3d363a, shininess: 95 }));
+  }
+  function makeUnicorn(tint) {
+    const G = uniGeo(), coat = uniMat(tint), g = new THREE.Group(), body = new THREE.Group(); g.add(body); body.scale.setScalar(UNI_S);
+    const add = (par, geo, mat, x, y, z, sx, sy, sz) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); if (sx) m.scale.set(sx, sy, sz); par.add(m); return m; };
+    // barrel, chest, hindquarters (nose toward -z, the way you face)
+    add(body, G.S, coat, 0, 0, 0.02, 0.27, 0.275, 0.5); add(body, G.S, coat, 0, 0.035, -0.36, 0.262, 0.3, 0.28); add(body, G.S, coat, 0, 0.04, 0.4, 0.285, 0.3, 0.31);
+    // neck and head on a shoulder pivot, so it can drop to graze
+    const front = new THREE.Group(); front.position.set(0, 0.1, -0.44); body.add(front);
+    const neck = add(front, G.neck, coat, 0, 0.3, -0.19); neck.rotation.x = -0.58;
+    const head = new THREE.Group(); head.position.set(0, 0.6, -0.38); head.rotation.x = 0.42; front.add(head);
+    add(head, G.S, coat, 0, 0, 0, 0.135, 0.15, 0.185);
+    const mz = add(head, G.muzzle, coat, 0, -0.045, -0.2); mz.rotation.x = Math.PI / 2;
+    add(head, G.S, coat, 0, -0.045, -0.325, 0.072, 0.07, 0.05); add(head, G.S, UM.pink, 0, -0.062, -0.345, 0.05, 0.04, 0.035);
+    for (const sd of [1, -1]) {
+      add(head, G.S, UM.dark, sd * 0.112, 0.035, -0.075, 0.034, 0.044, 0.044); add(head, G.S, UM.glint, sd * 0.132, 0.055, -0.092, 0.011, 0.011, 0.011);
+      add(head, G.S, UM.blush, sd * 0.118, -0.045, -0.13, 0.012, 0.034, 0.04); add(head, G.S, UM.dark, sd * 0.024, -0.055, -0.377, 0.008, 0.011, 0.008);
+      const ear = add(head, G.ear, coat, sd * 0.085, 0.2, 0.07); ear.rotation.z = -sd * 0.28; ear.rotation.x = -0.15;
+      const ei = add(head, G.ear, UM.pink, sd * 0.085, 0.195, 0.062, 0.55, 0.7, 0.55); ei.rotation.z = -sd * 0.28; ei.rotation.x = -0.15;
+    }
+    const horn = new THREE.Group(); horn.position.set(0, 0.34, -0.09); horn.rotation.x = -0.32; head.add(horn);
+    add(horn, G.horn, UM.pearl, 0, 0, 0); add(horn, G.twist, UM.gold, 0, 0, 0);
+    // rainbow mane: a forelock, then locks down the crest, falling to alternate sides
+    for (let k = 0; k < 3; k++) { const fl = add(head, G.fore, UM.rb[k], (k - 1) * 0.045, 0.15, -0.02); fl.rotation.y = (k - 1) * -0.5; }
+    for (let k = 0; k < 12; k++) { const t = k / 11, lk = add(front, G.lock, UM.rb[k % 6], 0, 0.71 - t * 0.6, -0.3 + t * 0.43, 1, 0.75 + t * 0.4, 1); if (k % 2) lk.scale.x = -1; lk.rotation.x = -0.25; }
+    const tail = new THREE.Group(); tail.position.set(0, 0.2, 0.68); body.add(tail);
+    G.tail.forEach((tg, k) => add(tail, tg, UM.rb[k], 0, 0, 0));
+    // legs: hip, knee, a tuft at the fetlock and a gold hoof
+    const legs = [];
+    for (const [x, z, p0] of [[0.145, -0.37, 0], [-0.145, -0.37, 0.55], [0.155, 0.41, Math.PI], [-0.155, 0.41, Math.PI + 0.55]]) {
+      const hip = new THREE.Group(); hip.position.set(x, -0.08, z); body.add(hip); add(hip, G.thigh, coat, 0, -0.18, 0);
+      const knee = new THREE.Group(); knee.position.set(0, -0.36, 0); hip.add(knee); add(knee, G.shin, coat, 0, -0.15, 0); add(knee, G.tuft, coat, 0, -0.29, 0.01); add(knee, G.hoof, UM.gold, 0, -0.35, 0);
+      legs.push({ hip, knee, p0, hind: z > 0 });
+    }
+    const sh = add(g, G.shadow, UM.shadow, 0, -UNI_GROUND + 0.04, 0.1 * UNI_S); sh.rotation.x = -Math.PI / 2; sh.scale.set(UNI_S * 0.8, UNI_S * 1.25, 1);
+    g.traverse(o => { if (o.renderOrder < 4) o.renderOrder = 4; }); sh.renderOrder = 3;
+    g.userData.u = { body, front, head, tail, legs, sh };
+    return g;
+  }
+  // phase: where it is in its stride; go: 0 standing … 1+ galloping; gz: 0 head up … 1 grazing
+  function poseUnicorn(g, phase, go, gz, t) {
+    const U = g.userData.u, amp = 0.12 + 0.62 * Math.min(1.4, go);
+    for (const L of U.legs) { const a = phase + L.p0; L.hip.rotation.x = Math.sin(a) * amp * (go > 0.03 ? 1 : 0.15); L.knee.rotation.x = -Math.max(0, Math.sin(a + (L.hind ? 2.2 : 1.1))) * amp * 1.5 * (go > 0.03 ? 1 : 0); }
+    U.body.position.y = Math.abs(Math.sin(phase)) * 0.2 * Math.min(1.2, go); U.body.rotation.x = Math.sin(phase * 2) * 0.05 * Math.min(1, go);
+    U.front.rotation.x = -2.0 * gz + Math.sin(phase) * 0.06 * go + (gz > 0.5 ? Math.sin(t * 2.6) * 0.05 : 0); U.front.position.y = 0.1 - 0.14 * gz; U.head.rotation.x = 0.42 - 0.85 * gz; U.body.rotation.x += 0.1 * gz;
+    U.tail.rotation.x = -0.75 * Math.min(1.2, go) + Math.sin(t * 1.7 + phase * 0.3) * 0.12; U.tail.rotation.z = Math.sin(t * 1.3) * 0.12;
+  }
+  const uni = makeUnicorn(); uni.visible = false; drone.add(uni);
+  // the herd
+  const herd = new THREE.Group(); herd.name = 'p3herd'; scene.add(herd);
+  let herdList = [], herdIn = null, roomIn = null, lastP = null, pSpeed = 0, uniPh = 0, uniGo = 0, uniT = 0;
+  function setHerd() {
+    while (herd.children.length) herd.remove(herd.children[0]); herdList = []; herdIn = roomIn = null;
+    const n = plan && plan.flyAs === 'unicorn' ? Math.max(0, Math.min(40, +plan.herd || 0)) : 0; if (!n || !A || A.empty) return;
+    let fp = null; try { fp = footprint(A, true); } catch (e) { fp = null; } if (!fp) return;
+    const W = plan.walls || [];
+    roomIn = (x, z) => fp.has(x, z); herdIn = (x, z) => fp.has(x, z) && !W.some(w => segDist(x, z, w.x1, w.y1, w.x2, w.y2) < 4);
+    const b = A.bounds, TINT = [0xffffff, 0xffe6f2, 0xe8f1ff, 0xfff6dc, 0xecffee, 0xf3eaff], rnd = (a, c) => a + Math.random() * (c - a);
+    for (let k = 0; k < n; k++) {
+      let x = 0, z = 0, tries = 0; do { x = rnd(b.minX, b.maxX); z = rnd(b.minZ, b.maxZ); } while (!herdIn(x, z) && ++tries < 300); if (tries >= 300) break;
+      const sc = rnd(0.72, 1.05), u = makeUnicorn(TINT[k % TINT.length]); u.scale.setScalar(sc); herd.add(u);
+      herdList.push({ u, x, z, sc, yaw: rnd(-Math.PI, Math.PI), state: 'graze', t: rnd(1, 9), tx: x, tz: z, ph: rnd(0, 6), go: 0, gz: 1, off: [rnd(-1.35, 1.35), rnd(6, 20)] });
+    }
+  }
+  function stepHerd(dt) {
+    uniT += dt;
+    if (!herdList.length || !herdIn) return;
+    const rnd = (a, c) => a + Math.random() * (c - a), play = mode === 'fly' || mode === 'walk', px = st.x, pz = st.z;
+    if (lastP) { const v = Math.hypot(px - lastP[0], pz - lastP[1]) / Math.max(dt, 1e-3); pSpeed += (Math.min(60, v) - pSpeed) * Math.min(1, dt * 4); } lastP = [px, pz];
+    const lead = play && roomIn(px, pz) && pSpeed > 2.5;
+    for (const h of herdList) {
+      if (lead && Math.hypot(px - h.x, pz - h.z) < 70) h.state = 'follow'; else if (h.state === 'follow') { h.state = 'graze'; h.t = rnd(3, 9); }
+      let tx = h.x, tz = h.z, spd = 0;
+      if (h.state === 'follow') { tx = px + Math.sin(st.yaw + h.off[0]) * h.off[1]; tz = pz + Math.cos(st.yaw + h.off[0]) * h.off[1]; const d = Math.hypot(tx - h.x, tz - h.z); spd = d < 1.5 ? 0 : Math.min(Math.max(pSpeed * 1.1, 7), 4 + d * 1.6, 30); }
+      else if (h.state === 'graze') { h.t -= dt; if (h.t <= 0) { for (let k = 0; k < 12; k++) { const a = rnd(0, 6.283), r = rnd(8, 34), x = h.x + Math.cos(a) * r, z = h.z + Math.sin(a) * r; if (herdIn(x, z)) { h.tx = x; h.tz = z; h.state = 'wander'; break; } } if (h.state === 'graze') h.t = rnd(2, 5); } }
+      else { tx = h.tx; tz = h.tz; spd = 3.4; if (Math.hypot(tx - h.x, tz - h.z) < 1.2) { h.state = 'graze'; h.t = rnd(4, 11); spd = 0; } }
+      if (spd > 0) {
+        let dy = Math.atan2(-(tx - h.x), -(tz - h.z)) - h.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); h.yaw += Math.max(-dt * 3.6, Math.min(dt * 3.6, dy));
+        const stp = spd * dt * Math.max(0.15, Math.cos(dy)), nx = h.x - Math.sin(h.yaw) * stp, nz = h.z - Math.cos(h.yaw) * stp;
+        if (herdIn(nx, nz)) { h.x = nx; h.z = nz; } else { spd = 0; if (h.state === 'wander') { h.state = 'graze'; h.t = rnd(2, 5); } }
+      }
+      // room for each other, and for you
+      for (const o of herdList) { if (o === h) continue; const dx = h.x - o.x, dz = h.z - o.z, d = Math.hypot(dx, dz); if (d < 4.5 && d > 1e-3) { const p = (4.5 - d) * dt * 2, nx = h.x + dx / d * p, nz = h.z + dz / d * p; if (herdIn(nx, nz)) { h.x = nx; h.z = nz; } } }
+      if (play) { const dx = h.x - px, dz = h.z - pz, d = Math.hypot(dx, dz); if (d < 5 && d > 1e-3) { const p = (5 - d) * dt * 4, nx = h.x + dx / d * p, nz = h.z + dz / d * p; if (herdIn(nx, nz)) { h.x = nx; h.z = nz; } } }
+      h.go += ((spd > 0 ? Math.min(1.5, 0.25 + spd / 14) : 0) - h.go) * Math.min(1, dt * 5); h.gz += ((h.state === 'graze' && spd === 0 ? 1 : 0) - h.gz) * Math.min(1, dt * 2.2);
+      h.ph += dt * (2.5 + spd * 0.5);
+      h.u.position.set(h.x, UNI_GROUND * h.sc, h.z); h.u.rotation.y = h.yaw; poseUnicorn(h.u, h.ph, h.go, h.gz, uniT + h.off[1]);
+    }
+  }
+  // a plan with `play: 'unicorn'` opens straight into it: you're the unicorn, just inside the door, facing the room
+  let playKey = null;
+  function startPlay() {
+    if (!plan || plan.play !== 'unicorn' || plan.flyAs !== 'unicorn' || !A || A.empty || tween) return;
+    const b = A.bounds, cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2; let x = cx, z = cz + 12;
+    const o = (plan.openings || []).find(q => q.type !== 'glass' && q.type !== 'pass' && q.type !== 'removable');
+    if (o) { const mx = (o.x1 + o.x2) / 2, mz = (o.y1 + o.y2) / 2, d = Math.hypot(cx - mx, cz - mz) || 1; x = mx + (cx - mx) / d * 16; z = mz + (cz - mz) / d * 16; }
+    stopTour(); target = null; pilot = false; camYaw = null; controls.enabled = false; labelsEl.hidden = true;
+    st.x = x; st.z = z; st.y = UNI_GROUND; st.yaw = Math.atan2(-(cx - x), -(cz - z)); st.pitch = 0; if (Math.hypot(cx - x, cz - z) < 0.5) st.yaw = 0;
+    mode = 'fly'; applyVis('fly'); setModeUI(); applyFlyCam();
+    hint.textContent = touchy ? 'Unicorn: joystick runs the way it looks · ▲ ▼ fly up and down · drag to look' : 'You are the unicorn: W run · S back · A / D slide · Shift gallop · arrows look · Space / R fly up · C / F down · the herd runs with you';
+    hint.classList.remove('gone'); hintGone = false; setTimeout(dismissHint, 9000);
   }
   // which one you fly as, from the plan
   function setFlyAs() {
     const u = !!(plan && plan.flyAs === 'unicorn'); drone.userData.uni = u;
     for (const c of drone.children) c.visible = c === uni ? u : !u;
+    try { setHerd(); } catch (e) { console.error(e); }
     const fb = modeBtns && modeBtns.find(b => b.dataset.m === 'fly'); if (fb) fb.textContent = u ? 'Unicorn' : 'Drone';
   }
   let pilot = false, droneTilt = 0, droneRoll = 0, propSpin = 0, flyBoost = 1, game = null;
@@ -6685,12 +6794,13 @@ function mount(container, plan, opts) {
   function applyFlyCam() {
     const chase = mode === 'fly' && !pilot && !tween;
     drone.visible = chase;
-    drone.position.set(st.x, st.y, st.z); drone.rotation.set(droneTilt, st.yaw, droneRoll, 'YXZ');
+    drone.position.set(st.x, st.y, st.z); drone.rotation.set(drone.userData.uni ? droneTilt * 0.3 : droneTilt, st.yaw, drone.userData.uni ? droneRoll * 0.5 : droneRoll, 'YXZ');
     if (!chase) { camera.position.set(st.x, st.y, st.z); camera.rotation.set(st.pitch, st.yaw, 0, 'YXZ'); return; }
     // always the same spot: 3.2 ft behind the drone and a foot above it, facing the way the drone faces. Looking
     // up or down only tilts the camera there; it never swings round the drone.
-    camOff.set(Math.sin(st.yaw) * 3.2, 0.95, Math.cos(st.yaw) * 3.2);
-    camera.position.set(st.x + camOff.x, st.y + camOff.y, st.z + camOff.z); camera.rotation.set(st.pitch - 0.16, st.yaw, 0, 'YXZ');
+    const cb = drone.userData.uni ? 11 : 3.2, cu = drone.userData.uni ? 3.6 : 0.95;   // farther back behind the unicorn: it's a lot bigger than the drone
+    camOff.set(Math.sin(st.yaw) * cb, cu, Math.cos(st.yaw) * cb);
+    camera.position.set(st.x + camOff.x, st.y + camOff.y, st.z + camOff.z); camera.rotation.set(st.pitch - (drone.userData.uni ? 0.2 : 0.16), st.yaw, 0, 'YXZ');
   }
   function poseFromCamera() { const d = camera.getWorldDirection(new THREE.Vector3()); return { x: camera.position.x, y: camera.position.y, z: camera.position.z, yaw: Math.atan2(-d.x, -d.z), pitch: Math.max(-1.3, Math.min(1.3, Math.asin(Math.max(-1, Math.min(1, d.y))))) }; }
   function goFly() {
@@ -6729,10 +6839,10 @@ function mount(container, plan, opts) {
     const lean = Math.min(1, Math.abs(f)) * Math.sign(f) * (running || keys.has('shift') ? 0.32 : 0.2), roll = -Math.max(-1, Math.min(1, s2 + turn * 0.6)) * 0.22;
     droneTilt += (-lean - droneTilt) * Math.min(1, dt * 5); droneRoll += (roll - droneRoll) * Math.min(1, dt * 5);
     propSpin += dt * 60; drone.userData.props.forEach((b, i) => { b.rotation.y = propSpin * (i % 2 ? 1 : -1); });
-    if (drone.userData.uni) { const go = Math.min(1, n) * (running || keys.has('shift') ? 1.5 : 1), g = propSpin * 0.16; uni.userData.legs.forEach(h => { h.rotation.x = Math.sin(g + h.userData.ph) * (0.25 + 0.55 * go); }); uni.userData.tail.rotation.x = Math.sin(g * 0.5) * 0.25 + 0.2 * go; uni.position.y = Math.abs(Math.sin(g)) * 0.07 * (0.3 + go) - 0.15; }
+    if (drone.userData.uni) { const fast = running || keys.has('shift'), mv = Math.min(1, n); uniGo += ((mv > 0.05 ? (fast ? 1.35 : 0.8) : 0) - uniGo) * Math.min(1, dt * 5); uniPh += dt * (2.5 + uniGo * 11); poseUnicorn(uni, uniPh, uniGo, 0, uniT); uni.userData.u.sh.position.y = -st.y + 0.05; uni.userData.u.sh.visible = st.y < UNI_GROUND + 12; }
     else if (drone.userData.strobe) drone.userData.strobe.visible = (propSpin % 60) < 4;
-    drone.position.y = st.y + Math.sin(propSpin * 0.05) * 0.02;
-    const b = A.bounds; st.x = Math.max(b.minX - 120, Math.min(b.maxX + 120, st.x)); st.z = Math.max(b.minZ - 120, Math.min(b.maxZ + 120, st.z)); st.y = Math.max(0.3, Math.min(150, st.y));
+    drone.position.y = st.y + (drone.userData.uni ? 0 : Math.sin(propSpin * 0.05) * 0.02);
+    const b = A.bounds; st.x = Math.max(b.minX - 120, Math.min(b.maxX + 120, st.x)); st.z = Math.max(b.minZ - 120, Math.min(b.maxZ + 120, st.z)); st.y = Math.max(drone.userData.uni ? UNI_GROUND : 0.3, Math.min(150, st.y));
     applyFlyCam();
   }
 
@@ -7330,8 +7440,10 @@ function mount(container, plan, opts) {
     plan = p;
     A = analyzeAll(p);
     if (built) { scene.remove(built.root); built.root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
-    try { setFlyAs(); } catch (e) { /* the drone, then */ }
-    built = buildStack(THREE, p, A); exList = null; exShown = -1; if (built.levelObjs) { exOn = false; exK = 0; }
+    built = buildStack(THREE, p, A); try { setFlyAs(); } catch (e) { console.error(e); }
+    if (keep === false) playKey = null;
+    if (p && p.play === 'unicorn' && playKey !== (p.name || '')) { playKey = p.name || ''; setTimeout(() => { try { startPlay(); } catch (e) { console.error(e); } }, 500); }
+ exList = null; exShown = -1; if (built.levelObjs) { exOn = false; exK = 0; }
     EYE = EYE0; try { if ((p.levels || []).length > 1) { const L = levelPlans(p).find(q => q.k === (p.level || 0)); if (L) EYE = EYE0 + L.elev; } } catch (e) { }
     for (const extra of [() => pressureArrows(THREE, built.root, p), () => floorFlow(THREE, built.root, p), () => flowArrows(THREE, built.root, p)]) { try { extra(); } catch (e) { console.error(e); } }
     scene.add(built.root);
@@ -7436,7 +7548,7 @@ function mount(container, plan, opts) {
       else controls.update();   // orbit views only (Dollhouse, Plenum, Exterior, Plan); never in Walk or Drone
       if (game && mode !== 'fly') game.stop();
 
-      stepRemovable(dt); stepExplode(Math.min(0.5, rawDt));
+      stepRemovable(dt); stepExplode(Math.min(0.5, rawDt)); try { stepHerd(dt); } catch (e) { /* the room works without them */ }
       if (built && built.doors) {
         built.doors.forEach(doorGroup => {
           const targetOpenAngle = doorGroup.userData.isOpen ? (Math.PI / 2) * doorGroup.userData.swingDir : 0;
