@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://collbusinesssolutions.com/</loc><lastmod>2026-10-31</lastmod><priority>1.0</priority></url>
-  <url><loc>https://collbusinesssolutions.com/cleanroom.html</loc><lastmod>2026-10-31</lastmod><priority>0.9</priority></url>
-  <url><loc>https://collbusinesssolutions.com/timeclock.html</loc><lastmod>2026-10-31</lastmod><priority>0.9</priority></url>
-  <url><loc>https://collbusinesssolutions.com/websites.html</loc><lastmod>2026-11-11</lastmod><priority>0.9</priority></url>
+  <url><loc>https://collbusinesssolutions.com/</loc><lastmod>2026-11-15</lastmod><priority>1.0</priority></url>
+  <url><loc>https://collbusinesssolutions.com/cleanroom.html</loc><lastmod>2026-11-15</lastmod><priority>0.9</priority></url>
+  <url><loc>https://collbusinesssolutions.com/timeclock.html</loc><lastmod>2026-11-15</lastmod><priority>0.9</priority></url>
+  <url><loc>https://collbusinesssolutions.com/websites.html</loc><lastmod>2026-11-15</lastmod><priority>1.0</priority></url>
   <url><loc>https://collbusinesssolutions.com/games.html</loc><lastmod>2026-11-14</lastmod><priority>0.8</priority></url>
-  <url><loc>https://collbusinesssolutions.com/projects.html</loc><lastmod>2026-11-14</lastmod><priority>0.7</priority></url>
-  <url><loc>https://collbusinesssolutions.com/academy.html</loc><lastmod>2026-10-31</lastmod><priority>0.6</priority></url>
+  <url><loc>https://collbusinesssolutions.com/projects.html</loc><lastmod>2026-11-15</lastmod><priority>0.7</priority></url>
+  <url><loc>https://collbusinesssolutions.com/academy.html</loc><lastmod>2026-11-15</lastmod><priority>0.6</priority></url>
   <url><loc>https://collbusinesssolutions.com/dino-garden/</loc><lastmod>2026-10-31</lastmod><priority>0.5</priority></url>
   <url><loc>https://collbusinesssolutions.com/marble-atelier/</loc><lastmod>2026-10-31</lastmod><priority>0.5</priority></url>
   <url><loc>https://collbusinesssolutions.com/cleanroom-setup.pdf</loc><lastmod>2026-10-31</lastmod><priority>0.5</priority></url>
@@ -18,4 +18,5 @@
   <url><loc>https://collbusinesssolutions.com/dino-garden-privacy.html</loc><lastmod>2026-10-31</lastmod><priority>0.2</priority></url>
   <url><loc>https://collbusinesssolutions.com/timeclock-terms.html</loc><lastmod>2026-11-15</lastmod><priority>0.3</priority></url>
   <url><loc>https://collbusinesssolutions.com/timeclock-privacy.html</loc><lastmod>2026-11-15</lastmod><priority>0.3</priority></url>
+  <url><loc>https://collbusinesssolutions.com/marble-atelier-privacy.html</loc><lastmod>2026-10-31</lastmod><priority>0.2</priority></url>
 </urlset>

@@ -1,12 +1,12 @@
 # Coll Business Solutions LLC
 
-> Coll Business Solutions LLC is a Colorado software company that builds tools for working businesses: Coll Timeclock, a time clock, scheduling and invoicing app for small businesses with hourly teams, and Cleanroom Control, a cleanroom monitoring and fan filter unit (FFU) control system. Contact: collbusinesssolutions@gmail.com
+> Coll Business Solutions LLC is a Colorado company that designs, builds and hosts custom websites for small businesses, set up to be found on Google and to bring in calls and quote requests (free homepage mockup on request). It also makes Coll Timeclock, a time clock, scheduling and invoicing app for small businesses with hourly teams, and Cleanroom Control, a cleanroom monitoring and fan filter unit (FFU) control system. Contact: collbusinesssolutions@gmail.com
 
-## Products
+## Services and products
 
-- [Cleanroom Control](https://collbusinesssolutions.com/cleanroom.html): Cleanroom monitoring and fan filter unit control. A Pyr touchscreen controller in each room plus an app (any web browser, Windows, Android).
-- [Coll Timeclock](https://collbusinesssolutions.com/timeclock.html): Time tracking, scheduling, quotes, invoicing, online payments, inventory and profit reports for small businesses with hourly teams. 14-day free trial, then $9.99/month.
-- [Websites](https://collbusinesssolutions.com/websites.html): Custom, mobile-friendly websites for Colorado contractors and trade businesses, set up to be found on Google, with quote request forms and a Google listing from day one. Hosted and cared for (one monthly fee) or built and handed over (one price). Free homepage mockup on request.
+- [Websites](https://collbusinesssolutions.com/websites.html): Our main service. Custom, mobile-first websites for Colorado contractors and small businesses, built to be found on Google, with tap-to-call buttons, quote request forms and a Google Business Profile from day one. Two options: hosted and cared for (one monthly fee) or built and handed over (one price, hosted in the owner's name). Live in about a week. Free homepage mockup before any decision; prices are quoted after the mockup. Recent work: Devora Tree Service (https://devoratreeservice.com), Denver.
+- [Coll Timeclock](https://collbusinesssolutions.com/timeclock.html): Time tracking, scheduling, quotes, invoicing, online payments, inventory and profit reports for small businesses with hourly teams. 14-day free trial, then $9.99/month. [Terms](https://collbusinesssolutions.com/timeclock-terms.html), [Privacy](https://collbusinesssolutions.com/timeclock-privacy.html).
+- [Cleanroom Control](https://collbusinesssolutions.com/cleanroom.html): Cleanroom monitoring and fan filter unit control. A Pyr touchscreen controller in each room plus an app (any web browser, Windows, Android). One price, no monthly fees.
 
 ## Other projects (free to use)
 
