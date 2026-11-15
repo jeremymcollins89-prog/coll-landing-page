@@ -471,9 +471,51 @@
   footer { text-align: center; padding: 36px 24px 46px; font-size: 13px; color: #8A8578; }
   footer a { text-decoration: underline; }
 </style>
+<style>
+/* ===== 2026 refresh: company bar ===== */
+.cbs-bar{background:#0B0D0F;color:#A9B0AD;font:500 13px/1 "Inter",system-ui,sans-serif;font-stretch:100%;letter-spacing:0}
+.cbs-in{max-width:1200px;margin:0 auto;padding:0 40px;height:38px;display:flex;justify-content:space-between;align-items:center;gap:20px}
+.cbs-home{display:inline-flex;align-items:center;gap:9px;color:#E7EAE9;text-decoration:none;font-weight:700}
+.cbs-home img{display:block;border-radius:5px}
+.cbs-home span{font-weight:500;color:#8F9693}
+.cbs-links{display:flex;gap:22px}
+.cbs-links a{color:#A9B0AD;text-decoration:none}.cbs-links a:hover{color:#fff}
+@media(max-width:760px){.cbs-in{padding:0 20px}.cbs-links{display:none}}
+/* ===== 2026 refresh: Coll Timeclock ===== */
+nav.topnav{background:var(--charcoal);border-bottom:1px solid rgba(255,255,255,.08);box-shadow:none}
+nav.topnav .nav-brand{color:#fff}
+nav.topnav .nav-links a.plain{color:#CFCAC0}
+nav.topnav .nav-links a.plain:hover{color:#fff}
+header.hero{position:relative;overflow:hidden;color:#fff;border:0;background:
+  radial-gradient(60% 70% at 85% 20%,rgba(244,176,76,.22) 0%,transparent 60%),
+  radial-gradient(50% 60% at 0% 100%,rgba(70,112,95,.28) 0%,transparent 60%),var(--charcoal)}
+header.hero::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:56px 56px;-webkit-mask-image:radial-gradient(80% 70% at 50% 30%,#000 30%,transparent 80%);mask-image:radial-gradient(80% 70% at 50% 30%,#000 30%,transparent 80%);pointer-events:none}
+header.hero .hero-inner{position:relative;padding-top:96px;padding-bottom:110px}
+.hero-copy h1{color:#fff;font-size:clamp(48px,6.2vw,82px);line-height:.98}
+.hero-copy h1 .accent{color:var(--amber)}
+.hero-copy p.tagline{color:#CFCAC0}
+.eyebrow-pill{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);color:#EDE7D8}
+.cta-ghost{color:#fff;border:1px solid rgba(255,255,255,.3);background:transparent;padding:14px 22px;border-radius:12px}
+.cta-ghost:hover{background:rgba(255,255,255,.07)}
+.hero-fineprint{color:#A9A394}
+.cta-btn{background:linear-gradient(180deg,#F9C978 0%,var(--amber) 55%,var(--amber-deep) 100%);color:var(--charcoal);box-shadow:0 10px 24px -10px rgba(244,176,76,.7)}
+.mock-card{color:var(--charcoal);transform:perspective(1400px) rotateY(-8deg) rotate(-1.5deg);box-shadow:0 40px 80px -30px rgba(0,0,0,.75),0 0 0 1px rgba(255,255,255,.06);border-radius:22px}
+.section-head h2{font-size:clamp(34px,4.2vw,52px);line-height:1.02}
+#how-it-works .steps{background:linear-gradient(90deg,#FFF6E2,#FDF0D2);border:1px solid #F1DFB4;border-radius:28px;padding:26px}
+.step-card{background:#fff;border-radius:20px;border:1px solid #F1DFB4;box-shadow:none}
+.step-num{background:var(--charcoal);color:var(--amber);border-radius:12px}
+.group-head h3{font-size:30px}
+.feature{border-radius:20px;background:#fff;border:1px solid var(--line)}
+.feature:hover{transform:translateY(-2px);box-shadow:0 16px 34px -22px rgba(31,36,33,.45)}
+.feature-icon{border-radius:13px}
+section.bottom-cta{border-radius:28px;position:relative;overflow:hidden;background:radial-gradient(50% 90% at 100% 0%,rgba(244,176,76,.3),transparent 60%),var(--charcoal)}
+.already-card{border-radius:22px}
+@media(max-width:860px){header.hero .hero-inner{padding-top:56px;padding-bottom:70px}.mock-card{transform:none}}
+</style>
 <script src="/site-analytics.js" defer></script>
 </head>
 <body>
+<div class="cbs-bar"><div class="cbs-in"><a class="cbs-home" href="/"><img src="/brand/coll-icon.svg" width="20" height="20" alt="">Coll Business Solutions <span>LLC</span></a><span class="cbs-links"><a href="/websites.html">Websites</a><a href="/timeclock.html">Coll Timeclock</a><a href="/cleanroom.html">Cleanroom Control</a><a href="/games.html">Games</a></span></div></div>
 
 <nav class="topnav">
   <div class="nav-brand">
