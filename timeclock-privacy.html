@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Privacy Policy — Coll Timeclock</title>
+<link rel="canonical" href="https://collbusinesssolutions.com/timeclock-privacy.html">
+<style>
+  :root {
+    --charcoal: #1F2421;
+    --paper: #F4F2ED;
+    --amber: #F2A93B;
+    --teal: #3D5A50;
+    --rust: #C1502E;
+    --line: #D8D3C4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "Segoe UI", -apple-system, sans-serif;
+    background: var(--paper);
+    color: var(--charcoal);
+    padding: 24px;
+    display: flex;
+    justify-content: center;
+  }
+  .box {
+    background: #fff;
+    border: 1.5px solid var(--charcoal);
+    border-radius: 8px;
+    padding: 40px;
+    width: 100%;
+    max-width: 720px;
+    line-height: 1.6;
+  }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  p.sub { margin: 0 0 28px; color: #8A8578; font-size: 14px; }
+  h2 { font-size: 17px; margin: 28px 0 8px; }
+  p, li { font-size: 14.5px; }
+  ul { margin: 8px 0; padding-left: 20px; }
+  a { color: var(--teal); }
+  .note {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 14px 16px;
+    font-size: 13px;
+    color: #6b6759;
+    margin-top: 32px;
+  }
+</style>
+</head>
+<body>
+
+<div class="box">
+  <h1>Privacy Policy</h1>
+  <p class="sub">Coll Timeclock — last updated October 27, 2026</p>
+
+  <p>Coll Timeclock is a work-hours tracking service used by employers ("companies") and their
+  employees. This page explains what information we collect through the employee app and the
+  employer (admin) app, and how it's used.</p>
+
+  <h2>Information we collect</h2>
+  <ul>
+    <li><strong>Account info:</strong> employee name, email address, and a PIN (stored as a one-way
+    hash — we never store or can see your actual PIN). Company admins provide a business email and
+    password (also stored as a one-way hash).</li>
+    <li><strong>Time records:</strong> clock-in and clock-out timestamps, break times, job/location
+    labels, and hours submitted for payroll. If a company sets a break-length or long-shift alert
+    preference, that setting is stored to time the "break ending soon" and "still clocked in"
+    notifications described below.</li>
+    <li><strong>Compensation info:</strong> if a company chooses to set hourly pay rates for its
+    employees, that rate is stored and used only to calculate that company's own labor cost and
+    profit reports. It is not shown to the employee it belongs to inside the app.</li>
+    <li><strong>Location data:</strong> Coll Timeclock collects location data to enable automatic
+    clock-in/out even when the app is closed or not in use, for employees whose company has turned
+    this feature on. The app checks the device's GPS location against the company's registered shop
+    address to detect arrival and departure, and this check can run in the background so an employee
+    doesn't have to keep the app open on their screen all shift. Your employer only sees the
+    resulting clock-in/out time entry from this check — not a continuous location trail. Separately,
+    if a company builds an optimized multi-stop route for a job, its customers' addresses are
+    converted to map coordinates (geocoded) to plan and display that route, and — only while an
+    employee is clocked in and assigned to that specific route — an admin can see that employee's
+    live location so the route and arrival times stay accurate. This location-sharing stops the
+    moment the employee clocks out.</li>
+    <li><strong>Time off requests:</strong> the dates and optional note an employee submits when
+    requesting time off, along with their employer's approve/deny decision on that request.</li>
+    <li><strong>File attachments:</strong> photos, PDFs, and documents a company chooses to attach to
+    a scheduled job or an invoice — stored directly in our database, capped at 10MB per file, and
+    visible only to that company's own admin account and (for job attachments) the employees assigned
+    to that job.</li>
+    <li><strong>Payroll contact info:</strong> each company sets its own payroll inbox address, used
+    only to email that company's submitted timesheets.</li>
+    <li><strong>Customer records:</strong> if a company adds its own customers to the app, we store
+    the name, phone number, email, mailing address, and notes the company enters, along with a
+    history of that customer's scheduled appointments, quotes, and invoices. This is the company's
+    own business data about its customers, not information we collect directly from those
+    customers.</li>
+    <li><strong>Billing records:</strong> quotes, invoices, line items, payment status (including an
+    optional check number for invoices paid by check, entered for the company's own recordkeeping),
+    business expenses, and an optional company logo image, all entered by a company to run its own
+    billing and profit tracking. A company's uploaded logo is also shown inside its own employees'
+    app, alongside the company's own branding.</li>
+    <li><strong>Payment information:</strong> a company that wants to accept online payments
+    connects its own Stripe account, and its customers' payments are collected and processed
+    directly by Stripe into that account — the money never passes through Coll Timeclock, and we
+    never receive or store full card numbers or bank account numbers. We store only the payment
+    status, amount, date, Stripe's own transaction reference, the processing fee and our platform
+    fee for that transaction (used only to calculate that company's own profit reports), and the
+    email address used to send that customer an automatic payment receipt.</li>
+    <li><strong>Subscription billing information:</strong> to bill your own company's $9.99/month
+    subscription to use Coll Timeclock, we store a Stripe customer and subscription reference, your
+    subscription status (for example, trialing, active, or past due), and your trial end date. As
+    with the customer payments above, your card details are collected and stored by Stripe
+    directly — we never receive or store your card number.</li>
+    <li><strong>Team messages:</strong> chat messages sent between a company's admin and its
+    employees, and messages employees at the same company send directly to each other or in a group
+    thread, all within the app.</li>
+    <li><strong>Push notification data:</strong> if an employee or admin enables notifications, we
+    store a device push subscription token, used only to deliver that company's own schedule, chat,
+    break, long-shift-alert, and inventory pull-sheet notifications to that device.</li>
+    <li><strong>Inventory and catalog data:</strong> if a company tracks inventory, we store the item
+    names, quantities on hand, barcodes, and "pull sheets" (a list of items a job needs, and how much
+    of each has been pulled) that company enters or generates. This is the company's own business
+    data about its own stock, not information about any individual person.</li>
+    <li><strong>Camera access for barcode scanning:</strong> if a company or an employee it has
+    authorized uses the barcode-scanning feature to look up or add an inventory item, the device
+    camera — either a live in-app preview or a photo taken with your device's own camera app — is
+    used only to read the barcode in view. That image is processed entirely on your device and is
+    never uploaded, stored, or sent to us.</li>
+  </ul>
+
+  <h2>How we use this information</h2>
+  <ul>
+    <li>To record and report hours worked, for the employee and their employer.</li>
+    <li>To optionally automate clock-in/out based on arrival at a company's job site.</li>
+    <li>To send account-related emails: password/PIN reset links and submitted timesheets.</li>
+    <li>To let a company's admin view their own employees' time records and overview dashboard.</li>
+    <li>To let a company manage its own customers, schedule jobs, and send quotes and invoices.</li>
+    <li>To plan and display optimized multi-stop routes for a company's own jobs, and let an admin
+    see where an assigned, clocked-in employee currently is along that route.</li>
+    <li>To let employees request time off and let their employer review and approve or deny it.</li>
+    <li>To let a company attach and view reference files (photos, PDFs, documents) on its own jobs
+    and invoices.</li>
+    <li>To calculate a company's own labor cost, expenses, and Gross/Net Profit reports.</li>
+    <li>To deliver chat messages and schedule/job push notifications within a company's own
+    account.</li>
+    <li>To process online invoice payments through Stripe and email the paying customer an
+    automatic payment receipt.</li>
+    <li>To let a company track its own inventory, build pull sheets for jobs, and use its camera to
+    scan barcodes and look up items.</li>
+  </ul>
+
+  <h2>What we don't do</h2>
+  <ul>
+    <li>We don't sell or share your data with advertisers or unrelated third parties.</li>
+    <li>We don't track location outside of the clock-in/out check described above.</li>
+    <li>We don't capture, store, or transmit any image or video from a device's camera — whether
+    it's a live preview or a photo taken to scan a barcode, that image stays on your device and is
+    only used to read the barcode in view.</li>
+    <li>Each company's data — employees, time records, pay rates, customers, quotes, invoices,
+    expenses, routes, file attachments, time off requests, chat messages, and inventory/catalog data —
+    is only visible to that company's own admin account, never to other companies using Coll
+    Timeclock.</li>
+  </ul>
+
+  <h2>Service providers we use</h2>
+  <p>Running Coll Timeclock means a few outside services process data on our behalf, each only for
+  the specific job described:</p>
+  <ul>
+    <li><strong>Stripe</strong> — processes online invoice payments (card and bank transfer/ACH)
+    through each company's own connected Stripe account, and separately processes your own
+    company's $9.99/month subscription payment to Coll Business Solutions LLC. Stripe collects and
+    stores the actual payment details in both cases; we only receive the payment status, amount,
+    fees, and a transaction or subscription reference.</li>
+    <li><strong>Resend</strong> — delivers the emails Coll Timeclock sends (timesheets, password/PIN
+    resets, quotes, invoices, and payment receipts).</li>
+    <li><strong>Railway</strong> — hosts our servers and database.</li>
+    <li><strong>OpenStreetMap (Nominatim)</strong> — converts a customer's street address into map
+    coordinates so a company can build an optimized multi-stop route to them. Only the address text
+    is sent, and only when a company adds/edits a customer or builds a route.</li>
+    <li><strong>Google Maps</strong> — turn-by-turn directions links open Google Maps directly on
+    your own device; we don't send Google any data ourselves, the link is just a destination address
+    your device passes along when you tap it.</li>
+    <li><strong>Sentry</strong> — helps us catch and fix errors in the app; it may receive technical
+    details about a request that failed (such as which page or action triggered it), but is used for
+    troubleshooting, not tracking.</li>
+  </ul>
+  <p>These providers don't get to use your data for their own purposes — they process it only to
+  provide the service described above.</p>
+
+  <h2>How data is stored and secured</h2>
+  <p>Data is stored in a managed Postgres database and transmitted over encrypted (HTTPS)
+  connections. Passwords and PINs are hashed before storage. Access to admin and employee accounts
+  is controlled through authenticated, time-limited login sessions.</p>
+
+  <h2>Data retention</h2>
+  <p>We retain account and time-record data for as long as a company's account is active, since
+  historical hours are part of payroll recordkeeping.</p>
+
+  <h2 id="delete-account">Request account or data deletion</h2>
+  <p>Any employee or admin can request deletion of their account and associated data — whether or
+  not you still have the app installed — by emailing
+  <a href="mailto:collbusinesssolutions@gmail.com?subject=Delete%20my%20Coll%20Timeclock%20account">collbusinesssolutions@gmail.com</a>
+  with the email address on the account and which company it belongs to. An admin can also request
+  deletion of their entire company's account and all its data the same way. We'll confirm by email
+  once it's done. Some records (for example, payroll time records or payment records a company is
+  legally required to keep for tax purposes) may be retained for the period required by law even
+  after an account deletion request, and this is disclosed to the requester at the time.</p>
+
+  <h2>Children's privacy</h2>
+  <p>Coll Timeclock is a workplace tool intended for employees of subscribing companies and is not
+  directed at children.</p>
+
+  <h2>Changes to this policy</h2>
+  <p>If this policy changes, the updated version will be posted on this page with a new "last
+  updated" date. For important changes, we'll also let company account owners know by email.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about this policy or your data can be sent to
+  <a href="mailto:collbusinesssolutions@gmail.com">collbusinesssolutions@gmail.com</a>. See also our
+  <a href="/timeclock-terms.html">Terms of Service</a>.</p>
+
+</div>
+
+</body>
+</html>
