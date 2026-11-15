@@ -188,10 +188,10 @@ header nav .btn{padding:10px 16px;font-size:14.5px;color:#1B1406}
 .tc p,.tc ul{color:#55524a}
 .tc li{border-top:1px solid #D8D3C4}
 .tc .go{background:linear-gradient(180deg,#F9C978 0%,var(--tc-amber) 55%,#DB8A16 100%);color:var(--tc-char)}
-.tc .art{background:linear-gradient(160deg,#F4B04C 0%,#DB8A16 100%)}
-.tc .art::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,rgba(255,255,255,.07) 0 22px,transparent 22px 44px)}
+.tc .art{background:radial-gradient(60% 70% at 85% 20%,rgba(244,176,76,.28) 0%,transparent 60%),radial-gradient(50% 60% at 0% 100%,rgba(70,112,95,.32) 0%,transparent 60%),#1F2421}
+.tc .art::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);background-size:44px 44px}
 /* phone mock built in HTML */
-.tcphone{position:absolute;left:50%;top:50%;transform:translate(-50%,-48%) rotate(-4deg);width:250px;border-radius:34px;background:#1F2421;padding:10px;box-shadow:0 34px 60px -20px rgba(60,30,0,.6)}
+.tcphone{position:absolute;left:50%;top:50%;transform:translate(-50%,-48%) rotate(-4deg);width:250px;border-radius:34px;background:#1F2421;padding:10px;box-shadow:0 40px 70px -24px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.08)}
 .tcphone .scr{background:#F4F2ED;border-radius:26px;padding:22px 18px 20px;font-family:"Inter",sans-serif;color:#1F2421}
 .tcphone .top{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#7A7468;margin-bottom:18px}
 .tcphone .top b{font-family:"Oswald",sans-serif;font-size:15px;color:#1F2421}
@@ -200,7 +200,7 @@ header nav .btn{padding:10px 16px;font-size:14.5px;color:#1B1406}
 .tcphone .in{display:block;text-align:center;background:#1F2421;color:#F4B04C;font-weight:700;border-radius:14px;padding:14px 0;font-size:15px;margin-bottom:14px}
 .tcphone .row{display:flex;justify-content:space-between;font-size:12.5px;padding:9px 0;border-top:1px solid #DDD7C8}
 .tcphone .row span:last-child{font-weight:600}
-.tcchip{position:absolute;background:#fff;border-radius:14px;padding:10px 14px;font-size:13px;font-weight:600;color:#1F2421;box-shadow:0 14px 30px -12px rgba(60,30,0,.5);display:flex;gap:8px;align-items:center}
+.tcchip{position:absolute;background:#fff;border-radius:14px;padding:10px 14px;font-size:13px;font-weight:600;color:#1F2421;box-shadow:0 16px 34px -12px rgba(0,0,0,.6);display:flex;gap:8px;align-items:center}
 .tcchip i{width:10px;height:10px;border-radius:50%;background:#23935A}
 .tcchip.a{left:8%;top:16%}.tcchip.b{right:7%;bottom:18%}
 
@@ -211,12 +211,19 @@ header nav .btn{padding:10px 16px;font-size:14.5px;color:#1B1406}
 .cr p,.cr ul{color:#3A434A}
 .cr li{border-top:1px solid #C4CACF}
 .cr .go{background:var(--cr-green);color:#fff;border-radius:999px;font-family:"Saira",sans-serif;font-weight:600}
-.cr .art{background:radial-gradient(80% 70% at 50% 40%,#2C343A 0%,#161B1F 100%)}
-.cr .art::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 63px,rgba(120,170,220,.08) 63px 64px)}
-.cr .tablet{position:absolute;left:9%;top:16%;width:88%;border-radius:22px;background:#0B0E10;padding:12px;box-shadow:0 34px 70px -24px rgba(0,0,0,.9),0 0 0 1px rgba(255,255,255,.08)}
-.cr .tablet img{display:block;width:100%;border-radius:12px}
-.cr .crphone{position:absolute;left:5%;bottom:-40px;width:30%;border-radius:26px;background:#0B0E10;padding:7px;box-shadow:0 24px 50px -16px rgba(0,0,0,.9)}
-.cr .crphone img{display:block;width:100%;border-radius:20px}
+.cr .art{background:radial-gradient(70% 70% at 80% 30%,rgba(35,147,90,.22),transparent 60%),radial-gradient(80% 80% at 50% 40%,#2C343A 0%,#161B1F 100%)}
+.crceil{position:absolute;left:0;right:0;top:0;display:grid;grid-template-columns:repeat(6,1fr);gap:6px;padding:6px;background:#12161A;border-bottom:1px solid rgba(255,255,255,.06);z-index:1}
+.crceil span{height:34px;border-radius:2px;background:#2A3238 radial-gradient(circle,#5A6770 1.2px,transparent 1.4px) center/9px 9px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
+.crflow{position:absolute;inset:0;pointer-events:none}
+.crflow i{position:absolute;top:0;bottom:0;width:1px;background:linear-gradient(to bottom,rgba(130,180,230,.35),rgba(130,180,230,.03))}
+.crflow i::after{content:"";position:absolute;left:-1px;width:3px;height:70px;top:-70px;background:linear-gradient(to bottom,transparent,rgba(150,200,250,.75));animation:crfall 7s linear infinite;animation-delay:var(--d,0s)}
+@keyframes crfall{to{top:100%}}
+@media(prefers-reduced-motion:reduce){.crflow i::after{display:none}}
+.rd{position:absolute;z-index:2;background:rgba(22,27,31,.72);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.12);box-shadow:0 20px 40px -18px rgba(0,0,0,.8);border-radius:16px;padding:12px 16px;min-width:150px;font-family:"Saira",sans-serif}
+.rd span{display:block;font-size:13px;color:#A7B1B8}
+.rd b{display:block;font-size:26px;font-weight:700;font-stretch:85%;line-height:1.15;color:#fff;font-variant-numeric:tabular-nums}
+.rd em{font-style:normal;font-size:12.5px;font-weight:600;color:#6FD39C}
+.rd em::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:#6FD39C;box-shadow:0 0 0 4px rgba(111,211,156,.18);margin-right:6px;vertical-align:1px}
 
 /* more */
 .more{display:grid;grid-template-columns:1.25fr 1fr;gap:24px;margin:16px 0 100px}
@@ -273,7 +280,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
   .games{padding:30px 24px}.apps{padding:28px 24px}
   .games ul{grid-template-columns:repeat(3,1fr)}
 }
-@media(max-width:560px){.tiles{grid-template-columns:1fr}.laptop{transform:none}}
+@media(max-width:560px){.tiles{grid-template-columns:1fr}.laptop{transform:none}.rd{min-width:0;padding:9px 12px;border-radius:13px}.rd b{font-size:21px}.rd span{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.btn{transition:none}.btn:hover{transform:none}}
 </style>
 <script src="/site-analytics.js" defer></script>
@@ -388,8 +395,12 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
         <span class="btn go">Visit Cleanroom Control</span>
       </div>
       <div class="art" aria-hidden="true">
-        <div class="tablet"><img src="/img/screen-room.webp" alt="" width="1024" height="600" loading="lazy"></div>
-        <div class="crphone"><img src="/img/phone-live.webp" alt="" width="520" height="1125" loading="lazy"></div>
+        <div class="crceil"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        <div class="crflow"><i style="left:8%"></i><i style="left:22%;--d:-2s"></i><i style="left:36%;--d:-5s"></i><i style="left:50%;--d:-1s"></i><i style="left:64%;--d:-4s"></i><i style="left:78%;--d:-6s"></i><i style="left:92%;--d:-3s"></i></div>
+        <div class="rd" style="left:9%;top:24%"><span>Room pressure</span><b>+12.4 Pa</b><em>In range</em></div>
+        <div class="rd" style="left:52%;top:36%"><span>Temperature</span><b>68.9 °F</b><em>In range</em></div>
+        <div class="rd" style="left:14%;top:58%"><span>Humidity</span><b>41 %</b><em>In range</em></div>
+        <div class="rd" style="left:50%;top:70%"><span>Particles, 0.5 µm</span><b>2,140 /m³</b><em>ISO 7</em></div>
       </div>
     </a>
 
