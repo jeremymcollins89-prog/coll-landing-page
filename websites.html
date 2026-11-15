@@ -149,6 +149,56 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
 }
 @media(max-width:560px){.cards{grid-template-columns:1fr}}
 </style>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&display=swap" rel="stylesheet">
+<style>
+/* ===== 2026 refresh: company bar ===== */
+.cbs-bar{background:#0B0D0F;color:#A9B0AD;font:500 13px/1 "Inter",system-ui,sans-serif;font-stretch:100%;letter-spacing:0}
+.cbs-in{max-width:1200px;margin:0 auto;padding:0 40px;height:38px;display:flex;justify-content:space-between;align-items:center;gap:20px}
+.cbs-home{display:inline-flex;align-items:center;gap:9px;color:#E7EAE9;text-decoration:none;font-weight:700}
+.cbs-home img{display:block;border-radius:5px}
+.cbs-home span{font-weight:500;color:#8F9693}
+.cbs-links{display:flex;gap:22px}
+.cbs-links a{color:#A9B0AD;text-decoration:none}.cbs-links a:hover{color:#fff}
+@media(max-width:760px){.cbs-in{padding:0 20px}.cbs-links{display:none}}
+/* ===== 2026 refresh: Websites ===== */
+:root{--amber:#F2B33D;--amber-hi:#F8CD6E;--amber-deep:#D38F12;--ink2:#111417}
+header{background:var(--ink2);border-bottom:1px solid rgba(255,255,255,.08)}
+header .name,header .name *{color:#fff}
+header .name .llc{color:#A9B0AD}
+header nav a{color:#C7CCCA}
+header nav a:hover,header nav a[aria-current]{color:#fff}
+.wrap>.hero,.hero{position:relative}
+.webhero{position:relative;overflow:hidden;background:radial-gradient(70% 60% at 85% 20%,rgba(242,179,61,.16) 0%,transparent 60%),radial-gradient(60% 70% at 0% 100%,rgba(70,110,140,.18) 0%,transparent 60%),var(--ink2);color:#fff}
+.webhero::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:56px 56px;-webkit-mask-image:radial-gradient(80% 70% at 50% 30%,#000 30%,transparent 80%);mask-image:radial-gradient(80% 70% at 50% 30%,#000 30%,transparent 80%);pointer-events:none}
+.webhero .hero{position:relative}
+.webhero h1{font-family:"Bricolage Grotesque","Inter",sans-serif;letter-spacing:-.025em;color:#fff;font-size:clamp(46px,5.8vw,76px);line-height:.96}
+.webhero h1 em{font-style:normal;color:var(--amber)}
+.webhero .eyebrow,.webhero .k{color:var(--amber)}
+.webhero p,.webhero li{color:#C3C9C6}
+.webhero a{color:#fff}
+.webhero form,.webhero .formcard,.webhero .card{color:var(--ink)}
+.webhero form p,.webhero form li,.webhero .formcard p{color:var(--body)}
+.webhero form a{color:var(--ink)}
+.band h2,.cta h2,.close h2{font-family:"Bricolage Grotesque","Inter",sans-serif;letter-spacing:-.025em}
+.band h2{font-size:clamp(34px,4.2vw,52px)}
+.showcase{background:var(--ink2);padding:0 0 96px}
+.showcase .inner{position:relative;max-width:1000px;margin:0 auto;padding:0 40px}
+.showcase .laptop{border-radius:16px 16px 6px 6px;background:#0B0D0F;padding:12px;box-shadow:0 40px 80px -30px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.08)}
+.showcase .laptop .bar{display:flex;gap:6px;padding:0 0 10px 4px}
+.showcase .laptop .bar i{width:9px;height:9px;border-radius:50%;background:#3A3F44}
+.showcase .laptop .bar i:first-child{background:#E5655B}.showcase .laptop .bar i:nth-child(2){background:#E9B949}.showcase .laptop .bar i:nth-child(3){background:#5DBE6B}
+.showcase .laptop img{display:block;width:100%;height:auto;border-radius:6px}
+.showcase .phone{position:absolute;right:10px;bottom:-40px;width:24%;border-radius:30px;background:#0B0D0F;padding:8px;box-shadow:0 30px 60px -18px rgba(0,0,0,.85),0 0 0 1px rgba(255,255,255,.1)}
+.showcase .phone img{display:block;width:100%;height:auto;border-radius:23px}
+.showcase .cap{display:flex;justify-content:space-between;align-items:center;gap:16px;color:#C3C9C6;font-size:15px;margin:0 0 22px}
+.showcase .cap b{color:#fff}
+.showcase .cap a{color:var(--amber);font-weight:600;white-space:nowrap}
+@media(max-width:860px){.showcase .inner{padding:0 20px}.showcase .cap{flex-direction:column;align-items:flex-start}}
+.webhero .req{background:#fff;border-color:transparent;box-shadow:0 40px 80px -30px rgba(0,0,0,.7)}
+.webhero .ticks svg{stroke:#F2B33D}
+.webhero .work{color:#C3C9C6}
+header .cta.amber,.webhero button[type=submit]{background:linear-gradient(180deg,#F8CD6E 0%,#F2B33D 55%,#D38F12 100%);color:#1B1406}
+</style>
 <script src="/site-analytics.js" defer></script>
 </head>
 <body>
@@ -159,11 +209,12 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
   </div>
 </header>
 
+<div class="webhero">
 <main class="wrap">
   <section class="hero">
     <div>
       <p class="k">Websites · Colorado</p>
-      <h1>Websites that bring in work.</h1>
+      <h1>Websites that bring in <em>work.</em></h1>
       <p class="lead">We build fast, custom websites for contractors and trade businesses, set up to show up on Google and turn visitors into quote requests. You talk to the person building it, not a call center.</p>
       <ul class="ticks">
         <li><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1E6B53" stroke-width="2.4" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>A free homepage mockup before you decide anything</li>
@@ -209,6 +260,14 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     </div>
   </section>
 </main>
+</div>
+<section class="showcase" aria-label="Recent work">
+  <div class="inner">
+    <p class="cap"><span>Recent work: <b>Devora Tree Service</b>, Denver. Custom design, service pages, seasonal themes and a quote planner.</span><a href="https://devoratreeservice.com" target="_blank" rel="noopener">Visit the live site →</a></p>
+    <div class="laptop"><div class="bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="/img/work/devora-desktop.webp" alt="The Devora Tree Service homepage we built" width="1440" height="900" loading="lazy"></div>
+    <div class="phone"><img src="/img/work/devora-phone.webp" alt="The same site on a phone" width="390" height="844" loading="lazy"></div>
+  </div>
+</section>
 
 <section class="band soft">
   <div class="wrap">
