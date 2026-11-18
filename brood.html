@@ -13,14 +13,14 @@
 <meta property="og:url" content="https://collbusinesssolutions.com/brood.html">
 <meta property="og:title" content="Brood: spider survival game for Windows (free Early Access)">
 <meta property="og:description" content="Hatch as a real spider, hunt, molt and grow on an island and a backyard garden. Free for Windows, solo or online with up to 4 players.">
-<meta property="og:image" content="https://collbusinesssolutions.com/img/games/brood.webp">
-<meta property="og:image:width" content="1024">
-<meta property="og:image:height" content="500">
+<meta property="og:image" content="https://collbusinesssolutions.com/img/games/brood-og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Brood: spider survival game for Windows (free Early Access)">
 <meta name="twitter:description" content="Hatch as a real spider, hunt, molt and grow. Free for Windows, solo or online with up to 4 players.">
-<meta name="twitter:image" content="https://collbusinesssolutions.com/img/games/brood.webp">
+<meta name="twitter:image" content="https://collbusinesssolutions.com/img/games/brood-og.jpg">
 <script type="application/ld+json">
 {
  "@context": "https://schema.org",
@@ -31,7 +31,7 @@
    "name": "Brood",
    "description": "A spider survival game. Hatch as one of 11 real spider species, hunt, spin webs, molt and grow on an island and a backyard garden, alone or online with up to 4 players.",
    "url": "https://collbusinesssolutions.com/brood.html",
-   "image": "https://collbusinesssolutions.com/img/games/brood.webp",
+   "image": "https://collbusinesssolutions.com/img/games/brood-cover.webp",
    "gamePlatform": "Windows PC",
    "operatingSystem": "Windows 10, Windows 11",
    "applicationCategory": "GameApplication",
@@ -69,7 +69,7 @@
 <link rel="apple-touch-icon" href="/brand/coll-apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--ink:#1C1F1E;--body:#4B5250;--line:#E2E4E1;--bg:#FFFFFF;--soft:#F5F6F4;--amber:#F2C84B;--char:#22272B;--gold:#E8B04B;--night:#15120E}
 *{box-sizing:border-box}
@@ -88,14 +88,14 @@ header nav a{text-decoration:none}header nav a:hover,header nav a[aria-current]{
 header nav a[aria-current]{font-weight:600}
 
 /* hero */
-.hero{position:relative;color:#fff;background:var(--night);overflow:hidden}
-.hero .bg{position:absolute;inset:0;background:url(/img/games/brood.webp) center 35%/cover no-repeat;opacity:.9}
-.hero .bg::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(21,18,14,.94) 0%,rgba(21,18,14,.78) 42%,rgba(21,18,14,.15) 75%,rgba(21,18,14,0) 100%),linear-gradient(0deg,rgba(21,18,14,.65),transparent 40%)}
-.hero .wrap{position:relative;padding-top:84px;padding-bottom:84px}
+.hero{position:relative;color:#fff;background:radial-gradient(70% 90% at 80% 40%,#2E3B33 0%,#15120E 70%);overflow:hidden}
+.hero .wrap{position:relative;display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding-top:64px;padding-bottom:64px}
 .crumb{font-size:13.5px;color:#D9CFBF;margin:0 0 18px}.crumb a{color:#D9CFBF}
-.hero h1{font-family:"Cormorant Garamond",Georgia,serif;font-weight:600;font-size:clamp(64px,9vw,112px);letter-spacing:.14em;line-height:.9;margin:0 0 6px}
+.hero h1{font-size:clamp(40px,5vw,60px);letter-spacing:-.02em;line-height:1.02;margin:0 0 10px;font-weight:800}
 .hero .sub{font-size:13px;letter-spacing:.32em;text-transform:uppercase;color:var(--gold);margin:0 0 22px;font-weight:600}
-.hero p.lead{font-size:19px;line-height:1.6;max-width:520px;margin:0 0 30px;color:#F1EBE1}
+.hero p.lead{font-size:19px;line-height:1.6;max-width:540px;margin:0 0 30px;color:#F1EBE1}
+.cover{margin:0;border-radius:22px;overflow:hidden;box-shadow:0 30px 70px -25px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.08)}
+.cover img{display:block;width:100%;height:auto}
 .dl{display:flex;flex-wrap:wrap;align-items:center;gap:14px 18px}
 .btn{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-weight:700;font-size:16px;padding:15px 22px;border-radius:12px;white-space:nowrap;background:var(--gold);color:#1B140A;border:0;cursor:pointer;font-family:inherit}
 .btn:hover{filter:brightness(1.07)}
@@ -150,8 +150,8 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
   .name{font-size:16px;gap:10px}
   .feat,.gal{grid-template-columns:1fr 1fr}
   .two{grid-template-columns:1fr}
-  .hero .bg::after{background:linear-gradient(0deg,rgba(21,18,14,.95) 10%,rgba(21,18,14,.55) 70%,rgba(21,18,14,.35))}
-  .hero .wrap{padding-top:60px;padding-bottom:60px}
+  .hero .wrap{grid-template-columns:1fr;gap:32px;padding-top:36px;padding-bottom:48px}
+  .cover{order:-1;max-width:520px}
 }
 @media(max-width:600px){.feat,.gal{grid-template-columns:1fr}.gal figure.wide{grid-column:auto;grid-row:auto;aspect-ratio:16/9}}
 @media(prefers-reduced-motion:reduce){.gal img{transition:none}}
@@ -167,10 +167,10 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
 </header>
 
 <section class="hero" id="download" aria-labelledby="t">
-  <div class="bg" aria-hidden="true"></div>
   <div class="wrap">
+   <div>
     <p class="crumb"><a href="/games.html">Games</a> / Brood</p>
-    <h1 id="t">BROOD</h1>
+    <h1 id="t">Brood</h1>
     <p class="sub">Survive · Molt · Leave a brood</p>
     <p class="lead">A spider survival game. Hatch as one of 11 real spider species, hunt, spin webs and molt your way up from a tiny spiderling, on an island and a backyard garden where you are the top predator. Play alone or online with up to 4 friends.</p>
     <div class="dl">
@@ -178,6 +178,8 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
       <span class="facts">Version 0.1.0 · Early Access<br>515 MB · Windows 10 or 11 (64-bit)</span>
     </div>
     <div class="prog" id="prog" aria-live="polite"><div class="bar"><i id="bar"></i></div><p id="msg">Starting…</p></div>
+   </div>
+   <figure class="cover"><img src="/img/games/brood-cover.webp" alt="Brood cover art: a wolf spider on a dew-covered blade of grass by a pond at sunrise, with the words Survive. Molt. Leave a brood." width="1200" height="1200" fetchpriority="high"></figure>
   </div>
 </section>
 
