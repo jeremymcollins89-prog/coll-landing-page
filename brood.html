@@ -179,7 +179,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     </div>
     <div class="dl" id="android" style="margin-top:12px">
       <button class="btn" id="getapk" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>Download for Android (free)</button>
-      <span class="facts">Version 0.5.2 · Early Access, phone build<br>249 MB · Android 10 or newer, 64-bit phone</span>
+      <span class="facts">Version 0.5.3 · Early Access, phone build<br>249 MB · Android 10 or newer, 64-bit phone</span>
     </div>
     <div class="prog" id="prog" aria-live="polite"><div class="bar"><i id="bar"></i></div><p id="msg">Starting…</p></div>
    </div>
@@ -239,7 +239,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
       <li>The first time, Android says Chrome isn't allowed to install apps: tap <b>Settings</b>, turn on <b>Allow from this source</b>, then go back and tap <b>Install</b>. If Play Protect asks about an unknown app, tap <b>More details &gt; Install anyway</b>.</li>
       <li>Open <b>Brood</b> from your home screen. Turn the phone sideways.</li>
     </ol>
-    <p class="lede" style="margin-top:14px">Controls: the left side of the screen is your move stick, swipe on the right side to look around. <b>BITE</b>, <b>JUMP</b>, <b>CREEP</b>, <b>RUN</b>, <b>DRINK</b>, <b>WRAP</b>, <b>E</b> (do it) and <b>Q</b> (your species' trick) are on the right. Tap <b>MORE</b> for grip, silk, dragline, molt, eggs and the rest. The goals in the corner name the buttons as you go. Online play works on the same Wi-Fi as a PC game.</p>
+    <p class="lede" style="margin-top:14px">Controls: put your left thumb down anywhere on the left side to move, and push all the way to run. Swipe on the right side to look around. On the right are <b>BITE</b>, <b>JUMP</b>, <b>E</b> (do it), <b>Q</b> (your species' trick) and <b>CREEP</b>; <b>DRINK</b> and <b>WRAP</b> pop up when you can use them. Your spider always grips, so to climb just walk into a stone, leaf or grass blade. Tap <b>MORE</b> for silk, dragline, molt, eggs, moods and the rest. The goals in the corner name the buttons as you go. Online play works on the same Wi-Fi as a PC game.</p>
   </section>
 
   <section aria-labelledby="h-online">
@@ -294,7 +294,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
   var RAW = 'https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main';
   var KINDS = {
     win: {dir: '/downloads/brood/setup/0.5.2/', btn: 'get', done: function(n){ return 'Done! Click ' + n + ' in your browser\'s downloads (top right) to install. It puts a Brood shortcut on your desktop and starts the game.'; }, type: 'application/octet-stream'},
-    apk: {dir: '/downloads/brood/android/0.5.2/', btn: 'getapk', done: function(n){ return 'Done! Tap Open on the download message (or open ' + n + ' from Files > Downloads) and tap Install.'; }, type: 'application/vnd.android.package-archive'}
+    apk: {dir: '/downloads/brood/android/0.5.3/', btn: 'getapk', done: function(n){ return 'Done! Tap Open on the download message (or open ' + n + ' from Files > Downloads) and tap Install.'; }, type: 'application/vnd.android.package-archive'}
   };
   var BASE, kind;
   var btn = document.getElementById('get'), prog = document.getElementById('prog'), bar = document.getElementById('bar'), msg = document.getElementById('msg');
