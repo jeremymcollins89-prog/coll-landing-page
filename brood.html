@@ -177,6 +177,10 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
       <button class="btn" id="get" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>Download for Windows (free)</button>
       <span class="facts">Version 0.5.0 · Early Access<br>459 MB · Windows 10 or 11 (64-bit)</span>
     </div>
+    <div class="dl" id="android" style="margin-top:12px">
+      <button class="btn" id="getapk" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>Download for Android (free)</button>
+      <span class="facts">Version 0.5.0 · Early Access, first phone build<br>249 MB · Android 10 or newer, 64-bit phone</span>
+    </div>
     <div class="prog" id="prog" aria-live="polite"><div class="bar"><i id="bar"></i></div><p id="msg">Starting…</p></div>
    </div>
    <figure class="cover"><img src="/img/games/brood-cover.webp" alt="Brood cover art: a wolf spider on a dew-covered blade of grass by a pond at sunrise, with the words Survive. Molt. Leave a brood." width="1200" height="1200" fetchpriority="high"></figure>
@@ -227,6 +231,17 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     </div>
   </section>
 
+  <section aria-labelledby="h-phone">
+    <h2 id="h-phone">On your Android phone</h2>
+    <ol class="steps">
+      <li>On your phone, open this page in <b>Chrome</b> and tap <b>Download for Android</b>. Keep the page open until it says it's done (about a minute on Wi-Fi).</li>
+      <li>Tap <b>Open</b> on the download message (or open <b>Brood.apk</b> from <b>Files &gt; Downloads</b>).</li>
+      <li>The first time, Android says Chrome isn't allowed to install apps: tap <b>Settings</b>, turn on <b>Allow from this source</b>, then go back and tap <b>Install</b>. If Play Protect asks about an unknown app, tap <b>More details &gt; Install anyway</b>.</li>
+      <li>Open <b>Brood</b> from your home screen. Turn the phone sideways.</li>
+    </ol>
+    <p class="lede" style="margin-top:14px">Controls: the left side of the screen is your move stick, swipe on the right side to look around. <b>BITE</b>, <b>JUMP</b>, <b>CREEP</b>, <b>RUN</b>, <b>DRINK</b>, <b>WRAP</b>, <b>E</b> (do it) and <b>Q</b> (your species' trick) are on the right. Tap <b>MORE</b> for grip, silk, dragline, molt, eggs and the rest. The goals in the corner name the buttons as you go. Online play works on the same Wi-Fi as a PC game.</p>
+  </section>
+
   <section aria-labelledby="h-online">
     <h2 id="h-online">Playing online</h2>
     <div class="two">
@@ -256,7 +271,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     <h2 id="h-faq">Questions</h2>
     <details><summary>Is it really free?</summary><p>Yes. No ads, no purchases, no account. Brood is in Early Access, which means it's playable now and keeps getting new things.</p></details>
     <details><summary>What PC do I need?</summary><p>Windows 10 or 11 (64-bit) with a graphics card that supports DirectX 12, and about 1 GB of free space. A gaming laptop or desktop from the last few years runs it smoothly.</p></details>
-    <details><summary>Mac, phone or console?</summary><p>Not yet. Brood is Windows only for now. Our phone games are on the <a href="/games.html">Games page</a>.</p></details>
+    <details><summary>Mac, phone or console?</summary><p>Brood is on Windows and on Android phones (see <a href="#h-phone">On your Android phone</a>; the phone version is brand new, so tell us how it runs). No Mac, iPhone or console yet.</p></details>
     <details><summary>What happens when my spider dies?</summary><p>By default you go back to your last save (Brood saves every two minutes, and whenever you choose Save Game). If you want the real survival experience, turn on <b>Settings &gt; When You Die &gt; Lose the save</b>: then only an egg sac carries your lineage on. Online, death is always for real, and you hatch again next to your friends.</p></details>
     <details><summary>It runs slowly on my PC</summary><p>Open <b>Settings</b> and set <b>Graphics Quality</b> to Medium or Low. You can also cap the frame rate there.</p></details>
     <details><summary>Where is my save?</summary><p>Your game saves on your PC, under <code>%LOCALAPPDATA%\Brood\Saved\SaveGames</code>. Deleting the Brood folder doesn't delete it.</p></details>
@@ -275,7 +290,12 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
 
 <script>
 (function(){
-  var BASE = 'https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main/downloads/brood/setup/0.5.0/';
+  var RAW = 'https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main';
+  var KINDS = {
+    win: {dir: '/downloads/brood/setup/0.5.0/', btn: 'get', done: function(n){ return 'Done! Click ' + n + ' in your browser\'s downloads (top right) to install. It puts a Brood shortcut on your desktop and starts the game.'; }, type: 'application/octet-stream'},
+    apk: {dir: '/downloads/brood/android/0.5.0/', btn: 'getapk', done: function(n){ return 'Done! Tap Open on the download message (or open ' + n + ' from Files > Downloads) and tap Install.'; }, type: 'application/vnd.android.package-archive'}
+  };
+  var BASE, kind;
   var btn = document.getElementById('get'), prog = document.getElementById('prog'), bar = document.getElementById('bar'), msg = document.getElementById('msg');
   var busy = false;
   function mb(n){ return (n / 1000000).toFixed(0) + ' MB'; }
@@ -301,12 +321,13 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     }
   }
 
-  async function download(){
+  async function download(which){
     if (busy) return; busy = true;
+    kind = KINDS[which]; BASE = RAW + kind.dir; btn = document.getElementById(kind.btn);
     btn.disabled = true; prog.classList.add('on'); bar.style.width = '0%'; say('Getting ready…');
     var writable = null, blobs = [];
     try {
-      var m = await (await fetch('/downloads/brood/setup/0.5.0/manifest.json', {cache: 'no-store'})).json();
+      var m = await (await fetch(kind.dir + 'manifest.json', {cache: 'no-store'})).json();
       // Chrome and Edge can write straight to a file you pick (no big memory use).
       if (false && window.showSaveFilePicker){ // (the browser's own download is one click to open, so no file picker)
         try {
@@ -331,23 +352,26 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
       }
       if (writable){ await writable.close(); say('Done! Open ' + m.name + ' to install Brood and get the desktop shortcut.'); }
       else {
-        var file = new Blob(blobs, {type: 'application/octet-stream'});
+        var file = new Blob(blobs, {type: kind.type});
         var a = document.createElement('a');
         a.href = URL.createObjectURL(file); a.download = m.name;
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(function(){ URL.revokeObjectURL(a.href); }, 120000);
-        say('Done! Click ' + m.name + ' in your browser\'s downloads (top right) to install. It puts a Brood shortcut on your desktop and starts the game.');
+        say(kind.done(m.name));
       }
       bar.style.width = '100%';
-      if (window.gtag) try { gtag('event', 'brood_download', {version: m.version}); } catch (e) {}
+      if (window.gtag) try { gtag('event', 'brood_download', {version: m.version, platform: which}); } catch (e) {}
     } catch (e) {
       if (writable) try { await writable.abort(); } catch (x) {}
       if (e && e.quiet){ prog.classList.remove('on'); }
-      else say('The download stopped (' + (e && e.message ? e.message : 'network error') + '). Click the button to try again, or use the PowerShell command below.', true);
+      else say('The download stopped (' + (e && e.message ? e.message : 'network error') + '). ' + (which === 'apk' ? 'Tap the button to try again.' : 'Click the button to try again, or use the PowerShell command below.'), true);
     }
     btn.disabled = false; busy = false;
   }
-  btn.addEventListener('click', download);
+  document.getElementById('get').addEventListener('click', function(){ download('win'); });
+  document.getElementById('getapk').addEventListener('click', function(){ download('apk'); });
+  // Phones: lead with the Android button.
+  if (/Android/i.test(navigator.userAgent)){ var dw = document.getElementById('get').parentNode, da = document.getElementById('android'); dw.parentNode.insertBefore(da, dw); da.style.marginTop = '0'; dw.style.marginTop = '12px'; }
 
   var cp = document.getElementById('copyps');
   cp.addEventListener('click', function(){
