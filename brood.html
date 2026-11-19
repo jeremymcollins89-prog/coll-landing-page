@@ -221,7 +221,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     <div class="card" style="margin-top:20px;max-width:820px">
       <h3>Prefer PowerShell?</h3>
       <p>This one command downloads every piece, puts the zip back together, unzips it to <code>Downloads\Brood</code> and starts the game. Paste it into PowerShell (Start menu, type <b>PowerShell</b>) and press Enter.</p>
-      <div class="ps"><pre id="pscmd">$d="$env:USERPROFILE\Downloads\Brood"; New-Item -ItemType Directory -Force $d | Out-Null; $b="https://collbusinesssolutions.com/downloads/brood/0.1.1/Brood-EarlyAccess-Windows.zip"; $z="$d\Brood-EarlyAccess-Windows.zip"; $o=[IO.File]::Create($z); foreach($n in 1..11){ $p="$z.part"; Invoke-WebRequest ("$b.{0:D3}" -f $n) -OutFile $p -UseBasicParsing; $i=[IO.File]::OpenRead($p); $i.CopyTo($o); $i.Close(); Remove-Item $p }; $o.Close(); Expand-Archive $z -DestinationPath $d -Force; Start-Process "$d\Brood\Brood.exe"</pre><button type="button" id="copyps">Copy</button></div>
+      <div class="ps"><pre id="pscmd">$d="$env:USERPROFILE\Downloads\Brood"; New-Item -ItemType Directory -Force $d | Out-Null; $b="https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main/downloads/brood/0.1.1/Brood-EarlyAccess-Windows.zip"; $z="$d\Brood-EarlyAccess-Windows.zip"; $o=[IO.File]::Create($z); foreach($n in 1..11){ $p="$z.part"; Invoke-WebRequest ("$b.{0:D3}" -f $n) -OutFile $p -UseBasicParsing; $i=[IO.File]::OpenRead($p); $i.CopyTo($o); $i.Close(); Remove-Item $p }; $o.Close(); Expand-Archive $z -DestinationPath $d -Force; Start-Process "$d\Brood\Brood.exe"</pre><button type="button" id="copyps">Copy</button></div>
     </div>
   </section>
 
@@ -271,17 +271,17 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
 
 <script>
 (function(){
-  var BASE = '/downloads/brood/0.1.1/';
+  var BASE = 'https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main/downloads/brood/0.1.1/';
   var btn = document.getElementById('get'), prog = document.getElementById('prog'), bar = document.getElementById('bar'), msg = document.getElementById('msg');
   var busy = false;
-  function mb(n){ return (n / 1048576).toFixed(0) + ' MB'; }
+  function mb(n){ return (n / 1000000).toFixed(0) + ' MB'; }
   function say(t, err){ msg.textContent = t; msg.className = err ? 'err' : ''; }
 
   // Fetch one piece, reporting bytes as they arrive. Tries up to 3 times.
   async function getPart(url, onBytes){
     for (var attempt = 1; ; attempt++){
       try {
-        var r = await fetch(url, {cache: 'no-store'});
+        var r = await fetch(url);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         var reader = r.body.getReader(), chunks = [], got = 0;
         for (;;){
@@ -302,7 +302,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     btn.disabled = true; prog.classList.add('on'); bar.style.width = '0%'; say('Getting ready…');
     var writable = null, blobs = [];
     try {
-      var m = await (await fetch(BASE + 'manifest.json', {cache: 'no-store'})).json();
+      var m = await (await fetch('/downloads/brood/0.1.1/manifest.json', {cache: 'no-store'})).json();
       // Chrome and Edge can write straight to a file you pick (no big memory use).
       if (window.showSaveFilePicker){
         try {
@@ -317,6 +317,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
           done += n;
           bar.style.width = (100 * done / total).toFixed(1) + '%';
           var secs = (Date.now() - t0) / 1000, rate = done / Math.max(secs, 0.5);
+          if (done < 15000000) secs = 0; // wait for a fair speed reading before guessing the time
           var left = Math.max(0, (total - done) / Math.max(rate, 1));
           say('Downloading… ' + mb(done) + ' of ' + mb(total) + (secs > 3 ? ' · about ' + (left > 90 ? Math.ceil(left / 60) + ' min' : Math.ceil(left) + ' s') + ' left' : ''));
         });
