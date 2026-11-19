@@ -39,7 +39,7 @@
    "playMode": ["SinglePlayer", "MultiPlayer"],
    "numberOfPlayers": {"@type": "QuantitativeValue", "minValue": 1, "maxValue": 4},
    "softwareVersion": "0.3.0 (Early Access)",
-   "fileSize": "515 MB",
+   "fileSize": "459 MB",
    "downloadUrl": "https://collbusinesssolutions.com/brood.html#download",
    "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
    "author": {"@id": "https://collbusinesssolutions.com/#organization"},
@@ -175,7 +175,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     <p class="lead">A spider survival game. Hatch as one of 11 real spider species, hunt, spin webs and molt your way up from a tiny spiderling, on an island and a backyard garden where you are the top predator. Play alone or online with up to 4 friends.</p>
     <div class="dl">
       <button class="btn" id="get" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>Download for Windows (free)</button>
-      <span class="facts">Version 0.3.0 · Early Access<br>515 MB · Windows 10 or 11 (64-bit)</span>
+      <span class="facts">Version 0.3.0 · Early Access<br>459 MB · Windows 10 or 11 (64-bit)</span>
     </div>
     <div class="prog" id="prog" aria-live="polite"><div class="bar"><i id="bar"></i></div><p id="msg">Starting…</p></div>
    </div>
@@ -214,15 +214,15 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
   <section aria-labelledby="h-install">
     <h2 id="h-install">How to install</h2>
     <ol class="steps">
-      <li>Click <b>Download for Windows</b> above. The game comes down in pieces and is put back together into one file, <code>Brood-EarlyAccess-Windows.zip</code>; keep the page open until it says it's done.</li>
-      <li>Right-click the zip and choose <b>Extract All</b>, then open the <b>Brood</b> folder.</li>
-      <li>Double-click <b>Brood.exe</b>. If Windows shows <b>"Windows protected your PC"</b>, click <b>More info</b>, then <b>Run anyway</b> (the game is new, so Windows doesn't know it yet).</li>
+      <li>Click <b>Download for Windows</b> above. Keep the page open until it says it's done (about 20 seconds on a fast connection).</li>
+      <li>Open <b>Brood-Setup.exe</b> from your browser's downloads (click it at the top right of the browser, or find it in your <b>Downloads</b> folder). If Windows shows <b>"Windows protected your PC"</b>, click <b>More info</b>, then <b>Run anyway</b> (the game is new, so Windows doesn't know it yet).</li>
+      <li>That's it: Brood installs itself, puts a <b>Brood</b> shortcut on your desktop and in the Start menu, and starts. Next time, just double-click the desktop shortcut.</li>
       <li>The first time you host an online game, Windows may ask whether Brood can use your network. Click <b>Allow</b> so friends can join.</li>
     </ol>
     <div class="card" style="margin-top:20px;max-width:820px">
       <h3>Prefer PowerShell?</h3>
-      <p>This one command downloads every piece, puts the zip back together, unzips it to <code>Downloads\Brood</code> and starts the game. Paste it into PowerShell (Start menu, type <b>PowerShell</b>) and press Enter.</p>
-      <div class="ps"><pre id="pscmd">$d="$env:USERPROFILE\Downloads\Brood"; New-Item -ItemType Directory -Force $d | Out-Null; $b="https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main/downloads/brood/0.3.0/Brood-EarlyAccess-Windows.zip"; $z="$d\Brood-EarlyAccess-Windows.zip"; $o=[IO.File]::Create($z); foreach($n in 1..11){ $p="$z.part"; Invoke-WebRequest ("$b.{0:D3}" -f $n) -OutFile $p -UseBasicParsing; $i=[IO.File]::OpenRead($p); $i.CopyTo($o); $i.Close(); Remove-Item $p }; $o.Close(); Expand-Archive $z -DestinationPath $d -Force; Start-Process "$d\Brood\Brood.exe"</pre><button type="button" id="copyps">Copy</button></div>
+      <p>This one command downloads Brood, installs it, puts the shortcut on your desktop and starts the game. Paste it into PowerShell (Start menu, type <b>PowerShell</b>) and press Enter.</p>
+      <div class="ps"><pre id="pscmd">$s="$env:TEMP\Brood-Setup.exe"; $b="https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main/downloads/brood/setup/0.3.0/Brood-Setup.exe"; $o=[IO.File]::Create($s); foreach($n in 1..10){ $p="$s.part"; Invoke-WebRequest ("$b.{0:D3}" -f $n) -OutFile $p -UseBasicParsing; $i=[IO.File]::OpenRead($p); $i.CopyTo($o); $i.Close(); Remove-Item $p }; $o.Close(); Start-Process $s -ArgumentList '/S'</pre><button type="button" id="copyps">Copy</button></div>
     </div>
   </section>
 
@@ -272,7 +272,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
 
 <script>
 (function(){
-  var BASE = 'https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main/downloads/brood/0.3.0/';
+  var BASE = 'https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main/downloads/brood/setup/0.3.0/';
   var btn = document.getElementById('get'), prog = document.getElementById('prog'), bar = document.getElementById('bar'), msg = document.getElementById('msg');
   var busy = false;
   function mb(n){ return (n / 1000000).toFixed(0) + ' MB'; }
@@ -303,9 +303,9 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     btn.disabled = true; prog.classList.add('on'); bar.style.width = '0%'; say('Getting ready…');
     var writable = null, blobs = [];
     try {
-      var m = await (await fetch('/downloads/brood/0.3.0/manifest.json', {cache: 'no-store'})).json();
+      var m = await (await fetch('/downloads/brood/setup/0.3.0/manifest.json', {cache: 'no-store'})).json();
       // Chrome and Edge can write straight to a file you pick (no big memory use).
-      if (window.showSaveFilePicker){
+      if (false && window.showSaveFilePicker){ // (the browser's own download is one click to open, so no file picker)
         try {
           var h = await window.showSaveFilePicker({suggestedName: m.name, types: [{description: 'Zip file', accept: {'application/zip': ['.zip']}}]});
           writable = await h.createWritable();
@@ -326,14 +326,14 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
         if (writable){ for (var c = 0; c < part.chunks.length; c++) await writable.write(part.chunks[c]); }
         else blobs.push(new Blob(part.chunks));
       }
-      if (writable){ await writable.close(); say('Done! Saved ' + m.name + '. Right-click it, choose Extract All, then run Brood.exe.'); }
+      if (writable){ await writable.close(); say('Done! Open ' + m.name + ' to install Brood and get the desktop shortcut.'); }
       else {
-        var file = new Blob(blobs, {type: 'application/zip'});
+        var file = new Blob(blobs, {type: 'application/octet-stream'});
         var a = document.createElement('a');
         a.href = URL.createObjectURL(file); a.download = m.name;
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(function(){ URL.revokeObjectURL(a.href); }, 120000);
-        say('Done! ' + m.name + ' is in your Downloads. Right-click it, choose Extract All, then run Brood.exe.');
+        say('Done! Click ' + m.name + ' in your browser\'s downloads (top right) to install. It puts a Brood shortcut on your desktop and starts the game.');
       }
       bar.style.width = '100%';
       if (window.gtag) try { gtag('event', 'brood_download', {version: m.version}); } catch (e) {}
