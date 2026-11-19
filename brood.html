@@ -33,13 +33,13 @@
    "url": "https://collbusinesssolutions.com/brood.html",
    "image": "https://collbusinesssolutions.com/img/games/brood-cover.webp",
    "gamePlatform": "Windows PC",
-   "operatingSystem": "Windows 10, Windows 11",
+   "operatingSystem": "Windows 10, Windows 11, Android 10+",
    "applicationCategory": "GameApplication",
    "genre": ["Survival", "Simulation"],
    "playMode": ["SinglePlayer", "MultiPlayer"],
    "numberOfPlayers": {"@type": "QuantitativeValue", "minValue": 1, "maxValue": 4},
-   "softwareVersion": "0.5.0 (Early Access)",
-   "fileSize": "459 MB",
+   "softwareVersion": "0.5.2 (Early Access)",
+   "fileSize": "460 MB",
    "downloadUrl": "https://collbusinesssolutions.com/brood.html#download",
    "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
    "author": {"@id": "https://collbusinesssolutions.com/#organization"},
@@ -175,7 +175,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     <p class="lead">A spider survival game. Hatch as one of 11 real spider species, hunt, spin webs and molt your way up from a tiny spiderling, on an island and a backyard garden where you are the top predator. Play alone or online with up to 4 friends.</p>
     <div class="dl">
       <button class="btn" id="get" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>Download for Windows (free)</button>
-      <span class="facts">Version 0.5.0 · Early Access<br>459 MB · Windows 10 or 11 (64-bit)</span>
+      <span class="facts">Version 0.5.2 · Early Access<br>460 MB · Windows 10 or 11 (64-bit)</span>
     </div>
     <div class="dl" id="android" style="margin-top:12px">
       <button class="btn" id="getapk" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>Download for Android (free)</button>
@@ -227,7 +227,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     <div class="card" style="margin-top:20px;max-width:820px">
       <h3>Prefer PowerShell?</h3>
       <p>This one command downloads Brood, installs it, puts the shortcut on your desktop and starts the game. Paste it into PowerShell (Start menu, type <b>PowerShell</b>) and press Enter.</p>
-      <div class="ps"><pre id="pscmd">$s="$env:TEMP\Brood-Setup.exe"; $b="https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main/downloads/brood/setup/0.5.0/Brood-Setup.exe"; $o=[IO.File]::Create($s); foreach($n in 1..10){ $p="$s.part"; Invoke-WebRequest ("$b.{0:D3}" -f $n) -OutFile $p -UseBasicParsing; $i=[IO.File]::OpenRead($p); $i.CopyTo($o); $i.Close(); Remove-Item $p }; $o.Close(); Start-Process $s -ArgumentList '/S'</pre><button type="button" id="copyps">Copy</button></div>
+      <div class="ps"><pre id="pscmd">$s="$env:TEMP\Brood-Setup.exe"; $b="https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main/downloads/brood/setup/0.5.2/Brood-Setup.exe"; $o=[IO.File]::Create($s); foreach($n in 1..10){ $p="$s.part"; Invoke-WebRequest ("$b.{0:D3}" -f $n) -OutFile $p -UseBasicParsing; $i=[IO.File]::OpenRead($p); $i.CopyTo($o); $i.Close(); Remove-Item $p }; $o.Close(); Start-Process $s -ArgumentList '/S'</pre><button type="button" id="copyps">Copy</button></div>
     </div>
   </section>
 
@@ -274,6 +274,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     <details><summary>Mac, phone or console?</summary><p>Brood is on Windows and on Android phones (see <a href="#h-phone">On your Android phone</a>; the phone version is brand new, so tell us how it runs). No Mac, iPhone or console yet.</p></details>
     <details><summary>What happens when my spider dies?</summary><p>By default you go back to your last save (Brood saves every two minutes, and whenever you choose Save Game). If you want the real survival experience, turn on <b>Settings &gt; When You Die &gt; Lose the save</b>: then only an egg sac carries your lineage on. Online, death is always for real, and you hatch again next to your friends.</p></details>
     <details><summary>It runs slowly on my PC</summary><p>Open <b>Settings</b> and set <b>Graphics Quality</b> to Medium or Low. You can also cap the frame rate there.</p></details>
+    <details><summary>My spider got stuck inside something</summary><p>Brood gets you out by itself: if your spider ends up inside a rock, a log or the ground, it squeezes back out within a moment. You can also open the menu and choose <b>Get Unstuck</b> to go back to the last good spot you stood on.</p></details>
     <details><summary>Where is my save?</summary><p>Your game saves on your PC, under <code>%LOCALAPPDATA%\Brood\Saved\SaveGames</code>. Deleting the Brood folder doesn't delete it.</p></details>
     <details><summary>The download stopped partway</summary><p>Click the download button again; it starts over cleanly. Or use the PowerShell command above, which downloads one piece at a time.</p></details>
   </section>
@@ -292,7 +293,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
 (function(){
   var RAW = 'https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main';
   var KINDS = {
-    win: {dir: '/downloads/brood/setup/0.5.0/', btn: 'get', done: function(n){ return 'Done! Click ' + n + ' in your browser\'s downloads (top right) to install. It puts a Brood shortcut on your desktop and starts the game.'; }, type: 'application/octet-stream'},
+    win: {dir: '/downloads/brood/setup/0.5.2/', btn: 'get', done: function(n){ return 'Done! Click ' + n + ' in your browser\'s downloads (top right) to install. It puts a Brood shortcut on your desktop and starts the game.'; }, type: 'application/octet-stream'},
     apk: {dir: '/downloads/brood/android/0.5.2/', btn: 'getapk', done: function(n){ return 'Done! Tap Open on the download message (or open ' + n + ' from Files > Downloads) and tap Install.'; }, type: 'application/vnd.android.package-archive'}
   };
   var BASE, kind;
