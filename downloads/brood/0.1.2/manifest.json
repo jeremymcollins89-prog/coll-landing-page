@@ -1,8 +1,8 @@
 {
  "name": "Brood-EarlyAccess-Windows.zip",
- "version": "0.1.1",
- "size": 514701508,
- "sha256": "4bda1c99c975872eeb345646b41f16370223c72b721280fd73a034c09aa32693",
+ "version": "0.1.2",
+ "size": 514704142,
+ "sha256": "d53d73a7605e98ec5b47a21c7ea22921455058e6eb57be47cf8ff8ed7e508e61",
  "parts": [
   {
    "file": "Brood-EarlyAccess-Windows.zip.001",
@@ -46,7 +46,7 @@
   },
   {
    "file": "Brood-EarlyAccess-Windows.zip.011",
-   "size": 11385028
+   "size": 11387662
   }
  ]
 }
