@@ -1006,6 +1006,11 @@ body.hd-asleep .hd-zzz{display:block;position:absolute;right:6%;top:0;color:#fff
 .prn-rec{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 #prnRec.rec{background:#e8503a;color:#fff;animation:pzpop .6s infinite alternate}
 @media (orientation:portrait){.pb-frame{height:auto;width:86vw;max-width:86vw}.pb-main{flex-direction:column;align-items:center}.pb-dino{width:22vmin}}
+.vol-row{display:flex;align-items:center;gap:14px;font-size:16px;font-weight:600}
+.vol-row span{flex:none;width:9.5em}
+.vol{flex:1;-webkit-appearance:none;appearance:none;height:14px;border-radius:999px;background:linear-gradient(90deg,var(--gold) var(--p,100%),rgba(255,247,243,.22) var(--p,100%));outline:none;touch-action:none}
+.vol::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:32px;height:32px;border-radius:50%;background:#fff7f3;box-shadow:0 3px 8px rgba(20,6,38,.4);cursor:pointer}
+.vol::-moz-range-thumb{width:32px;height:32px;border-radius:50%;background:#fff7f3;border:0}
 </style>
 </head>
 <body>
@@ -1488,22 +1493,52 @@ const oldKey = k => /^[a-z]{5}-(cbn|learn|match|pet|run-puzzle|run-v2|tutor|voic
 
 /* ---------------- sound ---------------- */
 const SCALE = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25, 783.99, 880.0, 1046.5];
-let ac = null, master = null;
+let ac = null, master = null, bus = null;
+/* Volume a grown-up sets in Settings: everything, the dino's voice, and music & sounds. */
+const vol = Object.assign({ all: 1, voice: 1, fx: 1 }, store.get('dg-volume', null) || {});
+function applyVol() {
+  if (!ac) return; const t = ac.currentTime;
+  bus.gain.setTargetAtTime(vol.all * 1.15, t, .02); master.gain.setTargetAtTime(.9 * vol.fx, t, .02);
+  if (dv.gain) dv.gain.gain.setTargetAtTime(vol.voice, t, .02);
+}
+/* iPhones mute web sounds when the Ring/Silent switch is on silent. Asking for "playback" audio
+   (newer iOS), and keeping a silent sound playing (older iOS), lets the game be heard anyway. */
+const SILENT_WAV = 'data:audio/wav;base64,UklGRvQHAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YdAHAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
+let keepAlive = null;
+function iosAudioFix() {
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+  try {
+    if (!keepAlive) { keepAlive = new Audio(SILENT_WAV); keepAlive.loop = true; keepAlive.setAttribute('playsinline', ''); keepAlive.preload = 'auto'; }
+    if (keepAlive.paused && !document.hidden) keepAlive.play().catch(() => {});
+  } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (!keepAlive) return; if (document.hidden) keepAlive.pause(); });
 function audio() {
   if (!ac) {
     try {
       ac = new (window.AudioContext || window.webkitAudioContext)();
-      master = ac.createGain(); master.gain.value = .9; master.connect(ac.destination);
+      bus = ac.createGain(); bus.connect(ac.destination);
+      master = ac.createGain(); master.gain.value = .9; master.connect(bus);
       const d = ac.createDelay(); d.delayTime.value = .27;
       const fb = ac.createGain(); fb.gain.value = .3;
       const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200;
       const wet = ac.createGain(); wet.gain.value = .3;
-      master.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(wet); wet.connect(ac.destination);
+      master.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(wet); wet.connect(bus);
+      applyVol();
     } catch (e) { ac = null; }
   }
-  if (ac && ac.state === 'suspended') ac.resume();
+  if (ac && ac.state !== 'running' && ac.state !== 'closed') ac.resume().catch(() => {});
   return ac;
 }
+/* Unlock sound on the first touch: iPhones need a real tap (touchend/click) and a sound played inside it. */
+let primed = false;
+function primeAudio() {
+  const a = audio(); iosAudioFix(); if (!a) return;
+  if (!primed || a.state !== 'running') {
+    try { const b = a.createBuffer(1, 1, 22050), src = a.createBufferSource(); src.buffer = b; src.connect(a.destination); src.start(0); primed = true; } catch (e) {}
+  }
+}
+['touchend', 'click', 'keydown'].forEach(t => document.addEventListener(t, primeAudio, true));
 function toneAt(f, when, dur = .9, vol = .2, type = 'sine') {
   if (!ac) return;
   const o = ac.createOscillator(), o2 = ac.createOscillator(), g = ac.createGain(), g2 = ac.createGain();
@@ -1552,7 +1587,7 @@ setInterval(() => {
 
 let unlocked = false;
 document.addEventListener('pointerdown', () => {
-  audio();
+  primeAudio();
   if (!unlocked) { unlocked = true; try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {} }
 }, true);
 document.addEventListener('touchmove', e => { if (!(e.target.closest && e.target.closest('.gallery, .voice-panel'))) e.preventDefault(); }, { passive: false });
@@ -2298,7 +2333,7 @@ async function dvPlay(item, plans, finish, fallback) {
     const keys = [...new Set(plans.flat().filter(sg => sg.key).map(sg => sg.key))], bufs = {};
     await Promise.all(keys.map(k => dvBuf(k).then(b => { bufs[k] = b; })));
     if (sayCur !== item) return;
-    if (!dv.gain) { dv.gain = ac.createGain(); dv.gain.gain.value = 1; dv.gain.connect(ac.destination); }
+    if (!dv.gain) { dv.gain = ac.createGain(); dv.gain.gain.value = vol.voice; dv.gain.connect(bus); }
     let t = ac.currentTime + .06;
     plans.forEach((plan, pi) => {
       const pt = item.parts[pi], at = t, dur = plan.reduce((a, sg) => a + (sg.pause ? sg.pause : bufs[sg.key] ? bufs[sg.key].duration + .02 : 0), 0);
@@ -2452,6 +2487,13 @@ function openSettings() {
         <button class="vp-done soft" id="sPottyTry" style="align-self:center">Try it now</button>
       </div>
       <div class="set-sep"></div>
+      <div class="set-label">Sound</div>
+      <div class="vol-row"><span>🔊 Everything</span><input type="range" class="vol" data-v="all" min="0" max="1" step="0.05" aria-label="Overall volume"></div>
+      <div class="vol-row"><span>🦖 Dino's voice</span><input type="range" class="vol" data-v="voice" min="0" max="1" step="0.05" aria-label="Voice volume"></div>
+      <div class="vol-row"><span>🎵 Music &amp; sounds</span><input type="range" class="vol" data-v="fx" min="0" max="1" step="0.05" aria-label="Music and sound volume"></div>
+      <div class="set-row"><button class="vp-done soft" id="sTestSound">▶ Test sound</button></div>
+      <div class="vp-sub">No sound on an iPhone or iPad? Turn up the side volume buttons, and check the Ring/Silent switch and Control Center. Bluetooth headphones may be connected.</div>
+      <div class="set-sep"></div>
       <div class="set-toggle"><span>Holiday look in November (Thanksgiving)</span><button class="switch" id="sSeason" role="switch" aria-label="Holiday look"></button></div>
       <div class="set-sep"></div>
       <div class="set-label">Time to rest</div>
@@ -2499,6 +2541,12 @@ function openSettings() {
     $$('#sPotty button', ov).forEach(b => b.addEventListener('click', () => { potty.mins = +b.dataset.v; potty.played = 0; savePotty(); syncPotty(); sfx.click(); }));
     $('#sPottyOn', ov).addEventListener('click', () => { potty.on = !potty.on; potty.played = 0; savePotty(); syncPotty(); sfx.click(); });
     $('#sPottyGame', ov).addEventListener('click', () => { potty.game = !potty.game; savePotty(); syncPotty(); sfx.click(); });
+    $$('.vol', ov).forEach(r => {
+      r.value = vol[r.dataset.v]; r.style.setProperty('--p', (vol[r.dataset.v] * 100) + '%');
+      r.addEventListener('input', () => { vol[r.dataset.v] = +r.value; r.style.setProperty('--p', (r.value * 100) + '%'); store.set('dg-volume', vol); primeAudio(); applyVol(); });
+      r.addEventListener('change', () => { if (r.dataset.v === 'voice') speak('Hi!', true); else tone(SCALE[7], 0, .5, .14); });
+    });
+    $('#sTestSound', ov).addEventListener('click', () => { primeAudio(); applyVol(); [0, 2, 4, 7].forEach((n, i) => tone(SCALE[n], i * .12, .6, .14)); setTimeout(() => speak('Hello! Roar!', true), 700); });
     $('#sSeason', ov).addEventListener('click', () => { store.set('dg-season', store.get('dg-season', 'auto') === 'off' ? 'auto' : 'off'); applySeason(); syncPotty(); sfx.click(); });
     $('#sPottyTry', ov).addEventListener('click', () => { close(); askPotty(); });
     syncPotty();
@@ -8042,7 +8090,7 @@ build.sing = () => {
     if (my !== run) return;
     if (!buf) { lyr.innerHTML = '<div class="lyric-hint">This song needs an update. Close the app and open it again.</div>'; return showPick(); }
     const ms = 60000 / d.bpm; root.style.setProperty('--beat', ms + 'ms'); root.classList.add('dancing');
-    src = ac.createBufferSource(); src.buffer = buf; const g = ac.createGain(); g.gain.value = 1; src.connect(g); g.connect(ac.destination);
+    src = ac.createBufferSource(); src.buffer = buf; const g = ac.createGain(); g.gain.value = 1; src.connect(g); g.connect(bus);
     const t0 = ac.currentTime + .08; src.start(t0);
     let shownLine = -2, lastBeat = -1, roared = false;
     if (!d.lines.length) lyr.innerHTML = '<div class="lyric-hint">Dance! Tap the dinos!</div>';
@@ -8170,7 +8218,7 @@ build.photo = () => {
 };
 
 /* ---- her own voice saying her pet's name ---- */
-function playPetVoice() { const u = store.get('dg-pet-voice', ''); if (!u) return false; try { const a = new Audio(u); a.volume = 1; a.play().catch(() => {}); } catch (e) { return false; } return true; }
+function playPetVoice() { const u = store.get('dg-pet-voice', ''); if (!u) return false; try { const a = new Audio(u); a.volume = Math.min(1, vol.all * vol.voice); a.play().catch(() => {}); } catch (e) { return false; } return true; }
 async function recordPetVoice(btn, done) {
   if (!navigator.mediaDevices || !window.MediaRecorder) { btn.textContent = 'Not on this device'; return; }
   let stream; try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (e) { btn.textContent = 'Ask a grown-up to allow the microphone'; return; }
