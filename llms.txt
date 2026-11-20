@@ -19,7 +19,7 @@
 ## Games
 
 - [All games](https://collbusinesssolutions.com/games.html)
-- [Brood](https://collbusinesssolutions.com/brood.html): spider survival game for Windows PCs (460 MB) and Android phones (252 MB APK), free Early Access download. 11 real spider species, an island and a backyard garden, online play for up to 4 players.
+- [Brood](https://collbusinesssolutions.com/brood.html): spider survival game for Windows PCs (434 MB) and Android phones (252 MB APK), free Early Access download. 12 real spider species, an island and a backyard garden, online play for up to 4 players.
 - [Confetti Cats](https://play.google.com/store/apps/details?id=com.collbusinesssolutions.confetticats): cat sort puzzle on Google Play (Android).
 - [Golden Gobblers](https://play.google.com/store/apps/details?id=com.collbusinesssolutions.goldengobblers): keep the trash away from two hungry golden retrievers, on Google Play (Android).
 - [Drop Zone Tree Co.](https://play.google.com/store/apps/details?id=com.collbusinesssolutions.dropzone): idle tycoon about running a Colorado tree service, on Google Play (Android).
