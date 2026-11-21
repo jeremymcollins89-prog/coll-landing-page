@@ -330,7 +330,13 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     btn.disabled = true; prog.classList.add('on'); bar.style.width = '0%'; say('Getting ready…');
     var writable = null, blobs = [];
     try {
-      var m = await (await fetch(kind.dir + 'manifest.json', {cache: 'no-store'})).json();
+      // Always ask for the newest version first, so a page the browser kept from before an update still works.
+      try {
+        var L = await (await fetch(RAW + '/downloads/brood/latest.json', {cache: 'no-store'})).json();
+        var mp = which === 'apk' ? L.apk : L.win;
+        if (mp){ kind.dir = '/' + mp.replace(/manifest\.json$/, ''); BASE = RAW + kind.dir; }
+      } catch (e) {}
+      var m = await (await fetch(BASE + 'manifest.json', {cache: 'no-store'})).json();
       // Chrome and Edge can write straight to a file you pick (no big memory use).
       if (false && window.showSaveFilePicker){ // (the browser's own download is one click to open, so no file picker)
         try {
