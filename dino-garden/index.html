@@ -2054,12 +2054,12 @@ const WORLDS = {
 const PNAMES = { build: 'Marble run', match: 'Matching', seek: 'Hide and seek', nests: 'Eggs', space: 'Space', art: 'Art', stickers: 'Stickers', photo: 'Photos', music: 'Music', sing: 'Sing along', learn: 'Learn', stories: 'Stories', pet: 'Pet' };
 $$('.portal-store .portal').forEach(p => p.insertAdjacentHTML('beforeend', `<span class="pname">${PNAMES[p.dataset.room] || ''}</span>`));
 const wsheet = $('.wsheet'); document.body.appendChild(wsheet);
-function closeWorld() { wsheet.hidden = true; }
+function closeWorld() { wsheet.hidden = true; if (typeof returnPortals === 'function') setTimeout(() => { if (wsheet.hidden) returnPortals(); }, 0); }
 function openWorld(id) {
   const W = WORLDS[id]; if (!W) return;
   if (W.rooms.length === 1) { sfx.chime(); return go(W.rooms[0]); }
   $('.wtitle', wsheet).textContent = W.name;
-  const box = $('.wrooms', wsheet); box.innerHTML = ''; W.rooms.forEach(r => { const p = $(`.portal-store .portal[data-room="${r}"]`) || $(`.wrooms .portal[data-room="${r}"]`); if (p) box.appendChild(p); });
+  returnPortals(); const box = $('.wrooms', wsheet); W.rooms.forEach(r => { const p = $(`.portal-store .portal[data-room="${r}"]`); if (p) box.appendChild(p); });
   wsheet.hidden = false; sfx.chime(); if (W.say) speak(W.say, true);
 }
 function returnPortals() { $$('.wrooms .portal').forEach(p => $('.portal-store').appendChild(p)); }
