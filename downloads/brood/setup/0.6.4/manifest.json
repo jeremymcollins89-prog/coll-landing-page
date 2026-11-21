@@ -1,0 +1,48 @@
+{
+ "name": "Brood-Setup.exe",
+ "version": "0.6.4",
+ "size": 461611862,
+ "sha256": "22a42d0248bed29460389bf15bd63068336da74ee7b2947c89167c957a61ee3c",
+ "parts": [
+  {
+   "file": "Brood-Setup.exe.001",
+   "size": 50331648
+  },
+  {
+   "file": "Brood-Setup.exe.002",
+   "size": 50331648
+  },
+  {
+   "file": "Brood-Setup.exe.003",
+   "size": 50331648
+  },
+  {
+   "file": "Brood-Setup.exe.004",
+   "size": 50331648
+  },
+  {
+   "file": "Brood-Setup.exe.005",
+   "size": 50331648
+  },
+  {
+   "file": "Brood-Setup.exe.006",
+   "size": 50331648
+  },
+  {
+   "file": "Brood-Setup.exe.007",
+   "size": 50331648
+  },
+  {
+   "file": "Brood-Setup.exe.008",
+   "size": 50331648
+  },
+  {
+   "file": "Brood-Setup.exe.009",
+   "size": 50331648
+  },
+  {
+   "file": "Brood-Setup.exe.010",
+   "size": 8627030
+  }
+ ]
+}
