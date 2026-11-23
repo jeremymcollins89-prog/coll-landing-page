@@ -1,0 +1,49 @@
+# Publishes collbusinesssolutions.com.
+# The big Brood game downloads (downloads/brood/setup and downloads/brood/android) are left out of the site build:
+# the website buttons, the PowerShell command and the in-game updater all fetch those pieces straight from the
+# repository (raw.githubusercontent.com). Leaving them out keeps each build a few MB instead of ~750 MB, which would
+# otherwise fill the account's free GitHub Actions storage. Only latest.json is read from the site itself.
+name: Publish site
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the site (without the game downloads)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/downloads/brood/setup/
+            !/downloads/brood/android/
+      - name: Gather the files
+        run: |
+          mkdir -p ../site
+          rsync -a --exclude '.git' --exclude '.github' ./ ../site/
+          mv ../site ./_site
+          du -sh _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+          retention-days: 1
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
