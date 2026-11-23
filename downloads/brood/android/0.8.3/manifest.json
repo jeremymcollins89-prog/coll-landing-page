@@ -1,8 +1,8 @@
 {
  "name": "Brood.apk",
- "version": "0.8.2",
- "size": 286593995,
- "sha256": "3dd08234080987d4e93ae7667e51f5591369e7301b470d07014fc82622fa256b",
+ "version": "0.8.3",
+ "size": 288122247,
+ "sha256": "99607d2f343a2d069984eebe779ecf1f08bf231d72dbc012b03de391858d14af",
  "parts": [
   {
    "file": "Brood.apk.001",
@@ -26,7 +26,7 @@
   },
   {
    "file": "Brood.apk.006",
-   "size": 34935755
+   "size": 36464007
   }
  ]
 }
