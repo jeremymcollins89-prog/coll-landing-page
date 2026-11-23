@@ -38,8 +38,8 @@
    "genre": ["Survival", "Simulation"],
    "playMode": ["SinglePlayer", "MultiPlayer"],
    "numberOfPlayers": {"@type": "QuantitativeValue", "minValue": 1, "maxValue": 4},
-   "softwareVersion": "0.8.1 (Early Access)",
-   "fileSize": "465 MB",
+   "softwareVersion": "0.8.2 (Early Access)",
+   "fileSize": "466 MB",
    "downloadUrl": "https://collbusinesssolutions.com/brood.html#download",
    "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
    "author": {"@id": "https://collbusinesssolutions.com/#organization"},
@@ -175,11 +175,11 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     <p class="lead">A spider survival game. Hatch as one of 12 real spider species, hunt, spin webs and molt your way up from a tiny spiderling, on an island and a backyard garden where you are the top predator. Play alone or online with up to 4 friends.</p>
     <div class="dl">
       <button class="btn" id="get" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>Download for Windows (free)</button>
-      <span class="facts">Version 0.8.1 · Early Access<br>487 MB · Windows 10 or 11 (64-bit)</span>
+      <span class="facts">Version 0.8.2 · Early Access<br>488 MB · Windows 10 or 11 (64-bit)</span>
     </div>
     <div class="dl" id="android" style="margin-top:12px">
       <button class="btn" id="getapk" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>Download for Android (free)</button>
-      <span class="facts">Version 0.8.1 · Early Access, phone build<br>286 MB · Android 10 or newer, 64-bit phone</span>
+      <span class="facts">Version 0.8.2 · Early Access, phone build<br>287 MB · Android 10 or newer, 64-bit phone</span>
     </div>
     <div class="prog" id="prog" aria-live="polite"><div class="bar"><i id="bar"></i></div><p id="msg">Starting…</p></div>
    </div>
@@ -230,7 +230,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
     <div class="card" style="margin-top:20px;max-width:820px">
       <h3>Prefer PowerShell?</h3>
       <p>This one command downloads Brood, installs it, puts the shortcut on your desktop and starts the game. Paste it into PowerShell (Start menu, type <b>PowerShell</b>) and press Enter.</p>
-      <div class="ps"><pre id="pscmd">$s="$env:TEMP\Brood-Setup.exe"; $b="https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main/downloads/brood/setup/0.8.1/Brood-Setup.exe"; $o=[IO.File]::Create($s); foreach($n in 1..10){ $p="$s.part"; Invoke-WebRequest ("$b.{0:D3}" -f $n) -OutFile $p -UseBasicParsing; $i=[IO.File]::OpenRead($p); $i.CopyTo($o); $i.Close(); Remove-Item $p }; $o.Close(); Start-Process $s -ArgumentList '/S'</pre><button type="button" id="copyps">Copy</button></div>
+      <div class="ps"><pre id="pscmd">$s="$env:TEMP\Brood-Setup.exe"; $b="https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main/downloads/brood/setup/0.8.2/Brood-Setup.exe"; $o=[IO.File]::Create($s); foreach($n in 1..10){ $p="$s.part"; Invoke-WebRequest ("$b.{0:D3}" -f $n) -OutFile $p -UseBasicParsing; $i=[IO.File]::OpenRead($p); $i.CopyTo($o); $i.Close(); Remove-Item $p }; $o.Close(); Start-Process $s -ArgumentList '/S'</pre><button type="button" id="copyps">Copy</button></div>
     </div>
   </section>
 
@@ -296,8 +296,8 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;
 (function(){
   var RAW = 'https://raw.githubusercontent.com/jeremymcollins89-prog/coll-landing-page/main';
   var KINDS = {
-    win: {dir: '/downloads/brood/setup/0.8.1/', btn: 'get', done: function(n){ return 'Done! Click ' + n + ' in your browser\'s downloads (top right) to install. It puts a Brood shortcut on your desktop and starts the game.'; }, type: 'application/octet-stream'},
-    apk: {dir: '/downloads/brood/android/0.8.1/', btn: 'getapk', done: function(n){ return 'Done! Tap Open on the download message (or open ' + n + ' from Files > Downloads) and tap Install.'; }, type: 'application/vnd.android.package-archive'}
+    win: {dir: '/downloads/brood/setup/0.8.2/', btn: 'get', done: function(n){ return 'Done! Click ' + n + ' in your browser\'s downloads (top right) to install. It puts a Brood shortcut on your desktop and starts the game.'; }, type: 'application/octet-stream'},
+    apk: {dir: '/downloads/brood/android/0.8.2/', btn: 'getapk', done: function(n){ return 'Done! Tap Open on the download message (or open ' + n + ' from Files > Downloads) and tap Install.'; }, type: 'application/vnd.android.package-archive'}
   };
   var BASE, kind;
   var btn = document.getElementById('get'), prog = document.getElementById('prog'), bar = document.getElementById('bar'), msg = document.getElementById('msg');
