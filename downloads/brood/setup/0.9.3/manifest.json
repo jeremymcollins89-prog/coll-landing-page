@@ -1,8 +1,8 @@
 {
  "name": "Brood-Setup.exe",
- "version": "0.9.2",
- "size": 488549075,
- "sha256": "d5538b3cea1079c6fe2bde8fcf5366f958cee5c3d7cdfd5c4a2b26a817527a13",
+ "version": "0.9.3",
+ "size": 488469090,
+ "sha256": "e93d6dd6322690500df8d52c5cfb932b87a8eb3fb46c508aafca2260f94d4e82",
  "parts": [
   {
    "file": "Brood-Setup.exe.001",
@@ -42,7 +42,7 @@
   },
   {
    "file": "Brood-Setup.exe.010",
-   "size": 35564243
+   "size": 35484258
   }
  ]
 }
