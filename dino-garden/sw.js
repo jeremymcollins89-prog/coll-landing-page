@@ -1,8 +1,8 @@
 /* Dino Garden offline helper.
    Saves the game on the device the first time it opens, so it works with no internet.
    Pages load fresh when online (so updates show up) and from the saved copy when offline. */
-const CACHE = 'dino-garden-v39';
-const CORE = ['./', './index.html', './apple-touch-icon.png', './icon-512.png', './manifest.json', './voice-3e70df5b.bin', './songs/hello.mp3', './songs/stomp.mp3', './songs/count.mp3', './songs/rainbow.mp3', './songs/abc.mp3', './songs/party.mp3', './songs/jingle.mp3', './songs/deck.mp3', './songs/wish.mp3', './songs/silent.mp3', './songs/xparty.mp3', './songs/snowflakes.mp3', './songs/heart.mp3', './songs/seeds.mp3', './songs/splash.mp3', './songs/boo.mp3'];
+const CACHE = 'dino-garden-v40';
+const CORE = ['./', './index.html', './apple-touch-icon.png', './icon-512.png', './manifest.json', './voice-44a3adb5.bin', './songs/hello.mp3', './songs/stomp.mp3', './songs/count.mp3', './songs/rainbow.mp3', './songs/abc.mp3', './songs/party.mp3', './songs/jingle.mp3', './songs/deck.mp3', './songs/wish.mp3', './songs/silent.mp3', './songs/xparty.mp3', './songs/snowflakes.mp3', './songs/heart.mp3', './songs/seeds.mp3', './songs/splash.mp3', './songs/boo.mp3'];
 
 // Voice and song files never change under the same name, so an update copies them from the
 // copy already saved on this device and only downloads what is new. The old copy is removed
