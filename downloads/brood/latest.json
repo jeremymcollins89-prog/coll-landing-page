@@ -1,5 +1,5 @@
 {
- "version": "0.9.9",
- "win": "downloads/brood/setup/0.9.9/manifest.json",
- "apk": "downloads/brood/android/0.9.9/manifest.json"
+ "version": "0.9.10",
+ "win": "downloads/brood/setup/0.9.10/manifest.json",
+ "apk": "downloads/brood/android/0.9.10/manifest.json"
 }
