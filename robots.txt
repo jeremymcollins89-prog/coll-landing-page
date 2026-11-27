@@ -20,5 +20,6 @@ Disallow: /desktop-app/
 Disallow: /ledger-app/
 Disallow: /academy-server/
 Disallow: /scripts/
+Disallow: /mockups/
 
 Sitemap: https://collbusinesssolutions.com/sitemap.xml
